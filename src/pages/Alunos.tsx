@@ -63,40 +63,45 @@ export default function Alunos() {
     e.preventDefault();
     if (!profile?.id) return;
 
+    if (!newStudent.name || !newStudent.email) {
+      toast({
+        title: "Erro",
+        description: "Por favor, preencha todos os campos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmitting(true);
     
     try {
-      // Primeiro, criar um usuário temporário no auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: newStudent.email,
-        password: Math.random().toString(36).substring(2, 15), // senha temporária
-        email_confirm: true,
-        user_metadata: {
+      // Gerar um ID temporário para o aluno
+      const tempUserId = crypto.randomUUID();
+
+      // Inserir dados do aluno na tabela profiles
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: tempUserId,
           name: newStudent.name,
-          role: 'aluno'
-        }
-      });
+          email: newStudent.email,
+          role: 'aluno',
+          teacher_id: profile.id
+        });
 
-      if (authError) throw authError;
-
-      if (authData.user) {
-        // Inserir na tabela profiles
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: authData.user.id,
-            name: newStudent.name,
-            email: newStudent.email,
-            role: 'aluno',
-            teacher_id: profile.id
-          });
-
-        if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Erro ao criar perfil:', profileError);
+        toast({
+          title: "Erro",
+          description: "Erro ao salvar dados do aluno.",
+          variant: "destructive",
+        });
+        return;
       }
 
       toast({
         title: "Aluno adicionado com sucesso!",
-        description: `${newStudent.name} foi cadastrado`,
+        description: `${newStudent.name} foi cadastrado. O aluno receberá as credenciais por email.`,
       });
       
       setNewStudent({ name: "", email: "" });

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock } from "lucide-react";
@@ -14,6 +15,7 @@ interface DashboardStats {
 
 export default function Dashboard() {
   const { profile, isProfessor } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
     upcomingClasses: 0,
@@ -178,19 +180,28 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors">
+              <div 
+                className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
+                onClick={() => navigate("/alunos")}
+              >
                 <Users className="h-8 w-8 mx-auto mb-2 text-primary" />
                 <p className="font-medium">Gerenciar Alunos</p>
                 <p className="text-sm text-muted-foreground">Adicionar e editar alunos</p>
               </div>
               
-              <div className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors">
+              <div 
+                className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
+                onClick={() => navigate("/agenda")}
+              >
                 <Calendar className="h-8 w-8 mx-auto mb-2 text-primary" />
                 <p className="font-medium">Agendar Aula</p>
                 <p className="text-sm text-muted-foreground">Marcar nova aula</p>
               </div>
               
-              <div className="text-center p-4 rounded-lg bg-success-light hover:bg-success cursor-pointer transition-colors">
+              <div 
+                className="text-center p-4 rounded-lg bg-success-light hover:bg-success cursor-pointer transition-colors"
+                onClick={() => navigate("/financeiro")}
+              >
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
                 <p className="font-medium">Nova Fatura</p>
                 <p className="text-sm text-muted-foreground">Criar cobrança</p>

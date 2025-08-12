@@ -45,8 +45,8 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-primary text-primary-foreground font-medium shadow-primary" 
-      : "hover:bg-accent text-muted-foreground hover:text-foreground transition-colors";
+      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" 
+      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
 
   const handleSignOut = async () => {
     await signOut();
@@ -82,12 +82,15 @@ export function AppSidebar() {
               <SidebarMenu>
                 {items.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild>
-                      <NavLink to={item.url} className={getNavCls}>
-                        <item.icon className="h-4 w-4" />
-                        {!isCollapsed && <span>{item.title}</span>}
-                      </NavLink>
-                    </SidebarMenuButton>
+                  <SidebarMenuButton asChild>
+                    <NavLink 
+                      to={item.url} 
+                      className={({ isActive }) => `${getNavCls({ isActive })} flex items-center gap-2 p-2 rounded-lg`}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {!isCollapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

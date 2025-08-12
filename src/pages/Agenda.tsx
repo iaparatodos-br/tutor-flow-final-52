@@ -6,8 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Clock, User, CheckCircle } from "lucide-react";
+import { Calendar, Clock, User, CheckCircle, Plus } from "lucide-react";
 
 interface ClassWithStudent {
   id: string;
@@ -21,18 +26,35 @@ interface ClassWithStudent {
   };
 }
 
+interface Student {
+  id: string;
+  name: string;
+}
+
 export default function Agenda() {
   const { profile, isProfessor } = useAuth();
   const { toast } = useToast();
   
   const [classes, setClasses] = useState<ClassWithStudent[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [newClass, setNewClass] = useState({
+    student_id: '',
+    class_date: '',
+    time: '',
+    duration_minutes: 60,
+    notes: ''
+  });
 
   useEffect(() => {
-    if (profile?.id) {
+    if (profile) {
       loadClasses();
+      if (isProfessor) {
+        loadStudents();
+      }
     }
-  }, [profile]);
+  }, [profile, isProfessor]);
 
   const loadClasses = async () => {
     if (!profile?.id) return;
@@ -72,6 +94,27 @@ export default function Agenda() {
     }
   };
 
+  const loadStudents = async () => {
+    if (!profile?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .eq('teacher_id', profile.id)
+        .eq('role', 'aluno');
+
+      if (error) {
+        console.error('Erro ao carregar alunos:', error);
+        return;
+      }
+
+      setStudents(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar alunos:', error);
+    }
+  };
+
   const handleConfirmClass = async (classId: string) => {
     try {
       const { error } = await supabase
@@ -92,6 +135,67 @@ export default function Agenda() {
       toast({
         title: "Erro ao confirmar aula",
         description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!profile?.id || !newClass.student_id || !newClass.class_date || !newClass.time) {
+      toast({
+        title: "Erro",
+        description: "Por favor, preencha todos os campos obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const classDateTime = new Date(`${newClass.class_date}T${newClass.time}`);
+      
+      const { error } = await supabase
+        .from('classes')
+        .insert({
+          teacher_id: profile.id,
+          student_id: newClass.student_id,
+          class_date: classDateTime.toISOString(),
+          duration_minutes: newClass.duration_minutes,
+          notes: newClass.notes || null,
+          status: 'pendente'
+        });
+
+      if (error) {
+        console.error('Erro ao agendar aula:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao agendar a aula. Tente novamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Sucesso",
+        description: "Aula agendada com sucesso!",
+      });
+
+      setIsDialogOpen(false);
+      setNewClass({
+        student_id: '',
+        class_date: '',
+        time: '',
+        duration_minutes: 60,
+        notes: ''
+      });
+      
+      await loadClasses();
+    } catch (error) {
+      console.error('Erro ao agendar aula:', error);
+      toast({
+        title: "Erro",
+        description: "Erro inesperado. Tente novamente.",
         variant: "destructive",
       });
     }
@@ -139,11 +243,103 @@ export default function Agenda() {
 
         {/* Classes List */}
         <Card className="shadow-card">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               Próximas Aulas ({classes.length})
             </CardTitle>
+            {isProfessor && (
+              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agendar Aula
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[425px]">
+                  <DialogHeader>
+                    <DialogTitle>Agendar Nova Aula</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleAddClass} className="space-y-4">
+                    <div>
+                      <Label htmlFor="student">Aluno *</Label>
+                      <Select value={newClass.student_id} onValueChange={(value) => 
+                        setNewClass(prev => ({ ...prev, student_id: value }))
+                      }>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione um aluno" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {students.map((student) => (
+                            <SelectItem key={student.id} value={student.id}>
+                              {student.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="date">Data *</Label>
+                      <Input
+                        id="date"
+                        type="date"
+                        value={newClass.class_date}
+                        onChange={(e) => setNewClass(prev => ({ ...prev, class_date: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="time">Horário *</Label>
+                      <Input
+                        id="time"
+                        type="time"
+                        value={newClass.time}
+                        onChange={(e) => setNewClass(prev => ({ ...prev, time: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="duration">Duração (minutos)</Label>
+                      <Select value={newClass.duration_minutes.toString()} onValueChange={(value) => 
+                        setNewClass(prev => ({ ...prev, duration_minutes: parseInt(value) }))
+                      }>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="30">30 minutos</SelectItem>
+                          <SelectItem value="60">1 hora</SelectItem>
+                          <SelectItem value="90">1h 30min</SelectItem>
+                          <SelectItem value="120">2 horas</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="notes">Observações</Label>
+                      <Textarea
+                        id="notes"
+                        placeholder="Observações sobre a aula..."
+                        value={newClass.notes}
+                        onChange={(e) => setNewClass(prev => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                    
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                        Cancelar
+                      </Button>
+                      <Button type="submit">
+                        Agendar
+                      </Button>
+                    </div>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
           </CardHeader>
           <CardContent>
             {loading ? (

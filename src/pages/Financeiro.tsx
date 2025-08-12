@@ -46,7 +46,7 @@ export default function Financeiro() {
           due_date,
           status,
           description,
-          student:student_id (
+          profiles!invoices_student_id_fkey (
             name,
             email
           )
@@ -55,7 +55,10 @@ export default function Financeiro() {
         .order('due_date', { ascending: false });
 
       if (error) throw error;
-      setInvoices(data || []);
+      setInvoices((data || []).map(item => ({
+        ...item,
+        student: item.profiles
+      })) as InvoiceWithStudent[]);
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);
       toast({

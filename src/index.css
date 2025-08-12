@@ -2,41 +2,70 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* TutorFlow Design System - Cores educacionais e profissionais */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Background & Foreground */
+    --background: 220 15% 97%;
+    --foreground: 224 28% 15%;
 
+    /* Cards & Surfaces */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 28% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 224 28% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary - Azul educacional */
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 239 84% 62%;
+    --primary-light: 239 84% 85%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary - Tons neutros */
+    --secondary: 220 15% 95%;
+    --secondary-foreground: 224 28% 15%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Success - Verde para financeiro */
+    --success: 151 80% 40%;
+    --success-foreground: 0 0% 100%;
+    --success-light: 151 80% 90%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Warning - Laranja para pendências */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --warning-light: 38 92% 92%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Muted & Subtle */
+    --muted: 220 15% 95%;
+    --muted-foreground: 220 13% 46%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    /* Accent */
+    --accent: 220 15% 93%;
+    --accent-foreground: 224 28% 15%;
 
-    --radius: 0.5rem;
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders & Inputs */
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 239 84% 67%;
+
+    /* Layout */
+    --radius: 0.75rem;
+
+    /* Custom gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(239 84% 67%), hsl(251 91% 70%));
+    --gradient-success: linear-gradient(135deg, hsl(151 80% 40%), hsl(142 71% 45%));
+    --gradient-subtle: linear-gradient(180deg, hsl(220 15% 98%), hsl(220 15% 95%));
+    
+    /* Shadows */
+    --shadow-card: 0 4px 6px -1px hsl(220 15% 15% / 0.1), 0 2px 4px -1px hsl(220 15% 15% / 0.06);
+    --shadow-primary: 0 10px 25px -3px hsl(239 84% 67% / 0.3);
+    --shadow-success: 0 10px 25px -3px hsl(151 80% 40% / 0.25);
 
     --sidebar-background: 0 0% 98%;
 

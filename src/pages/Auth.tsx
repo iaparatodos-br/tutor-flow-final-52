@@ -16,6 +16,8 @@ export default function Auth() {
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [loginErrors, setLoginErrors] = useState({ email: false, password: false });
+  const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false });
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -23,6 +25,18 @@ export default function Auth() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form
+    const errors = {
+      email: !loginForm.email,
+      password: !loginForm.password
+    };
+    setLoginErrors(errors);
+    
+    if (Object.values(errors).some(Boolean)) {
+      return;
+    }
+    
     setLoading(true);
     
     const { error } = await signIn(loginForm.email, loginForm.password);
@@ -47,6 +61,19 @@ export default function Auth() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate form
+    const errors = {
+      name: !signupForm.name,
+      email: !signupForm.email,
+      password: !signupForm.password || signupForm.password.length < 6
+    };
+    setSignupErrors(errors);
+    
+    if (Object.values(errors).some(Boolean)) {
+      return;
+    }
+    
     setLoading(true);
     
     const { error } = await signUp(signupForm.email, signupForm.password, signupForm.name);
@@ -111,7 +138,11 @@ export default function Auth() {
                       type="email"
                       placeholder="seu@email.com"
                       value={loginForm.email}
-                      onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => {
+                        setLoginForm(prev => ({ ...prev, email: e.target.value }));
+                        setLoginErrors(prev => ({ ...prev, email: false }));
+                      }}
+                      className={loginErrors.email ? "border-destructive" : ""}
                       required
                     />
                   </div>
@@ -122,7 +153,11 @@ export default function Auth() {
                       type="password"
                       placeholder="Sua senha"
                       value={loginForm.password}
-                      onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                      onChange={(e) => {
+                        setLoginForm(prev => ({ ...prev, password: e.target.value }));
+                        setLoginErrors(prev => ({ ...prev, password: false }));
+                      }}
+                      className={loginErrors.password ? "border-destructive" : ""}
                       required
                     />
                   </div>
@@ -157,7 +192,11 @@ export default function Auth() {
                       type="text"
                       placeholder="Seu nome completo"
                       value={signupForm.name}
-                      onChange={(e) => setSignupForm(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => {
+                        setSignupForm(prev => ({ ...prev, name: e.target.value }));
+                        setSignupErrors(prev => ({ ...prev, name: false }));
+                      }}
+                      className={signupErrors.name ? "border-destructive" : ""}
                       required
                     />
                   </div>
@@ -168,7 +207,11 @@ export default function Auth() {
                       type="email"
                       placeholder="seu@email.com"
                       value={signupForm.email}
-                      onChange={(e) => setSignupForm(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => {
+                        setSignupForm(prev => ({ ...prev, email: e.target.value }));
+                        setSignupErrors(prev => ({ ...prev, email: false }));
+                      }}
+                      className={signupErrors.email ? "border-destructive" : ""}
                       required
                     />
                   </div>
@@ -179,7 +222,11 @@ export default function Auth() {
                       type="password"
                       placeholder="Escolha uma senha segura"
                       value={signupForm.password}
-                      onChange={(e) => setSignupForm(prev => ({ ...prev, password: e.target.value }))}
+                      onChange={(e) => {
+                        setSignupForm(prev => ({ ...prev, password: e.target.value }));
+                        setSignupErrors(prev => ({ ...prev, password: false }));
+                      }}
+                      className={signupErrors.password ? "border-destructive" : ""}
                       required
                       minLength={6}
                     />

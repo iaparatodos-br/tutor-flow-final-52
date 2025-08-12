@@ -27,6 +27,7 @@ export default function Alunos() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newStudent, setNewStudent] = useState({ name: "", email: "" });
   const [submitting, setSubmitting] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({ name: false, email: false });
 
   useEffect(() => {
     if (profile?.id) {
@@ -63,7 +64,14 @@ export default function Alunos() {
     e.preventDefault();
     if (!profile?.id) return;
 
-    if (!newStudent.name || !newStudent.email) {
+    // Validate form
+    const errors = {
+      name: !newStudent.name.trim(),
+      email: !newStudent.email.trim()
+    };
+    setValidationErrors(errors);
+
+    if (!newStudent.name || !newStudent.email || Object.values(errors).some(Boolean)) {
       toast({
         title: "Erro",
         description: "Por favor, preencha todos os campos.",
@@ -106,6 +114,7 @@ export default function Alunos() {
       
       setNewStudent({ name: "", email: "" });
       setIsAddDialogOpen(false);
+      setValidationErrors({ name: false, email: false });
       loadStudents();
       
     } catch (error: any) {
@@ -182,7 +191,11 @@ export default function Alunos() {
                       type="text"
                       placeholder="Nome do aluno"
                       value={newStudent.name}
-                      onChange={(e) => setNewStudent(prev => ({ ...prev, name: e.target.value }))}
+                      onChange={(e) => {
+                        setNewStudent(prev => ({ ...prev, name: e.target.value }));
+                        setValidationErrors(prev => ({ ...prev, name: false }));
+                      }}
+                      className={validationErrors.name ? "border-destructive" : ""}
                       required
                     />
                   </div>
@@ -193,7 +206,11 @@ export default function Alunos() {
                       type="email"
                       placeholder="email@exemplo.com"
                       value={newStudent.email}
-                      onChange={(e) => setNewStudent(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => {
+                        setNewStudent(prev => ({ ...prev, email: e.target.value }));
+                        setValidationErrors(prev => ({ ...prev, email: false }));
+                      }}
+                      className={validationErrors.email ? "border-destructive" : ""}
                       required
                     />
                   </div>

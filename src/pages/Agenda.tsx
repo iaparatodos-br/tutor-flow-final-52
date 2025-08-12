@@ -46,6 +46,7 @@ export default function Agenda() {
     duration_minutes: 60,
     notes: ''
   });
+  const [validationErrors, setValidationErrors] = useState({ student: false, date: false, time: false });
 
   useEffect(() => {
     if (profile) {
@@ -143,7 +144,15 @@ export default function Agenda() {
   const handleAddClass = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!profile?.id || !newClass.student_id || !newClass.class_date || !newClass.time) {
+    // Validate form
+    const errors = {
+      student: !newClass.student_id,
+      date: !newClass.class_date,
+      time: !newClass.time
+    };
+    setValidationErrors(errors);
+    
+    if (!profile?.id || !newClass.student_id || !newClass.class_date || !newClass.time || Object.values(errors).some(Boolean)) {
       toast({
         title: "Erro",
         description: "Por favor, preencha todos os campos obrigatórios.",
@@ -189,6 +198,7 @@ export default function Agenda() {
         duration_minutes: 60,
         notes: ''
       });
+      setValidationErrors({ student: false, date: false, time: false });
       
       await loadClasses();
     } catch (error) {
@@ -263,10 +273,14 @@ export default function Agenda() {
                   <form onSubmit={handleAddClass} className="space-y-4">
                     <div>
                       <Label htmlFor="student">Aluno *</Label>
-                      <Select value={newClass.student_id} onValueChange={(value) => 
-                        setNewClass(prev => ({ ...prev, student_id: value }))
-                      }>
-                        <SelectTrigger>
+                      <Select 
+                        value={newClass.student_id} 
+                        onValueChange={(value) => {
+                          setNewClass(prev => ({ ...prev, student_id: value }));
+                          setValidationErrors(prev => ({ ...prev, student: false }));
+                        }}
+                      >
+                        <SelectTrigger className={validationErrors.student ? "border-destructive" : ""}>
                           <SelectValue placeholder="Selecione um aluno" />
                         </SelectTrigger>
                         <SelectContent>
@@ -285,7 +299,11 @@ export default function Agenda() {
                         id="date"
                         type="date"
                         value={newClass.class_date}
-                        onChange={(e) => setNewClass(prev => ({ ...prev, class_date: e.target.value }))}
+                        onChange={(e) => {
+                          setNewClass(prev => ({ ...prev, class_date: e.target.value }));
+                          setValidationErrors(prev => ({ ...prev, date: false }));
+                        }}
+                        className={validationErrors.date ? "border-destructive" : ""}
                         required
                       />
                     </div>
@@ -296,7 +314,11 @@ export default function Agenda() {
                         id="time"
                         type="time"
                         value={newClass.time}
-                        onChange={(e) => setNewClass(prev => ({ ...prev, time: e.target.value }))}
+                        onChange={(e) => {
+                          setNewClass(prev => ({ ...prev, time: e.target.value }));
+                          setValidationErrors(prev => ({ ...prev, time: false }));
+                        }}
+                        className={validationErrors.time ? "border-destructive" : ""}
                         required
                       />
                     </div>

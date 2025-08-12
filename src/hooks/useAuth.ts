@@ -25,23 +25,21 @@ export const useAuth = () => {
         
         if (session?.user) {
           // Buscar perfil do usuário
-          setTimeout(async () => {
-            try {
-              const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .eq('id', session.user.id)
-                .single();
-              
-              if (!error && data) {
-                setProfile(data as Profile);
-              }
-            } catch (error) {
-              console.error('Erro ao buscar perfil:', error);
-            } finally {
-              setLoading(false);
+          try {
+            const { data, error } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            
+            if (!error && data) {
+              setProfile(data as Profile);
             }
-          }, 0);
+            setLoading(false);
+          } catch (error) {
+            console.error('Erro ao buscar perfil:', error);
+            setLoading(false);
+          }
         } else {
           setProfile(null);
           setLoading(false);

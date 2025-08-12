@@ -129,7 +129,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           email: string
-          id: string
+          id?: string
           name: string
           role: string
           teacher_id?: string | null

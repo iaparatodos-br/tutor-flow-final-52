@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Calendar, momentLocalizer, View, Event as CalendarEvent } from 'react-big-calendar';
 import moment from 'moment';
 import 'moment/locale/pt-br';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -26,8 +28,17 @@ export interface CalendarClass {
   notes?: string;
 }
 
+export interface AvailabilityBlock {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  type: 'block';
+}
+
 interface CalendarViewProps {
   classes: CalendarClass[];
+  availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
   onConfirmClass?: (classId: string) => void;
   loading?: boolean;
@@ -49,12 +60,36 @@ const messages = {
   noEventsInRange: 'Não há eventos neste período',
 };
 
-export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, loading }: CalendarViewProps) {
+  const { profile } = useAuth();
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState<CalendarClass | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
+  
+  // Combine classes and availability blocks for calendar display
+  const allEvents = [
+    ...classes,
+    ...availabilityBlocks
+  ];
 
-  const getEventStyle = (event: CalendarClass) => {
+  const getEventStyle = (event: CalendarClass | AvailabilityBlock) => {
+    // Handle availability blocks
+    if ('type' in event && event.type === 'block') {
+      return {
+        style: {
+          backgroundColor: 'hsl(var(--muted-foreground))',
+          border: 'none',
+          borderRadius: '0.375rem',
+          color: 'white',
+          fontWeight: '500',
+          fontSize: '0.875rem',
+          opacity: 0.7
+        }
+      };
+    }
+
+    // Handle class events
+    const classEvent = event as CalendarClass;
     const statusColors = {
       pendente: 'hsl(var(--warning))',
       confirmada: 'hsl(var(--primary))',
@@ -64,7 +99,7 @@ export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: 
 
     return {
       style: {
-        backgroundColor: statusColors[event.status],
+        backgroundColor: statusColors[classEvent.status],
         border: 'none',
         borderRadius: '0.375rem',
         color: 'white',
@@ -74,7 +109,7 @@ export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: 
     };
   };
 
-  const handleSelectEvent = (event: CalendarClass) => {
+  const handleSelectEvent = (event: CalendarClass | AvailabilityBlock) => {
     setSelectedEvent(event);
   };
 
@@ -143,7 +178,7 @@ export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: 
           <div className="calendar-container" style={{ height: '600px' }}>
             <Calendar
               localizer={localizer}
-              events={classes}
+              events={allEvents}
               startAccessor="start"
               endAccessor="end"
               view={view}
@@ -169,7 +204,7 @@ export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: 
             />
           </div>
 
-          {classes.length === 0 && (
+          {classes.length === 0 && availabilityBlocks.length === 0 && (
             <div className="text-center py-8">
               <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-medium mb-2">Nenhuma aula agendada</h3>
@@ -193,50 +228,76 @@ export function CalendarView({ classes, isProfessor, onConfirmClass, loading }: 
           
           {selectedEvent && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{selectedEvent.student.name}</span>
-                </div>
-                {getStatusBadge(selectedEvent.status)}
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                  <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <span>{formatEventTime(selectedEvent.start, selectedEvent.end)}</span>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Email do aluno:</p>
-                <p className="text-sm">{selectedEvent.student.email}</p>
-              </div>
-
-              {selectedEvent.notes && (
+              {'type' in selectedEvent && selectedEvent.type === 'block' ? (
+                // Availability Block Details
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Observações:</p>
-                  <p className="text-sm bg-muted p-2 rounded">{selectedEvent.notes}</p>
-                </div>
-              )}
+                  <div className="flex items-center gap-2 mb-4">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium">{selectedEvent.title}</span>
+                    <Badge variant="secondary">Bloqueado</Badge>
+                  </div>
 
-              {isProfessor && selectedEvent.status === 'pendente' && onConfirmClass && (
-                <div className="flex justify-end pt-2">
-                  <Button
-                    onClick={() => {
-                      onConfirmClass(selectedEvent.id);
-                      setSelectedEvent(null);
-                    }}
-                    className="bg-gradient-success shadow-success hover:bg-success"
-                  >
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Confirmar Aula
-                  </Button>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Class Details
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{(selectedEvent as CalendarClass).student.name}</span>
+                    </div>
+                    {getStatusBadge((selectedEvent as CalendarClass).status)}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Email do aluno:</p>
+                    <p className="text-sm">{(selectedEvent as CalendarClass).student.email}</p>
+                  </div>
+
+                  {(selectedEvent as CalendarClass).notes && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Observações:</p>
+                      <p className="text-sm bg-muted p-2 rounded">{(selectedEvent as CalendarClass).notes}</p>
+                    </div>
+                  )}
+
+                  {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
+                    <div className="flex justify-end pt-2">
+                      <Button
+                        onClick={() => {
+                          onConfirmClass((selectedEvent as CalendarClass).id);
+                          setSelectedEvent(null);
+                        }}
+                        className="bg-gradient-success shadow-success hover:bg-success"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Confirmar Aula
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

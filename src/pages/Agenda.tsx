@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
-import { CalendarView, CalendarClass } from "@/components/Calendar/CalendarView";
+import { CalendarView, CalendarClass, AvailabilityBlock } from "@/components/Calendar/CalendarView";
+import { AvailabilityManager } from "@/components/Availability/AvailabilityManager";
 
 interface ClassWithStudent {
   id: string;
@@ -36,6 +37,7 @@ export default function Agenda() {
   
   const [classes, setClasses] = useState<ClassWithStudent[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -53,6 +55,7 @@ export default function Agenda() {
       loadClasses();
       if (isProfessor) {
         loadStudents();
+        loadAvailabilityBlocks();
       }
     }
   }, [profile, isProfessor]);
@@ -113,6 +116,36 @@ export default function Agenda() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAvailabilityBlocks = async () => {
+    if (!profile?.id || !isProfessor) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('availability_blocks')
+        .select('*')
+        .eq('teacher_id', profile.id)
+        .gte('end_datetime', new Date().toISOString())
+        .order('start_datetime');
+
+      if (error) {
+        console.error('Erro ao carregar bloqueios:', error);
+        return;
+      }
+
+      const blocks: AvailabilityBlock[] = (data || []).map(block => ({
+        id: block.id,
+        title: block.title,
+        start: new Date(block.start_datetime),
+        end: new Date(block.end_datetime),
+        type: 'block' as const
+      }));
+
+      setAvailabilityBlocks(blocks);
+    } catch (error) {
+      console.error('Erro ao carregar bloqueios:', error);
     }
   };
 
@@ -243,11 +276,16 @@ export default function Agenda() {
           </h1>
           <p className="text-muted-foreground">
             {isProfessor 
-              ? "Gerencie suas próximas aulas agendadas"
+              ? "Gerencie sua agenda, horários de trabalho e disponibilidade"
               : "Veja suas próximas aulas"
             }
           </p>
         </div>
+
+        {/* Availability Manager - Only for professors */}
+        {isProfessor && (
+          <AvailabilityManager onAvailabilityChange={loadAvailabilityBlocks} />
+        )}
 
         {/* Schedule/Add Class Button */}
         {isProfessor && (
@@ -365,6 +403,7 @@ export default function Agenda() {
         {/* Calendar View */}
         <CalendarView 
           classes={calendarClasses}
+          availabilityBlocks={availabilityBlocks}
           isProfessor={isProfessor}
           onConfirmClass={handleConfirmClass}
           loading={loading}

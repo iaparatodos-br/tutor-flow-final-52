@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      availability_blocks: {
+        Row: {
+          created_at: string
+          description: string | null
+          end_datetime: string
+          id: string
+          is_recurring: boolean
+          recurrence_pattern: Json | null
+          start_datetime: string
+          teacher_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          end_datetime: string
+          id?: string
+          is_recurring?: boolean
+          recurrence_pattern?: Json | null
+          start_datetime: string
+          teacher_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          end_datetime?: string
+          id?: string
+          is_recurring?: boolean
+          recurrence_pattern?: Json | null
+          start_datetime?: string
+          teacher_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       classes: {
         Row: {
           class_date: string
@@ -153,6 +192,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      working_hours: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          is_active: boolean
+          start_time: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          is_active?: boolean
+          start_time: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_active?: boolean
+          start_time?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

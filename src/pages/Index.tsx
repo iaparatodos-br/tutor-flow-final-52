@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Navigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,10 +51,10 @@ const Index = () => {
               asChild
               className="bg-gradient-primary shadow-primary hover:bg-primary-hover px-8"
             >
-              <a href="/auth">
+              <Link to="/auth">
                 Começar Agora
                 <ArrowRight className="ml-2 h-5 w-5" />
-              </a>
+              </Link>
             </Button>
             <Button 
               variant="outline" 
@@ -62,9 +62,9 @@ const Index = () => {
               asChild
               className="px-8"
             >
-              <a href="/auth">
+              <Link to="/auth">
                 Fazer Login
-              </a>
+              </Link>
             </Button>
           </div>
         </div>
@@ -141,10 +141,10 @@ const Index = () => {
                 asChild
                 className="bg-gradient-primary shadow-primary hover:bg-primary-hover px-12"
               >
-                <a href="/auth">
+                <Link to="/auth">
                   Criar Conta Gratuita
                   <ArrowRight className="ml-2 h-5 w-5" />
-                </a>
+                </Link>
               </Button>
             </CardContent>
           </Card>

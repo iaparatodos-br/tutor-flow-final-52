@@ -17,15 +17,19 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('useAuth: Iniciando verificação de autenticação');
+    
     // Configurar listener de mudanças de autenticação
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('useAuth: Auth state changed', { event, hasSession: !!session });
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
           // Buscar perfil do usuário
           try {
+            console.log('useAuth: Buscando perfil do usuário');
             const { data, error } = await supabase
               .from('profiles')
               .select('*')
@@ -33,7 +37,10 @@ export const useAuth = () => {
               .single();
             
             if (!error && data) {
+              console.log('useAuth: Perfil encontrado', data);
               setProfile(data as Profile);
+            } else {
+              console.log('useAuth: Perfil não encontrado ou erro', error);
             }
             setLoading(false);
           } catch (error) {
@@ -41,6 +48,7 @@ export const useAuth = () => {
             setLoading(false);
           }
         } else {
+          console.log('useAuth: Usuário deslogado');
           setProfile(null);
           setLoading(false);
         }
@@ -48,25 +56,39 @@ export const useAuth = () => {
     );
 
     // Verificar sessão existente
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    console.log('useAuth: Verificando sessão existente');
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log('useAuth: Sessão atual', { hasSession: !!session });
       setSession(session);
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
-          .then(({ data, error }) => {
-            if (!error && data) {
-              setProfile(data as Profile);
-            }
-            setLoading(false);
-          });
+        console.log('useAuth: Buscando perfil para sessão existente');
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (!error && data) {
+            console.log('useAuth: Perfil carregado para sessão existente', data);
+            setProfile(data as Profile);
+          } else {
+            console.log('useAuth: Erro ao carregar perfil para sessão existente', error);
+          }
+          setLoading(false);
+        } catch (error) {
+          console.error('useAuth: Erro na busca do perfil:', error);
+          setLoading(false);
+        }
       } else {
+        console.log('useAuth: Nenhuma sessão existente, finalizando loading');
         setLoading(false);
       }
+    }).catch((error) => {
+      console.error('useAuth: Erro ao verificar sessão:', error);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();

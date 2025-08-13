@@ -29,38 +29,46 @@ export const useAuth = () => {
         if (session?.user) {
           // Buscar perfil do usuário
           try {
-            console.log('useAuth: Buscando perfil do usuário');
+            console.log('useAuth: Buscando perfil do usuário', { userId: session.user.id, email: session.user.email });
+            
             const { data, error } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .single();
             
+            console.log('useAuth: Resultado da query', { data, error, hasSession: !!session });
+            
             if (!error && data) {
-              console.log('useAuth: Perfil encontrado', data);
+              console.log('useAuth: Perfil encontrado com sucesso', data);
               setProfile(data as Profile);
             } else {
-              console.log('useAuth: Perfil não encontrado ou erro', error);
+              console.log('useAuth: Perfil não encontrado ou erro, criando perfil básico', { error, hasData: !!data });
               // Criar perfil básico se não existir
-              setProfile({
+              const basicProfile = {
                 id: session.user.id,
-                name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
                 email: session.user.email || '',
-                role: 'professor',
+                role: 'professor' as const,
                 teacher_id: null
-              });
+              };
+              console.log('useAuth: Definindo perfil básico', basicProfile);
+              setProfile(basicProfile);
             }
-            setLoading(false);
           } catch (error) {
-            console.error('Erro ao buscar perfil:', error);
+            console.error('useAuth: Erro na busca do perfil (catch):', error);
             // Criar perfil básico se houver erro
-            setProfile({
+            const basicProfile = {
               id: session.user.id,
-              name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
               email: session.user.email || '',
-              role: 'professor',
+              role: 'professor' as const,
               teacher_id: null
-            });
+            };
+            console.log('useAuth: Definindo perfil básico após erro', basicProfile);
+            setProfile(basicProfile);
+          } finally {
+            console.log('useAuth: Finalizando loading do listener');
             setLoading(false);
           }
         } else {
@@ -79,7 +87,7 @@ export const useAuth = () => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        console.log('useAuth: Buscando perfil para sessão existente');
+        console.log('useAuth: Buscando perfil para sessão existente', { userId: session.user.id, email: session.user.email });
         try {
           const { data, error } = await supabase
             .from('profiles')
@@ -87,31 +95,38 @@ export const useAuth = () => {
             .eq('id', session.user.id)
             .single();
           
+          console.log('useAuth: Resultado da query inicial', { data, error, hasSession: !!session });
+          
           if (!error && data) {
             console.log('useAuth: Perfil carregado para sessão existente', data);
             setProfile(data as Profile);
           } else {
-            console.log('useAuth: Erro ao carregar perfil para sessão existente', error);
+            console.log('useAuth: Erro ao carregar perfil para sessão existente, criando básico', { error, hasData: !!data });
             // Criar perfil básico se não existir
-            setProfile({
+            const basicProfile = {
               id: session.user.id,
-              name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
               email: session.user.email || '',
-              role: 'professor',
+              role: 'professor' as const,
               teacher_id: null
-            });
+            };
+            console.log('useAuth: Definindo perfil básico inicial', basicProfile);
+            setProfile(basicProfile);
           }
-          setLoading(false);
         } catch (error) {
-          console.error('useAuth: Erro na busca do perfil:', error);
+          console.error('useAuth: Erro na busca do perfil inicial (catch):', error);
           // Criar perfil básico se houver erro
-          setProfile({
+          const basicProfile = {
             id: session.user.id,
-            name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
             email: session.user.email || '',
-            role: 'professor',
+            role: 'professor' as const,
             teacher_id: null
-          });
+          };
+          console.log('useAuth: Definindo perfil básico após erro inicial', basicProfile);
+          setProfile(basicProfile);
+        } finally {
+          console.log('useAuth: Finalizando loading inicial');
           setLoading(false);
         }
       } else {

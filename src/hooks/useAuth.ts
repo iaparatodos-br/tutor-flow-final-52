@@ -41,10 +41,26 @@ export const useAuth = () => {
               setProfile(data as Profile);
             } else {
               console.log('useAuth: Perfil não encontrado ou erro', error);
+              // Criar perfil básico se não existir
+              setProfile({
+                id: session.user.id,
+                name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+                email: session.user.email || '',
+                role: 'professor',
+                teacher_id: null
+              });
             }
             setLoading(false);
           } catch (error) {
             console.error('Erro ao buscar perfil:', error);
+            // Criar perfil básico se houver erro
+            setProfile({
+              id: session.user.id,
+              name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+              email: session.user.email || '',
+              role: 'professor',
+              teacher_id: null
+            });
             setLoading(false);
           }
         } else {
@@ -76,10 +92,26 @@ export const useAuth = () => {
             setProfile(data as Profile);
           } else {
             console.log('useAuth: Erro ao carregar perfil para sessão existente', error);
+            // Criar perfil básico se não existir
+            setProfile({
+              id: session.user.id,
+              name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+              email: session.user.email || '',
+              role: 'professor',
+              teacher_id: null
+            });
           }
           setLoading(false);
         } catch (error) {
           console.error('useAuth: Erro na busca do perfil:', error);
+          // Criar perfil básico se houver erro
+          setProfile({
+            id: session.user.id,
+            name: session.user.user_metadata?.name || session.user.email || 'Usuário',
+            email: session.user.email || '',
+            role: 'professor',
+            teacher_id: null
+          });
           setLoading(false);
         }
       } else {

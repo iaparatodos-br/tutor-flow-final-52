@@ -4,15 +4,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, Clock, User, CheckCircle, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { CalendarView, CalendarClass } from "@/components/Calendar/CalendarView";
 
 interface ClassWithStudent {
   id: string;
@@ -36,6 +35,7 @@ export default function Agenda() {
   const { toast } = useToast();
   
   const [classes, setClasses] = useState<ClassWithStudent[]>([]);
+  const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -75,14 +75,35 @@ export default function Agenda() {
           )
         `)
         .eq(isProfessor ? 'teacher_id' : 'student_id', profile.id)
-        .gte('class_date', new Date().toISOString())
+        .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) // Show classes from 30 days ago
         .order('class_date');
 
       if (error) throw error;
-      setClasses((data || []).map(item => ({
+      
+      const mappedClasses = (data || []).map(item => ({
         ...item,
         student: item.profiles
-      })) as ClassWithStudent[]);
+      })) as ClassWithStudent[];
+      
+      setClasses(mappedClasses);
+
+      // Transform for calendar view
+      const calendarEvents: CalendarClass[] = mappedClasses.map(cls => {
+        const startDate = new Date(cls.class_date);
+        const endDate = new Date(startDate.getTime() + (cls.duration_minutes * 60 * 1000));
+        
+        return {
+          id: cls.id,
+          title: `${cls.student?.name || 'Aluno'} - ${cls.duration_minutes}min`,
+          start: startDate,
+          end: endDate,
+          status: cls.status,
+          student: cls.student,
+          notes: cls.notes || undefined
+        };
+      });
+      
+      setCalendarClasses(calendarEvents);
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);
       toast({
@@ -211,29 +232,6 @@ export default function Agenda() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      pendente: { label: "Pendente", variant: "secondary" as const },
-      confirmada: { label: "Confirmada", variant: "default" as const },
-      cancelada: { label: "Cancelada", variant: "destructive" as const },
-      concluida: { label: "Concluída", variant: "outline" as const }
-    };
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
-    return (
-      <Badge variant={config.variant}>
-        {config.label}
-      </Badge>
-    );
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return {
-      date: date.toLocaleDateString('pt-BR'),
-      time: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    };
-  };
 
   return (
     <Layout>
@@ -251,19 +249,18 @@ export default function Agenda() {
           </p>
         </div>
 
-        {/* Classes List */}
-        <Card className="shadow-card">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Próximas Aulas ({classes.length})
-            </CardTitle>
-            {isProfessor && (
+        {/* Schedule/Add Class Button */}
+        {isProfessor && (
+          <Card className="shadow-card">
+            <CardHeader>
+              <CardTitle>Gerenciar Agenda</CardTitle>
+            </CardHeader>
+            <CardContent>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
                     <Plus className="h-4 w-4 mr-2" />
-                    Agendar Aula
+                    Agendar Nova Aula
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
@@ -361,93 +358,17 @@ export default function Agenda() {
                   </form>
                 </DialogContent>
               </Dialog>
-            )}
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Carregando agenda...</p>
-              </div>
-            ) : classes.length === 0 ? (
-              <div className="text-center py-8">
-                <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">Nenhuma aula agendada</h3>
-                <p className="text-muted-foreground">
-                  {isProfessor 
-                    ? "Suas próximas aulas aparecerão aqui"
-                    : "Você não tem aulas agendadas no momento"
-                  }
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>
-                      {isProfessor ? "Aluno" : "Professor"}
-                    </TableHead>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Horário</TableHead>
-                    <TableHead>Duração</TableHead>
-                    <TableHead>Status</TableHead>
-                    {isProfessor && <TableHead>Ações</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {classes.map((classItem) => {
-                    const { date, time } = formatDate(classItem.class_date);
-                    return (
-                      <TableRow key={classItem.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
-                              <User className="h-4 w-4 text-primary" />
-                            </div>
-                            <div>
-                              <p className="font-medium">{classItem.student?.name}</p>
-                              <p className="text-sm text-muted-foreground">{classItem.student?.email}</p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            {date}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            {time}
-                          </div>
-                        </TableCell>
-                        <TableCell>{classItem.duration_minutes} min</TableCell>
-                        <TableCell>
-                          {getStatusBadge(classItem.status)}
-                        </TableCell>
-                        {isProfessor && (
-                          <TableCell>
-                            {classItem.status === 'pendente' && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleConfirmClass(classItem.id)}
-                                className="bg-gradient-success shadow-success hover:bg-success"
-                              >
-                                <CheckCircle className="h-4 w-4 mr-1" />
-                                Confirmar
-                              </Button>
-                            )}
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Calendar View */}
+        <CalendarView 
+          classes={calendarClasses}
+          isProfessor={isProfessor}
+          onConfirmClass={handleConfirmClass}
+          loading={loading}
+        />
       </div>
     </Layout>
   );

@@ -27,15 +27,23 @@ export const useAuth = () => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Buscar perfil do usuário
+          // Buscar perfil do usuário com timeout
           try {
             console.log('useAuth: Buscando perfil do usuário', { userId: session.user.id, email: session.user.email });
             
-            const { data, error } = await supabase
+            // Criar uma Promise com timeout para evitar espera infinita
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Profile query timeout')), 5000);
+            });
+            
+            const queryPromise = supabase
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
               .single();
+            
+            const result = await Promise.race([queryPromise, timeoutPromise]);
+            const { data, error } = result as any;
             
             console.log('useAuth: Resultado da query', { data, error, hasSession: !!session });
             
@@ -57,7 +65,7 @@ export const useAuth = () => {
             }
           } catch (error) {
             console.error('useAuth: Erro na busca do perfil (catch):', error);
-            // Criar perfil básico se houver erro
+            // Criar perfil básico se houver erro ou timeout
             const basicProfile = {
               id: session.user.id,
               name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
@@ -65,7 +73,7 @@ export const useAuth = () => {
               role: 'professor' as const,
               teacher_id: null
             };
-            console.log('useAuth: Definindo perfil básico após erro', basicProfile);
+            console.log('useAuth: Definindo perfil básico após erro/timeout', basicProfile);
             setProfile(basicProfile);
           } finally {
             console.log('useAuth: Finalizando loading do listener');
@@ -89,11 +97,19 @@ export const useAuth = () => {
       if (session?.user) {
         console.log('useAuth: Buscando perfil para sessão existente', { userId: session.user.id, email: session.user.email });
         try {
-          const { data, error } = await supabase
+          // Criar uma Promise com timeout para evitar espera infinita
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Profile query timeout')), 5000);
+          });
+          
+          const queryPromise = supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single();
+          
+          const result = await Promise.race([queryPromise, timeoutPromise]);
+          const { data, error } = result as any;
           
           console.log('useAuth: Resultado da query inicial', { data, error, hasSession: !!session });
           
@@ -114,8 +130,8 @@ export const useAuth = () => {
             setProfile(basicProfile);
           }
         } catch (error) {
-          console.error('useAuth: Erro na busca do perfil inicial (catch):', error);
-          // Criar perfil básico se houver erro
+          console.error('useAuth: Erro na busca do perfil inicial (catch/timeout):', error);
+          // Criar perfil básico se houver erro ou timeout
           const basicProfile = {
             id: session.user.id,
             name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
@@ -123,7 +139,7 @@ export const useAuth = () => {
             role: 'professor' as const,
             teacher_id: null
           };
-          console.log('useAuth: Definindo perfil básico após erro inicial', basicProfile);
+          console.log('useAuth: Definindo perfil básico após erro/timeout inicial', basicProfile);
           setProfile(basicProfile);
         } finally {
           console.log('useAuth: Finalizando loading inicial');

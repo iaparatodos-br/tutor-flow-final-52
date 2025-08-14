@@ -137,4 +137,4 @@
 @import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 /* Import custom calendar styles */
-@import '../components/Calendar/calendar.css';
+@import './components/Calendar/calendar.css';

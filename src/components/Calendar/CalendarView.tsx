@@ -62,7 +62,7 @@ const messages = {
 
 export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, loading }: CalendarViewProps) {
   const { profile } = useAuth();
-  const [view, setView] = useState<View>('month');
+  const [view, setView] = useState<View>('week');
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   

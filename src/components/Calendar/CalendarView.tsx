@@ -193,6 +193,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
               popupOffset={{ x: 30, y: 20 }}
               step={60}
               timeslots={1}
+              showMultiDayTimes={false}
+              dayLayoutAlgorithm="no-overlap"
               formats={{
                 timeGutterFormat: 'HH:mm',
                 eventTimeRangeFormat: ({ start, end }) => 

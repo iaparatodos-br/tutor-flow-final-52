@@ -149,21 +149,31 @@
 
 /* Month view specific styles */
 .rbc-month-view {
-  min-height: 600px;
+  min-height: 700px;
+  height: 700px;
+  display: flex;
+  flex-direction: column;
 }
 
 .rbc-month-view .rbc-month-row {
   height: calc(100% / 6);
   min-height: 100px;
+  display: flex;
+  flex: 1;
 }
 
 .rbc-month-view .rbc-date-cell {
-  padding: 0.25rem;
+  padding: 0.5rem;
   font-size: 0.875rem;
-  min-height: 80px;
+  min-height: 100px;
   height: 100%;
+  width: calc(100% / 7);
+  flex: 1;
   display: flex;
   flex-direction: column;
+  border-right: 1px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border));
+  overflow: hidden;
 }
 
 .rbc-month-view .rbc-date-cell a {

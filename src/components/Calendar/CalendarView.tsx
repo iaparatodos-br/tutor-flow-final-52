@@ -191,6 +191,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
               className="tutorflow-calendar"
               popup
               popupOffset={{ x: 30, y: 20 }}
+              step={60}
+              timeslots={1}
               formats={{
                 timeGutterFormat: 'HH:mm',
                 eventTimeRangeFormat: ({ start, end }) => 

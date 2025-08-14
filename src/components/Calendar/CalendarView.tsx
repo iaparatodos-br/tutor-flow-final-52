@@ -62,7 +62,7 @@ const messages = {
 
 export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, loading }: CalendarViewProps) {
   const { profile } = useAuth();
-  const [view, setView] = useState<View>('week');
+  const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   
@@ -150,32 +150,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
     <>
       <Card className="shadow-card">
         <CardContent className="p-6">
-          {/* Calendar Toolbar */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="h-5 w-5" />
-              <h2 className="text-xl font-semibold">
-                {moment(date).format('MMMM YYYY')}
-              </h2>
-            </div>
-            
-            <div className="flex flex-wrap gap-2">
-              {(['month', 'week', 'day'] as View[]).map((viewType) => (
-                <Button
-                  key={viewType}
-                  variant={view === viewType ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setView(viewType)}
-                  className="capitalize"
-                >
-                  {viewType === 'month' ? 'Mês' : viewType === 'week' ? 'Semana' : 'Dia'}
-                </Button>
-              ))}
-            </div>
-          </div>
-
           {/* Calendar */}
-          <div className="calendar-container" style={{ height: '600px' }}>
+          <div className="calendar-container" style={{ height: '700px' }}>
             <Calendar
               localizer={localizer}
               events={allEvents}
@@ -195,11 +171,21 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
               timeslots={1}
               showMultiDayTimes={false}
               dayLayoutAlgorithm="no-overlap"
+              toolbar={true}
               formats={{
                 timeGutterFormat: 'HH:mm',
-                eventTimeRangeFormat: ({ start, end }) => 
-                  `${moment(start).format('HH:mm')} - ${moment(end).format('HH:mm')}`,
-                dayFormat: 'ddd DD/MM',
+                eventTimeRangeFormat: ({ start }) => {
+                  const hour = moment(start).hour();
+                  const minute = moment(start).minute();
+                  if (minute === 0) {
+                    return hour > 12 ? `${hour - 12}p` : hour === 12 ? '12p' : `${hour}a`;
+                  } else {
+                    return hour > 12 ? `${hour - 12}:${minute.toString().padStart(2, '0')}p` : 
+                           hour === 12 ? `12:${minute.toString().padStart(2, '0')}p` : 
+                           `${hour}:${minute.toString().padStart(2, '0')}a`;
+                  }
+                },
+                dayFormat: 'ddd',
                 monthHeaderFormat: 'MMMM YYYY',
                 dayHeaderFormat: 'dddd, DD/MM',
                 dayRangeHeaderFormat: ({ start, end }) =>

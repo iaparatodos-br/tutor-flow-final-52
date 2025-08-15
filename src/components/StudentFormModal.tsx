@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,16 +36,10 @@ interface StudentFormModalProps {
   description: string;
 }
 
-export function StudentFormModal({ 
-  isOpen, 
-  onOpenChange, 
-  onSubmit, 
-  isSubmitting, 
-  student,
-  title,
-  description
-}: StudentFormModalProps) {
-  const [formData, setFormData] = useState<StudentFormData>({
+const getInitialFormData = (student?: StudentFormModalProps['student']): StudentFormData => {
+  console.log('getInitialFormData - student data:', student);
+  
+  return {
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
@@ -57,7 +51,19 @@ export function StudentFormModal({
     guardian_email: student?.guardian_email || "",
     guardian_phone: student?.guardian_phone || "",
     billing_day: student?.billing_day || 15
-  });
+  };
+};
+
+export function StudentFormModal({ 
+  isOpen, 
+  onOpenChange, 
+  onSubmit, 
+  isSubmitting, 
+  student,
+  title,
+  description
+}: StudentFormModalProps) {
+  const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student));
 
   const [validationErrors, setValidationErrors] = useState({
     name: false,
@@ -67,6 +73,23 @@ export function StudentFormModal({
     guardian_email: false,
     billing_day: false
   });
+
+  // Update form data when student prop changes
+  useEffect(() => {
+    console.log('StudentFormModal useEffect - student changed:', student);
+    const newFormData = getInitialFormData(student);
+    console.log('StudentFormModal useEffect - new form data:', newFormData);
+    setFormData(newFormData);
+    // Reset validation errors when new data arrives
+    setValidationErrors({
+      name: false,
+      email: false,
+      phone: false,
+      guardian_name: false,
+      guardian_email: false,
+      billing_day: false
+    });
+  }, [student]);
 
   const handleIsOwnResponsibleChange = (checked: boolean) => {
     const newFormData = {

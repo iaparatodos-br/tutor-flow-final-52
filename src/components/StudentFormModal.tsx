@@ -49,7 +49,10 @@ export function StudentFormModal({
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
-    isOwnResponsible: student ? !student.guardian_name || student.guardian_name === student.name : true,
+    // Se não há dados de responsável OU se os dados do responsável são iguais aos do aluno
+    isOwnResponsible: student ? 
+      (!student.guardian_name || student.guardian_name === student.name) : 
+      true,
     guardian_name: student?.guardian_name || "",
     guardian_email: student?.guardian_email || "",
     guardian_phone: student?.guardian_phone || "",

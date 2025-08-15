@@ -9,6 +9,7 @@ import { Plus } from "lucide-react";
 import { CalendarView, CalendarClass, AvailabilityBlock } from "@/components/Calendar/CalendarView";
 import { AvailabilityManager } from "@/components/Availability/AvailabilityManager";
 import { ClassForm } from "@/components/ClassForm/ClassForm";
+import { CancellationModal } from "@/components/CancellationModal";
 
 interface ClassWithParticipants {
   id: string;
@@ -43,6 +44,12 @@ export default function Agenda() {
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [cancellationModal, setCancellationModal] = useState<{
+    isOpen: boolean;
+    classId: string;
+    className: string;
+    classDate: string;
+  }>({ isOpen: false, classId: "", className: "", classDate: "" });
 
   useEffect(() => {
     if (profile) {
@@ -310,6 +317,19 @@ export default function Agenda() {
     }
   };
 
+  const handleCancelClass = (classId: string, className: string, classDate: string) => {
+    setCancellationModal({
+      isOpen: true,
+      classId,
+      className,
+      classDate
+    });
+  };
+
+  const handleCancellationComplete = () => {
+    loadClasses(); // Reload classes to show updated status
+    setCancellationModal({ isOpen: false, classId: "", className: "", classDate: "" });
+  };
 
   return (
     <Layout>
@@ -361,9 +381,19 @@ export default function Agenda() {
           availabilityBlocks={availabilityBlocks}
           isProfessor={isProfessor}
           onConfirmClass={handleConfirmClass}
+          onCancelClass={handleCancelClass}
           loading={loading}
         />
       </div>
+      
+      <CancellationModal
+        isOpen={cancellationModal.isOpen}
+        onClose={() => setCancellationModal({ isOpen: false, classId: "", className: "", classDate: "" })}
+        classId={cancellationModal.classId}
+        className={cancellationModal.className}
+        classDate={cancellationModal.classDate}
+        onCancellationComplete={handleCancellationComplete}
+      />
     </Layout>
   );
 }

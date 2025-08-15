@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, User, CheckCircle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // Configure moment to Portuguese
@@ -50,6 +50,7 @@ interface CalendarViewProps {
   availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
   onConfirmClass?: (classId: string) => void;
+  onCancelClass?: (classId: string, className: string, classDate: string) => void;
   loading?: boolean;
 }
 
@@ -69,7 +70,7 @@ const messages = {
   noEventsInRange: 'Não há eventos neste período',
 };
 
-export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
@@ -325,20 +326,42 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     </div>
                   )}
 
-                  {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
-                    <div className="flex justify-end pt-2">
-                      <Button
-                        onClick={() => {
-                          onConfirmClass((selectedEvent as CalendarClass).id);
-                          setSelectedEvent(null);
-                        }}
-                        className="bg-gradient-success shadow-success hover:bg-success"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        Confirmar Aula
-                      </Button>
+                  {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' ? (
+                    <div className="flex justify-end gap-2 pt-2">
+                      {/* Cancel Button - Available for both students and professors */}
+                      {onCancelClass && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            const classEvent = selectedEvent as CalendarClass;
+                            onCancelClass(
+                              classEvent.id, 
+                              classEvent.title, 
+                              classEvent.start.toISOString()
+                            );
+                            setSelectedEvent(null);
+                          }}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Cancelar Aula
+                        </Button>
+                      )}
+                      
+                      {/* Confirm Button - Only for professors */}
+                      {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
+                        <Button
+                          onClick={() => {
+                            onConfirmClass((selectedEvent as CalendarClass).id);
+                            setSelectedEvent(null);
+                          }}
+                          className="bg-gradient-success shadow-success hover:bg-success"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Confirmar Aula
+                        </Button>
+                      )}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </div>

@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Alunos from "./pages/Alunos";
 import Agenda from "./pages/Agenda";
 import Financeiro from "./pages/Financeiro";
+import PoliticasCancelamento from "./pages/PoliticasCancelamento";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +29,7 @@ const App = () => (
           <Route path="/aulas" element={<Agenda />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/faturas" element={<Financeiro />} />
+          <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

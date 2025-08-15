@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { AmnestyButton } from "@/components/AmnestyButton";
 import { DollarSign, User, Calendar, CreditCard } from "lucide-react";
 
 interface InvoiceWithStudent {
@@ -15,9 +16,18 @@ interface InvoiceWithStudent {
   due_date: string;
   status: 'pendente' | 'paga' | 'vencida' | 'cancelada';
   description: string | null;
+  invoice_type?: string;
+  class_id?: string;
+  original_amount?: number;
   student: {
     name: string;
     email: string;
+  };
+  class?: {
+    id: string;
+    status: string;
+    charge_applied?: boolean;
+    amnesty_granted?: boolean;
   };
 }
 
@@ -46,6 +56,9 @@ export default function Financeiro() {
           due_date,
           status,
           description,
+          invoice_type,
+          class_id,
+          original_amount,
           profiles!invoices_student_id_fkey (
             name,
             email
@@ -55,9 +68,9 @@ export default function Financeiro() {
         .order('due_date', { ascending: false });
 
       if (error) throw error;
-      setInvoices((data || []).map(item => ({
+      setInvoices((data || []).map((item: any) => ({
         ...item,
-        student: item.profiles
+        student: item.profiles || { name: 'N/A', email: 'N/A' }
       })) as InvoiceWithStudent[]);
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);
@@ -212,10 +225,11 @@ export default function Financeiro() {
                       {isProfessor ? "Aluno" : "Professor"}
                     </TableHead>
                     <TableHead>Descrição</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
-                    {!isProfessor && <TableHead>Ações</TableHead>}
+                    <TableHead>Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -233,7 +247,19 @@ export default function Financeiro() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {invoice.description || "Aulas particulares"}
+                        <div>
+                          <p>{invoice.description || "Aulas particulares"}</p>
+                          {invoice.original_amount && invoice.original_amount !== invoice.amount && (
+                            <p className="text-xs text-muted-foreground">
+                              Valor original: {formatCurrency(Number(invoice.original_amount))}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={invoice.invoice_type === 'cancellation' ? 'destructive' : 'default'}>
+                          {invoice.invoice_type === 'cancellation' ? 'Cancelamento' : 'Regular'}
+                        </Badge>
                       </TableCell>
                       <TableCell className="font-bold">
                         {formatCurrency(Number(invoice.amount))}
@@ -247,9 +273,10 @@ export default function Financeiro() {
                       <TableCell>
                         {getStatusBadge(invoice.status)}
                       </TableCell>
-                      {!isProfessor && (
-                        <TableCell>
-                          {invoice.status === 'pendente' && (
+                      <TableCell>
+                        <div className="flex gap-2">
+                          {/* Payment button for students */}
+                          {!isProfessor && invoice.status === 'pendente' && (
                             <Button
                               size="sm"
                               onClick={() => handlePayment(invoice.id)}
@@ -259,8 +286,21 @@ export default function Financeiro() {
                               Pagar
                             </Button>
                           )}
-                        </TableCell>
-                      )}
+                          
+                          {/* Amnesty button for professors on cancellation invoices */}
+                          {isProfessor && 
+                           invoice.invoice_type === 'cancellation' && 
+                           invoice.class?.charge_applied && 
+                           !invoice.class?.amnesty_granted &&
+                           invoice.status === 'pendente' && (
+                            <AmnestyButton
+                              classId={invoice.class_id!}
+                              studentName={invoice.student.name}
+                              onAmnestyGranted={loadInvoices}
+                            />
+                          )}
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

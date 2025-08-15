@@ -4,7 +4,8 @@ import {
   Calendar, 
   DollarSign, 
   LogOut,
-  GraduationCap
+  GraduationCap,
+  Settings
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -26,6 +27,7 @@ const professorItems = [
   { title: "Alunos", url: "/alunos", icon: Users },
   { title: "Agenda", url: "/agenda", icon: Calendar },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+  { title: "Políticas Cancelamento", url: "/politicas-cancelamento", icon: Settings },
 ];
 
 const alunoItems = [

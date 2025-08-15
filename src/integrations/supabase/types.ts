@@ -53,6 +53,39 @@ export type Database = {
         }
         Relationships: []
       }
+      cancellation_policies: {
+        Row: {
+          allow_amnesty: boolean
+          charge_percentage: number
+          created_at: string
+          hours_before_class: number
+          id: string
+          is_active: boolean
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          allow_amnesty?: boolean
+          charge_percentage?: number
+          created_at?: string
+          hours_before_class?: number
+          id?: string
+          is_active?: boolean
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          allow_amnesty?: boolean
+          charge_percentage?: number
+          created_at?: string
+          hours_before_class?: number
+          id?: string
+          is_active?: boolean
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       class_notifications: {
         Row: {
           class_id: string
@@ -136,6 +169,13 @@ export type Database = {
       }
       classes: {
         Row: {
+          amnesty_granted: boolean | null
+          amnesty_granted_at: string | null
+          amnesty_granted_by: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          charge_applied: boolean | null
           class_date: string
           created_at: string | null
           duration_minutes: number
@@ -146,11 +186,18 @@ export type Database = {
           parent_class_id: string | null
           recurrence_pattern: Json | null
           status: string
-          student_id: string
+          student_id: string | null
           teacher_id: string
           updated_at: string | null
         }
         Insert: {
+          amnesty_granted?: boolean | null
+          amnesty_granted_at?: string | null
+          amnesty_granted_by?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          charge_applied?: boolean | null
           class_date: string
           created_at?: string | null
           duration_minutes?: number
@@ -161,11 +208,18 @@ export type Database = {
           parent_class_id?: string | null
           recurrence_pattern?: Json | null
           status?: string
-          student_id: string
+          student_id?: string | null
           teacher_id: string
           updated_at?: string | null
         }
         Update: {
+          amnesty_granted?: boolean | null
+          amnesty_granted_at?: string | null
+          amnesty_granted_by?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          charge_applied?: boolean | null
           class_date?: string
           created_at?: string | null
           duration_minutes?: number
@@ -176,7 +230,7 @@ export type Database = {
           parent_class_id?: string | null
           recurrence_pattern?: Json | null
           status?: string
-          student_id?: string
+          student_id?: string | null
           teacher_id?: string
           updated_at?: string | null
         }
@@ -207,10 +261,14 @@ export type Database = {
       invoices: {
         Row: {
           amount: number
+          cancellation_policy_id: string | null
+          class_id: string | null
           created_at: string | null
           description: string | null
           due_date: string
           id: string
+          invoice_type: string | null
+          original_amount: number | null
           status: string
           student_id: string
           teacher_id: string
@@ -218,10 +276,14 @@ export type Database = {
         }
         Insert: {
           amount: number
+          cancellation_policy_id?: string | null
+          class_id?: string | null
           created_at?: string | null
           description?: string | null
           due_date: string
           id?: string
+          invoice_type?: string | null
+          original_amount?: number | null
           status?: string
           student_id: string
           teacher_id: string
@@ -229,10 +291,14 @@ export type Database = {
         }
         Update: {
           amount?: number
+          cancellation_policy_id?: string | null
+          class_id?: string | null
           created_at?: string | null
           description?: string | null
           due_date?: string
           id?: string
+          invoice_type?: string | null
+          original_amount?: number | null
           status?: string
           student_id?: string
           teacher_id?: string

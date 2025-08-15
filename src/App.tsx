@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Alunos from "./pages/Alunos";
+import PerfilAluno from "./pages/PerfilAluno";
 import Agenda from "./pages/Agenda";
 import Financeiro from "./pages/Financeiro";
 import PoliticasCancelamento from "./pages/PoliticasCancelamento";
@@ -25,6 +26,7 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/alunos" element={<Alunos />} />
+          <Route path="/alunos/:id" element={<PerfilAluno />} />
           <Route path="/agenda" element={<Agenda />} />
           <Route path="/aulas" element={<Agenda />} />
           <Route path="/financeiro" element={<Financeiro />} />

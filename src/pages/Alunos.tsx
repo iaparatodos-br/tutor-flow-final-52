@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface Student {
   id: string;
@@ -24,6 +25,7 @@ interface Student {
 export default function Alunos() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -312,6 +314,14 @@ export default function Alunos() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate(`/alunos/${student.id}`)}
+                            title="Ver perfil completo"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"

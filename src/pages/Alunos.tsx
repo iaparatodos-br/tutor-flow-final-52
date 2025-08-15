@@ -4,18 +4,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, Mail, User } from "lucide-react";
+import { StudentFormModal } from "@/components/StudentFormModal";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck } from "lucide-react";
 
 interface Student {
   id: string;
   name: string;
   email: string;
   created_at: string;
+  guardian_name?: string;
+  guardian_email?: string;
+  guardian_phone?: string;
+  billing_day?: number;
 }
 
 export default function Alunos() {
@@ -25,9 +28,9 @@ export default function Alunos() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newStudent, setNewStudent] = useState({ name: "", email: "" });
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({ name: false, email: false });
 
   useEffect(() => {
     if (profile?.id) {
@@ -41,7 +44,7 @@ export default function Alunos() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, email, created_at')
+        .select('id, name, email, created_at, guardian_name, guardian_email, guardian_phone, billing_day')
         .eq('teacher_id', profile.id)
         .eq('role', 'aluno')
         .order('name');
@@ -60,41 +63,28 @@ export default function Alunos() {
     }
   };
 
-  const handleAddStudent = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddStudent = async (formData: any) => {
     if (!profile?.id) return;
-
-    // Validate form
-    const errors = {
-      name: !newStudent.name.trim(),
-      email: !newStudent.email.trim()
-    };
-    setValidationErrors(errors);
-
-    if (!newStudent.name || !newStudent.email || Object.values(errors).some(Boolean)) {
-      toast({
-        title: "Erro",
-        description: "Por favor, preencha todos os campos.",
-        variant: "destructive",
-      });
-      return;
-    }
 
     setSubmitting(true);
     
     try {
-      // Gerar um ID temporário para o aluno
+      // Generate a temporary ID for the student
       const tempUserId = crypto.randomUUID();
 
-      // Inserir dados do aluno na tabela profiles
+      // Insert student data into profiles table with billing information
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({
           id: tempUserId,
-          name: newStudent.name,
-          email: newStudent.email,
+          name: formData.name,
+          email: formData.email,
           role: 'aluno',
-          teacher_id: profile.id
+          teacher_id: profile.id,
+          guardian_name: formData.guardian_name,
+          guardian_email: formData.guardian_email,
+          guardian_phone: formData.guardian_phone || null,
+          billing_day: formData.billing_day
         });
 
       if (profileError) {
@@ -109,18 +99,71 @@ export default function Alunos() {
 
       toast({
         title: "Aluno adicionado com sucesso!",
-        description: `${newStudent.name} foi cadastrado. O aluno receberá as credenciais por email.`,
+        description: `${formData.name} foi cadastrado com as configurações de cobrança.`,
       });
       
-      setNewStudent({ name: "", email: "" });
       setIsAddDialogOpen(false);
-      setValidationErrors({ name: false, email: false });
       loadStudents();
       
     } catch (error: any) {
       console.error('Erro ao adicionar aluno:', error);
       toast({
         title: "Erro ao adicionar aluno",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditStudent = (student: Student) => {
+    setEditingStudent(student);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateStudent = async (formData: any) => {
+    if (!profile?.id || !editingStudent) return;
+
+    setSubmitting(true);
+    
+    try {
+      // Update student data in profiles table
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: formData.name,
+          email: formData.email,
+          guardian_name: formData.guardian_name,
+          guardian_email: formData.guardian_email,
+          guardian_phone: formData.guardian_phone || null,
+          billing_day: formData.billing_day
+        })
+        .eq('id', editingStudent.id);
+
+      if (error) {
+        console.error('Erro ao atualizar perfil:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao salvar alterações do aluno.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Aluno atualizado com sucesso!",
+        description: `As informações de ${formData.name} foram atualizadas.`,
+      });
+      
+      setIsEditDialogOpen(false);
+      setEditingStudent(null);
+      loadStudents();
+      
+    } catch (error: any) {
+      console.error('Erro ao atualizar aluno:', error);
+      toast({
+        title: "Erro ao atualizar aluno",
         description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
@@ -168,61 +211,13 @@ export default function Alunos() {
             </p>
           </div>
           
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar Aluno
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <form onSubmit={handleAddStudent}>
-                <DialogHeader>
-                  <DialogTitle>Adicionar Novo Aluno</DialogTitle>
-                  <DialogDescription>
-                    Insira os dados do aluno para cadastrá-lo na sua plataforma
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="student-name">Nome completo</Label>
-                    <Input
-                      id="student-name"
-                      type="text"
-                      placeholder="Nome do aluno"
-                      value={newStudent.name}
-                      onChange={(e) => {
-                        setNewStudent(prev => ({ ...prev, name: e.target.value }));
-                        setValidationErrors(prev => ({ ...prev, name: false }));
-                      }}
-                      className={validationErrors.name ? "border-destructive" : ""}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="student-email">E-mail</Label>
-                    <Input
-                      id="student-email"
-                      type="email"
-                      placeholder="email@exemplo.com"
-                      value={newStudent.email}
-                      onChange={(e) => {
-                        setNewStudent(prev => ({ ...prev, email: e.target.value }));
-                        setValidationErrors(prev => ({ ...prev, email: false }));
-                      }}
-                      className={validationErrors.email ? "border-destructive" : ""}
-                      required
-                    />
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button type="submit" disabled={submitting}>
-                    {submitting ? "Cadastrando..." : "Cadastrar Aluno"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <Button 
+            onClick={() => setIsAddDialogOpen(true)}
+            className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar Aluno
+          </Button>
         </div>
 
         {/* Students List */}
@@ -260,8 +255,10 @@ export default function Alunos() {
                   <TableRow>
                     <TableHead>Nome</TableHead>
                     <TableHead>E-mail</TableHead>
+                    <TableHead>Responsável</TableHead>
+                    <TableHead>Dia Cobrança</TableHead>
                     <TableHead>Data de Cadastro</TableHead>
-                    <TableHead className="w-[100px]">Ações</TableHead>
+                    <TableHead className="w-[120px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -282,10 +279,46 @@ export default function Alunos() {
                         </div>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center gap-2">
+                          {student.guardian_name ? (
+                            <>
+                              {student.guardian_name === student.name ? (
+                                <Badge variant="outline" className="text-xs">
+                                  <UserCheck className="h-3 w-3 mr-1" />
+                                  Próprio aluno
+                                </Badge>
+                              ) : (
+                                <div>
+                                  <p className="text-sm font-medium">{student.guardian_name}</p>
+                                  <p className="text-xs text-muted-foreground">{student.guardian_email}</p>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">
+                              Não configurado
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{student.billing_day || 15}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         {new Date(student.created_at).toLocaleDateString('pt-BR')}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditStudent(student)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -303,6 +336,26 @@ export default function Alunos() {
             )}
           </CardContent>
         </Card>
+
+        {/* Student Form Modals */}
+        <StudentFormModal
+          isOpen={isAddDialogOpen}
+          onOpenChange={setIsAddDialogOpen}
+          onSubmit={handleAddStudent}
+          isSubmitting={submitting}
+          title="Adicionar Novo Aluno"
+          description="Insira os dados do aluno e configurações de cobrança"
+        />
+
+        <StudentFormModal
+          isOpen={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          onSubmit={handleUpdateStudent}
+          isSubmitting={submitting}
+          student={editingStudent || undefined}
+          title="Editar Aluno"
+          description="Altere os dados do aluno e configurações de cobrança"
+        />
       </div>
     </Layout>
   );

@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "13.0.4"
@@ -53,13 +53,98 @@ export type Database = {
         }
         Relationships: []
       }
+      class_notifications: {
+        Row: {
+          class_id: string
+          created_at: string
+          id: string
+          notification_type: string
+          sent_at: string
+          status: string
+          student_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          id?: string
+          notification_type: string
+          sent_at?: string
+          status?: string
+          student_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          id?: string
+          notification_type?: string
+          sent_at?: string
+          status?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_notifications_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_notifications_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_participants: {
+        Row: {
+          class_id: string
+          created_at: string
+          id: string
+          student_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          id?: string
+          student_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_participants_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_participants_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       classes: {
         Row: {
           class_date: string
           created_at: string | null
           duration_minutes: number
           id: string
+          is_experimental: boolean
+          is_group_class: boolean
           notes: string | null
+          parent_class_id: string | null
+          recurrence_pattern: Json | null
           status: string
           student_id: string
           teacher_id: string
@@ -70,7 +155,11 @@ export type Database = {
           created_at?: string | null
           duration_minutes?: number
           id?: string
+          is_experimental?: boolean
+          is_group_class?: boolean
           notes?: string | null
+          parent_class_id?: string | null
+          recurrence_pattern?: Json | null
           status?: string
           student_id: string
           teacher_id: string
@@ -81,13 +170,24 @@ export type Database = {
           created_at?: string | null
           duration_minutes?: number
           id?: string
+          is_experimental?: boolean
+          is_group_class?: boolean
           notes?: string | null
+          parent_class_id?: string | null
+          recurrence_pattern?: Json | null
           status?: string
           student_id?: string
           teacher_id?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "classes_parent_class_id_fkey"
+            columns: ["parent_class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "classes_student_id_fkey"
             columns: ["student_id"]

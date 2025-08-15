@@ -4,26 +4,27 @@ import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { CalendarView, CalendarClass, AvailabilityBlock } from "@/components/Calendar/CalendarView";
 import { AvailabilityManager } from "@/components/Availability/AvailabilityManager";
+import { ClassForm } from "@/components/ClassForm/ClassForm";
 
-interface ClassWithStudent {
+interface ClassWithParticipants {
   id: string;
   class_date: string;
   duration_minutes: number;
   status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida';
   notes: string | null;
-  student: {
-    name: string;
-    email: string;
-  };
+  is_experimental: boolean;
+  is_group_class: boolean;
+  participants: Array<{
+    student_id: string;
+    student: {
+      name: string;
+      email: string;
+    };
+  }>;
 }
 
 interface Student {
@@ -35,20 +36,13 @@ export default function Agenda() {
   const { profile, isProfessor } = useAuth();
   const { toast } = useToast();
   
-  const [classes, setClasses] = useState<ClassWithStudent[]>([]);
+  const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [newClass, setNewClass] = useState({
-    student_id: '',
-    class_date: '',
-    time: '',
-    duration_minutes: 60,
-    notes: ''
-  });
-  const [validationErrors, setValidationErrors] = useState({ student: false, date: false, time: false });
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -72,21 +66,29 @@ export default function Agenda() {
           duration_minutes,
           status,
           notes,
-          profiles!classes_student_id_fkey (
-            name,
-            email
+          is_experimental,
+          is_group_class,
+          class_participants (
+            student_id,
+            profiles!class_participants_student_id_fkey (
+              name,
+              email
+            )
           )
         `)
         .eq(isProfessor ? 'teacher_id' : 'student_id', profile.id)
-        .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()) // Show classes from 30 days ago
+        .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
         .order('class_date');
 
       if (error) throw error;
       
       const mappedClasses = (data || []).map(item => ({
         ...item,
-        student: item.profiles
-      })) as ClassWithStudent[];
+        participants: item.class_participants.map(p => ({
+          student_id: p.student_id,
+          student: p.profiles
+        }))
+      })) as ClassWithParticipants[];
       
       setClasses(mappedClasses);
 
@@ -95,14 +97,21 @@ export default function Agenda() {
         const startDate = new Date(cls.class_date);
         const endDate = new Date(startDate.getTime() + (cls.duration_minutes * 60 * 1000));
         
+        const participantNames = cls.participants.map(p => p.student.name).join(', ');
+        const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
+        const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
+        
         return {
           id: cls.id,
-          title: `${cls.student?.name || 'Aluno'} - ${cls.duration_minutes}min`,
+          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}`,
           start: startDate,
           end: endDate,
           status: cls.status,
-          student: cls.student,
-          notes: cls.notes || undefined
+          student: cls.participants[0]?.student || { name: 'Sem aluno', email: '' },
+          participants: cls.participants,
+          notes: cls.notes || undefined,
+          is_experimental: cls.is_experimental,
+          is_group_class: cls.is_group_class
         };
       });
       
@@ -195,73 +204,109 @@ export default function Agenda() {
     }
   };
 
-  const handleAddClass = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Validate form
-    const errors = {
-      student: !newClass.student_id,
-      date: !newClass.class_date,
-      time: !newClass.time
+  const generateRecurringClasses = (baseClass: any, recurrence: any) => {
+    const classes = [baseClass];
+    const startDate = new Date(baseClass.class_date);
+    let currentDate = new Date(startDate);
+
+    const getNextDate = (current: Date, frequency: string) => {
+      const next = new Date(current);
+      switch (frequency) {
+        case 'weekly':
+          next.setDate(next.getDate() + 7);
+          break;
+        case 'biweekly':
+          next.setDate(next.getDate() + 14);
+          break;
+        case 'monthly':
+          next.setMonth(next.getMonth() + 1);
+          break;
+      }
+      return next;
     };
-    setValidationErrors(errors);
-    
-    if (!profile?.id || !newClass.student_id || !newClass.class_date || !newClass.time || Object.values(errors).some(Boolean)) {
-      toast({
-        title: "Erro",
-        description: "Por favor, preencha todos os campos obrigatórios.",
-        variant: "destructive",
+
+    const endDate = recurrence.end_date ? new Date(recurrence.end_date) : null;
+    const maxOccurrences = recurrence.occurrences || 50;
+
+    for (let i = 1; i < maxOccurrences; i++) {
+      currentDate = getNextDate(currentDate, recurrence.frequency);
+      
+      if (endDate && currentDate > endDate) break;
+
+      classes.push({
+        ...baseClass,
+        class_date: currentDate.toISOString()
       });
-      return;
     }
 
-    try {
-      const classDateTime = new Date(`${newClass.class_date}T${newClass.time}`);
-      
-      const { error } = await supabase
-        .from('classes')
-        .insert({
-          teacher_id: profile.id,
-          student_id: newClass.student_id,
-          class_date: classDateTime.toISOString(),
-          duration_minutes: newClass.duration_minutes,
-          notes: newClass.notes || null,
-          status: 'pendente'
-        });
+    return classes;
+  };
 
-      if (error) {
-        console.error('Erro ao agendar aula:', error);
-        toast({
-          title: "Erro",
-          description: "Erro ao agendar a aula. Tente novamente.",
-          variant: "destructive",
-        });
-        return;
+  const handleAddClass = async (formData: any) => {
+    if (!profile?.id) return;
+
+    setSubmitting(true);
+    
+    try {
+      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+      
+      // Create base class data
+      const baseClassData = {
+        teacher_id: profile.id,
+        class_date: classDateTime.toISOString(),
+        duration_minutes: formData.duration_minutes,
+        notes: formData.notes || null,
+        status: 'pendente',
+        is_experimental: formData.is_experimental,
+        is_group_class: formData.is_group_class,
+        recurrence_pattern: formData.recurrence ? formData.recurrence : null
+      };
+
+      // Generate classes (single or recurring)
+      const classesToCreate = formData.recurrence 
+        ? generateRecurringClasses(baseClassData, formData.recurrence)
+        : [baseClassData];
+
+      // Insert classes
+      const { data: insertedClasses, error: classError } = await supabase
+        .from('classes')
+        .insert(classesToCreate)
+        .select();
+
+      if (classError) throw classError;
+
+      // Insert participants for each class
+      const participantInserts = [];
+      for (const classData of insertedClasses) {
+        for (const studentId of formData.selectedStudents) {
+          participantInserts.push({
+            class_id: classData.id,
+            student_id: studentId
+          });
+        }
       }
+
+      const { error: participantError } = await supabase
+        .from('class_participants')
+        .insert(participantInserts);
+
+      if (participantError) throw participantError;
 
       toast({
         title: "Sucesso",
-        description: "Aula agendada com sucesso!",
+        description: `${classesToCreate.length} aula(s) agendada(s) com sucesso!`,
       });
 
-      setIsDialogOpen(false);
-      setNewClass({
-        student_id: '',
-        class_date: '',
-        time: '',
-        duration_minutes: 60,
-        notes: ''
-      });
-      setValidationErrors({ student: false, date: false, time: false });
-      
       await loadClasses();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao agendar aula:', error);
       toast({
         title: "Erro",
-        description: "Erro inesperado. Tente novamente.",
+        description: error.message || "Erro ao agendar a aula. Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -294,108 +339,18 @@ export default function Agenda() {
               <CardTitle>Gerenciar Agenda</CardTitle>
             </CardHeader>
             <CardContent>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agendar Nova Aula
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[425px]">
-                  <DialogHeader>
-                    <DialogTitle>Agendar Nova Aula</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleAddClass} className="space-y-4">
-                    <div>
-                      <Label htmlFor="student">Aluno *</Label>
-                      <Select 
-                        value={newClass.student_id} 
-                        onValueChange={(value) => {
-                          setNewClass(prev => ({ ...prev, student_id: value }));
-                          setValidationErrors(prev => ({ ...prev, student: false }));
-                        }}
-                      >
-                        <SelectTrigger className={validationErrors.student ? "border-destructive" : ""}>
-                          <SelectValue placeholder="Selecione um aluno" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {students.map((student) => (
-                            <SelectItem key={student.id} value={student.id}>
-                              {student.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="date">Data *</Label>
-                      <Input
-                        id="date"
-                        type="date"
-                        value={newClass.class_date}
-                        onChange={(e) => {
-                          setNewClass(prev => ({ ...prev, class_date: e.target.value }));
-                          setValidationErrors(prev => ({ ...prev, date: false }));
-                        }}
-                        className={validationErrors.date ? "border-destructive" : ""}
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="time">Horário *</Label>
-                      <Input
-                        id="time"
-                        type="time"
-                        value={newClass.time}
-                        onChange={(e) => {
-                          setNewClass(prev => ({ ...prev, time: e.target.value }));
-                          setValidationErrors(prev => ({ ...prev, time: false }));
-                        }}
-                        className={validationErrors.time ? "border-destructive" : ""}
-                        required
-                      />
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="duration">Duração (minutos)</Label>
-                      <Select value={newClass.duration_minutes.toString()} onValueChange={(value) => 
-                        setNewClass(prev => ({ ...prev, duration_minutes: parseInt(value) }))
-                      }>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="30">30 minutos</SelectItem>
-                          <SelectItem value="60">1 hora</SelectItem>
-                          <SelectItem value="90">1h 30min</SelectItem>
-                          <SelectItem value="120">2 horas</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    
-                    <div>
-                      <Label htmlFor="notes">Observações</Label>
-                      <Textarea
-                        id="notes"
-                        placeholder="Observações sobre a aula..."
-                        value={newClass.notes}
-                        onChange={(e) => setNewClass(prev => ({ ...prev, notes: e.target.value }))}
-                      />
-                    </div>
-                    
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                        Cancelar
-                      </Button>
-                      <Button type="submit">
-                        Agendar
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Agendar Nova Aula
+              </Button>
+              
+              <ClassForm
+                open={isDialogOpen}
+                onOpenChange={setIsDialogOpen}
+                students={students}
+                onSubmit={handleAddClass}
+                loading={submitting}
+              />
             </CardContent>
           </Card>
         )}

@@ -25,7 +25,16 @@ export interface CalendarClass {
     name: string;
     email: string;
   };
+  participants?: Array<{
+    student_id: string;
+    student: {
+      name: string;
+      email: string;
+    };
+  }>;
   notes?: string;
+  is_experimental?: boolean;
+  is_group_class?: boolean;
 }
 
 export interface AvailabilityBlock {
@@ -97,14 +106,29 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       concluida: 'hsl(var(--success))'
     };
 
+    let backgroundColor = statusColors[classEvent.status];
+    let borderLeft = 'none';
+    
+    // Special styling for experimental classes
+    if (classEvent.is_experimental) {
+      borderLeft = '4px solid hsl(var(--warning))';
+    }
+    
+    // Special styling for group classes
+    if (classEvent.is_group_class) {
+      backgroundColor = `linear-gradient(135deg, ${backgroundColor}, ${backgroundColor}dd)`;
+    }
+
     return {
       style: {
-        backgroundColor: statusColors[classEvent.status],
+        background: backgroundColor,
         border: 'none',
+        borderLeft,
         borderRadius: '0.375rem',
         color: 'white',
         fontWeight: '500',
-        fontSize: '0.875rem'
+        fontSize: '0.875rem',
+        boxShadow: classEvent.is_experimental ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'
       }
     };
   };
@@ -242,15 +266,27 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
               ) : (
                 // Class Details
                 <div>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" />
-                      <span className="font-medium">{(selectedEvent as CalendarClass).student.name}</span>
+                      <span className="font-medium">
+                        {(selectedEvent as CalendarClass).is_group_class 
+                          ? `Aula em Grupo (${(selectedEvent as CalendarClass).participants?.length || 1} alunos)`
+                          : (selectedEvent as CalendarClass).student.name
+                        }
+                      </span>
                     </div>
-                    {getStatusBadge((selectedEvent as CalendarClass).status)}
+                    <div className="flex gap-2">
+                      {getStatusBadge((selectedEvent as CalendarClass).status)}
+                      {(selectedEvent as CalendarClass).is_experimental && (
+                        <Badge variant="outline" className="border-warning text-warning">
+                          Experimental
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                       <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
@@ -262,9 +298,24 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     </div>
                   </div>
 
+                  {/* Participants */}
                   <div>
-                    <p className="text-sm text-muted-foreground mb-1">Email do aluno:</p>
-                    <p className="text-sm">{(selectedEvent as CalendarClass).student.email}</p>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {(selectedEvent as CalendarClass).is_group_class ? 'Participantes:' : 'Aluno:'}
+                    </p>
+                    <div className="space-y-2">
+                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
+                        <div key={index} className="bg-muted p-2 rounded text-sm">
+                          <div className="font-medium">{participant.student.name}</div>
+                          <div className="text-muted-foreground">{participant.student.email}</div>
+                        </div>
+                      )) || (
+                        <div className="bg-muted p-2 rounded text-sm">
+                          <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
+                          <div className="text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {(selectedEvent as CalendarClass).notes && (

@@ -83,7 +83,7 @@ export default function Alunos() {
           teacher_id: profile.id,
           guardian_name: formData.guardian_name,
           guardian_email: formData.guardian_email,
-          guardian_phone: formData.guardian_phone || null,
+          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
           billing_day: formData.billing_day
         });
 
@@ -136,7 +136,7 @@ export default function Alunos() {
           email: formData.email,
           guardian_name: formData.guardian_name,
           guardian_email: formData.guardian_email,
-          guardian_phone: formData.guardian_phone || null,
+          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
           billing_day: formData.billing_day
         })
         .eq('id', editingStudent.id);

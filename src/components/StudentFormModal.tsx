@@ -10,6 +10,7 @@ import { User, UserCheck, Mail, Phone, Calendar } from "lucide-react";
 interface StudentFormData {
   name: string;
   email: string;
+  phone: string;
   isOwnResponsible: boolean;
   guardian_name: string;
   guardian_email: string;
@@ -47,7 +48,8 @@ export function StudentFormModal({
   const [formData, setFormData] = useState<StudentFormData>({
     name: student?.name || "",
     email: student?.email || "",
-    isOwnResponsible: student ? !student.guardian_name : true,
+    phone: student?.guardian_phone || "",
+    isOwnResponsible: student ? !student.guardian_name || student.guardian_name === student.name : true,
     guardian_name: student?.guardian_name || "",
     guardian_email: student?.guardian_email || "",
     guardian_phone: student?.guardian_phone || "",
@@ -57,6 +59,7 @@ export function StudentFormModal({
   const [validationErrors, setValidationErrors] = useState({
     name: false,
     email: false,
+    phone: false,
     guardian_name: false,
     guardian_email: false,
     billing_day: false
@@ -72,6 +75,12 @@ export function StudentFormModal({
       // Auto-fill guardian fields with student data
       newFormData.guardian_name = formData.name;
       newFormData.guardian_email = formData.email;
+      newFormData.guardian_phone = formData.phone;
+    } else {
+      // Clear guardian fields when unchecking
+      newFormData.guardian_name = "";
+      newFormData.guardian_email = "";
+      newFormData.guardian_phone = "";
     }
 
     setFormData(newFormData);
@@ -101,6 +110,18 @@ export function StudentFormModal({
     setValidationErrors(prev => ({ ...prev, email: false }));
   };
 
+  const handlePhoneChange = (value: string) => {
+    const newFormData = { ...formData, phone: value };
+    
+    // If student is own responsible, update guardian phone too
+    if (formData.isOwnResponsible) {
+      newFormData.guardian_phone = value;
+    }
+    
+    setFormData(newFormData);
+    setValidationErrors(prev => ({ ...prev, phone: false }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -108,8 +129,9 @@ export function StudentFormModal({
     const errors = {
       name: !formData.name.trim(),
       email: !formData.email.trim(),
-      guardian_name: !formData.guardian_name.trim(),
-      guardian_email: !formData.guardian_email.trim(),
+      phone: false,
+      guardian_name: !formData.isOwnResponsible && !formData.guardian_name.trim(),
+      guardian_email: !formData.isOwnResponsible && !formData.guardian_email.trim(),
       billing_day: formData.billing_day < 1 || formData.billing_day > 28
     };
     
@@ -153,17 +175,29 @@ export function StudentFormModal({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="student-email">E-mail *</Label>
+                  <Label htmlFor="student-phone">Telefone</Label>
                   <Input
-                    id="student-email"
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={formData.email}
-                    onChange={(e) => handleEmailChange(e.target.value)}
-                    className={validationErrors.email ? "border-destructive" : ""}
-                    required
+                    id="student-phone"
+                    type="tel"
+                    placeholder="(11) 99999-9999"
+                    value={formData.phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    className={validationErrors.phone ? "border-destructive" : ""}
                   />
                 </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="student-email">E-mail *</Label>
+                <Input
+                  id="student-email"
+                  type="email"
+                  placeholder="email@exemplo.com"
+                  value={formData.email}
+                  onChange={(e) => handleEmailChange(e.target.value)}
+                  className={validationErrors.email ? "border-destructive" : ""}
+                  required
+                />
               </div>
             </div>
 
@@ -187,55 +221,65 @@ export function StudentFormModal({
                 </Label>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="guardian-name">Nome do Responsável *</Label>
-                  <Input
-                    id="guardian-name"
-                    type="text"
-                    placeholder="Nome completo"
-                    value={formData.guardian_name}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, guardian_name: e.target.value }));
-                      setValidationErrors(prev => ({ ...prev, guardian_name: false }));
-                    }}
-                    className={validationErrors.guardian_name ? "border-destructive" : ""}
-                    disabled={formData.isOwnResponsible}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="guardian-phone">Telefone</Label>
-                  <Input
-                    id="guardian-phone"
-                    type="tel"
-                    placeholder="(11) 99999-9999"
-                    value={formData.guardian_phone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, guardian_phone: e.target.value }))}
-                    disabled={formData.isOwnResponsible}
-                  />
-                </div>
-              </div>
+              {!formData.isOwnResponsible && (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="guardian-name">Nome do Responsável *</Label>
+                      <Input
+                        id="guardian-name"
+                        type="text"
+                        placeholder="Nome completo"
+                        value={formData.guardian_name}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, guardian_name: e.target.value }));
+                          setValidationErrors(prev => ({ ...prev, guardian_name: false }));
+                        }}
+                        className={validationErrors.guardian_name ? "border-destructive" : ""}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guardian-phone">Telefone</Label>
+                      <Input
+                        id="guardian-phone"
+                        type="tel"
+                        placeholder="(11) 99999-9999"
+                        value={formData.guardian_phone}
+                        onChange={(e) => setFormData(prev => ({ ...prev, guardian_phone: e.target.value }))}
+                      />
+                    </div>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="guardian-email">Email do Responsável *</Label>
-                <Input
-                  id="guardian-email"
-                  type="email"
-                  placeholder="email@exemplo.com"
-                  value={formData.guardian_email}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, guardian_email: e.target.value }));
-                    setValidationErrors(prev => ({ ...prev, guardian_email: false }));
-                  }}
-                  className={validationErrors.guardian_email ? "border-destructive" : ""}
-                  disabled={formData.isOwnResponsible}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  As faturas serão enviadas para este email
-                </p>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="guardian-email">Email do Responsável *</Label>
+                    <Input
+                      id="guardian-email"
+                      type="email"
+                      placeholder="email@exemplo.com"
+                      value={formData.guardian_email}
+                      onChange={(e) => {
+                        setFormData(prev => ({ ...prev, guardian_email: e.target.value }));
+                        setValidationErrors(prev => ({ ...prev, guardian_email: false }));
+                      }}
+                      className={validationErrors.guardian_email ? "border-destructive" : ""}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      As faturas serão enviadas para este email
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {formData.isOwnResponsible && (
+                <div className="bg-muted/50 p-3 rounded-md">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    <UserCheck className="h-4 w-4 inline mr-1" />
+                    As faturas serão enviadas para: <strong>{formData.email}</strong>
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="billing-day">

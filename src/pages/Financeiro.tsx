@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AmnestyButton } from "@/components/AmnestyButton";
 import { ExpenseList } from "@/components/ExpenseList";
+import { BillingSettings } from "@/components/BillingSettings";
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp } from "lucide-react";
 
 interface InvoiceWithStudent {
@@ -256,9 +257,10 @@ export default function Financeiro() {
         {/* Tabs for professors, single view for students */}
         {isProfessor ? (
           <Tabs defaultValue="receitas" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="receitas">Receitas</TabsTrigger>
               <TabsTrigger value="despesas">Despesas</TabsTrigger>
+              <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
@@ -363,6 +365,10 @@ export default function Financeiro() {
             
             <TabsContent value="despesas" className="space-y-4">
               <ExpenseList />
+            </TabsContent>
+            
+            <TabsContent value="configuracoes" className="space-y-4">
+              <BillingSettings />
             </TabsContent>
           </Tabs>
         ) : (

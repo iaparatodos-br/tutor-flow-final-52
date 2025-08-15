@@ -5,10 +5,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CategoryModal } from "./CategoryModal";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, FileText, Image, X } from "lucide-react";
+import { Upload, FileText, Image, X, Plus, Settings } from "lucide-react";
 import { formatDate } from "date-fns";
 
 interface ExpenseModalProps {
@@ -44,6 +45,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -74,6 +76,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
         .order('name');
 
       if (error) throw error;
+      
+      console.log('Categories loaded:', data); // Debug log
       setCategories(data || []);
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -256,23 +260,40 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="category">Categoria *</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="category">Categoria *</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCategoryModalOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nova Categoria
+              </Button>
+            </div>
             <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione uma categoria" />
               </SelectTrigger>
               <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.id} value={category.name}>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: category.color }}
-                      />
-                      {category.name}
-                    </div>
-                  </SelectItem>
-                ))}
+                {categories.length === 0 ? (
+                  <div className="p-2 text-center text-muted-foreground">
+                    Nenhuma categoria encontrada
+                  </div>
+                ) : (
+                  categories.map((category) => (
+                    <SelectItem key={category.id} value={category.name}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: category.color }}
+                        />
+                        {category.name}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -348,6 +369,15 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <CategoryModal
+        isOpen={categoryModalOpen}
+        onClose={() => setCategoryModalOpen(false)}
+        onCategoryAdded={() => {
+          loadCategories();
+          setCategoryModalOpen(false);
+        }}
+      />
     </Dialog>
   );
 }

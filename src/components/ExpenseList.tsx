@@ -148,8 +148,26 @@ export function ExpenseList() {
 
   const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
 
-  const openReceiptViewer = (receiptUrl: string) => {
-    window.open(receiptUrl, '_blank');
+  const openReceiptViewer = (receiptPath: string) => {
+    // Generate a signed URL for private bucket access
+    supabase.storage
+      .from('expense-receipts')
+      .createSignedUrl(receiptPath, 3600) // 1 hour expiry
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error creating signed URL:', error);
+          toast({
+            title: "Erro",
+            description: "Não foi possível abrir o comprovante.",
+            variant: "destructive",
+          });
+          return;
+        }
+        
+        if (data?.signedUrl) {
+          window.open(data.signedUrl, '_blank');
+        }
+      });
   };
 
   if (loading) {

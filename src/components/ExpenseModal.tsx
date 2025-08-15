@@ -145,11 +145,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
       throw error;
     }
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('expense-receipts')
-      .getPublicUrl(fileName);
-
-    return publicUrl;
+    // Return the file path instead of public URL since the bucket is private
+    return fileName;
   };
 
   const handleSubmit = async () => {

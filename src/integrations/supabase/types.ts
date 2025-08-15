@@ -335,7 +335,13 @@ export type Database = {
           id: string
           invoice_type: string | null
           original_amount: number | null
+          payment_due_date: string | null
+          payment_method: string | null
+          sent_to_guardian: boolean | null
           status: string
+          stripe_invoice_id: string | null
+          stripe_invoice_url: string | null
+          stripe_payment_intent_id: string | null
           student_id: string
           teacher_id: string
           updated_at: string | null
@@ -350,7 +356,13 @@ export type Database = {
           id?: string
           invoice_type?: string | null
           original_amount?: number | null
+          payment_due_date?: string | null
+          payment_method?: string | null
+          sent_to_guardian?: boolean | null
           status?: string
+          stripe_invoice_id?: string | null
+          stripe_invoice_url?: string | null
+          stripe_payment_intent_id?: string | null
           student_id: string
           teacher_id: string
           updated_at?: string | null
@@ -365,7 +377,13 @@ export type Database = {
           id?: string
           invoice_type?: string | null
           original_amount?: number | null
+          payment_due_date?: string | null
+          payment_method?: string | null
+          sent_to_guardian?: boolean | null
           status?: string
+          stripe_invoice_id?: string | null
+          stripe_invoice_url?: string | null
+          stripe_payment_intent_id?: string | null
           student_id?: string
           teacher_id?: string
           updated_at?: string | null
@@ -389,29 +407,44 @@ export type Database = {
       }
       profiles: {
         Row: {
+          billing_day: number | null
           created_at: string | null
           email: string
+          guardian_email: string | null
+          guardian_name: string | null
+          guardian_phone: string | null
           id: string
           name: string
           role: string
+          stripe_customer_id: string | null
           teacher_id: string | null
           updated_at: string | null
         }
         Insert: {
+          billing_day?: number | null
           created_at?: string | null
           email: string
+          guardian_email?: string | null
+          guardian_name?: string | null
+          guardian_phone?: string | null
           id?: string
           name: string
           role: string
+          stripe_customer_id?: string | null
           teacher_id?: string | null
           updated_at?: string | null
         }
         Update: {
+          billing_day?: number | null
           created_at?: string | null
           email?: string
+          guardian_email?: string | null
+          guardian_name?: string | null
+          guardian_phone?: string | null
           id?: string
           name?: string
           role?: string
+          stripe_customer_id?: string | null
           teacher_id?: string | null
           updated_at?: string | null
         }

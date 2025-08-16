@@ -167,6 +167,66 @@ export type Database = {
           },
         ]
       }
+      class_report_feedbacks: {
+        Row: {
+          created_at: string
+          feedback: string
+          id: string
+          report_id: string
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          feedback: string
+          id?: string
+          report_id: string
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          feedback?: string
+          id?: string
+          report_id?: string
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      class_reports: {
+        Row: {
+          class_id: string
+          created_at: string
+          extra_materials: string | null
+          homework: string | null
+          id: string
+          lesson_summary: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          extra_materials?: string | null
+          homework?: string | null
+          id?: string
+          lesson_summary: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          extra_materials?: string | null
+          homework?: string | null
+          id?: string
+          lesson_summary?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       classes: {
         Row: {
           amnesty_granted: boolean | null

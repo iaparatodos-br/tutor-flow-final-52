@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle, X } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ClassReportView } from '@/components/ClassReportView';
 
 // Configure moment to Portuguese
 moment.locale('pt-br');
@@ -51,6 +53,7 @@ interface CalendarViewProps {
   isProfessor: boolean;
   onConfirmClass?: (classId: string) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
+  onCompleteClass?: (classData: CalendarClass) => void;
   loading?: boolean;
 }
 
@@ -70,7 +73,7 @@ const messages = {
   noEventsInRange: 'Não há eventos neste período',
 };
 
-export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
@@ -326,6 +329,23 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     </div>
                   )}
 
+                  {/* Class Report Section */}
+                  {(selectedEvent as CalendarClass).status === 'concluida' && (
+                    <div className="mt-6">
+                      <Separator className="mb-4" />
+                      <ClassReportView
+                        classId={(selectedEvent as CalendarClass).id}
+                        onEditReport={() => {
+                          if (onCompleteClass) {
+                            onCompleteClass(selectedEvent as CalendarClass);
+                          }
+                        }}
+                        showEditButton={isProfessor}
+                      />
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
                   {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' ? (
                     <div className="flex justify-end gap-2 pt-2">
                       {/* Cancel Button - Available for both students and professors */}
@@ -344,6 +364,20 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                         >
                           <X className="h-4 w-4 mr-2" />
                           Cancelar Aula
+                        </Button>
+                      )}
+                      
+                      {/* Complete Class Button - Only for professors */}
+                      {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
+                        <Button
+                          onClick={() => {
+                            onCompleteClass(selectedEvent as CalendarClass);
+                            setSelectedEvent(null);
+                          }}
+                          className="bg-gradient-primary shadow-glow"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          Concluir Aula
                         </Button>
                       )}
                       

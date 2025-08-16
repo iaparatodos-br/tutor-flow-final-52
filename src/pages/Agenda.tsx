@@ -10,6 +10,7 @@ import { CalendarView, CalendarClass, AvailabilityBlock } from "@/components/Cal
 import { AvailabilityManager } from "@/components/Availability/AvailabilityManager";
 import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
+import { ClassReportModal } from "@/components/ClassReportModal";
 
 interface ClassWithParticipants {
   id: string;
@@ -50,6 +51,11 @@ export default function Agenda() {
     className: string;
     classDate: string;
   }>({ isOpen: false, classId: "", className: "", classDate: "" });
+  
+  const [reportModal, setReportModal] = useState<{
+    isOpen: boolean;
+    classData: CalendarClass | null;
+  }>({ isOpen: false, classData: null });
 
   useEffect(() => {
     if (profile) {
@@ -331,6 +337,15 @@ export default function Agenda() {
     setCancellationModal({ isOpen: false, classId: "", className: "", classDate: "" });
   };
 
+  const handleCompleteClass = (classData: CalendarClass) => {
+    setReportModal({ isOpen: true, classData });
+  };
+
+  const handleReportCreated = () => {
+    loadClasses(); // Reload classes to show updated status
+    setReportModal({ isOpen: false, classData: null });
+  };
+
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
@@ -382,6 +397,7 @@ export default function Agenda() {
           isProfessor={isProfessor}
           onConfirmClass={handleConfirmClass}
           onCancelClass={handleCancelClass}
+          onCompleteClass={handleCompleteClass}
           loading={loading}
         />
       </div>
@@ -393,6 +409,13 @@ export default function Agenda() {
         className={cancellationModal.className}
         classDate={cancellationModal.classDate}
         onCancellationComplete={handleCancellationComplete}
+      />
+      
+      <ClassReportModal
+        isOpen={reportModal.isOpen}
+        onOpenChange={(open) => !open && setReportModal({ isOpen: false, classData: null })}
+        classData={reportModal.classData}
+        onReportCreated={handleReportCreated}
       />
     </Layout>
   );

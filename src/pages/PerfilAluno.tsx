@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ClassReportView } from "@/components/ClassReportView";
 import { 
   ArrowLeft, 
   User, 
@@ -21,7 +23,9 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  Eye
 } from "lucide-react";
 
 interface StudentProfile {
@@ -83,6 +87,7 @@ export default function PerfilAluno() {
     pendingAmount: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [selectedClassForReport, setSelectedClassForReport] = useState<string | null>(null);
 
   useEffect(() => {
     if (profile?.id && id) {
@@ -398,7 +403,7 @@ export default function PerfilAluno() {
                       <div key={classRecord.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
                         <div className="flex items-center gap-3">
                           {getStatusIcon(classRecord.status)}
-                          <div>
+                          <div className="flex-1">
                             <p className="font-medium">
                               {new Date(classRecord.class_date).toLocaleDateString('pt-BR', {
                                 day: '2-digit',
@@ -418,7 +423,19 @@ export default function PerfilAluno() {
                             )}
                           </div>
                         </div>
-                        {getStatusBadge(classRecord.status)}
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(classRecord.status)}
+                          {classRecord.status === 'concluida' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedClassForReport(classRecord.id)}
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              Ver Relato
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                     {classes.length > 10 && (
@@ -484,6 +501,26 @@ export default function PerfilAluno() {
           </div>
         </div>
       </div>
+
+      {/* Class Report Modal */}
+      <Dialog open={!!selectedClassForReport} onOpenChange={() => setSelectedClassForReport(null)}>
+        <DialogContent className="sm:max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Relato da Aula
+            </DialogTitle>
+          </DialogHeader>
+          {selectedClassForReport && (
+            <div className="mt-4">
+              <ClassReportView
+                classId={selectedClassForReport}
+                showEditButton={false}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

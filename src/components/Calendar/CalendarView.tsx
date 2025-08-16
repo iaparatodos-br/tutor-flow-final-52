@@ -239,7 +239,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
 
       {/* Event Details Modal */}
       <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalhes da Aula</DialogTitle>
           </DialogHeader>

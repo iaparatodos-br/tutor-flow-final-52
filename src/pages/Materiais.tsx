@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Upload, FolderPlus, Search, FileText, Download } from "lucide-react";
+import { Upload, FolderPlus, Search, FileText, Download, Share, MoreVertical } from "lucide-react";
+import { MaterialUploadModal } from "@/components/MaterialUploadModal";
+import { CategoryModal } from "@/components/CategoryModal";
+import { ShareMaterialModal } from "@/components/ShareMaterialModal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface MaterialCategory {
   id: string;
@@ -37,6 +41,12 @@ export default function Materiais() {
   const [categories, setCategories] = useState<MaterialCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  // Modal states
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     if (profile?.role === 'professor') {
@@ -102,6 +112,44 @@ export default function Materiais() {
     return '📎';
   };
 
+  const handleDownload = async (material: Material) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('teaching-materials')
+        .download(material.file_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = material.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Download iniciado");
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast.error("Erro ao fazer download");
+    }
+  };
+
+  const handleShare = (material: Material) => {
+    setSelectedMaterial({ id: material.id, title: material.title });
+    setShareModalOpen(true);
+  };
+
+  const getAccessCount = async (materialId: string) => {
+    const { count } = await supabase
+      .from('material_access')
+      .select('*', { count: 'exact', head: true })
+      .eq('material_id', materialId);
+    
+    return count || 0;
+  };
+
   if (profile?.role !== 'professor') {
     return (
       <Layout>
@@ -134,11 +182,14 @@ export default function Materiais() {
             <p className="text-muted-foreground">Organize e compartilhe seus materiais com os alunos</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" disabled>
+            <Button 
+              variant="outline"
+              onClick={() => setCategoryModalOpen(true)}
+            >
               <FolderPlus className="h-4 w-4 mr-2" />
               Nova Categoria
             </Button>
-            <Button disabled>
+            <Button onClick={() => setUploadModalOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Novo Material
             </Button>
@@ -166,9 +217,9 @@ export default function Materiais() {
                     ? "Tente alterar os filtros de busca"
                     : "Comece fazendo upload do seu primeiro material"}
                 </p>
-                <Button disabled>
+                <Button onClick={() => setUploadModalOpen(true)}>
                   <Upload className="h-4 w-4 mr-2" />
-                  Fazer Upload (Em breve)
+                  Fazer Upload
                 </Button>
               </CardContent>
             </Card>
@@ -198,6 +249,23 @@ export default function Materiais() {
                           )}
                         </div>
                       </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleDownload(material)}>
+                            <Download className="h-4 w-4 mr-2" />
+                            Download
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleShare(material)}>
+                            <Share className="h-4 w-4 mr-2" />
+                            Compartilhar
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -210,15 +278,26 @@ export default function Materiais() {
                       <div>Tamanho: {formatFileSize(material.file_size)}</div>
                       <div>Criado: {new Date(material.created_at).toLocaleDateString()}</div>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      disabled
-                    >
-                      <Download className="h-3 w-3 mr-1" />
-                      Download (Em breve)
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleDownload(material)}
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleShare(material)}
+                      >
+                        <Share className="h-3 w-3 mr-1" />
+                        Compartilhar
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               ))}
@@ -226,15 +305,29 @@ export default function Materiais() {
           )}
         </div>
 
-        <div className="bg-muted/50 p-4 rounded-lg">
-          <h3 className="font-medium mb-2">🚧 Funcionalidades em desenvolvimento:</h3>
-          <ul className="text-sm text-muted-foreground space-y-1">
-            <li>• Upload de materiais</li>
-            <li>• Criação de categorias</li>
-            <li>• Compartilhamento com alunos</li>
-            <li>• Download de arquivos</li>
-          </ul>
-        </div>
+        {/* Modals */}
+        <MaterialUploadModal
+          isOpen={uploadModalOpen}
+          onClose={() => setUploadModalOpen(false)}
+          onMaterialUploaded={loadData}
+          categories={categories}
+        />
+        
+        <CategoryModal
+          isOpen={categoryModalOpen}
+          onClose={() => setCategoryModalOpen(false)}
+          onCategoryAdded={loadData}
+        />
+        
+        <ShareMaterialModal
+          isOpen={shareModalOpen}
+          onClose={() => {
+            setShareModalOpen(false);
+            setSelectedMaterial(null);
+          }}
+          onShared={loadData}
+          material={selectedMaterial}
+        />
       </div>
     </Layout>
   );

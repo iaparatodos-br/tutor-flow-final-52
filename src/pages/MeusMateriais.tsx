@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
-import { Search, FileText, Download, Calendar } from "lucide-react";
+import { Search, FileText, Download, Calendar, ExternalLink } from "lucide-react";
 
 interface MaterialCategory {
   id: string;
@@ -97,6 +97,48 @@ export default function MeusMateriais() {
     if (fileType.includes('video')) return '🎥';
     if (fileType.includes('audio')) return '🎵';
     return '📎';
+  };
+
+  const handleDownload = async (material: Material) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('teaching-materials')
+        .download(material.file_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = material.file_name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success("Download concluído");
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast.error("Erro ao fazer download");
+    }
+  };
+
+  const handlePreview = async (material: Material) => {
+    try {
+      if (material.file_type.includes('pdf') || material.file_type.includes('image')) {
+        const { data } = await supabase.storage
+          .from('teaching-materials')
+          .getPublicUrl(material.file_path);
+        
+        window.open(data.publicUrl, '_blank');
+      } else {
+        // For other file types, download instead
+        handleDownload(material);
+      }
+    } catch (error) {
+      console.error('Error previewing file:', error);
+      toast.error("Erro ao visualizar arquivo");
+    }
   };
 
   if (profile?.role !== 'aluno') {
@@ -202,14 +244,27 @@ export default function MeusMateriais() {
                         Compartilhado: {new Date(access.granted_at).toLocaleDateString()}
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download (Em breve)
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => handleDownload(material)}
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                      {(material.file_type.includes('pdf') || material.file_type.includes('image')) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="px-3"
+                          onClick={() => handlePreview(material)}
+                          title="Visualizar"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );

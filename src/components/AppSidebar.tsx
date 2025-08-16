@@ -27,14 +27,12 @@ const professorItems = [
   { title: "Dashboard", url: "/dashboard", icon: BookOpen },
   { title: "Alunos", url: "/alunos", icon: Users },
   { title: "Agenda", url: "/agenda", icon: Calendar },
-  { title: "Materiais", url: "/materiais", icon: FileText },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
   { title: "Políticas Cancelamento", url: "/politicas-cancelamento", icon: Settings },
 ];
 
 const alunoItems = [
   { title: "Minhas Aulas", url: "/aulas", icon: Calendar },
-  { title: "Meus Materiais", url: "/meus-materiais", icon: FileText },
   { title: "Faturas", url: "/faturas", icon: DollarSign },
 ];
 

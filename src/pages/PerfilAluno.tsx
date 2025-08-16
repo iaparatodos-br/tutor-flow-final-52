@@ -110,15 +110,31 @@ export default function PerfilAluno() {
       if (studentError) throw studentError;
       setStudent(studentData);
 
-      // Load classes
-      const { data: classesData, error: classesError } = await supabase
+      // Load classes (individual and group classes)
+      // First get individual classes
+      const { data: individualClasses } = await supabase
         .from('classes')
         .select('*')
         .eq('student_id', id)
+        .eq('teacher_id', profile.id);
+      
+      // Then get group classes
+      const { data: groupClasses } = await supabase
+        .from('classes')
+        .select(`
+          *,
+          class_participants!inner(student_id)
+        `)
         .eq('teacher_id', profile.id)
-        .order('class_date', { ascending: false });
+        .eq('class_participants.student_id', id);
+      
+      // Combine both results
+      const allClasses = [...(individualClasses || []), ...(groupClasses || [])];
+      const classesData = allClasses.sort((a, b) => 
+        new Date(b.class_date).getTime() - new Date(a.class_date).getTime()
+      );
 
-      if (classesError) throw classesError;
+      
       setClasses(classesData || []);
 
       // Load invoices

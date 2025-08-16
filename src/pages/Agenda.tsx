@@ -266,6 +266,7 @@ export default function Agenda() {
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
+        student_id: formData.is_group_class ? null : formData.selectedStudents[0] || null,
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,

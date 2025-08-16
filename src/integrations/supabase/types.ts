@@ -668,7 +668,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_material_shared_with_user: {
+        Args: { p_material_id: string }
+        Returns: boolean
+      }
+      user_owns_material: {
+        Args: { p_material_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

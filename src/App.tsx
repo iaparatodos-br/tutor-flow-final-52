@@ -10,6 +10,8 @@ import Alunos from "./pages/Alunos";
 import PerfilAluno from "./pages/PerfilAluno";
 import Agenda from "./pages/Agenda";
 import Financeiro from "./pages/Financeiro";
+import Materiais from "./pages/Materiais";
+import MeusMateriais from "./pages/MeusMateriais";
 import PoliticasCancelamento from "./pages/PoliticasCancelamento";
 import NotFound from "./pages/NotFound";
 
@@ -31,6 +33,8 @@ const App = () => (
           <Route path="/aulas" element={<Agenda />} />
           <Route path="/financeiro" element={<Financeiro />} />
           <Route path="/faturas" element={<Financeiro />} />
+          <Route path="/materiais" element={<Materiais />} />
+          <Route path="/meus-materiais" element={<MeusMateriais />} />
           <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

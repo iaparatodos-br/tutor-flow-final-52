@@ -13,6 +13,15 @@ interface LayoutProps {
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
   const { loading, isAuthenticated, profile, isProfessor, isAluno } = useAuth();
+  
+  console.log('Layout: Estado atual:', { 
+    loading, 
+    isAuthenticated, 
+    hasProfile: !!profile, 
+    profileName: profile?.name, 
+    isProfessor, 
+    isAluno 
+  });
 
   if (loading) {
     return (
@@ -31,6 +40,19 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
 
   if (!requireAuth) {
     return <div className="min-h-screen bg-gradient-subtle">{children}</div>;
+  }
+
+  // Garantir que temos um profile válido antes de renderizar o ProfileProvider
+  if (!profile) {
+    console.log('Layout: Profile não disponível ainda, aguardando...');
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-subtle">
+        <div className="text-center">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto"></div>
+          <p className="text-muted-foreground">Carregando perfil...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

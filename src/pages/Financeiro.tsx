@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +40,7 @@ interface ExpenseSummary {
 }
 
 export default function Financeiro() {
-  const { profile, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
   const { toast } = useToast();
   
   const [invoices, setInvoices] = useState<InvoiceWithStudent[]>([]);

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ interface PaymentAccountModalProps {
 }
 
 export function PaymentAccountModal({ open, onClose, account }: PaymentAccountModalProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   
   const [saving, setSaving] = useState(false);

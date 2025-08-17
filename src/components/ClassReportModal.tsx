@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { CalendarClass } from '@/components/Calendar/CalendarView';
-import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/contexts/ProfileContext';
 import { BookOpen, FileText, Link, MessageSquare } from 'lucide-react';
 
 interface ClassReportModalProps {
@@ -37,7 +37,7 @@ export function ClassReportModal({
   classData, 
   onReportCreated 
 }: ClassReportModalProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);

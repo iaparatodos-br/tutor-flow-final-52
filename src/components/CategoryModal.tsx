@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Palette } from "lucide-react";
 
@@ -42,7 +42,7 @@ export function CategoryModal({
   onCategoryAdded, 
   category = null 
 }: CategoryModalProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]);

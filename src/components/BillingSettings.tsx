@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ interface BillingSettingsProps {
 }
 
 export function BillingSettings({ studentId, isModal = false }: BillingSettingsProps) {
-  const { profile, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
   const { toast } = useToast();
   
   const [loading, setLoading] = useState(false);

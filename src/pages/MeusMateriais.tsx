@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Search, FileText, Download, Calendar, ExternalLink } from "lucide-react";
 
@@ -37,7 +37,7 @@ interface MaterialAccess {
 }
 
 export default function MeusMateriais() {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const [materialAccess, setMaterialAccess] = useState<MaterialAccess[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ interface PaymentAccount {
 }
 
 export function PaymentAccountsManager() {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   
   const [accounts, setAccounts] = useState<PaymentAccount[]>([]);

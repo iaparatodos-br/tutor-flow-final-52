@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CategoryModal } from "./CategoryModal";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, Image, X, Plus, Settings } from "lucide-react";
@@ -33,7 +33,7 @@ interface ExpenseCategory {
 }
 
 export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: ExpenseModalProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);

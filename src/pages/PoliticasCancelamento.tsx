@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +23,7 @@ interface CancellationPolicy {
 }
 
 export default function PoliticasCancelamento() {
-  const { profile, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
   const { toast } = useToast();
   const [policy, setPolicy] = useState<CancellationPolicy | null>(null);
   const [loading, setLoading] = useState(true);

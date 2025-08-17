@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,7 @@ interface ClassService {
 }
 
 export default function Agenda() {
-  const { profile, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
   const { toast } = useToast();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Upload, FolderPlus, Search, FileText, Download, Share, MoreVertical } from "lucide-react";
 import { MaterialUploadModal } from "@/components/MaterialUploadModal";
@@ -36,7 +36,7 @@ interface Material {
 }
 
 export default function Materiais() {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const [materials, setMaterials] = useState<Material[]>([]);
   const [categories, setCategories] = useState<MaterialCategory[]>([]);
   const [loading, setLoading] = useState(true);

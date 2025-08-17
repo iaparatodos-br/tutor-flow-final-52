@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -14,7 +14,7 @@ interface DashboardStats {
 }
 
 export default function Dashboard() {
-  const { profile, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,

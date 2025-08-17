@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,7 +24,7 @@ interface PaymentAccountSelectorProps {
 }
 
 export function PaymentAccountSelector({ studentId, onUpdate }: PaymentAccountSelectorProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   
   const [accounts, setAccounts] = useState<PaymentAccount[]>([]);

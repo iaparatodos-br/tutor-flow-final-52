@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Heart, AlertCircle } from "lucide-react";
@@ -17,7 +17,7 @@ interface AmnestyButtonProps {
 }
 
 export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled }: AmnestyButtonProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [justification, setJustification] = useState("");

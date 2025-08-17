@@ -227,6 +227,45 @@ export type Database = {
         }
         Relationships: []
       }
+      class_services: {
+        Row: {
+          created_at: string
+          description: string | null
+          duration_minutes: number
+          id: string
+          is_active: boolean
+          is_default: boolean
+          name: string
+          price: number
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name: string
+          price?: number
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          duration_minutes?: number
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          name?: string
+          price?: number
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       classes: {
         Row: {
           amnesty_granted: boolean | null
@@ -245,6 +284,7 @@ export type Database = {
           notes: string | null
           parent_class_id: string | null
           recurrence_pattern: Json | null
+          service_id: string | null
           status: string
           student_id: string | null
           teacher_id: string
@@ -267,6 +307,7 @@ export type Database = {
           notes?: string | null
           parent_class_id?: string | null
           recurrence_pattern?: Json | null
+          service_id?: string | null
           status?: string
           student_id?: string | null
           teacher_id: string
@@ -289,6 +330,7 @@ export type Database = {
           notes?: string | null
           parent_class_id?: string | null
           recurrence_pattern?: Json | null
+          service_id?: string | null
           status?: string
           student_id?: string | null
           teacher_id?: string
@@ -300,6 +342,13 @@ export type Database = {
             columns: ["parent_class_id"]
             isOneToOne: false
             referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "classes_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "class_services"
             referencedColumns: ["id"]
           },
           {

@@ -216,7 +216,7 @@ export default function Dashboard() {
             <CardTitle>Configurações</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div 
                 className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
                 onClick={() => navigate("/contas-recebimento")}
@@ -224,6 +224,15 @@ export default function Dashboard() {
                 <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
                 <p className="font-medium">Contas de Recebimento</p>
                 <p className="text-sm text-muted-foreground">Gerenciar contas bancárias e PIX</p>
+              </div>
+              
+              <div 
+                className="text-center p-4 rounded-lg bg-success-light hover:bg-success cursor-pointer transition-colors"
+                onClick={() => navigate("/servicos")}
+              >
+                <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
+                <p className="font-medium">Serviços e Preços</p>
+                <p className="text-sm text-muted-foreground">Cadastrar tipos de aula e valores</p>
               </div>
               
               <div 

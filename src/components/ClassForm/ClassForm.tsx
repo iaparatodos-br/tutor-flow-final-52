@@ -9,15 +9,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Users, Star, Repeat } from 'lucide-react';
+import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
 
 interface Student {
   id: string;
   name: string;
 }
 
+interface ClassService {
+  id: string;
+  name: string;
+  price: number;
+  duration_minutes: number;
+}
+
 interface ClassFormData {
   selectedStudents: string[];
+  service_id: string;
   class_date: string;
   time: string;
   duration_minutes: number;
@@ -35,13 +43,15 @@ interface ClassFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   students: Student[];
+  services: ClassService[];
   onSubmit: (data: ClassFormData) => Promise<void>;
   loading?: boolean;
 }
 
-export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: ClassFormProps) {
+export function ClassForm({ open, onOpenChange, students, services, onSubmit, loading }: ClassFormProps) {
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
+    service_id: '',
     class_date: '',
     time: '',
     duration_minutes: 60,
@@ -54,6 +64,7 @@ export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: C
   const [recurrenceType, setRecurrenceType] = useState<'date' | 'count'>('date');
   const [validationErrors, setValidationErrors] = useState({
     students: false,
+    service: false,
     date: false,
     time: false,
   });
@@ -61,6 +72,7 @@ export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: C
   const resetForm = () => {
     setFormData({
       selectedStudents: [],
+      service_id: '',
       class_date: '',
       time: '',
       duration_minutes: 60,
@@ -69,7 +81,7 @@ export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: C
       is_group_class: false,
     });
     setShowRecurrence(false);
-    setValidationErrors({ students: false, date: false, time: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false });
   };
 
   const handleStudentSelection = (studentId: string, checked: boolean) => {
@@ -92,6 +104,7 @@ export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: C
 
     const errors = {
       students: formData.selectedStudents.length === 0,
+      service: !formData.is_experimental && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
     };
@@ -221,6 +234,100 @@ export function ClassForm({ open, onOpenChange, students, onSubmit, loading }: C
               )}
             </CardContent>
           </Card>
+
+          {/* Service Selection */}
+          {!formData.is_experimental && (
+            <Card>
+              <CardHeader className="pb-4">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  Selecionar Serviço
+                </CardTitle>
+                <CardDescription>
+                  Escolha o tipo de aula e seu preço
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {services.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum serviço cadastrado. <a href="/servicos" className="text-primary underline">Cadastre seus serviços</a> para definir preços.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <Select
+                      value={formData.service_id}
+                      onValueChange={(value) => {
+                        const selectedService = services.find(s => s.id === value);
+                        if (selectedService) {
+                          setFormData(prev => ({
+                            ...prev,
+                            service_id: value,
+                            duration_minutes: selectedService.duration_minutes
+                          }));
+                        }
+                        setValidationErrors(prev => ({ ...prev, service: false }));
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um serviço" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {services.map((service) => (
+                          <SelectItem key={service.id} value={service.id}>
+                            <div className="flex items-center justify-between w-full">
+                              <span>{service.name}</span>
+                              <div className="flex items-center gap-2 ml-4">
+                                <span className="text-sm text-muted-foreground">
+                                  {service.duration_minutes}min
+                                </span>
+                                <span className="font-medium">
+                                  {new Intl.NumberFormat('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL'
+                                  }).format(service.price)}
+                                </span>
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    
+                    {formData.service_id && (
+                      <div className="p-3 bg-muted/50 rounded-lg">
+                        {(() => {
+                          const selectedService = services.find(s => s.id === formData.service_id);
+                          return selectedService ? (
+                            <div className="flex items-center justify-between text-sm">
+                              <span>Serviço selecionado:</span>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{selectedService.name}</span>
+                                <span className="text-muted-foreground">•</span>
+                                <span>{selectedService.duration_minutes} min</span>
+                                <span className="text-muted-foreground">•</span>
+                                <span className="font-medium text-success">
+                                  {new Intl.NumberFormat('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL'
+                                  }).format(selectedService.price)}
+                                </span>
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {validationErrors.service && (
+                  <p className="text-sm text-destructive">
+                    Selecione um serviço para definir o preço da aula
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Date and Time */}
           <div className="grid grid-cols-2 gap-4">

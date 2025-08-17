@@ -13,6 +13,7 @@ import Financeiro from "./pages/Financeiro";
 import Materiais from "./pages/Materiais";
 import MeusMateriais from "./pages/MeusMateriais";
 import ContasRecebimento from "./pages/ContasRecebimento";
+import Servicos from "./pages/Servicos";
 import PoliticasCancelamento from "./pages/PoliticasCancelamento";
 import NotFound from "./pages/NotFound";
 
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/materiais" element={<Materiais />} />
           <Route path="/meus-materiais" element={<MeusMateriais />} />
           <Route path="/contas-recebimento" element={<ContasRecebimento />} />
+          <Route path="/servicos" element={<Servicos />} />
           <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />

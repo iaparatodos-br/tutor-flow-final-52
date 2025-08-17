@@ -34,6 +34,13 @@ interface Student {
   name: string;
 }
 
+interface ClassService {
+  id: string;
+  name: string;
+  price: number;
+  duration_minutes: number;
+}
+
 export default function Agenda() {
   const { profile, isProfessor } = useAuth();
   const { toast } = useToast();
@@ -42,6 +49,7 @@ export default function Agenda() {
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +71,7 @@ export default function Agenda() {
       if (isProfessor) {
         loadStudents();
         loadAvailabilityBlocks();
+        loadServices();
       }
     }
   }, [profile, isProfessor]);
@@ -192,6 +201,29 @@ export default function Agenda() {
     }
   };
 
+  const loadServices = async () => {
+    if (!profile?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('class_services')
+        .select('id, name, price, duration_minutes')
+        .eq('teacher_id', profile.id)
+        .eq('is_active', true)
+        .order('is_default', { ascending: false })
+        .order('name');
+
+      if (error) {
+        console.error('Erro ao carregar serviços:', error);
+        return;
+      }
+
+      setServices(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar serviços:', error);
+    }
+  };
+
   const handleConfirmClass = async (classId: string) => {
     try {
       const { error } = await supabase
@@ -267,6 +299,7 @@ export default function Agenda() {
       const baseClassData = {
         teacher_id: profile.id,
         student_id: formData.is_group_class ? null : formData.selectedStudents[0] || null,
+        service_id: formData.service_id || null,
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
@@ -384,6 +417,7 @@ export default function Agenda() {
                 open={isDialogOpen}
                 onOpenChange={setIsDialogOpen}
                 students={students}
+                services={services}
                 onSubmit={handleAddClass}
                 loading={submitting}
               />

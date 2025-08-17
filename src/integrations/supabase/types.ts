@@ -577,6 +577,66 @@ export type Database = {
           },
         ]
       }
+      payment_accounts: {
+        Row: {
+          account_holder_document: string | null
+          account_holder_name: string | null
+          account_name: string
+          account_number: string | null
+          account_type: string
+          agency: string | null
+          bank_code: string | null
+          bank_name: string | null
+          created_at: string
+          id: string
+          is_active: boolean
+          is_default: boolean
+          pix_key: string | null
+          pix_key_type: string | null
+          stripe_account_id: string | null
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_holder_document?: string | null
+          account_holder_name?: string | null
+          account_name: string
+          account_number?: string | null
+          account_type: string
+          agency?: string | null
+          bank_code?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          pix_key?: string | null
+          pix_key_type?: string | null
+          stripe_account_id?: string | null
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_holder_document?: string | null
+          account_holder_name?: string | null
+          account_name?: string
+          account_number?: string | null
+          account_type?: string
+          agency?: string | null
+          bank_code?: string | null
+          bank_name?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean
+          pix_key?: string | null
+          pix_key_type?: string | null
+          stripe_account_id?: string | null
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           billing_day: number | null
@@ -587,6 +647,7 @@ export type Database = {
           guardian_phone: string | null
           id: string
           name: string
+          preferred_payment_account_id: string | null
           role: string
           stripe_customer_id: string | null
           teacher_id: string | null
@@ -601,6 +662,7 @@ export type Database = {
           guardian_phone?: string | null
           id?: string
           name: string
+          preferred_payment_account_id?: string | null
           role: string
           stripe_customer_id?: string | null
           teacher_id?: string | null
@@ -615,12 +677,20 @@ export type Database = {
           guardian_phone?: string | null
           id?: string
           name?: string
+          preferred_payment_account_id?: string | null
           role?: string
           stripe_customer_id?: string | null
           teacher_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_preferred_payment_account_id_fkey"
+            columns: ["preferred_payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "payment_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_teacher_id_fkey"
             columns: ["teacher_id"]

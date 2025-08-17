@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Users, DollarSign, Clock } from "lucide-react";
+import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
 
 interface DashboardStats {
   totalStudents: number;
@@ -205,6 +205,34 @@ export default function Dashboard() {
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
                 <p className="font-medium">Nova Fatura</p>
                 <p className="text-sm text-muted-foreground">Criar cobrança</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Payment Accounts Management */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle>Configurações</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div 
+                className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
+                onClick={() => navigate("/contas-recebimento")}
+              >
+                <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
+                <p className="font-medium">Contas de Recebimento</p>
+                <p className="text-sm text-muted-foreground">Gerenciar contas bancárias e PIX</p>
+              </div>
+              
+              <div 
+                className="text-center p-4 rounded-lg bg-muted hover:bg-muted/80 cursor-pointer transition-colors"
+                onClick={() => navigate("/politicas-cancelamento")}
+              >
+                <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="font-medium">Políticas</p>
+                <p className="text-sm text-muted-foreground">Cancelamento e configurações</p>
               </div>
             </div>
           </CardContent>

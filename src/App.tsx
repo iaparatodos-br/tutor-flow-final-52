@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ProfileProvider } from "@/contexts/ProfileContext";
+import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
@@ -20,9 +22,11 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
+const AppWithProviders = () => {
+  const { profile, isProfessor, isAluno } = useAuth();
+  
+  return (
+    <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
       <TooltipProvider>
         <Toaster />
         <Sonner />
@@ -47,6 +51,14 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </TooltipProvider>
+    </ProfileProvider>
+  );
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>
+      <AppWithProviders />
     </AuthProvider>
   </QueryClientProvider>
 );

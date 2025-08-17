@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -24,10 +23,10 @@ interface ServiceModalProps {
   onClose: () => void;
   service?: ClassService | null;
   onSuccess: () => void;
+  profileId: string;
 }
 
-export function ServiceModal({ open, onClose, service, onSuccess }: ServiceModalProps) {
-  const { profile } = useAuth();
+export function ServiceModal({ open, onClose, service, onSuccess, profileId }: ServiceModalProps) {
   const { toast } = useToast();
   
   const [saving, setSaving] = useState(false);
@@ -65,7 +64,7 @@ export function ServiceModal({ open, onClose, service, onSuccess }: ServiceModal
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!profile?.id) {
+    if (!profileId) {
       toast({
         title: "Erro",
         description: "Você precisa estar logado para criar um serviço.",
@@ -111,7 +110,7 @@ export function ServiceModal({ open, onClose, service, onSuccess }: ServiceModal
         duration_minutes: parseInt(formData.duration_minutes),
         is_active: formData.is_active,
         is_default: formData.is_default,
-        teacher_id: profile.id,
+        teacher_id: profileId,
       };
 
       if (service) {

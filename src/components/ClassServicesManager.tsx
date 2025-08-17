@@ -257,6 +257,7 @@ export function ClassServicesManager() {
         onClose={() => setModalOpen(false)}
         service={editingService}
         onSuccess={loadServices}
+        profileId={profile?.id || ''}
       />
     </div>
   );

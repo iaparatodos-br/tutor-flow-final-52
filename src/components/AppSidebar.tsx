@@ -9,6 +9,7 @@ import {
   FileText
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { 
@@ -41,7 +42,8 @@ const alunoItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { profile, signOut, isProfessor } = useAuth();
+  const { profile, isProfessor } = useProfile();
+  const { signOut } = useAuth();
   const currentPath = location.pathname;
   
   const isCollapsed = state === 'collapsed';

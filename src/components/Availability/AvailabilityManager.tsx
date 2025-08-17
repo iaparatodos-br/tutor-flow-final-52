@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
+import { useProfile } from '@/contexts/ProfileContext';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ const DAYS_OF_WEEK = [
 ];
 
 export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManagerProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const { toast } = useToast();
   
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);

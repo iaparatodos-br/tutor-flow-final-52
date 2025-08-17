@@ -6,7 +6,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Search, Users, UserCheck, UserX } from "lucide-react";
 
@@ -33,7 +33,7 @@ export function ShareMaterialModal({
   onShared,
   material 
 }: ShareMaterialModalProps) {
-  const { profile } = useAuth();
+  const { profile } = useProfile();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);

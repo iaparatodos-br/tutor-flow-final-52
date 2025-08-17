@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -10,11 +10,16 @@ interface Profile {
   teacher_id: string | null;
 }
 
+// Cache para evitar consultas duplicadas
+const profileCache = new Map<string, Profile>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutos
+
 export const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const isLoadingProfile = useRef(false);
 
   useEffect(() => {
     console.log('useAuth: Iniciando verificação de autenticação');
@@ -27,58 +32,7 @@ export const useAuth = () => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Buscar perfil do usuário com timeout
-          try {
-            console.log('useAuth: Buscando perfil do usuário', { userId: session.user.id, email: session.user.email });
-            
-            // Criar uma Promise com timeout para evitar espera infinita
-            const timeoutPromise = new Promise((_, reject) => {
-              setTimeout(() => reject(new Error('Profile query timeout')), 5000);
-            });
-            
-            const queryPromise = supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .single();
-            
-            const result = await Promise.race([queryPromise, timeoutPromise]);
-            const { data, error } = result as any;
-            
-            console.log('useAuth: Resultado da query', { data, error, hasSession: !!session });
-            
-            if (!error && data) {
-              console.log('useAuth: Perfil encontrado com sucesso', data);
-              setProfile(data as Profile);
-            } else {
-              console.log('useAuth: Perfil não encontrado ou erro, criando perfil básico', { error, hasData: !!data });
-              // Criar perfil básico se não existir
-              const basicProfile = {
-                id: session.user.id,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
-                email: session.user.email || '',
-                role: 'professor' as const,
-                teacher_id: null
-              };
-              console.log('useAuth: Definindo perfil básico', basicProfile);
-              setProfile(basicProfile);
-            }
-          } catch (error) {
-            console.error('useAuth: Erro na busca do perfil (catch):', error);
-            // Criar perfil básico se houver erro ou timeout
-            const basicProfile = {
-              id: session.user.id,
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
-              email: session.user.email || '',
-              role: 'professor' as const,
-              teacher_id: null
-            };
-            console.log('useAuth: Definindo perfil básico após erro/timeout', basicProfile);
-            setProfile(basicProfile);
-          } finally {
-            console.log('useAuth: Finalizando loading do listener');
-            setLoading(false);
-          }
+          await loadProfile(session.user);
         } else {
           console.log('useAuth: Usuário deslogado');
           setProfile(null);
@@ -95,56 +49,7 @@ export const useAuth = () => {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        console.log('useAuth: Buscando perfil para sessão existente', { userId: session.user.id, email: session.user.email });
-        try {
-          // Criar uma Promise com timeout para evitar espera infinita
-          const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Profile query timeout')), 5000);
-          });
-          
-          const queryPromise = supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          
-          const result = await Promise.race([queryPromise, timeoutPromise]);
-          const { data, error } = result as any;
-          
-          console.log('useAuth: Resultado da query inicial', { data, error, hasSession: !!session });
-          
-          if (!error && data) {
-            console.log('useAuth: Perfil carregado para sessão existente', data);
-            setProfile(data as Profile);
-          } else {
-            console.log('useAuth: Erro ao carregar perfil para sessão existente, criando básico', { error, hasData: !!data });
-            // Criar perfil básico se não existir
-            const basicProfile = {
-              id: session.user.id,
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
-              email: session.user.email || '',
-              role: 'professor' as const,
-              teacher_id: null
-            };
-            console.log('useAuth: Definindo perfil básico inicial', basicProfile);
-            setProfile(basicProfile);
-          }
-        } catch (error) {
-          console.error('useAuth: Erro na busca do perfil inicial (catch/timeout):', error);
-          // Criar perfil básico se houver erro ou timeout
-          const basicProfile = {
-            id: session.user.id,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuário',
-            email: session.user.email || '',
-            role: 'professor' as const,
-            teacher_id: null
-          };
-          console.log('useAuth: Definindo perfil básico após erro/timeout inicial', basicProfile);
-          setProfile(basicProfile);
-        } finally {
-          console.log('useAuth: Finalizando loading inicial');
-          setLoading(false);
-        }
+        await loadProfile(session.user);
       } else {
         console.log('useAuth: Nenhuma sessão existente, finalizando loading');
         setLoading(false);
@@ -156,6 +61,75 @@ export const useAuth = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const loadProfile = async (user: User) => {
+    if (isLoadingProfile.current) {
+      console.log('useAuth: Já carregando perfil, pulando...');
+      return;
+    }
+    
+    isLoadingProfile.current = true;
+    
+    try {
+      console.log('useAuth: Buscando perfil do usuário', { userId: user.id, email: user.email });
+      
+      // Verificar cache primeiro
+      const cacheKey = user.id;
+      const cached = profileCache.get(cacheKey);
+      if (cached) {
+        console.log('useAuth: Perfil encontrado no cache', cached);
+        setProfile(cached);
+        setLoading(false);
+        isLoadingProfile.current = false;
+        return;
+      }
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      console.log('useAuth: Resultado da query', { data, error });
+      
+      if (!error && data) {
+        console.log('useAuth: Perfil encontrado com sucesso', data);
+        const profileData = data as Profile;
+        profileCache.set(cacheKey, profileData);
+        setProfile(profileData);
+      } else {
+        console.log('useAuth: Perfil não encontrado, criando perfil básico', { error });
+        // Criar perfil básico se não existir
+        const basicProfile = {
+          id: user.id,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Usuário',
+          email: user.email || '',
+          role: 'professor' as const,
+          teacher_id: null
+        };
+        console.log('useAuth: Definindo perfil básico', basicProfile);
+        profileCache.set(cacheKey, basicProfile);
+        setProfile(basicProfile);
+      }
+    } catch (error) {
+      console.error('useAuth: Erro na busca do perfil:', error);
+      // Criar perfil básico se houver erro
+      const basicProfile = {
+        id: user.id,
+        name: user.user_metadata?.name || user.email?.split('@')[0] || 'Usuário',
+        email: user.email || '',
+        role: 'professor' as const,
+        teacher_id: null
+      };
+      console.log('useAuth: Definindo perfil básico após erro', basicProfile);
+      profileCache.set(user.id, basicProfile);
+      setProfile(basicProfile);
+    } finally {
+      console.log('useAuth: Finalizando loading');
+      setLoading(false);
+      isLoadingProfile.current = false;
+    }
+  };
 
   const signUp = async (email: string, password: string, name: string, role: 'professor' | 'aluno' = 'professor') => {
     const { error } = await supabase.auth.signUp({

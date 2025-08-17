@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -34,10 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const initialized = useRef(false);
 
-  console.log('AuthProvider: Inicializando contexto de autenticação');
-
-  const loadProfile = async (user: User): Promise<Profile | null> => {
+  const loadProfile = useCallback(async (user: User): Promise<Profile | null> => {
     try {
       console.log('AuthProvider: Carregando perfil do usuário', { userId: user.id, email: user.email });
       
@@ -111,10 +110,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('AuthProvider: Erro no loadProfile:', error);
       return null;
     }
-  };
+  }, []);
 
   useEffect(() => {
-    console.log('AuthProvider: Configurando listeners de autenticação');
+    if (initialized.current) {
+      console.log('AuthProvider: Já inicializado, ignorando');
+      return;
+    }
+    
+    console.log('AuthProvider: Inicializando contexto de autenticação');
+    initialized.current = true;
 
     // Configurar listener de mudanças de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -133,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    // Verificar sessão existente
+    // Verificar sessão existente apenas uma vez
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('AuthProvider: Verificando sessão existente', { hasSession: !!session });
       
@@ -147,8 +152,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      console.log('AuthProvider: Limpando listeners');
+      subscription.unsubscribe();
+    };
+  }, [loadProfile]);
 
   const signUp = async (email: string, password: string, name: string, role: 'professor' | 'aluno' = 'professor') => {
     const redirectUrl = `${window.location.origin}/`;

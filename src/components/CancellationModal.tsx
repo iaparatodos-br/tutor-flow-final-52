@@ -49,14 +49,22 @@ export function CancellationModal({
 
   const loadPolicyAndCalculateCharge = async () => {
     try {
-      // Get class details to find teacher
+      // Get class details with service information
       const { data: classData, error: classError } = await supabase
         .from('classes')
-        .select('teacher_id, class_date')
+        .select(`
+          teacher_id, 
+          class_date, 
+          service_id,
+          class_services!inner(price)
+        `)
         .eq('id', classId)
         .single();
 
-      if (classError || !classData) return;
+      if (classError || !classData) {
+        console.error('Error loading class data:', classError);
+        return;
+      }
 
       // Get teacher's policy
       const { data: policyData, error: policyError } = await supabase
@@ -71,9 +79,10 @@ export function CancellationModal({
         return;
       }
 
+      // Use default policy if none exists
       const currentPolicy = policyData || {
         hours_before_class: 24,
-        charge_percentage: 0,
+        charge_percentage: 50,
         allow_amnesty: true
       };
 
@@ -89,14 +98,21 @@ export function CancellationModal({
       // Only students get charged for late cancellations
       if (!isProfessor && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
         setWillBeCharged(true);
-        const baseAmount = 100; // This should come from class data
-        setChargeAmount((baseAmount * currentPolicy.charge_percentage) / 100);
+        // Use actual service price or default to 100
+        const baseAmount = classData.class_services?.price || 100;
+        setChargeAmount((Number(baseAmount) * currentPolicy.charge_percentage) / 100);
       } else {
         setWillBeCharged(false);
         setChargeAmount(0);
       }
     } catch (error) {
       console.error('Error loading policy:', error);
+      // Set default policy on error
+      setPolicy({
+        hours_before_class: 24,
+        charge_percentage: 50,
+        allow_amnesty: true
+      });
     }
   };
 
@@ -157,30 +173,46 @@ export function CancellationModal({
         <div className="space-y-4">
           {policy && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm">
+              {/* Status da aula */}
+              <div className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="h-4 w-4" />
                 <span>
                   Faltam {Math.max(0, Math.round(hoursUntilClass))} horas para a aula
                 </span>
               </div>
 
+              {/* Política de cancelamento */}
+              <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
+                <div className="font-medium text-foreground">Política de Cancelamento:</div>
+                <div>• Prazo limite para cancelamento gratuito: <strong>{policy.hours_before_class}h</strong> antes da aula</div>
+                {policy.charge_percentage > 0 && (
+                  <div>• Cobrança por cancelamento tardio: <strong>{policy.charge_percentage}%</strong> do valor da aula</div>
+                )}
+                {policy.allow_amnesty && (
+                  <div>• O professor pode conceder amnistia em casos especiais</div>
+                )}
+              </div>
+
+              {/* Alerta sobre cobrança */}
               {willBeCharged ? (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>Atenção!</strong> Este cancelamento será cobrado.<br />
-                    • Prazo limite: {policy.hours_before_class}h antes da aula<br />
-                    • Valor da cobrança: R$ {chargeAmount.toFixed(2)} ({policy.charge_percentage}% do valor da aula)
+                    <strong>⚠️ Cancelamento com Cobrança</strong><br />
+                    O prazo limite de {policy.hours_before_class}h já passou.<br />
+                    <strong>Valor da cobrança: R$ {chargeAmount.toFixed(2)}</strong><br />
+                    <small>Uma fatura será gerada e enviada por email.</small>
                   </AlertDescription>
                 </Alert>
               ) : (
-                <Alert>
-                  <DollarSign className="h-4 w-4" />
-                  <AlertDescription>
-                    Este cancelamento não gerará cobrança.
-                    {!isProfessor && policy.hours_before_class && (
-                      <span> (Cancelamento dentro do prazo de {policy.hours_before_class}h)</span>
-                    )}
+                <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                  <DollarSign className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800 dark:text-green-200">
+                    <strong>✅ Cancelamento Gratuito</strong><br />
+                    {isProfessor ? 
+                      "Professores podem cancelar aulas sem cobrança." :
+                      `Cancelamento realizado dentro do prazo de ${policy.hours_before_class}h.`
+                    }
                   </AlertDescription>
                 </Alert>
               )}

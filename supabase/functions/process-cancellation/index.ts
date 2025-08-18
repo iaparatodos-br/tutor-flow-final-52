@@ -84,7 +84,21 @@ serve(async (req) => {
 
     // Create cancellation invoice if needed
     if (shouldCharge) {
-      const baseAmount = 100; // Base class price - this should come from class data
+      // Get service price if available, otherwise default
+      let baseAmount = 100; // Default fallback
+      
+      if (classData.service_id) {
+        const { data: serviceData } = await supabaseClient
+          .from('class_services')
+          .select('price')
+          .eq('id', classData.service_id)
+          .single();
+        
+        if (serviceData?.price) {
+          baseAmount = Number(serviceData.price);
+        }
+      }
+      
       const chargeAmount = (baseAmount * chargePercentage) / 100;
 
       const { error: invoiceError } = await supabaseClient

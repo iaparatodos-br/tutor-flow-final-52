@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -14,7 +15,8 @@ interface DashboardStats {
 }
 
 export default function Dashboard() {
-  const { profile, isProfessor } = useProfile();
+  const { profile, isProfessor, isAluno } = useProfile();
+  const { loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
@@ -25,12 +27,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (profile?.id && isProfessor) {
-      loadStats();
-    } else {
-      setLoading(false);
+    if (!authLoading && profile?.id) {
+      if (isProfessor) {
+        loadStats();
+      } else {
+        setLoading(false);
+      }
     }
-  }, [profile, isProfessor]);
+  }, [profile, isProfessor, authLoading]);
 
   const loadStats = async () => {
     if (!profile?.id) return;
@@ -84,7 +88,21 @@ export default function Dashboard() {
     }
   };
 
-  if (!isProfessor) {
+  // Show loading until we're sure of user role
+  if (authLoading || !profile || (!isProfessor && !isAluno)) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center space-y-4">
+            <div className="h-8 bg-muted/50 rounded animate-pulse mx-auto max-w-xs" />
+            <div className="h-4 bg-muted/30 rounded animate-pulse mx-auto max-w-md" />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isAluno) {
     return (
       <Layout>
         <div className="max-w-4xl mx-auto">

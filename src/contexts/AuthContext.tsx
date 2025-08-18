@@ -34,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const initialized = useRef(false);
 
   const loadProfile = useCallback(async (user: User): Promise<Profile | null> => {
@@ -129,27 +130,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user || null);
 
       if (session?.user) {
+        setProfileLoading(true);
         const userProfile = await loadProfile(session.user);
         setProfile(userProfile);
+        setProfileLoading(false);
       } else {
         setProfile(null);
+        setProfileLoading(false);
       }
       
       setLoading(false);
     });
 
     // Verificar sessão existente apenas uma vez
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       console.log('AuthProvider: Verificando sessão existente', { hasSession: !!session });
       
       setSession(session);
       setUser(session?.user || null);
       
       if (session?.user) {
-        loadProfile(session.user).then(setProfile);
-      } else {
-        setLoading(false);
+        setProfileLoading(true);
+        const userProfile = await loadProfile(session.user);
+        setProfile(userProfile);
+        setProfileLoading(false);
       }
+      setLoading(false);
     });
 
     return () => {
@@ -198,10 +204,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     session,
     profile,
-    loading,
+    loading: loading || profileLoading,
     isAuthenticated: !!user && !!session,
-    isProfessor: profile?.role === 'professor',
-    isAluno: profile?.role === 'aluno',
+    isProfessor: !!profile && profile.role === 'professor',
+    isAluno: !!profile && profile.role === 'aluno',
     signUp,
     signIn,
     signOut

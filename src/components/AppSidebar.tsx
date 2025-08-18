@@ -12,6 +12,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Sidebar,
   SidebarContent,
@@ -42,11 +43,41 @@ const alunoItems = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
-  const { profile, isProfessor } = useProfile();
-  const { signOut } = useAuth();
+  const { profile, isProfessor, isAluno } = useProfile();
+  const { signOut, loading } = useAuth();
   const currentPath = location.pathname;
   
   const isCollapsed = state === 'collapsed';
+  
+  // Don't render role-specific content until we're sure of the user's role
+  if (loading || !profile || (!isProfessor && !isAluno)) {
+    return (
+      <Sidebar className="w-64 border-r bg-card">
+        <div className="flex h-full flex-col">
+          <div className="flex h-16 items-center border-b px-4">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white">
+                <GraduationCap className="h-4 w-4" />
+              </div>
+              {!isCollapsed && (
+                <span className="text-lg font-semibold bg-gradient-primary bg-clip-text text-transparent">
+                  TutorFlow
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 p-4">
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </Sidebar>
+    );
+  }
+  
   const items = isProfessor ? professorItems : alunoItems;
   
   const isActive = (path: string) => currentPath === path;

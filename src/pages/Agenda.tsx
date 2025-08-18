@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +43,8 @@ interface ClassService {
 }
 
 export default function Agenda() {
-  const { profile, isProfessor } = useProfile();
+  const { profile, isProfessor, isAluno } = useProfile();
+  const { loading: authLoading } = useAuth();
   const { toast } = useToast();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
@@ -66,7 +68,7 @@ export default function Agenda() {
   }>({ isOpen: false, classData: null });
 
   useEffect(() => {
-    if (profile) {
+    if (!authLoading && profile) {
       loadClasses();
       if (isProfessor) {
         loadStudents();
@@ -74,7 +76,7 @@ export default function Agenda() {
         loadServices();
       }
     }
-  }, [profile, isProfessor]);
+  }, [profile, isProfessor, authLoading]);
 
   const loadClasses = async () => {
     if (!profile?.id) return;
@@ -379,6 +381,25 @@ export default function Agenda() {
     loadClasses(); // Reload classes to show updated status
     setReportModal({ isOpen: false, classData: null });
   };
+
+  // Show loading until we're sure of user role
+  if (authLoading || !profile || (!isProfessor && !isAluno)) {
+    return (
+      <Layout>
+        <div className="max-w-6xl mx-auto space-y-6">
+          <div className="space-y-2">
+            <div className="h-8 bg-muted/50 rounded animate-pulse max-w-xs" />
+            <div className="h-4 bg-muted/30 rounded animate-pulse max-w-md" />
+          </div>
+          <div className="grid gap-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-32 bg-muted/20 rounded animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

@@ -23,7 +23,19 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
-  const { profile, isProfessor, isAluno } = useAuth();
+  const { loading, profile, isProfessor, isAluno } = useAuth();
+  
+  // Aguardar o carregamento completo do auth e profile
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-subtle">
+        <div className="text-center">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto"></div>
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>

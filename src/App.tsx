@@ -8,6 +8,7 @@ import { ProfileProvider } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 import Dashboard from "./pages/Dashboard";
 import Alunos from "./pages/Alunos";
 import PerfilAluno from "./pages/PerfilAluno";
@@ -23,7 +24,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
-  const { loading, profile, isProfessor, isAluno } = useAuth();
+  const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange } = useAuth();
   
   // Aguardar o carregamento completo do auth e profile
   if (loading) {
@@ -34,6 +35,17 @@ const AppWithProviders = () => {
           <p className="text-muted-foreground">Carregando...</p>
         </div>
       </div>
+    );
+  }
+
+  // If authenticated but needs password change, show force password change
+  if (isAuthenticated && needsPasswordChange) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="*" element={<ForcePasswordChange />} />
+        </Routes>
+      </BrowserRouter>
     );
   }
   

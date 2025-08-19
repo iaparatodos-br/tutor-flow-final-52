@@ -6,8 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GraduationCap, Loader2, User, BookOpen } from "lucide-react";
+import { GraduationCap, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Auth() {
@@ -15,10 +14,10 @@ export default function Auth() {
   const { toast } = useToast();
   
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", role: "professor" as "professor" | "aluno" });
+  const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState({ email: false, password: false });
-  const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false, role: false });
+  const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false });
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -63,12 +62,11 @@ export default function Auth() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate form
+    // Validate form (role removido, todos serão professores)
     const errors = {
       name: !signupForm.name,
       email: !signupForm.email,
       password: !signupForm.password || signupForm.password.length < 6,
-      role: !signupForm.role
     };
     setSignupErrors(errors);
     
@@ -78,7 +76,8 @@ export default function Auth() {
     
     setLoading(true);
     
-    const { error } = await signUp(signupForm.email, signupForm.password, signupForm.name, signupForm.role);
+    // Chama signUp SEM passar role (AuthContext já define o default como 'professor')
+    const { error } = await signUp(signupForm.email, signupForm.password, signupForm.name);
     
     if (error) {
       toast({
@@ -187,34 +186,6 @@ export default function Auth() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-role">Tipo de usuário</Label>
-                    <Select 
-                      value={signupForm.role} 
-                      onValueChange={(value: "professor" | "aluno") => {
-                        setSignupForm(prev => ({ ...prev, role: value }));
-                        setSignupErrors(prev => ({ ...prev, role: false }));
-                      }}
-                    >
-                      <SelectTrigger className={signupErrors.role ? "border-destructive" : ""}>
-                        <SelectValue placeholder="Selecione seu tipo de usuário" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="professor">
-                          <div className="flex items-center gap-2">
-                            <BookOpen className="h-4 w-4" />
-                            <span>Professor</span>
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="aluno">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            <span>Aluno</span>
-                          </div>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">Nome completo</Label>
                     <Input

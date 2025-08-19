@@ -76,6 +76,7 @@ export default function Alunos() {
       
       // Create authentication account for the student
       const redirectUrl = `${window.location.origin}/`;
+      console.log('Criando aluno via signUp com metadata teacher_id:', profile.id);
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: tempPassword,
@@ -83,7 +84,8 @@ export default function Alunos() {
           emailRedirectTo: redirectUrl,
           data: {
             name: formData.name,
-            role: 'aluno'
+            role: 'aluno',
+            teacher_id: profile.id, // importante para o trigger já salvar o vínculo
           }
         }
       });

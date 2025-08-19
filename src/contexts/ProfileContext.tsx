@@ -6,7 +6,6 @@ export interface Profile {
   email: string | null;
   role: 'professor' | 'aluno';
   teacher_id?: string | null;
-  password_changed?: boolean;
 }
 
 interface ProfileContextType {

@@ -8,7 +8,6 @@ export interface Profile {
   email: string;
   role: 'professor' | 'aluno';
   teacher_id?: string;
-  password_changed?: boolean;
 }
 
 interface AuthContextType {
@@ -19,7 +18,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isProfessor: boolean;
   isAluno: boolean;
-  needsPasswordChange: boolean;
   signUp: (email: string, password: string, name: string, role?: 'professor' | 'aluno') => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -122,8 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: existingProfile.name || user.email?.split('@')[0] || 'Usuário',
           email: user.email || '',
           role: (existingProfile.role as 'professor' | 'aluno') || 'professor',
-          teacher_id: existingProfile.teacher_id,
-          password_changed: existingProfile.password_changed
+          teacher_id: existingProfile.teacher_id
         };
       } else {
         // Criar perfil se não existir
@@ -156,8 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: createdProfile.name,
           email: createdProfile.email,
           role: createdProfile.role as 'professor' | 'aluno',
-          teacher_id: createdProfile.teacher_id,
-          password_changed: createdProfile.password_changed
+          teacher_id: createdProfile.teacher_id
         };
 
         console.log('AuthProvider: Perfil criado com sucesso');
@@ -332,7 +328,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user && !!session,
     isProfessor: !!profile && profile.role === 'professor',
     isAluno: !!profile && profile.role === 'aluno',
-    needsPasswordChange: !!profile && profile.role === 'aluno' && profile.password_changed === false,
     signUp,
     signIn,
     signOut

@@ -1,16 +1,1 @@
 project_id = "nwgomximjevgczwuyqcx"
-
-[functions.process-cancellation]
-verify_jwt = true
-
-[functions.automated-billing]
-verify_jwt = true
-
-[functions.send-class-report-notification]
-verify_jwt = true
-
-[functions.setup-billing-automation]
-verify_jwt = true
-
-[functions.create-student]
-verify_jwt = true

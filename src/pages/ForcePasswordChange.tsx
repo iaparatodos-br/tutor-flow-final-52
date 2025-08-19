@@ -15,6 +15,9 @@ export default function ForcePasswordChange() {
   const { profile } = useAuth();
   const { toast } = useToast();
 
+  // Check if user was invited (doesn't have a current password)
+  const isInvitedUser = profile?.password_changed === false;
+
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -60,7 +63,9 @@ export default function ForcePasswordChange() {
 
       toast({
         title: "Sucesso",
-        description: "Senha alterada com sucesso! Redirecionando...",
+        description: isInvitedUser 
+          ? "Senha criada com sucesso! Redirecionando..."
+          : "Senha alterada com sucesso! Redirecionando...",
       });
 
       // Small delay before redirect to show success message
@@ -85,25 +90,30 @@ export default function ForcePasswordChange() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <CardTitle className="text-2xl font-bold">
-            Alterar Senha Obrigatória
+            {isInvitedUser ? "Criar Sua Senha" : "Alterar Senha Obrigatória"}
           </CardTitle>
           <CardDescription>
-            Por segurança, é necessário criar uma nova senha na primeira vez que você acessa o sistema.
+            {isInvitedUser 
+              ? "Bem-vindo! Para acessar o sistema, é necessário criar sua senha."
+              : "Por segurança, é necessário criar uma nova senha na primeira vez que você acessa o sistema."
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handlePasswordChange} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Senha Atual</Label>
-              <Input
-                id="current-password"
-                type="password"
-                placeholder="Digite sua senha atual"
-                value={currentPassword}
-                onChange={(e) => setCurrentPassword(e.target.value)}
-                required
-              />
-            </div>
+            {!isInvitedUser && (
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Senha Atual</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  placeholder="Digite sua senha atual"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             
             <div className="space-y-2">
               <Label htmlFor="new-password">Nova Senha</Label>
@@ -134,16 +144,21 @@ export default function ForcePasswordChange() {
             <Button 
               type="submit" 
               className="w-full"
-              disabled={isLoading || !currentPassword || !newPassword || !confirmPassword}
+              disabled={isLoading || (!isInvitedUser && !currentPassword) || !newPassword || !confirmPassword}
             >
-              {isLoading ? "Alterando..." : "Alterar Senha"}
+              {isLoading ? 
+                (isInvitedUser ? "Criando..." : "Alterando...") : 
+                (isInvitedUser ? "Criar Senha" : "Alterar Senha")
+              }
             </Button>
           </form>
 
           <div className="mt-4 p-3 bg-muted rounded-md">
             <p className="text-sm text-muted-foreground">
-              <strong>Importante:</strong> Esta alteração é obrigatória e não pode ser ignorada. 
-              Você será redirecionado para o sistema após alterar sua senha com sucesso.
+              <strong>Importante:</strong> {isInvitedUser 
+                ? "É necessário criar sua senha para acessar o sistema. Você será redirecionado após criar sua senha com sucesso."
+                : "Esta alteração é obrigatória e não pode ser ignorada. Você será redirecionado para o sistema após alterar sua senha com sucesso."
+              }
             </p>
           </div>
         </CardContent>

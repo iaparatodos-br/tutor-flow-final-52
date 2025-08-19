@@ -71,63 +71,37 @@ export default function Alunos() {
     setSubmitting(true);
     
     try {
-      // Generate a temporary password for the student
-      const tempPassword = `temp${Math.random().toString(36).slice(-8)}`;
-      
-      // Create authentication account for the student
+      // Criar aluno via Edge Function com privilégios de admin
       const redirectUrl = `${window.location.origin}/`;
-      console.log('Criando aluno via signUp com metadata teacher_id:', profile.id);
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: tempPassword,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            name: formData.name,
-            role: 'aluno',
-            teacher_id: profile.id, // importante para o trigger já salvar o vínculo
-          }
+
+      const { data, error } = await supabase.functions.invoke('create-student', {
+        body: {
+          name: formData.name,
+          email: formData.email,
+          teacher_id: profile.id,
+          redirect_url: redirectUrl,
+          guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
+          guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
+          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
+          billing_day: formData.billing_day,
+          notify_professor_email: profile.email,
+          professor_name: profile.name,
         }
       });
 
-      if (authError) {
-        console.error('Erro ao criar conta de autenticação:', authError);
+      if (error) {
+        console.error('Erro ao convidar aluno:', error);
         toast({
-          title: "Erro",
-          description: authError.message === "User already registered" 
-            ? "Este e-mail já está registrado" 
-            : "Erro ao criar conta do aluno.",
-          variant: "destructive",
+          title: 'Erro',
+          description: typeof error === 'string' ? error : (error.message || 'Erro ao convidar o aluno.'),
+          variant: 'destructive',
         });
         return;
       }
 
-      // Update the profile with additional information after authentication account is created
-      if (authData.user) {
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({
-            teacher_id: profile.id,
-            guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
-            guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-            guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
-            billing_day: formData.billing_day
-          })
-          .eq('id', authData.user.id);
-
-        if (updateError) {
-          console.error('Erro ao atualizar perfil:', updateError);
-          toast({
-            title: "Atenção",
-            description: "Conta criada, mas houve erro ao salvar informações adicionais.",
-            variant: "destructive",
-          });
-        }
-      }
-
       toast({
-        title: "Aluno adicionado com sucesso!",
-        description: `${formData.name} foi cadastrado e receberá um email de confirmação. Senha temporária: ${tempPassword}`,
+        title: 'Aluno convidado com sucesso!',
+        description: `${formData.name} receberá um e-mail para concluir o cadastro.`,
       });
       
       setIsAddDialogOpen(false);
@@ -136,9 +110,9 @@ export default function Alunos() {
     } catch (error: any) {
       console.error('Erro ao adicionar aluno:', error);
       toast({
-        title: "Erro ao adicionar aluno",
-        description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        title: 'Erro ao adicionar aluno',
+        description: error.message || 'Tente novamente mais tarde',
+        variant: 'destructive',
       });
     } finally {
       setSubmitting(false);

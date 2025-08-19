@@ -696,6 +696,7 @@ export type Database = {
           guardian_phone: string | null
           id: string
           name: string
+          password_changed: boolean
           preferred_payment_account_id: string | null
           role: string
           stripe_customer_id: string | null
@@ -711,6 +712,7 @@ export type Database = {
           guardian_phone?: string | null
           id?: string
           name: string
+          password_changed?: boolean
           preferred_payment_account_id?: string | null
           role: string
           stripe_customer_id?: string | null
@@ -726,6 +728,7 @@ export type Database = {
           guardian_phone?: string | null
           id?: string
           name?: string
+          password_changed?: boolean
           preferred_payment_account_id?: string | null
           role?: string
           stripe_customer_id?: string | null

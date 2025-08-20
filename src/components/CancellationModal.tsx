@@ -56,10 +56,10 @@ export function CancellationModal({
           teacher_id, 
           class_date, 
           service_id,
-          class_services!inner(price)
+          class_services(price)
         `)
         .eq('id', classId)
-        .single();
+        .maybeSingle();
 
       if (classError || !classData) {
         console.error('Error loading class data:', classError);

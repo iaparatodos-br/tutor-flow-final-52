@@ -31,7 +31,7 @@ serve(async (req) => {
       .from('classes')
       .select('*, profiles!classes_teacher_id_fkey(name)')
       .eq('id', class_id)
-      .single();
+      .maybeSingle();
 
     if (classError || !classData) {
       throw new Error('Aula não encontrada');
@@ -43,9 +43,11 @@ serve(async (req) => {
       .select('*')
       .eq('teacher_id', classData.teacher_id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
-    if (policyError) {
+    if (policyError && policyError.code !== 'PGRST116') {
+      console.error('Error fetching cancellation policy:', policyError);
+    } else if (!policy) {
       console.log('No active cancellation policy found, using defaults');
     }
 
@@ -88,11 +90,15 @@ serve(async (req) => {
       let baseAmount = 100; // Default fallback
       
       if (classData.service_id) {
-        const { data: serviceData } = await supabaseClient
+        const { data: serviceData, error: serviceError } = await supabaseClient
           .from('class_services')
           .select('price')
           .eq('id', classData.service_id)
-          .single();
+          .maybeSingle();
+        
+        if (serviceError && serviceError.code !== 'PGRST116') {
+          console.error('Error fetching service data:', serviceError);
+        }
         
         if (serviceData?.price) {
           baseAmount = Number(serviceData.price);

@@ -60,19 +60,26 @@ serve(async (req) => {
     const hoursUntilClass = (classDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let shouldCharge = false;
-    let newStatus = 'cancelada_sem_cobranca';
     
     // Only charge students who cancel late
     if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
       shouldCharge = true;
-      newStatus = 'cancelada_com_cobranca';
     }
 
-    // Update class
+    console.log('Processing cancellation:', {
+      class_id,
+      cancelled_by_type,
+      hoursUntilClass,
+      hoursBeforeClass,
+      chargePercentage,
+      shouldCharge
+    });
+
+    // Update class - always use 'cancelada' status, differentiate with charge_applied boolean
     const { error: updateError } = await supabaseClient
       .from('classes')
       .update({
-        status: newStatus,
+        status: 'cancelada',
         cancellation_reason: reason,
         cancelled_at: now.toISOString(),
         cancelled_by: cancelled_by,
@@ -81,6 +88,7 @@ serve(async (req) => {
       .eq('id', class_id);
 
     if (updateError) {
+      console.error('Error updating class:', updateError);
       throw new Error('Erro ao atualizar aula');
     }
 

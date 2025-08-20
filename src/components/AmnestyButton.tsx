@@ -29,11 +29,10 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
     setLoading(true);
     try {
       // Start a transaction-like approach
-      // First, update the class
+      // First, update the class - keep status as 'cancelada', just remove charge
       const { error: classError } = await supabase
         .from('classes')
         .update({
-          status: 'cancelada_sem_cobranca',
           amnesty_granted: true,
           amnesty_granted_by: profile.id,
           amnesty_granted_at: new Date().toISOString(),

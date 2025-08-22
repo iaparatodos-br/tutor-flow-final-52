@@ -21,10 +21,19 @@ export default function ForcePasswordChange() {
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       toast({
         title: "Erro",
-        description: "A nova senha deve ter pelo menos 6 caracteres",
+        description: "A nova senha deve ter pelo menos 8 caracteres",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+      toast({
+        title: "Erro", 
+        description: "A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número",
         variant: "destructive",
       });
       return;
@@ -120,11 +129,11 @@ export default function ForcePasswordChange() {
               <Input
                 id="new-password"
                 type="password"
-                placeholder="Digite sua nova senha (min. 6 caracteres)"
+                placeholder="Mínimo 8 caracteres com maiúscula, minúscula e número"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 
@@ -137,7 +146,7 @@ export default function ForcePasswordChange() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
             </div>
 

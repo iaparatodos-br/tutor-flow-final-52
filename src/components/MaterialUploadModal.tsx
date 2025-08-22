@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Upload, X, FileText, AlertCircle } from "lucide-react";
+import { validateFileUpload, sanitizeInput } from "@/utils/validation";
 
 interface MaterialUploadModalProps {
   isOpen: boolean;
@@ -64,20 +65,14 @@ export function MaterialUploadModal({
     }
   };
 
-  const validateFile = (file: File): string | null => {
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return "Tipo de arquivo não suportado. Use PDF, DOCX, PPTX, JPG, PNG, GIF ou TXT.";
-    }
-    if (file.size > MAX_FILE_SIZE) {
-      return "Arquivo muito grande. O limite é 25MB.";
-    }
-    return null;
+  const validateFile = (file: File): { valid: boolean; errors: string[] } => {
+    return validateFileUpload(file);
   };
 
   const handleFileSelect = (selectedFile: File) => {
-    const error = validateFile(selectedFile);
-    if (error) {
-      toast.error(error);
+    const validation = validateFile(selectedFile);
+    if (!validation.valid) {
+      validation.errors.forEach(error => toast.error(error));
       return;
     }
     setFile(selectedFile);
@@ -136,8 +131,8 @@ export function MaterialUploadModal({
       const { error: dbError } = await supabase
         .from('materials')
         .insert({
-          title: title.trim(),
-          description: description.trim() || null,
+          title: sanitizeInput(title.trim()),
+          description: description.trim() ? sanitizeInput(description.trim()) : null,
           file_name: file.name,
           file_path: filePath,
           file_size: file.size,

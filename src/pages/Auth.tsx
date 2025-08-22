@@ -26,9 +26,9 @@ export default function Auth() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate form
+    // Enhanced validation
     const errors = {
-      email: !loginForm.email,
+      email: !loginForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginForm.email),
       password: !loginForm.password
     };
     setLoginErrors(errors);
@@ -62,11 +62,13 @@ export default function Auth() {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate form (role removido, todos serão professores)
+    // Enhanced validation with security requirements
     const errors = {
-      name: !signupForm.name,
-      email: !signupForm.email,
-      password: !signupForm.password || signupForm.password.length < 6,
+      name: !signupForm.name || signupForm.name.trim().length < 2,
+      email: !signupForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signupForm.email),
+      password: !signupForm.password || 
+                signupForm.password.length < 8 ||
+                !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(signupForm.password),
     };
     setSignupErrors(errors);
     
@@ -221,7 +223,7 @@ export default function Auth() {
                     <Input
                       id="signup-password"
                       type="password"
-                      placeholder="Escolha uma senha segura"
+                      placeholder="Mínimo 8 caracteres com maiúscula, minúscula e número"
                       value={signupForm.password}
                       onChange={(e) => {
                         setSignupForm(prev => ({ ...prev, password: e.target.value }));
@@ -229,7 +231,7 @@ export default function Auth() {
                       }}
                       className={signupErrors.password ? "border-destructive" : ""}
                       required
-                      minLength={6}
+                      minLength={8}
                     />
                   </div>
                 </CardContent>

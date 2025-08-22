@@ -4,7 +4,7 @@ project_id = "nwgomximjevgczwuyqcx"
 verify_jwt = true
 
 [functions.automated-billing]
-verify_jwt = true
+verify_jwt = false
 
 [functions.send-class-report-notification]
 verify_jwt = true
@@ -14,3 +14,15 @@ verify_jwt = true
 
 [functions.create-student]
 verify_jwt = true
+
+[functions.create-connect-account]
+verify_jwt = true
+
+[functions.create-connect-onboarding-link]
+verify_jwt = true
+
+[functions.create-payment-intent-connect]
+verify_jwt = false
+
+[functions.webhook-stripe-connect]
+verify_jwt = false

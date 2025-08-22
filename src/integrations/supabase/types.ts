@@ -436,16 +436,22 @@ export type Database = {
       invoices: {
         Row: {
           amount: number
+          barcode: string | null
+          boleto_url: string | null
           cancellation_policy_id: string | null
           class_id: string | null
           created_at: string | null
           description: string | null
           due_date: string
+          gateway_provider: string | null
           id: string
           invoice_type: string | null
+          linha_digitavel: string | null
           original_amount: number | null
           payment_due_date: string | null
           payment_method: string | null
+          pix_copy_paste: string | null
+          pix_qr_code: string | null
           sent_to_guardian: boolean | null
           status: string
           stripe_invoice_id: string | null
@@ -457,16 +463,22 @@ export type Database = {
         }
         Insert: {
           amount: number
+          barcode?: string | null
+          boleto_url?: string | null
           cancellation_policy_id?: string | null
           class_id?: string | null
           created_at?: string | null
           description?: string | null
           due_date: string
+          gateway_provider?: string | null
           id?: string
           invoice_type?: string | null
+          linha_digitavel?: string | null
           original_amount?: number | null
           payment_due_date?: string | null
           payment_method?: string | null
+          pix_copy_paste?: string | null
+          pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
           stripe_invoice_id?: string | null
@@ -478,16 +490,22 @@ export type Database = {
         }
         Update: {
           amount?: number
+          barcode?: string | null
+          boleto_url?: string | null
           cancellation_policy_id?: string | null
           class_id?: string | null
           created_at?: string | null
           description?: string | null
           due_date?: string
+          gateway_provider?: string | null
           id?: string
           invoice_type?: string | null
+          linha_digitavel?: string | null
           original_amount?: number | null
           payment_due_date?: string | null
           payment_method?: string | null
+          pix_copy_paste?: string | null
+          pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
           stripe_invoice_id?: string | null
@@ -643,6 +661,11 @@ export type Database = {
           pix_key: string | null
           pix_key_type: string | null
           stripe_account_id: string | null
+          stripe_charges_enabled: boolean | null
+          stripe_connect_account_id: string | null
+          stripe_details_submitted: boolean | null
+          stripe_onboarding_status: string | null
+          stripe_payouts_enabled: boolean | null
           teacher_id: string
           updated_at: string
         }
@@ -662,6 +685,11 @@ export type Database = {
           pix_key?: string | null
           pix_key_type?: string | null
           stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean | null
+          stripe_connect_account_id?: string | null
+          stripe_details_submitted?: boolean | null
+          stripe_onboarding_status?: string | null
+          stripe_payouts_enabled?: boolean | null
           teacher_id: string
           updated_at?: string
         }
@@ -681,6 +709,11 @@ export type Database = {
           pix_key?: string | null
           pix_key_type?: string | null
           stripe_account_id?: string | null
+          stripe_charges_enabled?: boolean | null
+          stripe_connect_account_id?: string | null
+          stripe_details_submitted?: boolean | null
+          stripe_onboarding_status?: string | null
+          stripe_payouts_enabled?: boolean | null
           teacher_id?: string
           updated_at?: string
         }
@@ -751,6 +784,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_connect_accounts: {
+        Row: {
+          account_type: string
+          capabilities: Json | null
+          charges_enabled: boolean | null
+          created_at: string
+          details_submitted: boolean | null
+          id: string
+          payouts_enabled: boolean | null
+          requirements: Json | null
+          stripe_account_id: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_type?: string
+          capabilities?: Json | null
+          charges_enabled?: boolean | null
+          created_at?: string
+          details_submitted?: boolean | null
+          id?: string
+          payouts_enabled?: boolean | null
+          requirements?: Json | null
+          stripe_account_id: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_type?: string
+          capabilities?: Json | null
+          charges_enabled?: boolean | null
+          created_at?: string
+          details_submitted?: boolean | null
+          id?: string
+          payouts_enabled?: boolean | null
+          requirements?: Json | null
+          stripe_account_id?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       working_hours: {
         Row: {

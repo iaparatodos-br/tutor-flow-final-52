@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { PaymentAccountModal } from "@/components/PaymentAccountModal";
+import { StripeConnectOnboarding } from "@/components/StripeConnectOnboarding";
 import { 
   CreditCard, 
   Plus, 
@@ -239,19 +240,23 @@ export function PaymentAccountsManager() {
       </div>
 
       {accounts.length === 0 ? (
-        <Card className="shadow-card">
-          <CardContent className="text-center py-12">
-            <CreditCard className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="text-lg font-medium mb-2">Nenhuma conta cadastrada</h3>
-            <p className="text-muted-foreground mb-6">
-              Cadastre suas contas para recebimento de pagamentos
-            </p>
-            <Button onClick={() => setModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Cadastrar primeira conta
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card className="shadow-card">
+            <CardContent className="text-center py-12">
+              <CreditCard className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium mb-2">Nenhuma conta cadastrada</h3>
+              <p className="text-muted-foreground mb-6">
+                Cadastre suas contas para recebimento de pagamentos
+              </p>
+              <Button onClick={() => setModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Cadastrar primeira conta
+              </Button>
+            </CardContent>
+          </Card>
+          
+          <StripeConnectOnboarding />
+        </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {accounts.map((account) => (

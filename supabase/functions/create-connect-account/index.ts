@@ -68,10 +68,7 @@ serve(async (req) => {
       country: country,
       email: user.email,
       capabilities: {
-        card_payments: { requested: true },
-        transfers: { requested: true },
-        boleto_payments: { requested: true },
-        ...(country === "BR" && { pix_payments: { requested: true } })
+        transfers: { requested: true }
       },
       business_type: "individual",
       metadata: {

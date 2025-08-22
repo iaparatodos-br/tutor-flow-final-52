@@ -28,6 +28,7 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [connectAccount, setConnectAccount] = useState<StripeConnectAccount | null>(null);
 
   useEffect(() => {
@@ -115,6 +116,32 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncWithStripe = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('refresh-stripe-connect-account');
+
+      if (error) throw error;
+
+      toast({
+        title: "Sincronização concluída",
+        description: "Status da conta atualizado com sucesso",
+      });
+
+      await loadConnectAccount();
+      onComplete?.();
+    } catch (error: any) {
+      console.error('Error syncing with Stripe:', error);
+      toast({
+        title: "Erro na sincronização",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -227,11 +254,11 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
               
               <Button 
                 variant="outline" 
-                onClick={loadConnectAccount}
-                disabled={loading}
+                onClick={syncWithStripe}
+                disabled={syncing || loading}
                 className="w-full"
               >
-                Atualizar status
+                {syncing ? "Sincronizando..." : "Sincronizar com a Stripe"}
               </Button>
             </>
           )}

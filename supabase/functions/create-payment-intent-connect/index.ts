@@ -98,90 +98,138 @@ serve(async (req) => {
 
     logStep("Customer ready", { customerId, email: customerEmail });
 
-    // Payment method specific configuration
-    let paymentMethodTypes: string[] = ["boleto"];
-    let paymentMethodOptions: any = {
-      boleto: {
-        expires_after_days: 7
-      }
-    };
+    let response: any = {};
 
-    if (payment_method === "pix") {
-      paymentMethodTypes = ["pix"];
-      paymentMethodOptions = {
-        pix: {
-          expires_after_seconds: 86400 // 24 hours
+    if (payment_method === "card") {
+      // For card payments, create a checkout session
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        line_items: [{
+          price_data: {
+            currency: "brl",
+            unit_amount: amountInCents,
+            product_data: {
+              name: `Fatura ${invoice.description || 'Mensalidade'}`,
+              description: `Pagamento para ${invoice.profiles?.name}`
+            }
+          },
+          quantity: 1
+        }],
+        mode: "payment",
+        success_url: `${req.headers.get("origin") || "http://localhost:8080"}/financeiro?payment=success`,
+        cancel_url: `${req.headers.get("origin") || "http://localhost:8080"}/financeiro?payment=cancelled`,
+        payment_intent_data: {
+          transfer_data: {
+            destination: connectAccount.stripe_account_id,
+          },
+          application_fee_amount: Math.round(amountInCents * 0.03),
+          description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.profiles?.name}`,
+          metadata: {
+            invoice_id: invoice_id,
+            student_id: invoice.student_id,
+            teacher_id: invoice.teacher_id,
+            platform: "education-platform"
+          }
+        }
+      });
+
+      response = {
+        checkout_url: session.url,
+        session_id: session.id,
+        payment_method: "card"
+      };
+
+      // Update invoice with session details
+      const { error: updateError } = await supabaseClient
+        .from("invoices")
+        .update({
+          stripe_payment_intent_id: session.payment_intent as string,
+          gateway_provider: "stripe"
+        })
+        .eq("id", invoice_id);
+
+      if (updateError) {
+        logStep("Error updating invoice", updateError);
+        throw new Error(`Database error: ${updateError.message}`);
+      }
+
+    } else {
+      // For boleto and PIX, create payment intent
+      let paymentMethodTypes: string[] = ["boleto"];
+      let paymentMethodOptions: any = {
+        boleto: {
+          expires_after_days: 7
         }
       };
-    } else if (payment_method === "card") {
-      paymentMethodTypes = ["card"];
-      paymentMethodOptions = {
-        card: {
-          capture_method: "automatic"
+
+      if (payment_method === "pix") {
+        paymentMethodTypes = ["pix"];
+        paymentMethodOptions = {
+          pix: {
+            expires_after_seconds: 86400 // 24 hours
+          }
+        };
+      }
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: "brl",
+        customer: customerId,
+        payment_method_types: paymentMethodTypes,
+        payment_method_options: paymentMethodOptions,
+        transfer_data: {
+          destination: connectAccount.stripe_account_id,
+        },
+        application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
+        description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.profiles?.name}`,
+        metadata: {
+          invoice_id: invoice_id,
+          student_id: invoice.student_id,
+          teacher_id: invoice.teacher_id,
+          platform: "education-platform"
         }
+      });
+
+      response = {
+        payment_intent_id: paymentIntent.id,
+        client_secret: paymentIntent.client_secret,
+        payment_method: payment_method
       };
+
+      // Update invoice with payment intent details
+      const updateData: any = {
+        stripe_payment_intent_id: paymentIntent.id,
+        gateway_provider: "stripe"
+      };
+
+      if (payment_method === "boleto") {
+        updateData.boleto_url = `https://checkout.stripe.com/pay/${paymentIntent.client_secret}`;
+        response.boleto_url = updateData.boleto_url;
+      } else if (payment_method === "pix") {
+        updateData.pix_qr_code = paymentIntent.client_secret;
+        response.pix_qr_code = paymentIntent.client_secret;
+      }
+
+      const { error: updateError } = await supabaseClient
+        .from("invoices")
+        .update(updateData)
+        .eq("id", invoice_id);
+
+      if (updateError) {
+        logStep("Error updating invoice", updateError);
+        throw new Error(`Database error: ${updateError.message}`);
+      }
     }
 
-    // Create payment intent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountInCents,
-      currency: "brl",
-      customer: customerId,
-      payment_method_types: paymentMethodTypes,
-      payment_method_options: paymentMethodOptions,
-      transfer_data: {
-        destination: connectAccount.stripe_account_id,
-      },
-      application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
-      description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.profiles?.name}`,
-      metadata: {
-        invoice_id: invoice_id,
-        student_id: invoice.student_id,
-        teacher_id: invoice.teacher_id,
-        platform: "education-platform"
-      }
-    });
-
-    logStep("Payment intent created", { 
-      paymentIntentId: paymentIntent.id,
+    logStep("Payment processed successfully", { 
       amount: amountInCents,
       paymentMethod: payment_method 
     });
 
-    // Update invoice with payment intent details
-    const updateData: any = {
-      stripe_payment_intent_id: paymentIntent.id,
-      gateway_provider: "stripe"
-    };
-
-    // For boleto, we need to get the boleto URL after confirmation
-    if (payment_method === "boleto") {
-      // Create a setup intent or use the payment intent client secret for boleto
-      updateData.boleto_url = `https://checkout.stripe.com/pay/${paymentIntent.client_secret}`;
-    } else if (payment_method === "pix") {
-      updateData.pix_qr_code = paymentIntent.client_secret;
-    }
-
-    const { error: updateError } = await supabaseClient
-      .from("invoices")
-      .update(updateData)
-      .eq("id", invoice_id);
-
-    if (updateError) {
-      logStep("Error updating invoice", updateError);
-      throw new Error(`Database error: ${updateError.message}`);
-    }
-
-    logStep("Invoice updated successfully");
-
     return new Response(JSON.stringify({
-      payment_intent_id: paymentIntent.id,
-      client_secret: paymentIntent.client_secret,
+      ...response,
       amount: amountInCents,
-      currency: "brl",
-      payment_method: payment_method,
-      ...(payment_method === "boleto" && { boleto_url: updateData.boleto_url }),
-      ...(payment_method === "pix" && { pix_qr_code: paymentIntent.client_secret })
+      currency: "brl"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

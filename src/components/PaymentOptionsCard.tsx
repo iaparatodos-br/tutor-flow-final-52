@@ -85,9 +85,9 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           title: "Boleto gerado",
           description: "O boleto foi aberto em uma nova aba",
         });
-      } else if (paymentMethod === 'card') {
+      } else if (paymentMethod === 'card' && data.checkout_url) {
         // Redirect to Stripe checkout for card payment
-        window.open(`https://checkout.stripe.com/pay/${data.client_secret}`, '_blank');
+        window.open(data.checkout_url, '_blank');
         toast({
           title: "Redirecionando",
           description: "Você será redirecionado para o pagamento com cartão",

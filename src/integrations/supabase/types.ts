@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          operation: string
+          record_id: string
+          table_name: string
+          target_teacher_id: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          operation: string
+          record_id: string
+          table_name: string
+          target_teacher_id?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          operation?: string
+          record_id?: string
+          table_name?: string
+          target_teacher_id?: string | null
+        }
+        Relationships: []
+      }
       availability_blocks: {
         Row: {
           created_at: string
@@ -876,6 +912,17 @@ export type Database = {
       user_owns_material: {
         Args: { p_material_id: string }
         Returns: boolean
+      }
+      write_audit_log: {
+        Args: {
+          p_new_data: Json
+          p_old_data: Json
+          p_operation: string
+          p_record_id: string
+          p_table_name: string
+          p_target_teacher_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

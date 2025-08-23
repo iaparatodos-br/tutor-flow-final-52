@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AmnestyButton } from "@/components/AmnestyButton";
 import { ExpenseList } from "@/components/ExpenseList";
+import { PaymentOptionsCard } from "@/components/PaymentOptionsCard";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp } from "lucide-react";
 
@@ -46,6 +48,8 @@ export default function Financeiro() {
   const [invoices, setInvoices] = useState<InvoiceWithStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary>({ total: 0, count: 0 });
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithStudent | null>(null);
 
   useEffect(() => {
     if (profile?.id) {
@@ -115,30 +119,9 @@ export default function Financeiro() {
     }
   };
 
-  const handlePayment = async (invoiceId: string) => {
-    // Para MVP, simular pagamento atualizando status
-    try {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: 'paga' })
-        .eq('id', invoiceId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Pagamento processado!",
-        description: "A fatura foi marcada como paga",
-      });
-      
-      loadInvoices();
-    } catch (error: any) {
-      console.error('Erro ao processar pagamento:', error);
-      toast({
-        title: "Erro ao processar pagamento",
-        description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    }
+  const openPayment = (invoice: InvoiceWithStudent) => {
+    setSelectedInvoice(invoice);
+    setPaymentDialogOpen(true);
   };
 
   const getStatusBadge = (status: string) => {
@@ -448,7 +431,7 @@ export default function Financeiro() {
                             {invoice.status === 'pendente' && (
                               <Button
                                 size="sm"
-                                onClick={() => handlePayment(invoice.id)}
+                                onClick={() => openPayment(invoice)}
                                 className="bg-gradient-success shadow-success hover:bg-success"
                               >
                                 <CreditCard className="h-4 w-4 mr-1" />
@@ -465,6 +448,33 @@ export default function Financeiro() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={paymentDialogOpen} onOpenChange={(open) => {
+          setPaymentDialogOpen(open);
+          if (!open) setSelectedInvoice(null);
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Pagamento da Fatura</DialogTitle>
+            </DialogHeader>
+            {selectedInvoice && (
+              <PaymentOptionsCard
+                invoice={{
+                  id: selectedInvoice.id,
+                  amount: String(selectedInvoice.amount),
+                  due_date: selectedInvoice.due_date,
+                  description: selectedInvoice.description || "Fatura",
+                  status: selectedInvoice.status,
+                }}
+                onPaymentSuccess={() => {
+                  setPaymentDialogOpen(false);
+                  setSelectedInvoice(null);
+                  loadInvoices();
+                }}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

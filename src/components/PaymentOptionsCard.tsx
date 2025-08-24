@@ -79,13 +79,11 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
       if (error) throw error;
 
-      if (paymentMethod === 'boleto') {
-        if (data.boleto_url) {
-          window.open(data.boleto_url, '_blank');
-        }
+      if (paymentMethod === 'boleto' && data.boleto_url) {
+        window.open(data.boleto_url, '_blank');
         toast({
-          title: "Boleto iniciado",
-          description: "O processo de pagamento foi iniciado. Aguarde alguns segundos para o boleto ficar disponível.",
+          title: "Boleto gerado",
+          description: "O boleto foi aberto em uma nova aba",
         });
       } else if (paymentMethod === 'card' && data.checkout_url) {
         // Redirect to Stripe checkout for card payment
@@ -99,7 +97,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
       // Refresh invoice data after a delay to check for updates
       setTimeout(() => {
         onPaymentSuccess?.();
-      }, 3000);
+      }, 2000);
 
     } catch (error: any) {
       console.error('Error creating payment intent:', error);
@@ -111,43 +109,6 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     } finally {
       setLoading(false);
       setActivePaymentMethod(null);
-    }
-  };
-
-  const verifyPaymentStatus = async () => {
-    setLoading(true);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('verify-payment-status', {
-        body: {
-          invoice_id: invoice.id
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.updated) {
-        toast({
-          title: "Status atualizado",
-          description: "O status do pagamento foi atualizado com sucesso",
-        });
-        onPaymentSuccess?.();
-      } else {
-        toast({
-          title: "Status verificado",
-          description: data.message || "Nenhuma alteração detectada",
-        });
-      }
-
-    } catch (error: any) {
-      console.error('Error verifying payment status:', error);
-      toast({
-        title: "Erro ao verificar status",
-        description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -286,24 +247,6 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
               </div>
             </div>
           </div>
-
-          {/* Verify Payment Status Button */}
-          {invoice.stripe_payment_intent_id && (
-            <div className="pt-4 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={verifyPaymentStatus}
-                disabled={loading}
-                className="w-full"
-              >
-                {loading ? "Verificando..." : "Verificar Status do Pagamento"}
-              </Button>
-              <p className="text-xs text-muted-foreground mt-1 text-center">
-                Use este botão se você já realizou o pagamento mas a fatura ainda aparece como pendente
-              </p>
-            </div>
-          )}
 
           {isOverdue && (
             <div className="p-3 border border-red-200 bg-red-50 rounded-lg">

@@ -203,21 +203,11 @@ serve(async (req) => {
       };
 
       if (payment_method === "boleto") {
-        // Get the boleto PDF URL from the payment intent charges
-        if (paymentIntent.charges?.data?.[0]?.payment_method_details?.boleto?.pdf) {
-          updateData.boleto_url = paymentIntent.charges.data[0].payment_method_details.boleto.pdf;
-          response.boleto_url = updateData.boleto_url;
-        }
-        // Get linha digitável if available
-        if (paymentIntent.charges?.data?.[0]?.payment_method_details?.boleto?.barcode) {
-          updateData.linha_digitavel = paymentIntent.charges.data[0].payment_method_details.boleto.barcode;
-          response.linha_digitavel = updateData.linha_digitavel;
-        }
+        updateData.boleto_url = `https://checkout.stripe.com/pay/${paymentIntent.client_secret}`;
+        response.boleto_url = updateData.boleto_url;
       } else if (payment_method === "pix") {
-        // For PIX, the QR code data will be available in the payment method details after confirmation
         updateData.pix_qr_code = paymentIntent.client_secret;
         response.pix_qr_code = paymentIntent.client_secret;
-        response.client_secret = paymentIntent.client_secret;
       }
 
       const { error: updateError } = await supabaseClient

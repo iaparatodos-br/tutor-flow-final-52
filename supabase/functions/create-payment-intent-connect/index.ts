@@ -202,12 +202,36 @@ serve(async (req) => {
         gateway_provider: "stripe"
       };
 
+      // Handle boleto and PIX specific responses
       if (payment_method === "boleto") {
-        updateData.boleto_url = `https://checkout.stripe.com/pay/${paymentIntent.client_secret}`;
-        response.boleto_url = updateData.boleto_url;
+        // For boleto, check if the payment intent has boleto details
+        if (paymentIntent.next_action?.display_boleto_details) {
+          const boletoDetails = paymentIntent.next_action.display_boleto_details;
+          updateData.boleto_url = boletoDetails.hosted_voucher_url;
+          updateData.linha_digitavel = boletoDetails.number;
+          response.boleto_url = boletoDetails.hosted_voucher_url;
+          response.linha_digitavel = boletoDetails.number;
+        } else {
+          // Fallback: confirm the payment intent to trigger boleto generation
+          const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id);
+          if (confirmedPI.next_action?.display_boleto_details) {
+            const boletoDetails = confirmedPI.next_action.display_boleto_details;
+            updateData.boleto_url = boletoDetails.hosted_voucher_url;
+            updateData.linha_digitavel = boletoDetails.number;
+            response.boleto_url = boletoDetails.hosted_voucher_url;
+            response.linha_digitavel = boletoDetails.number;
+          }
+        }
       } else if (payment_method === "pix") {
-        updateData.pix_qr_code = paymentIntent.client_secret;
-        response.pix_qr_code = paymentIntent.client_secret;
+        // For PIX, confirm the payment intent to get QR code
+        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id);
+        if (confirmedPI.next_action?.pix_display_qr_code) {
+          const pixDetails = confirmedPI.next_action.pix_display_qr_code;
+          updateData.pix_qr_code = pixDetails.data;
+          updateData.pix_copy_paste = pixDetails.data;
+          response.pix_qr_code = pixDetails.data;
+          response.pix_copy_paste = pixDetails.data;
+        }
       }
 
       const { error: updateError } = await supabaseClient

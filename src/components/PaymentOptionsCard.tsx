@@ -85,19 +85,25 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           title: "Boleto gerado",
           description: "O boleto foi aberto em uma nova aba",
         });
+        // Update local invoice data if linha_digitavel is returned
+        if (data.linha_digitavel && onPaymentSuccess) {
+          setTimeout(() => onPaymentSuccess(), 1000);
+        }
       } else if (paymentMethod === 'card' && data.checkout_url) {
-        // Redirect to Stripe checkout for card payment
         window.open(data.checkout_url, '_blank');
         toast({
           title: "Redirecionando",
           description: "Você será redirecionado para o pagamento com cartão",
         });
+      } else if (paymentMethod === 'pix' && data.pix_qr_code) {
+        toast({
+          title: "PIX gerado",
+          description: "Use o QR code ou código PIX para pagar",
+        });
+        if (onPaymentSuccess) {
+          setTimeout(() => onPaymentSuccess(), 1000);
+        }
       }
-
-      // Refresh invoice data after a delay to check for updates
-      setTimeout(() => {
-        onPaymentSuccess?.();
-      }, 2000);
 
     } catch (error: any) {
       console.error('Error creating payment intent:', error);
@@ -109,6 +115,43 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     } finally {
       setLoading(false);
       setActivePaymentMethod(null);
+    }
+  };
+
+  const verifyPaymentStatus = async () => {
+    setLoading(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('verify-payment-status', {
+        body: {
+          invoice_id: invoice.id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.updated) {
+        toast({
+          title: "Status atualizado",
+          description: `Status da fatura: ${data.status === 'paga' ? 'Paga' : 'Pendente'}`,
+        });
+        onPaymentSuccess?.();
+      } else {
+        toast({
+          title: "Status verificado",
+          description: `Status atual: ${data.status === 'paga' ? 'Paga' : 'Pendente'}`,
+        });
+      }
+
+    } catch (error: any) {
+      console.error('Error verifying payment status:', error);
+      toast({
+        title: "Erro ao verificar status",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -213,12 +256,39 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   <div className="flex items-center gap-2">
                     <QrCode className="h-4 w-4" />
                     <span className="font-medium">PIX</span>
-                    <Badge variant="secondary" className="text-xs">Disponível no boleto</Badge>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => createPaymentIntent('pix')}
+                    disabled={loading && activePaymentMethod === 'pix'}
+                  >
+                    {loading && activePaymentMethod === 'pix' ? (
+                      "Gerando..."
+                    ) : (
+                      <>
+                        <QrCode className="h-4 w-4 mr-2" />
+                        Gerar PIX
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  O código PIX estará disponível após gerar o boleto
-                </p>
+                
+                {invoice.pix_qr_code && (
+                  <div className="mt-2 p-2 bg-muted rounded text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Código PIX:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "Código PIX")}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <code className="text-xs break-all">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
+                  </div>
+                )}
               </div>
 
               {/* Cartão de Crédito */}
@@ -245,6 +315,19 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   </Button>
                 </div>
               </div>
+            </div>
+            
+            {/* Verification Button */}
+            <div className="pt-3 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={verifyPaymentStatus}
+                disabled={loading}
+                className="w-full"
+              >
+                {loading ? "Verificando..." : "Verificar Status do Pagamento"}
+              </Button>
             </div>
           </div>
 

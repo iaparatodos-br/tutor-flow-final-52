@@ -43,6 +43,12 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const [loading, setLoading] = useState(false);
   const [activePaymentMethod, setActivePaymentMethod] = useState<string | null>(null);
   const [payerTaxId, setPayerTaxId] = useState("");
+  const [payerAddress, setPayerAddress] = useState({
+    street: "",
+    city: "",
+    state: "",
+    postal_code: ""
+  });
 
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -72,21 +78,36 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     setActivePaymentMethod(paymentMethod);
     
     try {
-      if (paymentMethod === 'boleto' && !payerTaxId) {
-        toast({
-          title: "CPF/CNPJ obrigatório",
-          description: "Informe o CPF ou CNPJ do pagador para gerar o boleto.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        setActivePaymentMethod(null);
-        return;
+      if (paymentMethod === 'boleto') {
+        if (!payerTaxId) {
+          toast({
+            title: "CPF/CNPJ obrigatório",
+            description: "Informe o CPF ou CNPJ do pagador para gerar o boleto.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          setActivePaymentMethod(null);
+          return;
+        }
+        if (!payerAddress.street || !payerAddress.city || !payerAddress.state || !payerAddress.postal_code) {
+          toast({
+            title: "Endereço obrigatório",
+            description: "Preencha todos os campos do endereço para gerar o boleto.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          setActivePaymentMethod(null);
+          return;
+        }
       }
       const { data, error } = await supabase.functions.invoke('create-payment-intent-connect', {
         body: {
           invoice_id: invoice.id,
           payment_method: paymentMethod,
-          ...(paymentMethod === 'boleto' ? { payer_tax_id: payerTaxId } : {})
+          ...(paymentMethod === 'boleto' ? { 
+            payer_tax_id: payerTaxId,
+            payer_address: payerAddress
+          } : {})
         }
       });
 
@@ -245,14 +266,59 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     )}
                   </Button>
                 </div>
-                <div className="mt-3">
-                  <label className="text-xs text-muted-foreground">CPF/CNPJ do pagador</label>
-                  <Input
-                    value={payerTaxId}
-                    onChange={(e) => setPayerTaxId(e.target.value)}
-                    placeholder="Digite o CPF/CNPJ"
-                    className="mt-1"
-                  />
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">CPF/CNPJ do pagador</label>
+                    <Input
+                      value={payerTaxId}
+                      onChange={(e) => setPayerTaxId(e.target.value)}
+                      placeholder="Digite o CPF/CNPJ"
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Endereço</label>
+                      <Input
+                        value={payerAddress.street}
+                        onChange={(e) => setPayerAddress(prev => ({ ...prev, street: e.target.value }))}
+                        placeholder="Rua, número"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Cidade</label>
+                      <Input
+                        value={payerAddress.city}
+                        onChange={(e) => setPayerAddress(prev => ({ ...prev, city: e.target.value }))}
+                        placeholder="Cidade"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Estado</label>
+                      <Input
+                        value={payerAddress.state}
+                        onChange={(e) => setPayerAddress(prev => ({ ...prev, state: e.target.value }))}
+                        placeholder="SP"
+                        maxLength={2}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">CEP</label>
+                      <Input
+                        value={payerAddress.postal_code}
+                        onChange={(e) => setPayerAddress(prev => ({ ...prev, postal_code: e.target.value }))}
+                        placeholder="00000-000"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
                 </div>
                 
                 {invoice.linha_digitavel && (

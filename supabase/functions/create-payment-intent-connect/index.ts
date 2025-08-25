@@ -29,7 +29,7 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email } = await req.json();
+    const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email, payer_address } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
     // Get invoice details
@@ -206,10 +206,14 @@ serve(async (req) => {
 
       // Handle boleto and PIX specific responses (confirm with explicit payment_method_data)
       if (payment_method === "boleto") {
-        // Boleto requires CPF/CNPJ (tax_id)
+        // Boleto requires CPF/CNPJ (tax_id) and address
         if (!payer_tax_id) {
           throw new Error("Para boleto, é necessário informar payer_tax_id (CPF/CNPJ).");
         }
+        if (!payer_address || !payer_address.street || !payer_address.city || !payer_address.state || !payer_address.postal_code) {
+          throw new Error("Para boleto, é necessário informar o endereço completo (street, city, state, postal_code).");
+        }
+        
         const taxId = String(payer_tax_id).replace(/\D/g, "");
         const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
           payment_method_data: {
@@ -217,6 +221,13 @@ serve(async (req) => {
             billing_details: {
               name: billingName,
               email: billingEmail,
+              address: {
+                line1: payer_address.street,
+                city: payer_address.city,
+                state: payer_address.state,
+                postal_code: payer_address.postal_code,
+                country: "BR"
+              }
             },
             boleto: {
               tax_id: taxId,

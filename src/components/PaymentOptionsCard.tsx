@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Receipt, 
@@ -41,6 +42,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [activePaymentMethod, setActivePaymentMethod] = useState<string | null>(null);
+  const [payerTaxId, setPayerTaxId] = useState("");
 
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -70,10 +72,21 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     setActivePaymentMethod(paymentMethod);
     
     try {
+      if (paymentMethod === 'boleto' && !payerTaxId) {
+        toast({
+          title: "CPF/CNPJ obrigatório",
+          description: "Informe o CPF ou CNPJ do pagador para gerar o boleto.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        setActivePaymentMethod(null);
+        return;
+      }
       const { data, error } = await supabase.functions.invoke('create-payment-intent-connect', {
         body: {
           invoice_id: invoice.id,
-          payment_method: paymentMethod
+          payment_method: paymentMethod,
+          ...(paymentMethod === 'boleto' ? { payer_tax_id: payerTaxId } : {})
         }
       });
 
@@ -231,6 +244,15 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                       </>
                     )}
                   </Button>
+                </div>
+                <div className="mt-3">
+                  <label className="text-xs text-muted-foreground">CPF/CNPJ do pagador</label>
+                  <Input
+                    value={payerTaxId}
+                    onChange={(e) => setPayerTaxId(e.target.value)}
+                    placeholder="Digite o CPF/CNPJ"
+                    className="mt-1"
+                  />
                 </div>
                 
                 {invoice.linha_digitavel && (

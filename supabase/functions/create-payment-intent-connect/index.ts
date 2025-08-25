@@ -29,7 +29,7 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    const { invoice_id, payment_method = "boleto" } = await req.json();
+    const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
     // Get invoice details
@@ -74,6 +74,8 @@ serve(async (req) => {
     if (!customerEmail) {
       throw new Error("No email found for customer");
     }
+    const billingName = payer_name || invoice.profiles?.guardian_name || invoice.profiles?.name || "Cliente";
+    const billingEmail = payer_email || customerEmail;
 
     // Create or get customer
     const customers = await stripe.customers.list({ 
@@ -202,29 +204,37 @@ serve(async (req) => {
         gateway_provider: "stripe"
       };
 
-      // Handle boleto and PIX specific responses
+      // Handle boleto and PIX specific responses (confirm with explicit payment_method_data)
       if (payment_method === "boleto") {
-        // For boleto, check if the payment intent has boleto details
-        if (paymentIntent.next_action?.display_boleto_details) {
-          const boletoDetails = paymentIntent.next_action.display_boleto_details;
+        // Boleto requires CPF/CNPJ (tax_id)
+        if (!payer_tax_id) {
+          throw new Error("Para boleto, é necessário informar payer_tax_id (CPF/CNPJ).");
+        }
+        const taxId = String(payer_tax_id).replace(/\D/g, "");
+        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
+          payment_method_data: {
+            type: "boleto",
+            billing_details: {
+              name: billingName,
+              email: billingEmail,
+            },
+            boleto: {
+              tax_id: taxId,
+            },
+          },
+        });
+        if (confirmedPI.next_action?.display_boleto_details) {
+          const boletoDetails = confirmedPI.next_action.display_boleto_details;
           updateData.boleto_url = boletoDetails.hosted_voucher_url;
           updateData.linha_digitavel = boletoDetails.number;
           response.boleto_url = boletoDetails.hosted_voucher_url;
           response.linha_digitavel = boletoDetails.number;
-        } else {
-          // Fallback: confirm the payment intent to trigger boleto generation
-          const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id);
-          if (confirmedPI.next_action?.display_boleto_details) {
-            const boletoDetails = confirmedPI.next_action.display_boleto_details;
-            updateData.boleto_url = boletoDetails.hosted_voucher_url;
-            updateData.linha_digitavel = boletoDetails.number;
-            response.boleto_url = boletoDetails.hosted_voucher_url;
-            response.linha_digitavel = boletoDetails.number;
-          }
         }
       } else if (payment_method === "pix") {
-        // For PIX, confirm the payment intent to get QR code
-        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id);
+        // For PIX, confirm with explicit payment_method_data to get QR code
+        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
+          payment_method_data: { type: "pix" },
+        });
         if (confirmedPI.next_action?.pix_display_qr_code) {
           const pixDetails = confirmedPI.next_action.pix_display_qr_code;
           updateData.pix_qr_code = pixDetails.data;

@@ -14,7 +14,9 @@ import {
   Copy, 
   ExternalLink,
   Calendar,
-  DollarSign
+  DollarSign,
+  RefreshCw,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -49,6 +51,11 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     state: "",
     postal_code: ""
   });
+  const [generatedBoleto, setGeneratedBoleto] = useState<{
+    url: string;
+    linha_digitavel?: string;
+  } | null>(null);
+  const [popupBlocked, setPopupBlocked] = useState(false);
 
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -114,11 +121,31 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
       if (error) throw error;
 
       if (paymentMethod === 'boleto' && data.boleto_url) {
-        window.open(data.boleto_url, '_blank');
-        toast({
-          title: "Boleto gerado",
-          description: "O boleto foi aberto em uma nova aba",
+        // Store boleto data
+        setGeneratedBoleto({
+          url: data.boleto_url,
+          linha_digitavel: data.linha_digitavel
         });
+        
+        // Try to open in new tab
+        const newWindow = window.open(data.boleto_url, '_blank');
+        
+        if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
+          // Popup was blocked
+          setPopupBlocked(true);
+          toast({
+            title: "Boleto gerado",
+            description: "Use o botão abaixo para abrir o boleto (popup bloqueado)",
+            variant: "default",
+          });
+        } else {
+          toast({
+            title: "Boleto gerado",
+            description: "O boleto foi aberto em uma nova aba",
+          });
+          setPopupBlocked(false);
+        }
+        
         // Update local invoice data if linha_digitavel is returned
         if (data.linha_digitavel && onPaymentSuccess) {
           setTimeout(() => onPaymentSuccess(), 1000);
@@ -321,19 +348,74 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   </div>
                 </div>
                 
-                {invoice.linha_digitavel && (
-                  <div className="mt-2 p-2 bg-muted rounded text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Linha digitável:</span>
+                {/* Show generated boleto info */}
+                {generatedBoleto && (
+                  <div className="mt-3 space-y-2">
+                    {popupBlocked && (
+                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                        <div className="flex items-center gap-2 text-yellow-800">
+                          <AlertTriangle className="h-4 w-4" />
+                          <span className="text-xs">Popup bloqueado pelo navegador</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => window.open(generatedBoleto.url, '_blank')}
+                      className="w-full"
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Abrir Boleto
+                    </Button>
+                    
+                    {generatedBoleto.linha_digitavel && (
+                      <div className="p-2 bg-muted rounded text-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">Linha digitável:</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(generatedBoleto.linha_digitavel!, "Linha digitável")}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <code className="text-xs break-all">{generatedBoleto.linha_digitavel}</code>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Show persisted boleto info from invoice */}
+                {!generatedBoleto && invoice.linha_digitavel && (
+                  <div className="mt-2 space-y-2">
+                    {invoice.boleto_url && (
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => copyToClipboard(invoice.linha_digitavel!, "Linha digitável")}
+                        onClick={() => window.open(invoice.boleto_url!, '_blank')}
+                        className="w-full"
                       >
-                        <Copy className="h-3 w-3" />
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Visualizar Boleto
                       </Button>
+                    )}
+                    
+                    <div className="p-2 bg-muted rounded text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Linha digitável:</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => copyToClipboard(invoice.linha_digitavel!, "Linha digitável")}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <code className="text-xs break-all">{invoice.linha_digitavel}</code>
                     </div>
-                    <code className="text-xs break-all">{invoice.linha_digitavel}</code>
                   </div>
                 )}
               </div>

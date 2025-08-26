@@ -347,10 +347,12 @@ serve(async (req) => {
         }
       }
 
-    logStep("Payment processed successfully", { 
-      amount: amountInCents,
-      paymentMethod: payment_method 
-    });
+  }
+
+  logStep("Payment processed successfully", { 
+    amount: amountInCents,
+    paymentMethod: payment_method 
+  });
 
     return new Response(JSON.stringify({
       ...response,

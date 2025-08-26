@@ -757,7 +757,13 @@ export type Database = {
       }
       profiles: {
         Row: {
+          address_city: string | null
+          address_complete: boolean | null
+          address_postal_code: string | null
+          address_state: string | null
+          address_street: string | null
           billing_day: number | null
+          cpf: string | null
           created_at: string | null
           email: string
           guardian_email: string | null
@@ -773,7 +779,13 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          address_city?: string | null
+          address_complete?: boolean | null
+          address_postal_code?: string | null
+          address_state?: string | null
+          address_street?: string | null
           billing_day?: number | null
+          cpf?: string | null
           created_at?: string | null
           email: string
           guardian_email?: string | null
@@ -789,7 +801,13 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          address_city?: string | null
+          address_complete?: boolean | null
+          address_postal_code?: string | null
+          address_state?: string | null
+          address_street?: string | null
           billing_day?: number | null
+          cpf?: string | null
           created_at?: string | null
           email?: string
           guardian_email?: string | null
@@ -911,6 +929,10 @@ export type Database = {
       }
       user_owns_material: {
         Args: { p_material_id: string }
+        Returns: boolean
+      }
+      validate_cpf: {
+        Args: { cpf_input: string }
         Returns: boolean
       }
       write_audit_log: {

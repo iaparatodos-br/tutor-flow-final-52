@@ -246,12 +246,22 @@ serve(async (req) => {
             },
           },
         });
-        if (confirmedPI.next_action?.display_boleto_details) {
-          const boletoDetails = confirmedPI.next_action.display_boleto_details;
+        if (confirmedPI.next_action?.boleto_display_details) {
+          const boletoDetails = (confirmedPI.next_action as any).boleto_display_details;
           updateData.boleto_url = boletoDetails.hosted_voucher_url;
           updateData.linha_digitavel = boletoDetails.number;
           response.boleto_url = boletoDetails.hosted_voucher_url;
           response.linha_digitavel = boletoDetails.number;
+        } else {
+          // Fallback: retrieve the PaymentIntent in case Stripe hasn't populated next_action yet
+          const refreshedPI = await stripe.paymentIntents.retrieve(paymentIntent.id);
+          const boletoDetails = (refreshedPI.next_action as any)?.boleto_display_details;
+          if (boletoDetails) {
+            updateData.boleto_url = boletoDetails.hosted_voucher_url;
+            updateData.linha_digitavel = boletoDetails.number;
+            response.boleto_url = boletoDetails.hosted_voucher_url;
+            response.linha_digitavel = boletoDetails.number;
+          }
         }
       } else if (payment_method === "pix") {
         // For PIX, confirm with explicit payment_method_data to get QR code

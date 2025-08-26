@@ -44,9 +44,15 @@ serve(async (req) => {
           id,
           name,
           email,
+          cpf,
           guardian_name,
           guardian_email,
-          guardian_phone
+          guardian_phone,
+          address_street,
+          address_city,
+          address_state,
+          address_postal_code,
+          address_complete
         )
       `)
       .eq('role', 'professor')
@@ -98,6 +104,28 @@ serve(async (req) => {
           }
 
           console.log(`Invoice created for student ${student.name}`);
+
+          // Generate boleto automatically if student has complete profile
+          if (student.address_complete && student.cpf && student.address_street && 
+              student.address_city && student.address_state && student.address_postal_code) {
+            try {
+              console.log(`Generating boleto for student ${student.name}`);
+              
+              const boletoResponse = await supabaseAdmin.functions.invoke('generate-boleto-for-invoice', {
+                body: { invoice_id: invoice.id }
+              });
+
+              if (boletoResponse.error) {
+                console.error(`Error generating boleto for student ${student.name}:`, boletoResponse.error);
+              } else {
+                console.log(`Boleto generated successfully for student ${student.name}`);
+              }
+            } catch (boletoError) {
+              console.error(`Error generating boleto for student ${student.name}:`, boletoError);
+            }
+          } else {
+            console.log(`Skipping boleto generation for student ${student.name} - incomplete profile data`);
+          }
 
           // Create Stripe invoice if student has Stripe customer ID
           let stripeInvoiceUrl = null;

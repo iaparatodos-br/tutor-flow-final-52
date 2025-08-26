@@ -248,100 +248,48 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
             <div className="space-y-3">
               {/* Boleto Bancário */}
               <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Receipt className="h-4 w-4" />
-                    <span className="font-medium">Boleto Bancário</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    onClick={() => createPaymentIntent('boleto')}
-                    disabled={loading && activePaymentMethod === 'boleto'}
-                  >
-                    {loading && activePaymentMethod === 'boleto' ? (
-                      "Gerando..."
-                    ) : (
-                      <>
-                        <Download className="h-4 w-4 mr-2" />
-                        Gerar Boleto
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="mt-2">
-                  <p className="text-xs text-muted-foreground">
-                    O boleto será gerado com as informações do seu perfil.
-                  </p>
+                <div className="flex items-center gap-2 mb-2">
+                  <Receipt className="h-4 w-4" />
+                  <span className="font-medium">Boleto Bancário</span>
                 </div>
                 
-                {/* Show generated boleto info */}
-                {generatedBoleto && (
-                  <div className="mt-3 space-y-2">
-                    {popupBlocked && (
-                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                        <div className="flex items-center gap-2 text-yellow-800">
-                          <AlertTriangle className="h-4 w-4" />
-                          <span className="text-xs">Popup bloqueado pelo navegador</span>
-                        </div>
-                      </div>
-                    )}
-                    
-                    <Button
-                      variant="default"
-                      size="sm"
-                      onClick={() => window.open(generatedBoleto.url, '_blank')}
-                      className="w-full"
-                    >
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Abrir Boleto
-                    </Button>
-                    
-                    {generatedBoleto.linha_digitavel && (
-                      <div className="p-2 bg-muted rounded text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-muted-foreground">Linha digitável:</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(generatedBoleto.linha_digitavel!, "Linha digitável")}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <code className="text-xs break-all">{generatedBoleto.linha_digitavel}</code>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {/* Show persisted boleto info from invoice */}
-                {!generatedBoleto && invoice.linha_digitavel && (
-                  <div className="mt-2 space-y-2">
-                    {invoice.boleto_url && (
+                {/* Show existing boleto prominently */}
+                {invoice.boleto_url ? (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-800 font-medium mb-2">✓ Boleto disponível</p>
                       <Button
-                        variant="outline"
+                        variant="default"
                         size="sm"
                         onClick={() => window.open(invoice.boleto_url!, '_blank')}
                         className="w-full"
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        Visualizar Boleto
+                        Baixar Boleto PDF
                       </Button>
-                    )}
-                    
-                    <div className="p-2 bg-muted rounded text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">Linha digitável:</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => copyToClipboard(invoice.linha_digitavel!, "Linha digitável")}
-                        >
-                          <Copy className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <code className="text-xs break-all">{invoice.linha_digitavel}</code>
                     </div>
+                    
+                    {invoice.linha_digitavel && (
+                      <div className="p-2 bg-muted rounded text-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">Linha digitável:</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(invoice.linha_digitavel!, "Linha digitável")}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <code className="text-xs break-all font-mono">{invoice.linha_digitavel}</code>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-sm text-gray-600">
+                      Boleto não disponível. Entre em contato com o professor se necessário.
+                    </p>
                   </div>
                 )}
               </div>

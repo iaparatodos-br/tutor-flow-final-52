@@ -115,7 +115,7 @@ serve(async (req) => {
       
       const chargeAmount = (baseAmount * chargePercentage) / 100;
 
-      const { error: invoiceError } = await supabaseClient
+      const { data: cancellationInvoice, error: invoiceError } = await supabaseClient
         .from('invoices')
         .insert({
           student_id: classData.student_id,
@@ -128,10 +128,29 @@ serve(async (req) => {
           status: 'pendente',
           invoice_type: 'cancellation',
           cancellation_policy_id: policy?.id
-        });
+        })
+        .select()
+        .single();
 
       if (invoiceError) {
         console.error('Error creating cancellation invoice:', invoiceError);
+      } else {
+        // Generate boleto for cancellation invoice
+        try {
+          console.log('Generating boleto for cancellation invoice');
+          
+          const boletoResponse = await supabaseClient.functions.invoke('generate-boleto-for-invoice', {
+            body: { invoice_id: cancellationInvoice.id }
+          });
+
+          if (boletoResponse.error) {
+            console.error('Error generating boleto for cancellation:', boletoResponse.error);
+          } else {
+            console.log('Boleto generated successfully for cancellation invoice');
+          }
+        } catch (boletoError) {
+          console.error('Error generating boleto for cancellation:', boletoError);
+        }
       }
     }
 

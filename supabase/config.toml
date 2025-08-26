@@ -24,5 +24,8 @@ verify_jwt = true
 [functions.create-payment-intent-connect]
 verify_jwt = false
 
+[functions.generate-boleto-for-invoice]
+verify_jwt = false
+
 [functions.webhook-stripe-connect]
 verify_jwt = false

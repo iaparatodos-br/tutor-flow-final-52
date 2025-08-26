@@ -37,7 +37,10 @@ serve(async (req) => {
       .from("invoices")
       .select(`
         *,
-        profiles!invoices_student_id_fkey(name, email, guardian_name, guardian_email),
+        student:profiles!invoices_student_id_fkey(
+          name, email, cpf, guardian_name, guardian_email,
+          address_street, address_city, address_state, address_postal_code, address_complete
+        ),
         teacher:profiles!invoices_teacher_id_fkey(name, email)
       `)
       .eq("id", invoice_id)
@@ -70,12 +73,21 @@ serve(async (req) => {
     const amountInCents = Math.round(parseFloat(invoice.amount) * 100);
     
     // Determine customer email
-    const customerEmail = invoice.profiles?.guardian_email || invoice.profiles?.email;
+    const customerEmail = invoice.student?.guardian_email || invoice.student?.email;
     if (!customerEmail) {
       throw new Error("No email found for customer");
     }
-    const billingName = payer_name || invoice.profiles?.guardian_name || invoice.profiles?.name || "Cliente";
-    const billingEmail = payer_email || customerEmail;
+    
+    // Use profile data if not provided in request (for automated boleto generation)
+    const finalPayerTaxId = payer_tax_id || invoice.student?.cpf;
+    const finalPayerName = payer_name || invoice.student?.guardian_name || invoice.student?.name || "Cliente";
+    const finalPayerEmail = payer_email || customerEmail;
+    const finalPayerAddress = payer_address || (invoice.student?.address_complete ? {
+      street: invoice.student.address_street,
+      city: invoice.student.address_city,
+      state: invoice.student.address_state,
+      postal_code: invoice.student.address_postal_code
+    } : null);
 
     // Create or get customer
     const customers = await stripe.customers.list({ 
@@ -89,7 +101,7 @@ serve(async (req) => {
     } else {
       const customer = await stripe.customers.create({
         email: customerEmail,
-        name: invoice.profiles?.guardian_name || invoice.profiles?.name,
+        name: invoice.student?.guardian_name || invoice.student?.name,
         metadata: {
           student_id: invoice.student_id,
           teacher_id: invoice.teacher_id
@@ -112,7 +124,7 @@ serve(async (req) => {
             unit_amount: amountInCents,
             product_data: {
               name: `Fatura ${invoice.description || 'Mensalidade'}`,
-              description: `Pagamento para ${invoice.profiles?.name}`
+              description: `Pagamento para ${invoice.student?.name}`
             }
           },
           quantity: 1
@@ -125,7 +137,7 @@ serve(async (req) => {
             destination: connectAccount.stripe_account_id,
           },
           application_fee_amount: Math.round(amountInCents * 0.03),
-          description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.profiles?.name}`,
+          description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
           metadata: {
             invoice_id: invoice_id,
             student_id: invoice.student_id,
@@ -183,7 +195,7 @@ serve(async (req) => {
           destination: connectAccount.stripe_account_id,
         },
         application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
-        description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.profiles?.name}`,
+        description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
         metadata: {
           invoice_id: invoice_id,
           student_id: invoice.student_id,
@@ -207,25 +219,25 @@ serve(async (req) => {
       // Handle boleto and PIX specific responses (confirm with explicit payment_method_data)
       if (payment_method === "boleto") {
         // Boleto requires CPF/CNPJ (tax_id) and address
-        if (!payer_tax_id) {
+        if (!finalPayerTaxId) {
           throw new Error("Para boleto, é necessário informar payer_tax_id (CPF/CNPJ).");
         }
-        if (!payer_address || !payer_address.street || !payer_address.city || !payer_address.state || !payer_address.postal_code) {
+        if (!finalPayerAddress || !finalPayerAddress.street || !finalPayerAddress.city || !finalPayerAddress.state || !finalPayerAddress.postal_code) {
           throw new Error("Para boleto, é necessário informar o endereço completo (street, city, state, postal_code).");
         }
         
-        const taxId = String(payer_tax_id).replace(/\D/g, "");
+        const taxId = String(finalPayerTaxId).replace(/\D/g, "");
         const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
           payment_method_data: {
             type: "boleto",
             billing_details: {
-              name: billingName,
-              email: billingEmail,
+              name: finalPayerName,
+              email: finalPayerEmail,
               address: {
-                line1: payer_address.street,
-                city: payer_address.city,
-                state: payer_address.state,
-                postal_code: payer_address.postal_code,
+                line1: finalPayerAddress.street,
+                city: finalPayerAddress.city,
+                state: finalPayerAddress.state,
+                postal_code: finalPayerAddress.postal_code,
                 country: "BR"
               }
             },

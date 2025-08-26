@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
+import ProfileSetupPage from "./pages/ProfileSetupPage";
 import Dashboard from "./pages/Dashboard";
 import Alunos from "./pages/Alunos";
 import PerfilAluno from "./pages/PerfilAluno";
@@ -24,7 +25,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
-  const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange } = useAuth();
+  const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
   
   // Aguardar o carregamento completo do auth e profile
   if (loading) {
@@ -44,6 +45,17 @@ const AppWithProviders = () => {
       <BrowserRouter>
         <Routes>
           <Route path="*" element={<ForcePasswordChange />} />
+        </Routes>
+      </BrowserRouter>
+    );
+  }
+
+  // If authenticated but needs address info, show profile setup
+  if (isAuthenticated && needsAddressInfo) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="*" element={<ProfileSetupPage />} />
         </Routes>
       </BrowserRouter>
     );

@@ -9,6 +9,12 @@ export interface Profile {
   role: 'professor' | 'aluno';
   teacher_id?: string;
   password_changed?: boolean;
+  cpf?: string | null;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_postal_code?: string | null;
+  address_complete?: boolean;
 }
 
 interface AuthContextType {
@@ -20,6 +26,7 @@ interface AuthContextType {
   isProfessor: boolean;
   isAluno: boolean;
   needsPasswordChange: boolean;
+  needsAddressInfo: boolean;
   signUp: (email: string, password: string, name: string, role?: 'professor' | 'aluno') => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -123,7 +130,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: user.email || '',
           role: (existingProfile.role as 'professor' | 'aluno') || 'professor',
           teacher_id: existingProfile.teacher_id,
-          password_changed: existingProfile.password_changed
+          password_changed: existingProfile.password_changed,
+          cpf: existingProfile.cpf,
+          address_street: existingProfile.address_street,
+          address_city: existingProfile.address_city,
+          address_state: existingProfile.address_state,
+          address_postal_code: existingProfile.address_postal_code,
+          address_complete: existingProfile.address_complete
         };
       } else {
         // Criar perfil se não existir
@@ -157,7 +170,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: createdProfile.email,
           role: createdProfile.role as 'professor' | 'aluno',
           teacher_id: createdProfile.teacher_id,
-          password_changed: createdProfile.password_changed
+          password_changed: createdProfile.password_changed,
+          cpf: createdProfile.cpf,
+          address_street: createdProfile.address_street,
+          address_city: createdProfile.address_city,
+          address_state: createdProfile.address_state,
+          address_postal_code: createdProfile.address_postal_code,
+          address_complete: createdProfile.address_complete
         };
 
         console.log('AuthProvider: Perfil criado com sucesso');
@@ -333,6 +352,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isProfessor: !!profile && profile.role === 'professor',
     isAluno: !!profile && profile.role === 'aluno',
     needsPasswordChange: !!profile && profile.role === 'aluno' && profile.password_changed === false,
+    needsAddressInfo: !!profile && !profile.address_complete,
     signUp,
     signIn,
     signOut

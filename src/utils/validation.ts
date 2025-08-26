@@ -93,3 +93,49 @@ export const validateAmount = (amount: string): boolean => {
   const numAmount = parseFloat(amount);
   return !isNaN(numAmount) && numAmount >= 0 && numAmount <= 999999.99;
 };
+
+// CPF validation function
+export const validateCPF = (cpf: string): boolean => {
+  // Remove any non-numeric characters
+  const cleanCPF = cpf.replace(/\D/g, '');
+  
+  // Check if CPF has exactly 11 digits
+  if (cleanCPF.length !== 11) return false;
+  
+  // Check if all digits are the same (invalid CPFs)
+  if (/^(.)\1{10}$/.test(cleanCPF)) return false;
+  
+  // Validate CPF check digits
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleanCPF.charAt(i)) * (10 - i);
+  }
+  let checkDigit = 11 - (sum % 11);
+  if (checkDigit === 10 || checkDigit === 11) checkDigit = 0;
+  if (checkDigit !== parseInt(cleanCPF.charAt(9))) return false;
+  
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleanCPF.charAt(i)) * (11 - i);
+  }
+  checkDigit = 11 - (sum % 11);
+  if (checkDigit === 10 || checkDigit === 11) checkDigit = 0;
+  if (checkDigit !== parseInt(cleanCPF.charAt(10))) return false;
+  
+  return true;
+};
+
+// Format CPF with mask
+export const formatCPF = (cpf: string): string => {
+  const cleanCPF = cpf.replace(/\D/g, '');
+  return cleanCPF
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+};
+
+// Format CEP with mask
+export const formatCEP = (cep: string): string => {
+  const cleanCEP = cep.replace(/\D/g, '');
+  return cleanCEP.replace(/(\d{5})(\d)/, '$1-$2');
+};

@@ -67,6 +67,8 @@ serve(async (req) => {
       throw new Error("Teacher's Stripe account is not ready to accept payments");
     }
 
+    logStep("Using Stripe Connect account", { accountId: connectAccount.stripe_account_id });
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
     // Convert amount from decimal to cents
@@ -168,56 +170,128 @@ serve(async (req) => {
       }
 
     } else {
-      // For boleto and PIX, create payment intent
-      let paymentMethodTypes: string[] = ["boleto"];
-      let paymentMethodOptions: any = {
-        boleto: {
-          expires_after_days: 7
-        }
-      };
-
+      // For boleto and PIX
       if (payment_method === "pix") {
-        paymentMethodTypes = ["pix"];
-        paymentMethodOptions = {
-          pix: {
-            expires_after_seconds: 86400 // 24 hours
+        // Create/get customer on the CONNECTED account
+        const connectedCustomers = await stripe.customers.list({
+          email: customerEmail,
+          limit: 1,
+        }, { stripeAccount: connectAccount.stripe_account_id });
+
+        let connectedCustomerId: string;
+        if (connectedCustomers.data.length > 0) {
+          connectedCustomerId = connectedCustomers.data[0].id;
+        } else {
+          const connectedCustomer = await stripe.customers.create({
+            email: customerEmail,
+            name: invoice.student?.guardian_name || invoice.student?.name,
+            metadata: {
+              student_id: invoice.student_id,
+              teacher_id: invoice.teacher_id,
+            },
+          }, { stripeAccount: connectAccount.stripe_account_id });
+          connectedCustomerId = connectedCustomer.id;
+        }
+        logStep("Connected customer ready", { customerId: connectedCustomerId, account: connectAccount.stripe_account_id });
+
+        // Create PI directly on the connected account (Direct charge)
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: "brl",
+          customer: connectedCustomerId,
+          payment_method_types: ["pix"],
+          payment_method_options: { pix: { expires_after_seconds: 86400 } },
+          application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
+          description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
+          metadata: {
+            invoice_id: invoice_id,
+            student_id: invoice.student_id,
+            teacher_id: invoice.teacher_id,
+            platform: "education-platform"
+          }
+        }, { stripeAccount: connectAccount.stripe_account_id });
+
+        // Confirm to get QR code details
+        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
+          payment_method_data: { type: "pix" },
+        }, { stripeAccount: connectAccount.stripe_account_id });
+
+        const updateData: any = {
+          stripe_payment_intent_id: paymentIntent.id,
+          gateway_provider: "stripe",
+        };
+        if (confirmedPI.next_action?.pix_display_qr_code) {
+          const pixDetails: any = confirmedPI.next_action.pix_display_qr_code;
+          updateData.pix_qr_code = pixDetails.data;
+          updateData.pix_copy_paste = pixDetails.data;
+        } else {
+          // Fallback retrieve
+          const refreshedPI = await stripe.paymentIntents.retrieve(paymentIntent.id, { stripeAccount: connectAccount.stripe_account_id });
+          const pixDetails: any = (refreshedPI.next_action as any)?.pix_display_qr_code;
+          if (pixDetails) {
+            updateData.pix_qr_code = pixDetails.data;
+            updateData.pix_copy_paste = pixDetails.data;
+          }
+        }
+
+        // Persist and respond
+        const { error: updateError } = await supabaseClient
+          .from("invoices")
+          .update(updateData)
+          .eq("id", invoice_id);
+        if (updateError) {
+          logStep("Error updating invoice", updateError);
+          throw new Error(`Database error: ${updateError.message}`);
+        }
+
+        response = {
+          payment_intent_id: paymentIntent.id,
+          client_secret: paymentIntent.client_secret,
+          payment_method: payment_method,
+          pix_qr_code: updateData.pix_qr_code,
+          pix_copy_paste: updateData.pix_copy_paste,
+        };
+      } else {
+        // Default: boleto on platform using destination charges (kept as-is)
+        let paymentMethodTypes: string[] = ["boleto"];
+        let paymentMethodOptions: any = {
+          boleto: {
+            expires_after_days: 7
           }
         };
-      }
 
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: amountInCents,
-        currency: "brl",
-        customer: customerId,
-        payment_method_types: paymentMethodTypes,
-        payment_method_options: paymentMethodOptions,
-        transfer_data: {
-          destination: connectAccount.stripe_account_id,
-        },
-        application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
-        description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
-        metadata: {
-          invoice_id: invoice_id,
-          student_id: invoice.student_id,
-          teacher_id: invoice.teacher_id,
-          platform: "education-platform"
-        }
-      });
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: amountInCents,
+          currency: "brl",
+          customer: customerId,
+          payment_method_types: paymentMethodTypes,
+          payment_method_options: paymentMethodOptions,
+          transfer_data: {
+            destination: connectAccount.stripe_account_id,
+          },
+          application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
+          description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
+          metadata: {
+            invoice_id: invoice_id,
+            student_id: invoice.student_id,
+            teacher_id: invoice.teacher_id,
+            platform: "education-platform"
+          }
+        });
 
-      response = {
-        payment_intent_id: paymentIntent.id,
-        client_secret: paymentIntent.client_secret,
-        payment_method: payment_method
-      };
+        response = {
+          payment_intent_id: paymentIntent.id,
+          client_secret: paymentIntent.client_secret,
+          payment_method: payment_method
+        };
 
-      // Update invoice with payment intent details
-      const updateData: any = {
-        stripe_payment_intent_id: paymentIntent.id,
-        gateway_provider: "stripe"
-      };
+        // Update invoice with payment intent details
+        const updateData: any = {
+          stripe_payment_intent_id: paymentIntent.id,
+          gateway_provider: "stripe"
+        };
 
-      // Handle boleto and PIX specific responses (confirm with explicit payment_method_data)
-      if (payment_method === "boleto") {
+        // Handle boleto confirmation and retrieve boleto details
         // Boleto requires CPF/CNPJ (tax_id) and address
         if (!finalPayerTaxId) {
           throw new Error("Para boleto, é necessário informar payer_tax_id (CPF/CNPJ).");
@@ -241,12 +315,10 @@ serve(async (req) => {
                 country: "BR"
               }
             },
-            boleto: {
-              tax_id: taxId,
-            },
+            boleto: { tax_id: taxId },
           },
         });
-        if (confirmedPI.next_action?.boleto_display_details) {
+        if ((confirmedPI.next_action as any)?.boleto_display_details) {
           const boletoDetails = (confirmedPI.next_action as any).boleto_display_details;
           updateData.boleto_url = boletoDetails.hosted_voucher_url;
           updateData.linha_digitavel = boletoDetails.number;
@@ -263,30 +335,17 @@ serve(async (req) => {
             response.linha_digitavel = boletoDetails.number;
           }
         }
-      } else if (payment_method === "pix") {
-        // For PIX, confirm with explicit payment_method_data to get QR code
-        const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
-          payment_method_data: { type: "pix" },
-        });
-        if (confirmedPI.next_action?.pix_display_qr_code) {
-          const pixDetails = confirmedPI.next_action.pix_display_qr_code;
-          updateData.pix_qr_code = pixDetails.data;
-          updateData.pix_copy_paste = pixDetails.data;
-          response.pix_qr_code = pixDetails.data;
-          response.pix_copy_paste = pixDetails.data;
+
+        const { error: updateError } = await supabaseClient
+          .from("invoices")
+          .update(updateData)
+          .eq("id", invoice_id);
+
+        if (updateError) {
+          logStep("Error updating invoice", updateError);
+          throw new Error(`Database error: ${updateError.message}`);
         }
       }
-
-      const { error: updateError } = await supabaseClient
-        .from("invoices")
-        .update(updateData)
-        .eq("id", invoice_id);
-
-      if (updateError) {
-        logStep("Error updating invoice", updateError);
-        throw new Error(`Database error: ${updateError.message}`);
-      }
-    }
 
     logStep("Payment processed successfully", { 
       amount: amountInCents,
@@ -303,8 +362,12 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logStep("ERROR in create-payment-intent-connect", { message: errorMessage });
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    let errorMessage = rawMessage;
+    if (rawMessage?.toLowerCase().includes('payment method type "pix" is invalid')) {
+      errorMessage = 'PIX não está habilitado. Ative o método de pagamento PIX no seu Dashboard Stripe (platform e conta conectada) e tente novamente.';
+    }
+    logStep("ERROR in create-payment-intent-connect", { message: rawMessage });
     return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

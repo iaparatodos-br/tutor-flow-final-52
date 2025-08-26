@@ -24,6 +24,11 @@ interface InvoiceWithStudent {
   invoice_type?: string;
   class_id?: string;
   original_amount?: number;
+  boleto_url?: string;
+  linha_digitavel?: string;
+  pix_qr_code?: string;
+  pix_copy_paste?: string;
+  stripe_payment_intent_id?: string;
   student: {
     name: string;
     email: string;
@@ -94,6 +99,11 @@ export default function Financeiro() {
           invoice_type,
           class_id,
           original_amount,
+          boleto_url,
+          linha_digitavel,
+          pix_qr_code,
+          pix_copy_paste,
+          stripe_payment_intent_id,
           profiles!invoices_student_id_fkey (
             name,
             email
@@ -465,6 +475,11 @@ export default function Financeiro() {
                   due_date: selectedInvoice.due_date,
                   description: selectedInvoice.description || "Fatura",
                   status: selectedInvoice.status,
+                  boleto_url: selectedInvoice.boleto_url,
+                  linha_digitavel: selectedInvoice.linha_digitavel,
+                  pix_qr_code: selectedInvoice.pix_qr_code,
+                  pix_copy_paste: selectedInvoice.pix_copy_paste,
+                  stripe_payment_intent_id: selectedInvoice.stripe_payment_intent_id,
                 }}
                 onPaymentSuccess={() => {
                   setPaymentDialogOpen(false);

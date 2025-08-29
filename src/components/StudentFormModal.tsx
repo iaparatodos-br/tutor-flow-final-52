@@ -5,7 +5,9 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { User, UserCheck, Mail, Phone, Calendar } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard } from "lucide-react";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface StudentFormData {
   name: string;
@@ -23,6 +25,7 @@ interface StudentFormModalProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: StudentFormData) => void;
   isSubmitting: boolean;
+  currentStudentCount: number;
   student?: {
     id: string;
     name: string;
@@ -58,11 +61,13 @@ export function StudentFormModal({
   isOpen, 
   onOpenChange, 
   onSubmit, 
-  isSubmitting, 
+  isSubmitting,
+  currentStudentCount,
   student,
   title,
   description
 }: StudentFormModalProps) {
+  const { currentPlan, getStudentOverageInfo } = useSubscription();
   const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student));
 
   const [validationErrors, setValidationErrors] = useState({
@@ -151,6 +156,16 @@ export function StudentFormModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check subscription limits for new students (not editing)
+    if (!student && currentPlan) {
+      const { isOverLimit, message } = getStudentOverageInfo(currentStudentCount);
+      
+      if (isOverLimit && currentPlan.slug === 'free') {
+        // Block creation for free plan
+        return;
+      }
+    }
+    
     // Validate form
     const errors = {
       name: !formData.name.trim(),
@@ -180,6 +195,34 @@ export function StudentFormModal({
           </DialogHeader>
           
           <div className="space-y-6 py-4">
+            {/* Subscription Warning for New Students */}
+            {!student && currentPlan && (() => {
+              const { isOverLimit, additionalCost, message } = getStudentOverageInfo(currentStudentCount);
+              
+              if (isOverLimit && currentPlan.slug === 'free') {
+                return (
+                  <Alert className="border-destructive bg-destructive/10">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription className="text-destructive">
+                      {message}
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+              
+              if (isOverLimit && currentPlan.slug !== 'free') {
+                return (
+                  <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                    <CreditCard className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800 dark:text-amber-200">
+                      <strong>Custo Adicional:</strong> {message}
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+              
+              return null;
+            })()}
             {/* Student Information Section */}
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-3">
@@ -334,7 +377,13 @@ export function StudentFormModal({
           </div>
 
           <DialogFooter>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button 
+              type="submit" 
+              disabled={
+                isSubmitting || 
+                (!student && currentPlan?.slug === 'free' && getStudentOverageInfo(currentStudentCount).isOverLimit)
+              }
+            >
               {isSubmitting ? "Salvando..." : student ? "Salvar Alterações" : "Cadastrar Aluno"}
             </Button>
           </DialogFooter>

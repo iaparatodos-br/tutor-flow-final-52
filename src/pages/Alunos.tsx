@@ -353,6 +353,7 @@ export default function Alunos() {
           onOpenChange={setIsAddDialogOpen}
           onSubmit={handleAddStudent}
           isSubmitting={submitting}
+          currentStudentCount={students.length}
           title="Adicionar Novo Aluno"
           description="Insira os dados do aluno e configurações de cobrança"
         />
@@ -362,6 +363,7 @@ export default function Alunos() {
           onOpenChange={setIsEditDialogOpen}
           onSubmit={handleUpdateStudent}
           isSubmitting={submitting}
+          currentStudentCount={students.length}
           student={editingStudent || undefined}
           title="Editar Aluno"
           description="Altere os dados do aluno e configurações de cobrança"

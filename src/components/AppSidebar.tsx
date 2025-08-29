@@ -6,11 +6,14 @@ import {
   LogOut,
   GraduationCap,
   Settings,
-  FileText
+  FileText,
+  CreditCard,
+  Package
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -45,6 +48,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { profile, isProfessor, isAluno } = useProfile();
   const { signOut, loading } = useAuth();
+  const { currentPlan } = useSubscription();
   const currentPath = location.pathname;
   
   const isCollapsed = state === 'collapsed';
@@ -134,6 +138,50 @@ export function AppSidebar() {
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {/* Subscription Section for Professors */}
+          {isProfessor && (
+            <SidebarGroup>
+              <SidebarGroupLabel className={isCollapsed ? "sr-only" : ""}>
+                Assinatura
+              </SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <NavLink 
+                        to="/planos" 
+                        className={({ isActive }) => `${getNavCls({ isActive })} flex items-center gap-2 p-2 rounded-lg`}
+                      >
+                        <Package className="h-4 w-4" />
+                        {!isCollapsed && <span>Planos</span>}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <NavLink 
+                        to="/subscription" 
+                        className={({ isActive }) => `${getNavCls({ isActive })} flex items-center gap-2 p-2 rounded-lg`}
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        {!isCollapsed && (
+                          <div className="flex items-center justify-between w-full">
+                            <span>Assinatura</span>
+                            {currentPlan && (
+                              <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                {currentPlan.name}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         {/* User info and logout */}

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
+import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -20,6 +21,8 @@ import MeusMateriais from "./pages/MeusMateriais";
 import ContasRecebimento from "./pages/ContasRecebimento";
 import Servicos from "./pages/Servicos";
 import PoliticasCancelamento from "./pages/PoliticasCancelamento";
+import Planos from "./pages/Planos";
+import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -63,10 +66,11 @@ const AppWithProviders = () => {
   
   return (
     <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
+      <SubscriptionProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -82,11 +86,14 @@ const AppWithProviders = () => {
             <Route path="/contas-recebimento" element={<ContasRecebimento />} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
+            <Route path="/planos" element={<Planos />} />
+            <Route path="/subscription" element={<Subscription />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-      </TooltipProvider>
+        </TooltipProvider>
+      </SubscriptionProvider>
     </ProfileProvider>
   );
 };

@@ -765,6 +765,7 @@ export type Database = {
           billing_day: number | null
           cpf: string | null
           created_at: string | null
+          current_plan_id: string | null
           email: string
           guardian_email: string | null
           guardian_name: string | null
@@ -775,6 +776,8 @@ export type Database = {
           preferred_payment_account_id: string | null
           role: string
           stripe_customer_id: string | null
+          subscription_end_date: string | null
+          subscription_status: string | null
           teacher_id: string | null
           updated_at: string | null
         }
@@ -787,6 +790,7 @@ export type Database = {
           billing_day?: number | null
           cpf?: string | null
           created_at?: string | null
+          current_plan_id?: string | null
           email: string
           guardian_email?: string | null
           guardian_name?: string | null
@@ -797,6 +801,8 @@ export type Database = {
           preferred_payment_account_id?: string | null
           role: string
           stripe_customer_id?: string | null
+          subscription_end_date?: string | null
+          subscription_status?: string | null
           teacher_id?: string | null
           updated_at?: string | null
         }
@@ -809,6 +815,7 @@ export type Database = {
           billing_day?: number | null
           cpf?: string | null
           created_at?: string | null
+          current_plan_id?: string | null
           email?: string
           guardian_email?: string | null
           guardian_name?: string | null
@@ -819,10 +826,19 @@ export type Database = {
           preferred_payment_account_id?: string | null
           role?: string
           stripe_customer_id?: string | null
+          subscription_end_date?: string | null
+          subscription_status?: string | null
           teacher_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_current_plan_id_fkey"
+            columns: ["current_plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_preferred_payment_account_id_fkey"
             columns: ["preferred_payment_account_id"]
@@ -880,6 +896,104 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      subscription_plans: {
+        Row: {
+          billing_interval: string
+          created_at: string
+          features: Json
+          id: string
+          is_active: boolean
+          name: string
+          price_cents: number
+          slug: string
+          stripe_price_id: string | null
+          student_limit: number
+          updated_at: string
+        }
+        Insert: {
+          billing_interval?: string
+          created_at?: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          price_cents: number
+          slug: string
+          stripe_price_id?: string | null
+          student_limit: number
+          updated_at?: string
+        }
+        Update: {
+          billing_interval?: string
+          created_at?: string
+          features?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          price_cents?: number
+          slug?: string
+          stripe_price_id?: string | null
+          student_limit?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          extra_cost_cents: number
+          extra_students: number
+          id: string
+          plan_id: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          extra_cost_cents?: number
+          extra_students?: number
+          id?: string
+          plan_id: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          extra_cost_cents?: number
+          extra_students?: number
+          id?: string
+          plan_id?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       working_hours: {
         Row: {

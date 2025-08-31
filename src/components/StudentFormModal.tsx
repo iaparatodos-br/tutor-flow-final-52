@@ -153,7 +153,7 @@ export function StudentFormModal({
     setValidationErrors(prev => ({ ...prev, phone: false }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Check subscription limits for new students (not editing)

@@ -8,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface Student {
   id: string;
@@ -26,6 +27,7 @@ export default function Alunos() {
   const { profile } = useProfile();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { currentPlan, subscription, getStudentOverageInfo } = useSubscription();
   
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,42 @@ export default function Alunos() {
     setSubmitting(true);
     
     try {
+      // Check if adding this student would exceed limits and trigger billing
+      if (currentPlan && currentPlan.slug !== 'free') {
+        const { isOverLimit, additionalCost } = getStudentOverageInfo(students.length);
+        
+        if (isOverLimit && subscription) {
+          // Setup billing for extra students
+          const extraStudents = students.length - currentPlan.student_limit + 1;
+          
+          try {
+            const { data: billingData, error: billingError } = await supabase.functions.invoke('handle-student-overage', {
+              body: {
+                extraStudents,
+                planLimit: currentPlan.student_limit
+              }
+            });
+
+            if (billingError) {
+              console.error('Error setting up billing:', billingError);
+              toast({
+                title: 'Aviso de Cobrança',
+                description: `O aluno será adicionado, mas pode haver cobrança adicional de R$ ${(additionalCost / 100).toFixed(2)}.`,
+                variant: "default",
+              });
+            } else if (billingData?.success) {
+              toast({
+                title: 'Cobrança Configurada',
+                description: billingData.message,
+                variant: "default",
+              });
+            }
+          } catch (err) {
+            console.error('Billing automation error:', err);
+            // Continue with student creation even if billing setup fails
+          }
+        }
+      }
       // Criar aluno via Edge Function com privilégios de admin
       const redirectUrl = `${window.location.origin}/`;
 
@@ -211,6 +249,33 @@ export default function Alunos() {
             <p className="text-muted-foreground">
               Gerencie seus alunos cadastrados
             </p>
+            {currentPlan && (() => {
+              const { isOverLimit, additionalCost, message } = getStudentOverageInfo(students.length);
+              
+              if (isOverLimit && currentPlan.slug !== 'free') {
+                return (
+                  <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                      {students.length} de {currentPlan.student_limit} alunos incluídos no plano
+                    </p>
+                  </div>
+                );
+              }
+              
+              if (currentPlan.slug === 'free' && students.length >= currentPlan.student_limit - 1) {
+                return (
+                  <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <p className="text-sm text-amber-800 dark:text-amber-200">
+                      {students.length} de {currentPlan.student_limit} alunos (plano gratuito)
+                    </p>
+                  </div>
+                );
+              }
+              
+              return null;
+            })()}
           </div>
           
           <Button 

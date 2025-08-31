@@ -11,6 +11,8 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Upload, X, FileText, AlertCircle } from "lucide-react";
 import { validateFileUpload, sanitizeInput } from "@/utils/validation";
+import { FeatureGate } from "@/components/FeatureGate";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface MaterialUploadModalProps {
   isOpen: boolean;
@@ -42,6 +44,7 @@ export function MaterialUploadModal({
   categories 
 }: MaterialUploadModalProps) {
   const { profile } = useProfile();
+  const { hasFeature } = useSubscription();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -66,7 +69,17 @@ export function MaterialUploadModal({
   };
 
   const validateFile = (file: File): { valid: boolean; errors: string[] } => {
-    return validateFileUpload(file);
+    const baseValidation = validateFileUpload(file);
+    
+    // Check storage limits for non-premium users
+    if (!hasFeature('storage_mb') && file.size > 10 * 1024 * 1024) { // 10MB limit for free users
+      return {
+        valid: false,
+        errors: ['Arquivo muito grande. Usuários do plano gratuito podem enviar arquivos de até 10MB. Faça upgrade para enviar arquivos maiores.']
+      };
+    }
+    
+    return baseValidation;
   };
 
   const handleFileSelect = (selectedFile: File) => {
@@ -268,12 +281,21 @@ export function MaterialUploadModal({
               ) : (
                 <div className="space-y-2">
                   <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                  <div>
-                    <p className="font-medium">Clique ou arraste um arquivo</p>
-                    <p className="text-sm text-muted-foreground">
-                      PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 25MB)
-                    </p>
-                  </div>
+                   <div>
+                     <p className="font-medium">Clique ou arraste um arquivo</p>
+                     <FeatureGate 
+                       feature="storage_mb"
+                       fallback={
+                         <p className="text-sm text-muted-foreground">
+                           PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 10MB - Plano Gratuito)
+                         </p>
+                       }
+                     >
+                       <p className="text-sm text-muted-foreground">
+                         PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 25MB)
+                       </p>
+                     </FeatureGate>
+                   </div>
                 </div>
               )}
             </div>

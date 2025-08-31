@@ -48,7 +48,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { profile, isProfessor, isAluno } = useProfile();
   const { signOut, loading } = useAuth();
-  const { currentPlan } = useSubscription();
+  const { currentPlan, hasFeature } = useSubscription();
   const currentPath = location.pathname;
   
   const isCollapsed = state === 'collapsed';
@@ -124,15 +124,25 @@ export function AppSidebar() {
               <SidebarMenu>
                 {items.map((item) => (
                   <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink 
-                      to={item.url} 
-                      className={({ isActive }) => `${getNavCls({ isActive })} flex items-center gap-2 p-2 rounded-lg`}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
+                   <SidebarMenuButton asChild>
+                     <NavLink 
+                       to={item.url} 
+                       className={({ isActive }) => `${getNavCls({ isActive })} flex items-center gap-2 p-2 rounded-lg`}
+                     >
+                       <item.icon className="h-4 w-4" />
+                       {!isCollapsed && (
+                         <div className="flex items-center justify-between w-full">
+                           <span>{item.title}</span>
+                           {/* Show premium indicators */}
+                           {item.title === 'Financeiro' && !hasFeature('financial_module') && (
+                             <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                               Premium
+                             </span>
+                           )}
+                         </div>
+                       )}
+                     </NavLink>
+                   </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>

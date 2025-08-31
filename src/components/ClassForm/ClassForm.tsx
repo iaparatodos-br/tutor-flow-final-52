@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
+import { FeatureGate } from '@/components/FeatureGate';
 
 interface Student {
   id: string;
@@ -191,12 +192,24 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                       </Badge>
                     ))}
                   </div>
-                  {formData.is_group_class && (
-                    <Badge variant="outline" className="mt-2">
-                      <Users className="h-3 w-3 mr-1" />
-                      Aula em Grupo
-                    </Badge>
-                  )}
+                   <FeatureGate 
+                     feature="group_classes"
+                     fallback={
+                       formData.is_group_class && (
+                         <Badge variant="destructive" className="mt-2">
+                           <Users className="h-3 w-3 mr-1" />
+                           Aula em Grupo - Premium
+                         </Badge>
+                       )
+                     }
+                   >
+                     {formData.is_group_class && (
+                       <Badge variant="outline" className="mt-2">
+                         <Users className="h-3 w-3 mr-1" />
+                         Aula em Grupo
+                       </Badge>
+                     )}
+                   </FeatureGate>
                 </div>
               )}
 

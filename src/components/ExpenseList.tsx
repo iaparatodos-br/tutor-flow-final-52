@@ -12,6 +12,7 @@ import { ExpenseModal } from "./ExpenseModal";
 import { Edit, Trash2, FileText, Image, Eye, Search, Filter } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { FeatureGate } from "@/components/FeatureGate";
 
 interface Expense {
   id: string;
@@ -175,7 +176,7 @@ export function ExpenseList() {
   }
 
   return (
-    <>
+    <FeatureGate feature="expenses">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -350,6 +351,6 @@ export function ExpenseList() {
         onExpenseAdded={loadExpenses}
         expense={selectedExpense}
       />
-    </>
+    </FeatureGate>
   );
 }

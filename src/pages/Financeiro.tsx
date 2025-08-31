@@ -12,6 +12,7 @@ import { AmnestyButton } from "@/components/AmnestyButton";
 import { ExpenseList } from "@/components/ExpenseList";
 import { PaymentOptionsCard } from "@/components/PaymentOptionsCard";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FeatureGate } from "@/components/FeatureGate";
 
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp } from "lucide-react";
 
@@ -187,6 +188,9 @@ export default function Financeiro() {
             }
           </p>
         </div>
+
+        <FeatureGate feature="financial_module">
+          <div className="space-y-6">
 
         {/* Summary Cards */}
         {isProfessor && (
@@ -490,6 +494,8 @@ export default function Financeiro() {
             )}
           </DialogContent>
         </Dialog>
+          </div>
+        </FeatureGate>
       </div>
     </Layout>
   );

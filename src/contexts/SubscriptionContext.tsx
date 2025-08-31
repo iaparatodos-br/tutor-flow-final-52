@@ -104,9 +104,30 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshSubscription = async () => {
+    if (!user) return;
+    
     setLoading(true);
-    await loadSubscription();
-    setLoading(false);
+    try {
+      // Call edge function to refresh subscription status
+      const { data, error } = await supabase.functions.invoke('check-subscription-status');
+      
+      if (error) throw error;
+      
+      if (data?.subscription) {
+        setSubscription(data.subscription);
+        setCurrentPlan(data.plan);
+      } else {
+        // No active subscription - user is on free plan
+        setSubscription(null);
+        const freePlan = plans.find(p => p.slug === 'free');
+        setCurrentPlan(freePlan || null);
+      }
+    } catch (error) {
+      console.error('Error refreshing subscription:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const hasFeature = (feature: keyof SubscriptionPlan['features']): boolean => {

@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function Subscription() {
   const { currentPlan, subscription, refreshSubscription, loading } = useSubscription();
@@ -30,12 +31,29 @@ export default function Subscription() {
     }
   };
 
-  const handleManageSubscription = () => {
-    // TODO: Implement customer portal
-    toast({
-      title: "Em breve",
-      description: "Portal de gerenciamento em desenvolvimento.",
-    });
+  const handleManageSubscription = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('customer-portal');
+      
+      if (error) throw error;
+      
+      if (data?.url) {
+        // Open Stripe Customer Portal in a new tab
+        window.open(data.url, '_blank');
+        
+        toast({
+          title: "Portal aberto",
+          description: "O portal de gerenciamento foi aberto em uma nova aba.",
+        });
+      }
+    } catch (error) {
+      console.error('Error opening customer portal:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível abrir o portal de gerenciamento.",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {

@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CalendarDays, CreditCard, Settings, RefreshCw, ExternalLink } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,14 +11,47 @@ import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
+import { useState, useEffect } from 'react';
+
+interface Invoice {
+  id: string;
+  number: string | null;
+  status: string;
+  amount_paid: number;
+  currency: string;
+  created: number;
+  hosted_invoice_url: string | null;
+}
 
 export default function Subscription() {
   const { currentPlan, subscription, refreshSubscription, loading } = useSubscription();
   const navigate = useNavigate();
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesError, setInvoicesError] = useState<string | null>(null);
+
+  const loadInvoices = async () => {
+    setInvoicesLoading(true);
+    setInvoicesError(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('list-subscription-invoices');
+      
+      if (error) throw error;
+      
+      setInvoices(data?.invoices || []);
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+      setInvoicesError('Não foi possível carregar o histórico de faturas.');
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
 
   const handleRefresh = async () => {
     try {
       await refreshSubscription();
+      await loadInvoices(); // Also refresh invoices
       toast({
         title: "Atualizado",
         description: "Status da assinatura atualizado com sucesso!",
@@ -55,6 +89,35 @@ export default function Subscription() {
       });
     }
   };
+
+  const formatCurrency = (amountCents: number, currency: string) => {
+    const amount = amountCents / 100;
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: currency.toUpperCase(),
+    }).format(amount);
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig = {
+      paid: { label: 'Paga', variant: 'default' as const },
+      open: { label: 'Em aberto', variant: 'secondary' as const },
+      void: { label: 'Cancelada', variant: 'destructive' as const },
+      uncollectible: { label: 'Não cobrável', variant: 'destructive' as const },
+      draft: { label: 'Rascunho', variant: 'secondary' as const },
+    };
+    
+    const config = statusConfig[status as keyof typeof statusConfig] || { 
+      label: status, 
+      variant: 'secondary' as const 
+    };
+    
+    return <Badge variant={config.variant}>{config.label}</Badge>;
+  };
+
+  useEffect(() => {
+    loadInvoices();
+  }, []);
 
   if (loading) {
     return (
@@ -255,11 +318,73 @@ export default function Subscription() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-8 text-muted-foreground">
-              <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Histórico de cobrança em desenvolvimento</p>
-              <p className="text-sm">Em breve você poderá visualizar todas as suas faturas aqui</p>
-            </div>
+            {invoicesLoading ? (
+              <div className="text-center py-8">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4" />
+                <p>Carregando histórico de faturas...</p>
+              </div>
+            ) : invoicesError ? (
+              <div className="text-center py-8 text-destructive">
+                <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>{invoicesError}</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="mt-4"
+                  onClick={loadInvoices}
+                >
+                  Tentar novamente
+                </Button>
+              </div>
+            ) : invoices.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Nenhuma fatura encontrada</p>
+                <p className="text-sm">Suas faturas aparecerão aqui após a primeira cobrança</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Número</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id}>
+                      <TableCell>
+                        {format(new Date(invoice.created * 1000), 'dd/MM/yyyy', { locale: ptBR })}
+                      </TableCell>
+                      <TableCell>
+                        {invoice.number || '-'}
+                      </TableCell>
+                      <TableCell>
+                        {formatCurrency(invoice.amount_paid, invoice.currency)}
+                      </TableCell>
+                      <TableCell>
+                        {getStatusBadge(invoice.status)}
+                      </TableCell>
+                      <TableCell>
+                        {invoice.hosted_invoice_url && (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => window.open(invoice.hosted_invoice_url!, '_blank')}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-2" />
+                            Ver fatura
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

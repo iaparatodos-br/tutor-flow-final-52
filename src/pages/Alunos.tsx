@@ -11,6 +11,7 @@ import { StudentFormModal } from "@/components/StudentFormModal";
 import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { FeatureGate } from "@/components/FeatureGate";
 
 interface Student {
   id: string;
@@ -278,13 +279,15 @@ export default function Alunos() {
             })()}
           </div>
           
-          <Button 
-            onClick={() => setIsAddDialogOpen(true)}
-            className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Aluno
-          </Button>
+          <FeatureGate studentCount={students.length} showUpgrade={true}>
+            <Button 
+              onClick={() => setIsAddDialogOpen(true)}
+              className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar Aluno
+            </Button>
+          </FeatureGate>
         </div>
 
         {/* Students List */}
@@ -308,13 +311,15 @@ export default function Alunos() {
                 <p className="text-muted-foreground mb-4">
                   Comece adicionando seu primeiro aluno
                 </p>
-                <Button 
-                  onClick={() => setIsAddDialogOpen(true)}
-                  className="bg-gradient-primary shadow-primary"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar Primeiro Aluno
-                </Button>
+                <FeatureGate studentCount={students.length} showUpgrade={true}>
+                  <Button 
+                    onClick={() => setIsAddDialogOpen(true)}
+                    className="bg-gradient-primary shadow-primary"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar Primeiro Aluno
+                  </Button>
+                </FeatureGate>
               </div>
             ) : (
               <Table>

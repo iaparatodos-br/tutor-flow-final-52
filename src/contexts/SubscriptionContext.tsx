@@ -14,6 +14,9 @@ interface SubscriptionPlan {
     group_classes: boolean;
     expenses: boolean;
     storage_mb: number;
+    payment_accounts?: boolean;
+    class_reports?: boolean;
+    material_sharing?: boolean;
   };
 }
 
@@ -132,7 +135,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const hasFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
     if (!currentPlan) return false;
-    return currentPlan.features[feature] as boolean;
+    const featureValue = currentPlan.features[feature];
+    return typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
   };
 
   const canAddStudent = (): boolean => {

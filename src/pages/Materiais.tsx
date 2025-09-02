@@ -12,6 +12,7 @@ import { MaterialUploadModal } from "@/components/MaterialUploadModal";
 import { CategoryModal } from "@/components/CategoryModal";
 import { ShareMaterialModal } from "@/components/ShareMaterialModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FeatureGate } from "@/components/FeatureGate";
 
 interface MaterialCategory {
   id: string;
@@ -260,10 +261,12 @@ export default function Materiais() {
                             <Download className="h-4 w-4 mr-2" />
                             Download
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleShare(material)}>
-                            <Share className="h-4 w-4 mr-2" />
-                            Compartilhar
-                          </DropdownMenuItem>
+                          <FeatureGate feature="material_sharing" showUpgrade={false}>
+                            <DropdownMenuItem onClick={() => handleShare(material)}>
+                              <Share className="h-4 w-4 mr-2" />
+                              Compartilhar
+                            </DropdownMenuItem>
+                          </FeatureGate>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -288,15 +291,17 @@ export default function Materiais() {
                         <Download className="h-3 w-3 mr-1" />
                         Download
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => handleShare(material)}
-                      >
-                        <Share className="h-3 w-3 mr-1" />
-                        Compartilhar
-                      </Button>
+                      <FeatureGate feature="material_sharing" showUpgrade={false}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => handleShare(material)}
+                        >
+                          <Share className="h-3 w-3 mr-1" />
+                          Compartilhar
+                        </Button>
+                      </FeatureGate>
                     </div>
                   </CardContent>
                 </Card>

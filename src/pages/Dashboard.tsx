@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
+import { UpgradeBanner } from "@/components/UpgradeBanner";
 
 interface DashboardStats {
   totalStudents: number;
@@ -120,6 +121,7 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
+        <UpgradeBanner />
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">Olá, {profile?.name}!</h1>

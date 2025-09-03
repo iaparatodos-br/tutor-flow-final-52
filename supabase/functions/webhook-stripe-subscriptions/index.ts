@@ -42,7 +42,12 @@ serve(async (req) => {
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!stripeSecret || !webhookSecret || !supabaseUrl || !supabaseServiceKey) {
-    log("Missing environment variables");
+    log("Missing environment variables", { 
+      stripeSecret: !!stripeSecret,
+      webhookSecret: !!webhookSecret,
+      supabaseUrl: !!supabaseUrl,
+      supabaseServiceKey: !!supabaseServiceKey
+    });
     return new Response(JSON.stringify({ error: "Missing environment variables" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

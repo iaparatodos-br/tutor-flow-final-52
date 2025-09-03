@@ -12,10 +12,10 @@ serve(async (req) => {
     logStep("Webhook received");
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    const endpointSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
+    const endpointSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET_CONNECT");
     
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
-    if (!endpointSecret) throw new Error("STRIPE_WEBHOOK_SECRET is not set");
+    if (!endpointSecret) throw new Error("STRIPE_WEBHOOK_SECRET_CONNECT is not set");
 
     const signature = req.headers.get("stripe-signature");
     if (!signature) throw new Error("No stripe signature header");

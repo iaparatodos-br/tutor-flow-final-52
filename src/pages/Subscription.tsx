@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CalendarDays, CreditCard, Settings, RefreshCw, ExternalLink } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -26,6 +26,7 @@ interface Invoice {
 export default function Subscription() {
   const { currentPlan, subscription, refreshSubscription, loading } = useSubscription();
   const navigate = useNavigate();
+  const location = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
@@ -118,6 +119,24 @@ export default function Subscription() {
   useEffect(() => {
     loadInvoices();
   }, []);
+
+  // Handle success return from Stripe checkout
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('success') === 'true') {
+      // Auto-refresh subscription status when returning from successful checkout
+      handleRefresh();
+      
+      // Show success message
+      toast({
+        title: "Assinatura confirmada!",
+        description: "Sua assinatura foi ativada com sucesso. As funcionalidades foram desbloqueadas.",
+      });
+      
+      // Clean up URL to avoid re-processing
+      navigate('/subscription', { replace: true });
+    }
+  }, [location.search]);
 
   if (loading) {
     return (

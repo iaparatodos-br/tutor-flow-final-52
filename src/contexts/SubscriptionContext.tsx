@@ -81,20 +81,29 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (data?.subscription) {
         setSubscription(data.subscription);
         
-        // Load current plan
-        const { data: planData, error: planError } = await supabase
-          .from('subscription_plans')
-          .select('*')
-          .eq('id', data.subscription.plan_id)
-          .single();
-        
-        if (!planError && planData) {
-          setCurrentPlan(planData as unknown as SubscriptionPlan);
+        // Use plan directly from check-subscription-status response if available
+        if (data.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else {
+          // Fallback to loading plan separately
+          const { data: planData, error: planError } = await supabase
+            .from('subscription_plans')
+            .select('*')
+            .eq('id', data.subscription.plan_id)
+            .single();
+          
+          if (!planError && planData) {
+            setCurrentPlan(planData as unknown as SubscriptionPlan);
+          }
         }
       } else {
-        // Default to free plan
-        const freePlan = plans.find(p => p.slug === 'free');
-        setCurrentPlan(freePlan || null);
+        // Use plan from response (should be free plan) or find free plan
+        if (data?.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
         setSubscription(null);
       }
     } catch (error) {

@@ -90,20 +90,10 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
-      // Fazer login automático após criar conta
-      const { error: signInError } = await signIn(signupForm.email, signupForm.password);
-      
-      if (signInError) {
-        toast({
-          title: "Conta criada com sucesso!",
-          description: "Faça login para continuar",
-        });
-      } else {
-        toast({
-          title: "Bem-vindo ao TutorFlow!",
-          description: "Sua conta foi criada e você já está logado",
-        });
-      }
+      toast({
+        title: "Conta criada com sucesso!",
+        description: "Você já pode fazer login",
+      });
     }
     
     setLoading(false);

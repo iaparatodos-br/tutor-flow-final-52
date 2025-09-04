@@ -50,13 +50,13 @@ export const useInfiniteRecurrence = () => {
     setIsGenerating(true);
     
     try {
-      // Find infinite recurring classes that need more instances
-      const { data: recurringClasses, error: queryError } = await supabase
+      // Find infinite recurring template classes (parent_class_id is null and is_infinite is true)
+      const { data: templateClasses, error: queryError } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', teacherId)
-        .not('recurrence_pattern', 'is', null)
-        .order('class_date', { ascending: false });
+        .is('parent_class_id', null)
+        .not('recurrence_pattern', 'is', null);
 
       if (queryError) throw queryError;
 
@@ -64,57 +64,87 @@ export const useInfiniteRecurrence = () => {
       const bufferDays = 14; // Generate 2 weeks beyond the view end date
       const targetEndDate = new Date(viewEndDate.getTime() + (bufferDays * 24 * 60 * 60 * 1000));
 
-      for (const recurringClass of recurringClasses || []) {
-        const pattern = recurringClass.recurrence_pattern as unknown as RecurrencePattern;
+      for (const templateClass of templateClasses || []) {
+        const pattern = templateClass.recurrence_pattern as unknown as RecurrencePattern;
         
-        if (!pattern?.is_infinite) continue;
+        // Only process infinite recurring patterns
+        if (!pattern?.is_infinite || !pattern?.frequency) {
+          console.log(`Skipping template ${templateClass.id}: not infinite or missing frequency`);
+          continue;
+        }
 
         // Find the last occurrence of this recurring series
         const { data: lastOccurrence, error: lastError } = await supabase
           .from('classes')
           .select('class_date')
-          .eq('teacher_id', teacherId)
-          .eq('service_id', recurringClass.service_id)
-          .eq('duration_minutes', recurringClass.duration_minutes)
-          .eq('is_experimental', recurringClass.is_experimental)
-          .eq('is_group_class', recurringClass.is_group_class)
+          .or(`id.eq.${templateClass.id},parent_class_id.eq.${templateClass.id}`)
           .order('class_date', { ascending: false })
           .limit(1);
 
-        if (lastError) continue;
+        if (lastError) {
+          console.error(`Error finding last occurrence for template ${templateClass.id}:`, lastError);
+          continue;
+        }
 
-        if (!lastOccurrence?.[0]) continue;
+        if (!lastOccurrence?.[0]) {
+          console.log(`No last occurrence found for template ${templateClass.id}`);
+          continue;
+        }
 
         const lastDate = new Date(lastOccurrence[0].class_date);
         
         // Check if we need to generate more classes
-        if (lastDate >= targetEndDate) continue;
+        if (lastDate >= targetEndDate) {
+          console.log(`No more classes needed for template ${templateClass.id}: lastDate ${lastDate.toISOString()} >= targetEndDate ${targetEndDate.toISOString()}`);
+          continue;
+        }
 
         // Generate classes from last date to target end date
         let currentDate = new Date(lastDate);
         const maxNewClasses = 20; // Limit per batch to avoid overwhelming the system
         let generatedCount = 0;
+        const newDates = [];
 
         while (currentDate < targetEndDate && generatedCount < maxNewClasses) {
-          currentDate = getNextDate(currentDate, pattern.frequency);
+          const nextDate = getNextDate(currentDate, pattern.frequency);
+          
+          // Safety check: ensure we're actually advancing
+          if (nextDate.getTime() <= currentDate.getTime()) {
+            console.error(`Date not advancing for frequency ${pattern.frequency}. Breaking loop.`);
+            break;
+          }
+          
+          currentDate = nextDate;
           
           if (currentDate >= targetEndDate) break;
 
+          // Check if this date already exists for this series
+          const dateString = currentDate.toISOString();
+          if (newDates.includes(dateString)) {
+            console.log(`Duplicate date ${dateString} detected, skipping`);
+            continue;
+          }
+          
+          newDates.push(dateString);
+
           classesToGenerate.push({
-            teacher_id: recurringClass.teacher_id,
-            student_id: recurringClass.student_id,
-            service_id: recurringClass.service_id,
-            class_date: currentDate.toISOString(),
-            duration_minutes: recurringClass.duration_minutes,
-            notes: recurringClass.notes,
+            teacher_id: templateClass.teacher_id,
+            student_id: templateClass.student_id,
+            service_id: templateClass.service_id,
+            class_date: dateString,
+            duration_minutes: templateClass.duration_minutes,
+            notes: templateClass.notes,
             status: 'pendente',
-            is_experimental: recurringClass.is_experimental,
-            is_group_class: recurringClass.is_group_class,
-            recurrence_pattern: pattern
+            is_experimental: templateClass.is_experimental,
+            is_group_class: templateClass.is_group_class,
+            parent_class_id: templateClass.id, // Link to the template
+            recurrence_pattern: null // Only template has the pattern
           });
 
           generatedCount++;
         }
+        
+        console.log(`Generated ${generatedCount} new classes for template ${templateClass.id}`);
       }
 
       // Insert new classes if any were generated

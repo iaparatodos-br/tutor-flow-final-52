@@ -356,18 +356,57 @@ export default function Agenda() {
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };
 
-      // Generate classes (single or recurring)
-      const classesToCreate = formData.recurrence 
-        ? generateRecurringClasses(baseClassData, formData.recurrence)
-        : [baseClassData];
+      let insertedClasses;
+      
+      if (formData.recurrence) {
+        if (formData.recurrence.is_infinite) {
+          // For infinite recurrence, first insert the template class
+          const { data: templateClass, error: templateError } = await supabase
+            .from('classes')
+            .insert([baseClassData])
+            .select()
+            .single();
 
-      // Insert classes
-      const { data: insertedClasses, error: classError } = await supabase
-        .from('classes')
-        .insert(classesToCreate)
-        .select();
+          if (templateError) throw templateError;
 
-      if (classError) throw classError;
+          // Generate initial batch of recurring classes
+          const recurringClasses = generateRecurringClasses(baseClassData, formData.recurrence)
+            .slice(1) // Skip the first one (template)
+            .map(cls => ({
+              ...cls,
+              parent_class_id: templateClass.id,
+              recurrence_pattern: null // Only template has the pattern
+            }));
+
+          const { data: recurringInserted, error: recurringError } = await supabase
+            .from('classes')
+            .insert(recurringClasses)
+            .select();
+
+          if (recurringError) throw recurringError;
+
+          insertedClasses = [templateClass, ...recurringInserted];
+        } else {
+          // Regular finite recurrence
+          const classesToCreate = generateRecurringClasses(baseClassData, formData.recurrence);
+          const { data: classes, error: classError } = await supabase
+            .from('classes')
+            .insert(classesToCreate)
+            .select();
+
+          if (classError) throw classError;
+          insertedClasses = classes;
+        }
+      } else {
+        // Single class
+        const { data: classes, error: classError } = await supabase
+          .from('classes')
+          .insert([baseClassData])
+          .select();
+
+        if (classError) throw classError;
+        insertedClasses = classes;
+      }
 
       // Insert participants for each class
       const participantInserts = [];
@@ -380,15 +419,17 @@ export default function Agenda() {
         }
       }
 
-      const { error: participantError } = await supabase
-        .from('class_participants')
-        .insert(participantInserts);
+      if (participantInserts.length > 0) {
+        const { error: participantError } = await supabase
+          .from('class_participants')
+          .insert(participantInserts);
 
-      if (participantError) throw participantError;
+        if (participantError) throw participantError;
+      }
 
       toast({
         title: "Sucesso",
-        description: `${classesToCreate.length} aula(s) agendada(s) com sucesso!`,
+        description: `${insertedClasses.length} aula(s) agendada(s) com sucesso!`,
       });
 
       await loadClasses();

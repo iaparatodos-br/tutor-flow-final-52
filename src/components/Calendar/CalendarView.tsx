@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, momentLocalizer, View, Event as CalendarEvent } from 'react-big-calendar';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
 import moment from 'moment';
 import 'moment/locale/pt-br';
+import './calendar.css';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -179,7 +181,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       <Card className="shadow-card border-none overflow-hidden bg-gradient-subtle">
         <CardContent className="p-0">
           {/* Calendar */}
-          <div className="calendar-container" style={{ height: '700px' }}>
+          <div className="tutorflow-calendar" style={{ height: '700px' }}>
             <Calendar
               localizer={localizer}
               events={allEvents}

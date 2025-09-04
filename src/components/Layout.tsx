@@ -38,9 +38,9 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
         <AppSidebar />
         
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Header móvel */}
-          <header className="flex h-16 items-center border-b bg-card px-4 md:hidden">
-            <SidebarTrigger className="mr-2">
+          {/* Header com trigger sempre visível */}
+          <header className="flex h-16 items-center border-b bg-card px-4">
+            <SidebarTrigger className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors">
               <Menu className="h-5 w-5" />
             </SidebarTrigger>
             <span className="font-semibold">TutorFlow</span>

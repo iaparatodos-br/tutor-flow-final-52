@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
-import { CalendarView, CalendarClass, AvailabilityBlock } from "@/components/Calendar/CalendarView";
+import { SimpleCalendar } from "@/components/Calendar/SimpleCalendar";
+import { CalendarClass, AvailabilityBlock } from "@/components/Calendar/CalendarView";
 import { AvailabilityManager } from "@/components/Availability/AvailabilityManager";
 import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
@@ -447,7 +448,7 @@ export default function Agenda() {
         )}
 
         {/* Calendar View */}
-        <CalendarView 
+        <SimpleCalendar 
           classes={calendarClasses}
           availabilityBlocks={availabilityBlocks}
           isProfessor={isProfessor}

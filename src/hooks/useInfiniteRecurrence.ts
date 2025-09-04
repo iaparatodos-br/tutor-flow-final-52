@@ -107,10 +107,11 @@ export const useInfiniteRecurrence = () => {
         let currentDate = new Date(lastDate);
         const maxNewClasses = 20; // Limit per batch to avoid overwhelming the system
         let generatedCount = 0;
-        const newDates = [];
+        const newDates: string[] = [];
+        const templateNewClasses: any[] = [];
 
         while (currentDate < targetEndDate && generatedCount < maxNewClasses) {
-          const nextDate = getNextDate(currentDate, pattern.frequency);
+          const nextDate = getNextDate(currentDate, pattern.frequency || 'weekly');
           
           // Safety check: ensure we're actually advancing
           if (nextDate.getTime() <= currentDate.getTime()) {
@@ -122,7 +123,7 @@ export const useInfiniteRecurrence = () => {
           
           if (currentDate >= targetEndDate) break;
 
-          // Check if this date already exists for this series
+          // Check if this date already exists in local generation for this series
           const dateString = currentDate.toISOString();
           if (newDates.includes(dateString)) {
             console.log(`Duplicate date ${dateString} detected, skipping`);
@@ -131,7 +132,7 @@ export const useInfiniteRecurrence = () => {
           
           newDates.push(dateString);
 
-          classesToGenerate.push({
+          templateNewClasses.push({
             teacher_id: templateClass.teacher_id,
             student_id: templateClass.student_id,
             service_id: templateClass.service_id,
@@ -149,16 +150,36 @@ export const useInfiniteRecurrence = () => {
         }
         
         console.log(`Generated ${generatedCount} new classes for template ${templateClass.id}`);
+
+        // Filter out occurrences that already exist in DB for this template
+        if (templateNewClasses.length > 0) {
+          try {
+            const { data: existing, error: existingError } = await supabase
+              .from('classes')
+              .select('class_date')
+              .eq('parent_class_id', templateClass.id)
+              .in('class_date', newDates);
+
+            if (existingError) {
+              console.warn('Failed to check existing occurrences; proceeding without filter:', existingError);
+              classesToGenerate.push(...templateNewClasses);
+            } else {
+              const existingSet = new Set((existing || []).map(e => new Date(e.class_date as unknown as string).toISOString()));
+              const filtered = templateNewClasses.filter(c => !existingSet.has(c.class_date));
+              classesToGenerate.push(...filtered);
+            }
+          } catch (e) {
+            console.warn('Error filtering existing occurrences, proceeding without filter:', e);
+            classesToGenerate.push(...templateNewClasses);
+          }
+        }
       }
 
-      // Insert new classes if any were generated using upsert to prevent duplicates
+      // Insert new classes if any were generated (filtered to avoid duplicates)
       if (classesToGenerate.length > 0) {
         const { data: insertedClasses, error: insertError } = await supabase
           .from('classes')
-          .upsert(classesToGenerate, {
-            onConflict: 'parent_class_id,class_date',
-            ignoreDuplicates: true
-          })
+          .insert(classesToGenerate)
           .select();
 
         if (insertError) throw insertError;

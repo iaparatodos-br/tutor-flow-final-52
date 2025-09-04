@@ -405,18 +405,37 @@ export default function Agenda() {
               recurrence_pattern: null // Only template has the pattern
             }));
 
-          // Use upsert to prevent duplicates in case of concurrent operations
-          const { data: recurringInserted, error: recurringError } = await supabase
-            .from('classes')
-            .upsert(recurringClasses, {
-              onConflict: 'parent_class_id,class_date',
-              ignoreDuplicates: true
-            })
-            .select();
+          // Before inserting, check for existing classes on the same dates to avoid duplicates
+          const newDates = recurringClasses.map(c => c.class_date);
+          let toInsert = recurringClasses;
 
-          if (recurringError) throw recurringError;
+          if (newDates.length > 0) {
+            const { data: existing, error: existingError } = await supabase
+              .from('classes')
+              .select('class_date')
+              .eq('parent_class_id', templateClass.id)
+              .in('class_date', newDates);
 
-          insertedClasses = [templateClass, ...recurringInserted];
+            if (existingError) {
+              console.warn('Falha ao verificar duplicidades, prosseguindo sem filtro:', existingError);
+            } else {
+              const existingSet = new Set((existing || []).map(e => new Date(e.class_date as unknown as string).toISOString()));
+              toInsert = recurringClasses.filter(c => !existingSet.has(c.class_date));
+            }
+          }
+
+          if (toInsert.length > 0) {
+            const { data: recurringInserted, error: recurringError } = await supabase
+              .from('classes')
+              .insert(toInsert)
+              .select();
+
+            if (recurringError) throw recurringError;
+
+            insertedClasses = [templateClass, ...(recurringInserted || [])];
+          } else {
+            insertedClasses = [templateClass];
+          }
         } else {
           // Regular finite recurrence
           const classesToCreate = generateRecurringClasses(baseClassData, formData.recurrence);

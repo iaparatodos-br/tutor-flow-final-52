@@ -88,8 +88,8 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-primary before:rounded-r-full shadow-sm" 
-      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200 hover:translate-x-1";
+      ? "bg-primary/10 text-primary font-medium border border-primary/20 shadow-sm" 
+      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200";
 
   const handleSignOut = async () => {
     await signOut();

@@ -66,6 +66,7 @@
     --shadow-card: 0 4px 6px -1px hsl(220 15% 15% / 0.1), 0 2px 4px -1px hsl(220 15% 15% / 0.06);
     --shadow-primary: 0 10px 25px -3px hsl(239 84% 67% / 0.3);
     --shadow-success: 0 10px 25px -3px hsl(151 80% 40% / 0.25);
+    --shadow-glow: 0 0 20px hsl(239 84% 67% / 0.2);
 
     --sidebar-background: 0 0% 98%;
 

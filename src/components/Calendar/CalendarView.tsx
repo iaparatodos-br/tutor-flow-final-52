@@ -176,8 +176,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
 
   return (
     <>
-      <Card className="shadow-card">
-        <CardContent className="p-6">
+      <Card className="shadow-card border-none overflow-hidden bg-gradient-subtle">
+        <CardContent className="p-0">
           {/* Calendar */}
           <div className="calendar-container" style={{ height: '700px' }}>
             <Calendar

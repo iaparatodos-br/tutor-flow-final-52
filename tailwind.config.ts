@@ -83,7 +83,8 @@ export default {
 			boxShadow: {
 				'card': 'var(--shadow-card)',
 				'primary': 'var(--shadow-primary)',
-				'success': 'var(--shadow-success)'
+				'success': 'var(--shadow-success)',
+				'glow': 'var(--shadow-glow)'
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

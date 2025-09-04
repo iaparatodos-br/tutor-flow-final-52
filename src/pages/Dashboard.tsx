@@ -219,7 +219,7 @@ export default function Dashboard() {
               </div>
               
               <div 
-                className="text-center p-4 rounded-lg bg-success-light hover:bg-success cursor-pointer transition-colors"
+                className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
                 onClick={() => navigate("/financeiro")}
               >
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
@@ -247,7 +247,7 @@ export default function Dashboard() {
               </div>
               
               <div 
-                className="text-center p-4 rounded-lg bg-success-light hover:bg-success cursor-pointer transition-colors"
+                className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
                 onClick={() => navigate("/servicos")}
               >
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />

@@ -20,7 +20,7 @@
     /* Primary - Azul educacional */
     --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 239 84% 62%;
+    --primary-hover: 239 84% 72%;
     --primary-light: 239 84% 85%;
 
     /* Secondary - Tons neutros */
@@ -30,6 +30,7 @@
     /* Success - Verde para financeiro */
     --success: 151 80% 40%;
     --success-foreground: 0 0% 100%;
+    --success-hover: 151 80% 85%;
     --success-light: 151 80% 90%;
 
     /* Warning - Laranja para pendências */

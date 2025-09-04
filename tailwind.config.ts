@@ -37,6 +37,7 @@ export default {
 				success: {
 					DEFAULT: 'hsl(var(--success))',
 					foreground: 'hsl(var(--success-foreground))',
+					hover: 'hsl(var(--success-hover))',
 					light: 'hsl(var(--success-light))'
 				},
 				warning: {

@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
-import { Upload, FolderPlus, Search, FileText, Download, Share, MoreVertical } from "lucide-react";
+import { Upload, FolderPlus, Search, FileText, Download, Share, MoreVertical, Trash2 } from "lucide-react";
 import { MaterialUploadModal } from "@/components/MaterialUploadModal";
 import { CategoryModal } from "@/components/CategoryModal";
 import { ShareMaterialModal } from "@/components/ShareMaterialModal";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { FeatureGate } from "@/components/FeatureGate";
 
 interface MaterialCategory {
@@ -47,7 +48,9 @@ export default function Materiais() {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState<{ id: string; title: string } | null>(null);
+  const [materialToDelete, setMaterialToDelete] = useState<Material | null>(null);
 
   useEffect(() => {
     if (profile?.role === 'professor') {
@@ -140,6 +143,52 @@ export default function Materiais() {
   const handleShare = (material: Material) => {
     setSelectedMaterial({ id: material.id, title: material.title });
     setShareModalOpen(true);
+  };
+
+  const handleDeleteClick = (material: Material) => {
+    setMaterialToDelete(material);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!materialToDelete) return;
+
+    try {
+      // Delete the file from storage
+      const { error: storageError } = await supabase.storage
+        .from('teaching-materials')
+        .remove([materialToDelete.file_path]);
+
+      if (storageError) {
+        console.warn('Error deleting file from storage:', storageError);
+        // Continue with database deletion even if storage deletion fails
+      }
+
+      // Delete material access records
+      const { error: accessError } = await supabase
+        .from('material_access')
+        .delete()
+        .eq('material_id', materialToDelete.id);
+
+      if (accessError) throw accessError;
+
+      // Delete the material record
+      const { error: materialError } = await supabase
+        .from('materials')
+        .delete()
+        .eq('id', materialToDelete.id);
+
+      if (materialError) throw materialError;
+
+      toast.success("Material excluído com sucesso");
+      loadData(); // Reload the materials list
+    } catch (error) {
+      console.error('Error deleting material:', error);
+      toast.error("Erro ao excluir material");
+    } finally {
+      setDeleteModalOpen(false);
+      setMaterialToDelete(null);
+    }
   };
 
   const getAccessCount = async (materialId: string) => {
@@ -267,6 +316,14 @@ export default function Materiais() {
                               Compartilhar
                             </DropdownMenuItem>
                           </FeatureGate>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => handleDeleteClick(material)}
+                            className="text-destructive focus:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -333,6 +390,29 @@ export default function Materiais() {
           onShared={loadData}
           material={selectedMaterial}
         />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir o material "{materialToDelete?.title}"?
+                <br />
+                <strong>Esta ação não pode ser desfeita.</strong> O material será removido permanentemente e todos os alunos perderão o acesso.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleDeleteConfirm}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Excluir Material
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </Layout>
   );

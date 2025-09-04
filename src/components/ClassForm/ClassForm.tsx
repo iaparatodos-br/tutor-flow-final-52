@@ -60,6 +60,10 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     notes: '',
     is_experimental: false,
     is_group_class: false,
+    recurrence: {
+      frequency: 'weekly',
+      is_infinite: false
+    }
   });
 
   const [showRecurrence, setShowRecurrence] = useState(false);
@@ -81,8 +85,13 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
       notes: '',
       is_experimental: false,
       is_group_class: false,
+      recurrence: {
+        frequency: 'weekly',
+        is_infinite: false
+      }
     });
     setShowRecurrence(false);
+    setRecurrenceType('date');
     setValidationErrors({ students: false, service: false, date: false, time: false });
   };
 
@@ -120,7 +129,9 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     const submitData: ClassFormData = {
       ...formData,
       recurrence: showRecurrence ? {
-        ...formData.recurrence,
+        frequency: formData.recurrence?.frequency || 'weekly', // Ensure frequency is always set
+        end_date: formData.recurrence?.end_date,
+        occurrences: formData.recurrence?.occurrences,
         is_infinite: recurrenceType === 'infinite'
       } : undefined,
     };
@@ -415,7 +426,19 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                 </div>
                 <Checkbox
                   checked={showRecurrence}
-                  onCheckedChange={(checked) => setShowRecurrence(checked as boolean)}
+                  onCheckedChange={(checked) => {
+                    setShowRecurrence(checked as boolean);
+                    // Initialize recurrence with default frequency when enabling
+                    if (checked && !formData.recurrence?.frequency) {
+                      setFormData(prev => ({
+                        ...prev,
+                        recurrence: {
+                          frequency: 'weekly',
+                          is_infinite: false
+                        }
+                      }));
+                    }
+                  }}
                 />
               </div>
             </CardHeader>

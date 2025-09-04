@@ -264,6 +264,9 @@ export default function Agenda() {
   const generateRecurringClasses = (baseClass: any, recurrence: any) => {
     const classes = [baseClass];
     
+    // Normalize frequency to handle undefined values
+    const normalizedFrequency = recurrence.frequency || 'weekly';
+    
     // For infinite recurrence, only generate initial batch (next 12 weeks)
     if (recurrence.is_infinite) {
       const startDate = new Date(baseClass.class_date);
@@ -282,12 +285,24 @@ export default function Agenda() {
           case 'monthly':
             next.setMonth(next.getMonth() + 1);
             break;
+          default:
+            console.warn(`Unknown frequency: ${frequency}, defaulting to weekly`);
+            next.setDate(next.getDate() + 7);
+            break;
         }
         return next;
       };
 
       for (let i = 1; i < initialBatchLimit; i++) {
-        currentDate = getNextDate(currentDate, recurrence.frequency);
+        const nextDate = getNextDate(currentDate, normalizedFrequency);
+        
+        // Safety check: ensure date is advancing
+        if (nextDate.getTime() <= currentDate.getTime()) {
+          console.error(`Date not advancing for frequency ${normalizedFrequency}. Breaking loop.`);
+          break;
+        }
+        
+        currentDate = nextDate;
         classes.push({
           ...baseClass,
           class_date: currentDate.toISOString()
@@ -313,6 +328,10 @@ export default function Agenda() {
         case 'monthly':
           next.setMonth(next.getMonth() + 1);
           break;
+        default:
+          console.warn(`Unknown frequency: ${frequency}, defaulting to weekly`);
+          next.setDate(next.getDate() + 7);
+          break;
       }
       return next;
     };
@@ -321,7 +340,15 @@ export default function Agenda() {
     const maxOccurrences = recurrence.occurrences || 50;
 
     for (let i = 1; i < maxOccurrences; i++) {
-      currentDate = getNextDate(currentDate, recurrence.frequency);
+      const nextDate = getNextDate(currentDate, normalizedFrequency);
+      
+      // Safety check: ensure date is advancing
+      if (nextDate.getTime() <= currentDate.getTime()) {
+        console.error(`Date not advancing for frequency ${normalizedFrequency}. Breaking loop.`);
+        break;
+      }
+      
+      currentDate = nextDate;
       
       if (endDate && currentDate > endDate) break;
 
@@ -378,9 +405,13 @@ export default function Agenda() {
               recurrence_pattern: null // Only template has the pattern
             }));
 
+          // Use upsert to prevent duplicates in case of concurrent operations
           const { data: recurringInserted, error: recurringError } = await supabase
             .from('classes')
-            .insert(recurringClasses)
+            .upsert(recurringClasses, {
+              onConflict: 'parent_class_id,class_date',
+              ignoreDuplicates: true
+            })
             .select();
 
           if (recurringError) throw recurringError;

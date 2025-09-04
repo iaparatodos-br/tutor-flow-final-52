@@ -36,6 +36,10 @@ export const useInfiniteRecurrence = () => {
       case 'monthly':
         next.setMonth(next.getMonth() + 1);
         break;
+      default:
+        console.warn(`Unknown frequency: ${frequency}, defaulting to weekly`);
+        next.setDate(next.getDate() + 7);
+        break;
     }
     return next;
   }, []);
@@ -147,11 +151,14 @@ export const useInfiniteRecurrence = () => {
         console.log(`Generated ${generatedCount} new classes for template ${templateClass.id}`);
       }
 
-      // Insert new classes if any were generated
+      // Insert new classes if any were generated using upsert to prevent duplicates
       if (classesToGenerate.length > 0) {
         const { data: insertedClasses, error: insertError } = await supabase
           .from('classes')
-          .insert(classesToGenerate)
+          .upsert(classesToGenerate, {
+            onConflict: 'parent_class_id,class_date',
+            ignoreDuplicates: true
+          })
           .select();
 
         if (insertError) throw insertError;

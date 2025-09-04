@@ -261,7 +261,7 @@ export function SimpleCalendar({
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {'type' in selectedEvent && selectedEvent.type === 'block' 
+              {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' 
                 ? 'Horário Bloqueado'
                 : 'Detalhes da Aula'
               }
@@ -270,7 +270,7 @@ export function SimpleCalendar({
           
           {selectedEvent && (
             <div className="space-y-6">
-              {'type' in selectedEvent && selectedEvent.type === 'block' ? (
+              {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' ? (
                 // Availability Block Details
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
@@ -347,8 +347,8 @@ export function SimpleCalendar({
                         <div className="bg-muted p-3 rounded-lg">
                           <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
                           <div className="text-sm text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>
-                        </div>
-                      )}
+            </div>
+          )}
                     </div>
                   </div>
 

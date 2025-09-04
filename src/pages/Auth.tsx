@@ -92,8 +92,30 @@ export default function Auth() {
     } else {
       toast({
         title: "Conta criada com sucesso!",
-        description: "Você já pode fazer login",
+        description: "Fazendo login automático...",
       });
+      
+      // Aguarda um momento para o Supabase processar o registro
+      setTimeout(async () => {
+        const { error: signInError } = await signIn(signupForm.email, signupForm.password);
+        
+        if (signInError) {
+          toast({
+            title: "Conta criada!",
+            description: "Por favor, faça login para continuar",
+            variant: "default",
+          });
+        } else {
+          toast({
+            title: "Bem-vindo ao TutorFlow!",
+            description: "Login realizado com sucesso",
+          });
+        }
+        setLoading(false);
+      }, 2000);
+      
+      // Mantém o loading durante o processo
+      return;
     }
     
     setLoading(false);

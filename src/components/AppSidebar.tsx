@@ -129,23 +129,23 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                               <NavLink 
-                                 to={item.url} 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
-                               >
-                                 <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary' : ''}`} />
-                                {!isCollapsed && (
-                                  <div className="flex items-center justify-between w-full">
-                                    <span>{item.title}</span>
-                                    {/* Show premium indicators */}
-                                    {item.title === 'Financeiro' && !hasFeature('financial_module') && (
-                                      <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
-                                        Premium
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </NavLink>
+                                <NavLink 
+                                  to={item.url} 
+                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                >
+                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary' : ''}`} />
+                                 {!isCollapsed && (
+                                   <div className="flex items-center justify-between w-full ml-4">
+                                     <span>{item.title}</span>
+                                     {/* Show premium indicators */}
+                                     {item.title === 'Financeiro' && !hasFeature('financial_module') && (
+                                       <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                                         Premium
+                                       </span>
+                                     )}
+                                   </div>
+                                 )}
+                               </NavLink>
                            </TooltipTrigger>
                           <TooltipContent side="right">
                             <p>{item.title}</p>
@@ -170,13 +170,13 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                               <NavLink 
-                                 to="/planos" 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
-                               >
-                                 <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary' : ''}`} />
-                                {!isCollapsed && <span>Planos</span>}
-                              </NavLink>
+                                <NavLink 
+                                  to="/planos" 
+                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                >
+                                  <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary' : ''}`} />
+                                 {!isCollapsed && <span className="ml-4">Planos</span>}
+                               </NavLink>
                            </TooltipTrigger>
                            <TooltipContent side="right">
                              <p>Planos</p>
@@ -188,22 +188,22 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                <NavLink 
-                                  to="/subscription" 
-                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
-                                >
-                                  <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary' : ''}`} />
-                                 {!isCollapsed && (
-                                   <div className="flex items-center justify-between w-full">
-                                     <span>Assinatura</span>
-                                     {currentPlan && (
-                                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                                         {currentPlan.name}
-                                       </span>
-                                     )}
-                                   </div>
-                                 )}
-                               </NavLink>
+                                 <NavLink 
+                                   to="/subscription" 
+                                   className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                 >
+                                   <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary' : ''}`} />
+                                  {!isCollapsed && (
+                                    <div className="flex items-center justify-between w-full ml-4">
+                                      <span>Assinatura</span>
+                                      {currentPlan && (
+                                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                          {currentPlan.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </NavLink>
                           </TooltipTrigger>
                           <TooltipContent side="right">
                             <p>Assinatura</p>

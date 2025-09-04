@@ -190,7 +190,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                <NavLink 
                                  to="/subscription" 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-5 px-2 py-2'} rounded-lg min-h-[40px] w-full`}
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-15 px-0 py-2'} rounded-lg min-h-[40px] w-full`}
                                >
                                  <CreditCard className="h-4 w-4 flex-shrink-0" />
                                  {!isCollapsed && (

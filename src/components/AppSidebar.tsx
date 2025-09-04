@@ -104,8 +104,8 @@ export function AppSidebar() {
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex h-16 items-center border-b px-4">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white">
+            <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'}`}>
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white flex-shrink-0">
                 <GraduationCap className="h-4 w-4" />
               </div>
               {!isCollapsed && (
@@ -129,23 +129,23 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                             <NavLink 
-                               to={item.url} 
-                               className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'} p-2 rounded-lg min-h-[40px] w-full`}
-                             >
-                               <item.icon className="h-4 w-4 flex-shrink-0" />
-                               {!isCollapsed && (
-                                 <div className="flex items-center justify-between w-full">
-                                   <span>{item.title}</span>
-                                   {/* Show premium indicators */}
-                                   {item.title === 'Financeiro' && !hasFeature('financial_module') && (
-                                     <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
-                                       Premium
-                                     </span>
-                                   )}
-                                 </div>
-                               )}
-                             </NavLink>
+                              <NavLink 
+                                to={item.url} 
+                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                              >
+                                <item.icon className="h-5 w-5 flex-shrink-0" />
+                                {!isCollapsed && (
+                                  <div className="flex items-center justify-between w-full">
+                                    <span className="text-sm font-medium">{item.title}</span>
+                                    {/* Show premium indicators */}
+                                    {item.title === 'Financeiro' && !hasFeature('financial_module') && (
+                                      <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                                        Premium
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </NavLink>
                            </TooltipTrigger>
                           <TooltipContent side="right">
                             <p>{item.title}</p>
@@ -170,13 +170,13 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                             <NavLink 
-                               to="/planos" 
-                               className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'} p-2 rounded-lg min-h-[40px] w-full`}
-                             >
-                               <Package className="h-4 w-4 flex-shrink-0" />
-                               {!isCollapsed && <span>Planos</span>}
-                             </NavLink>
+                              <NavLink 
+                                to="/planos" 
+                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                              >
+                                <Package className="h-5 w-5 flex-shrink-0" />
+                                {!isCollapsed && <span className="text-sm font-medium">Planos</span>}
+                              </NavLink>
                            </TooltipTrigger>
                            <TooltipContent side="right">
                              <p>Planos</p>
@@ -188,22 +188,22 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                              <NavLink 
-                                to="/subscription" 
-                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center' : 'gap-2'} p-2 rounded-lg min-h-[40px] w-full`}
-                              >
-                                <CreditCard className="h-4 w-4 flex-shrink-0" />
-                                {!isCollapsed && (
-                                  <div className="flex items-center justify-between w-full">
-                                    <span>Assinatura</span>
-                                    {currentPlan && (
-                                      <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                                        {currentPlan.name}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </NavLink>
+                               <NavLink 
+                                 to="/subscription" 
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                               >
+                                 <CreditCard className="h-5 w-5 flex-shrink-0" />
+                                 {!isCollapsed && (
+                                   <div className="flex items-center justify-between w-full">
+                                     <span className="text-sm font-medium">Assinatura</span>
+                                     {currentPlan && (
+                                       <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                         {currentPlan.name}
+                                       </span>
+                                     )}
+                                   </div>
+                                 )}
+                               </NavLink>
                           </TooltipTrigger>
                           <TooltipContent side="right">
                             <p>Assinatura</p>

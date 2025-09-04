@@ -103,7 +103,7 @@ export function AppSidebar() {
       >
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex h-16 items-center border-b px-4">
+          <div className="flex h-16 items-center border-b px-3">
             <div className={`flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'}`}>
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary text-white flex-shrink-0">
                 <GraduationCap className="h-4 w-4" />
@@ -117,7 +117,7 @@ export function AppSidebar() {
           </div>
 
           {/* Navigation */}
-          <SidebarContent className="flex-1 p-4">
+          <SidebarContent className={`flex-1 ${isCollapsed ? 'px-2' : 'px-4'} py-4`}>
             <SidebarGroup>
               <SidebarGroupLabel className={isCollapsed ? "sr-only" : ""}>
                 {isProfessor ? "Professor" : "Aluno"}
@@ -218,7 +218,7 @@ export function AppSidebar() {
           </SidebarContent>
 
           {/* User info and logout */}
-          <div className="border-t p-4">
+          <div className={`border-t ${isCollapsed ? 'p-3' : 'p-4'}`}>
             <div className={`flex items-center ${isCollapsed ? "justify-center" : "justify-between"}`}>
               {!isCollapsed && (
                 <div className="flex flex-col">

@@ -88,8 +88,8 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" 
-      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors";
+      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium relative before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-primary before:rounded-r-full shadow-sm" 
+      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200 hover:translate-x-1";
 
   const handleSignOut = async () => {
     await signOut();
@@ -129,11 +129,11 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                              <NavLink 
-                                to={item.url} 
-                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-3 px-0 py-2'} rounded-lg min-h-[40px] w-full`}
-                              >
-                                <item.icon className="h-4 w-4 flex-shrink-0" />
+                               <NavLink 
+                                 to={item.url} 
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                               >
+                                 <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary' : ''}`} />
                                 {!isCollapsed && (
                                   <div className="flex items-center justify-between w-full">
                                     <span>{item.title}</span>
@@ -170,11 +170,11 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                              <NavLink 
-                                to="/planos" 
-                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-3 px-0 py-2'} rounded-lg min-h-[40px] w-full`}
-                              >
-                                <Package className="h-4 w-4 flex-shrink-0" />
+                               <NavLink 
+                                 to="/planos" 
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                               >
+                                 <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary' : ''}`} />
                                 {!isCollapsed && <span>Planos</span>}
                               </NavLink>
                            </TooltipTrigger>
@@ -188,11 +188,11 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                               <NavLink 
-                                 to="/subscription" 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-3 px-0 py-2'} rounded-lg min-h-[40px] w-full`}
-                               >
-                                 <CreditCard className="h-4 w-4 flex-shrink-0" />
+                                <NavLink 
+                                  to="/subscription" 
+                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                >
+                                  <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary' : ''}`} />
                                  {!isCollapsed && (
                                    <div className="flex items-center justify-between w-full">
                                      <span>Assinatura</span>

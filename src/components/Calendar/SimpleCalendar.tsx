@@ -35,6 +35,11 @@ export function SimpleCalendar({
 }: SimpleCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
+  const [selectedDayEvents, setSelectedDayEvents] = useState<{
+    date: Date;
+    events: CalendarClass[];
+    blocks: AvailabilityBlock[];
+  } | null>(null);
 
   // Gerar os dias do mês atual
   const calendarData = useMemo(() => {
@@ -213,14 +218,21 @@ export function SimpleCalendar({
                         }
                       </div>
                       <div className="opacity-90">
-                        {formatTime(event.start)} - {event.duration_minutes || 60}min
+                        {formatTime(event.start)} - {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))}min
                       </div>
                     </div>
                   ))}
                   
                   {/* Show more indicator */}
                   {day.events.length > 2 && (
-                    <div className="text-xs text-muted-foreground text-center py-1">
+                    <div 
+                      className="text-xs text-muted-foreground text-center py-1 cursor-pointer hover:text-primary transition-colors"
+                      onClick={() => setSelectedDayEvents({
+                        date: day.date,
+                        events: day.events,
+                        blocks: day.blocks
+                      })}
+                    >
                       +{day.events.length - 2} mais
                     </div>
                   )}
@@ -425,6 +437,119 @@ export function SimpleCalendar({
                       )}
                     </div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Day Events Modal */}
+      <Dialog open={!!selectedDayEvents} onOpenChange={() => setSelectedDayEvents(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Eventos de {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          {selectedDayEvents && (
+            <div className="space-y-4">
+              {/* All Classes */}
+              {selectedDayEvents.events.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-3 text-lg">Aulas ({selectedDayEvents.events.length})</h3>
+                  <div className="space-y-3">
+                    {selectedDayEvents.events.map((event) => (
+                      <div
+                        key={event.id}
+                        onClick={() => {
+                          setSelectedEvent(event);
+                          setSelectedDayEvents(null);
+                        }}
+                        className={cn(
+                          "p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] border",
+                          getStatusColor(event.status),
+                          "hover:shadow-md"
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-medium">
+                            {event.is_group_class 
+                              ? `Aula em Grupo (${event.participants?.length || 1} alunos)`
+                              : event.student.name
+                            }
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge className={cn("text-xs", getStatusColor(event.status))}>
+                              {getStatusLabel(event.status)}
+                            </Badge>
+                            {event.is_experimental && (
+                              <Badge variant="outline" className="border-warning text-warning text-xs">
+                                Experimental
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm opacity-90">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            <span>
+                              {formatTime(event.start)} - {formatTime(event.end)}
+                            </span>
+                          </div>
+                          <div>
+                            {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))} minutos
+                          </div>
+                        </div>
+
+                        {event.notes && (
+                          <div className="mt-2 text-sm opacity-80">
+                            <span className="font-medium">Obs:</span> {event.notes}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Availability Blocks */}
+              {selectedDayEvents.blocks.length > 0 && (
+                <div>
+                  <h3 className="font-semibold mb-3 text-lg">Horários Bloqueados ({selectedDayEvents.blocks.length})</h3>
+                  <div className="space-y-3">
+                    {selectedDayEvents.blocks.map((block) => (
+                      <div
+                        key={block.id}
+                        onClick={() => {
+                          setSelectedEvent(block);
+                          setSelectedDayEvents(null);
+                        }}
+                        className="p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] bg-muted text-muted-foreground border hover:shadow-md"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="font-medium">{block.title}</div>
+                          <Badge variant="secondary">Bloqueado</Badge>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 text-sm">
+                          <Clock className="h-4 w-4" />
+                          <span>
+                            {formatTime(block.start)} - {formatTime(block.end)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedDayEvents.events.length === 0 && selectedDayEvents.blocks.length === 0 && (
+                <div className="text-center py-8">
+                  <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Nenhum evento neste dia</p>
                 </div>
               )}
             </div>

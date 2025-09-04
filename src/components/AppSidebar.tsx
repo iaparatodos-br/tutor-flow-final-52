@@ -131,7 +131,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                <NavLink 
                                  to={item.url} 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
                                >
                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary' : ''}`} />
                                 {!isCollapsed && (
@@ -172,7 +172,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                <NavLink 
                                  to="/planos" 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
                                >
                                  <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary' : ''}`} />
                                 {!isCollapsed && <span>Planos</span>}
@@ -190,7 +190,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                 <NavLink 
                                   to="/subscription" 
-                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'gap-4 px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
                                 >
                                   <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary' : ''}`} />
                                  {!isCollapsed && (

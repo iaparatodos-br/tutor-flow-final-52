@@ -131,7 +131,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                               <NavLink 
                                 to={item.url} 
-                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-3' : 'gap-4 px-4 py-3'} rounded-lg min-h-[48px] w-full`}
                               >
                                 <item.icon className="h-5 w-5 flex-shrink-0" />
                                 {!isCollapsed && (
@@ -172,7 +172,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                               <NavLink 
                                 to="/planos" 
-                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                                className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-3' : 'gap-4 px-4 py-3'} rounded-lg min-h-[48px] w-full`}
                               >
                                 <Package className="h-5 w-5 flex-shrink-0" />
                                 {!isCollapsed && <span className="text-sm font-medium">Planos</span>}
@@ -190,7 +190,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                <NavLink 
                                  to="/subscription" 
-                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full' : 'gap-3'} p-3 rounded-lg min-h-[44px] w-full`}
+                                 className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-3' : 'gap-4 px-4 py-3'} rounded-lg min-h-[48px] w-full`}
                                >
                                  <CreditCard className="h-5 w-5 flex-shrink-0" />
                                  {!isCollapsed && (

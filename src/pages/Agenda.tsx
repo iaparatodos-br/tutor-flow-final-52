@@ -13,6 +13,7 @@ import { AvailabilityManager } from "@/components/Availability/AvailabilityManag
 import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
 import { ClassReportModal } from "@/components/ClassReportModal";
+import { useInfiniteRecurrence } from "@/hooks/useInfiniteRecurrence";
 
 interface ClassWithParticipants {
   id: string;
@@ -47,6 +48,7 @@ export default function Agenda() {
   const { profile, isProfessor, isAluno } = useProfile();
   const { loading: authLoading } = useAuth();
   const { toast } = useToast();
+  const { checkAndGenerateClasses, isGenerating } = useInfiniteRecurrence();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
@@ -83,6 +85,13 @@ export default function Agenda() {
     if (!profile?.id) return;
 
     try {
+      // Check for infinite recurring classes and generate more if needed
+      if (isProfessor) {
+        const now = new Date();
+        const futureDate = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000)); // 90 days ahead
+        await checkAndGenerateClasses(profile.id, now, futureDate);
+      }
+
       const { data, error } = await supabase
         .from('classes')
         .select(`
@@ -254,6 +263,41 @@ export default function Agenda() {
 
   const generateRecurringClasses = (baseClass: any, recurrence: any) => {
     const classes = [baseClass];
+    
+    // For infinite recurrence, only generate initial batch (next 12 weeks)
+    if (recurrence.is_infinite) {
+      const startDate = new Date(baseClass.class_date);
+      let currentDate = new Date(startDate);
+      const initialBatchLimit = 12; // Generate 12 weeks ahead initially
+
+      const getNextDate = (current: Date, frequency: string) => {
+        const next = new Date(current);
+        switch (frequency) {
+          case 'weekly':
+            next.setDate(next.getDate() + 7);
+            break;
+          case 'biweekly':
+            next.setDate(next.getDate() + 14);
+            break;
+          case 'monthly':
+            next.setMonth(next.getMonth() + 1);
+            break;
+        }
+        return next;
+      };
+
+      for (let i = 1; i < initialBatchLimit; i++) {
+        currentDate = getNextDate(currentDate, recurrence.frequency);
+        classes.push({
+          ...baseClass,
+          class_date: currentDate.toISOString()
+        });
+      }
+
+      return classes;
+    }
+
+    // Original logic for finite recurrence
     const startDate = new Date(baseClass.class_date);
     let currentDate = new Date(startDate);
 
@@ -443,6 +487,20 @@ export default function Agenda() {
                 onSubmit={handleAddClass}
                 loading={submitting}
               />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Infinite Recurrence Status */}
+        {isGenerating && (
+          <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                <span className="text-sm text-blue-600 dark:text-blue-400">
+                  Gerando aulas recorrentes automaticamente...
+                </span>
+              </div>
             </CardContent>
           </Card>
         )}

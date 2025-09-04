@@ -37,6 +37,7 @@ interface ClassFormData {
     frequency: 'weekly' | 'biweekly' | 'monthly';
     end_date?: string;
     occurrences?: number;
+    is_infinite?: boolean;
   };
 }
 
@@ -62,7 +63,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
   });
 
   const [showRecurrence, setShowRecurrence] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<'date' | 'count'>('date');
+  const [recurrenceType, setRecurrenceType] = useState<'date' | 'count' | 'infinite'>('date');
   const [validationErrors, setValidationErrors] = useState({
     students: false,
     service: false,
@@ -118,7 +119,10 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
 
     const submitData: ClassFormData = {
       ...formData,
-      recurrence: showRecurrence ? formData.recurrence : undefined,
+      recurrence: showRecurrence ? {
+        ...formData.recurrence,
+        is_infinite: recurrenceType === 'infinite'
+      } : undefined,
     };
 
     try {
@@ -441,13 +445,14 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
 
                 <div>
                   <Label>Término da recorrência</Label>
-                  <Select value={recurrenceType} onValueChange={(value: "date" | "count") => setRecurrenceType(value)}>
+                  <Select value={recurrenceType} onValueChange={(value: "date" | "count" | "infinite") => setRecurrenceType(value as "date" | "count" | "infinite")}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="date">Até uma data</SelectItem>
                       <SelectItem value="count">Número de aulas</SelectItem>
+                      <SelectItem value="infinite">Sem data limite</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -467,22 +472,33 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                       }
                     />
                   </div>
-                ) : (
+                ) : recurrenceType === 'count' ? (
                   <div>
                     <Label htmlFor="occurrences">Número de aulas</Label>
                     <Input
                       id="occurrences"
                       type="number"
                       min="1"
-                      max="52"
+                      max="100"
                       value={formData.recurrence?.occurrences || ''}
                       onChange={(e) =>
                         setFormData(prev => ({
                           ...prev,
-                          recurrence: { ...prev.recurrence, occurrences: parseInt(e.target.value) }
+                          recurrence: { ...prev.recurrence, occurrences: parseInt(e.target.value) || undefined }
                         }))
                       }
                     />
+                  </div>
+                ) : (
+                  <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
+                      <Repeat className="h-4 w-4" />
+                      <span className="font-medium">Recorrência Infinita</span>
+                    </div>
+                    <p className="text-sm text-blue-600/80 dark:text-blue-400/80">
+                      As aulas serão geradas automaticamente conforme necessário. 
+                      Você pode parar a recorrência a qualquer momento editando uma aula futura.
+                    </p>
                   </div>
                 )}
               </CardContent>

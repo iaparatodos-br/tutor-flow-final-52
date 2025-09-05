@@ -219,7 +219,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                    <FeatureGate 
                      feature="group_classes"
                      fallback={
-                       formData.is_group_class && (
+                       formData.selectedStudents.length > 1 && (
                          <Badge variant="destructive" className="mt-2">
                            <Users className="h-3 w-3 mr-1" />
                            Aula em Grupo - Premium

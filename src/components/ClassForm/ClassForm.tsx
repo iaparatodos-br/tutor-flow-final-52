@@ -11,6 +11,8 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
 import { FeatureGate } from '@/components/FeatureGate';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { toast } from 'sonner';
 
 interface Student {
   id: string;
@@ -51,6 +53,7 @@ interface ClassFormProps {
 }
 
 export function ClassForm({ open, onOpenChange, students, services, onSubmit, loading }: ClassFormProps) {
+  const { hasFeature } = useSubscription();
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
     service_id: '',
@@ -112,6 +115,12 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check if it's a group class and user doesn't have access
+    if (formData.is_group_class && !hasFeature('group_classes')) {
+      toast.error('Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.');
+      return;
+    }
 
     const errors = {
       students: formData.selectedStudents.length === 0,

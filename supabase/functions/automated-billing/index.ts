@@ -40,6 +40,14 @@ serve(async (req) => {
         email,
         billing_day,
         stripe_customer_id,
+        user_subscriptions!inner (
+          id,
+          status,
+          subscription_plans!inner (
+            id,
+            features
+          )
+        ),
         profiles_students:profiles!profiles_teacher_id_fkey (
           id,
           name,
@@ -67,6 +75,17 @@ serve(async (req) => {
 
     for (const professor of professors || []) {
       console.log(`Processing billing for professor: ${professor.name}`);
+      
+      // Check if professor has active subscription with financial module
+      const subscription = professor.user_subscriptions?.[0];
+      const hasFinancialModule = subscription?.subscription_plans?.features?.financial_module === true;
+      
+      if (!hasFinancialModule) {
+        console.log(`Skipping professor ${professor.name} - no access to financial module`);
+        continue;
+      }
+      
+      console.log(`Professor ${professor.name} has financial module access, processing billing`);
       
       // Get students for this professor
       const students = professor.profiles_students || [];

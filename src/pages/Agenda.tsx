@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,7 @@ interface ClassService {
 export default function Agenda() {
   const { profile, isProfessor, isAluno } = useProfile();
   const { loading: authLoading } = useAuth();
+  const { hasFeature } = useSubscription();
   const { toast } = useToast();
   const { checkAndGenerateClasses, isGenerating } = useInfiniteRecurrence();
   
@@ -369,6 +371,16 @@ export default function Agenda() {
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
       
+      // Check if professor has access to financial module
+      const hasFinancialAccess = hasFeature('financial_module');
+      
+      // If no financial access, mark class as experimental to prevent billing
+      const shouldMarkExperimental = !hasFinancialAccess || formData.is_experimental;
+      
+      if (!hasFinancialAccess && !formData.is_experimental) {
+        console.log('Professor without financial module - marking class as experimental to prevent billing');
+      }
+      
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
@@ -378,7 +390,7 @@ export default function Agenda() {
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
         status: 'pendente',
-        is_experimental: formData.is_experimental,
+        is_experimental: shouldMarkExperimental,
         is_group_class: formData.is_group_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };

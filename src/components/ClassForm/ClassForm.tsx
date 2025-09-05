@@ -116,8 +116,8 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check if it's a group class and user doesn't have access
-    if (formData.is_group_class && !hasFeature('group_classes')) {
+    // Check if it's a group class (more than 1 student) and user doesn't have access
+    if (formData.selectedStudents.length > 1 && !hasFeature('group_classes')) {
       toast.error('Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.');
       return;
     }

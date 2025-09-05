@@ -76,6 +76,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     service: false,
     date: false,
     time: false,
+    pastDateTime: false,
   });
 
   const resetForm = () => {
@@ -95,7 +96,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     });
     setShowRecurrence(false);
     setRecurrenceType('date');
-    setValidationErrors({ students: false, service: false, date: false, time: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false });
   };
 
   const handleStudentSelection = (studentId: string, checked: boolean) => {
@@ -127,7 +128,17 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
       service: !formData.is_experimental && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
+      pastDateTime: false,
     };
+
+    // Check if date/time is in the past
+    if (formData.class_date && formData.time) {
+      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+      const now = new Date();
+      if (classDateTime <= now) {
+        errors.pastDateTime = true;
+      }
+    }
 
     setValidationErrors(errors);
 
@@ -370,9 +381,9 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                 value={formData.class_date}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, class_date: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, date: false }));
+                  setValidationErrors(prev => ({ ...prev, date: false, pastDateTime: false }));
                 }}
-                className={validationErrors.date ? "border-destructive" : ""}
+                className={validationErrors.date || validationErrors.pastDateTime ? "border-destructive" : ""}
                 required
               />
             </div>
@@ -385,13 +396,19 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                 value={formData.time}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, time: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, time: false }));
+                  setValidationErrors(prev => ({ ...prev, time: false, pastDateTime: false }));
                 }}
-                className={validationErrors.time ? "border-destructive" : ""}
+                className={validationErrors.time || validationErrors.pastDateTime ? "border-destructive" : ""}
                 required
               />
             </div>
           </div>
+
+          {validationErrors.pastDateTime && (
+            <p className="text-sm text-destructive">
+              Não é possível agendar aulas para data/horário passado
+            </p>
+          )}
 
           {/* Duration */}
           <div>

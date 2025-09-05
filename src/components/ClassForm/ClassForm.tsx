@@ -216,24 +216,18 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                       </Badge>
                     ))}
                   </div>
-                   <FeatureGate 
-                     feature="group_classes"
-                     fallback={
-                       formData.selectedStudents.length > 1 && (
-                         <Badge variant="destructive" className="mt-2">
-                           <Users className="h-3 w-3 mr-1" />
-                           Aula em Grupo - Premium
-                         </Badge>
-                       )
-                     }
-                   >
-                     {formData.is_group_class && (
-                       <Badge variant="outline" className="mt-2">
-                         <Users className="h-3 w-3 mr-1" />
-                         Aula em Grupo
-                       </Badge>
-                     )}
-                   </FeatureGate>
+                   {formData.selectedStudents.length > 1 && !hasFeature('group_classes') && (
+                     <Badge variant="destructive" className="mt-2">
+                       <Users className="h-3 w-3 mr-1" />
+                       Aula em Grupo - Premium
+                     </Badge>
+                   )}
+                   {formData.is_group_class && hasFeature('group_classes') && (
+                     <Badge variant="outline" className="mt-2">
+                       <Users className="h-3 w-3 mr-1" />
+                       Aula em Grupo
+                     </Badge>
+                   )}
                 </div>
               )}
 

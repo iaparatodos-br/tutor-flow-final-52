@@ -575,6 +575,7 @@ export default function Agenda() {
                 onOpenChange={setIsDialogOpen}
                 students={students}
                 services={services}
+                existingClasses={classes}
                 onSubmit={handleAddClass}
                 loading={submitting}
               />

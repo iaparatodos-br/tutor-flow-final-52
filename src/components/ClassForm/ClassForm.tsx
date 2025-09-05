@@ -48,11 +48,17 @@ interface ClassFormProps {
   onOpenChange: (open: boolean) => void;
   students: Student[];
   services: ClassService[];
+  existingClasses: Array<{
+    id: string;
+    class_date: string;
+    duration_minutes: number;
+    status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida';
+  }>;
   onSubmit: (data: ClassFormData) => Promise<void>;
   loading?: boolean;
 }
 
-export function ClassForm({ open, onOpenChange, students, services, onSubmit, loading }: ClassFormProps) {
+export function ClassForm({ open, onOpenChange, students, services, existingClasses, onSubmit, loading }: ClassFormProps) {
   const { hasFeature } = useSubscription();
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
@@ -77,6 +83,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     date: false,
     time: false,
     pastDateTime: false,
+    timeConflict: false,
   });
 
   const resetForm = () => {
@@ -96,7 +103,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
     });
     setShowRecurrence(false);
     setRecurrenceType('date');
-    setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false, timeConflict: false });
   };
 
   const handleStudentSelection = (studentId: string, checked: boolean) => {
@@ -129,6 +136,7 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
       date: !formData.class_date,
       time: !formData.time,
       pastDateTime: false,
+      timeConflict: false,
     };
 
     // Check if date/time is in the past
@@ -137,6 +145,26 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
       const now = new Date();
       if (classDateTime <= now) {
         errors.pastDateTime = true;
+      }
+
+      // Check for time conflicts with existing classes
+      const classEnd = new Date(classDateTime.getTime() + (formData.duration_minutes * 60 * 1000));
+      
+      const hasConflict = existingClasses.some(existingClass => {
+        // Skip cancelled or completed classes
+        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') {
+          return false;
+        }
+        
+        const existingStart = new Date(existingClass.class_date);
+        const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
+        
+        // Check if times overlap
+        return (classDateTime < existingEnd && classEnd > existingStart);
+      });
+      
+      if (hasConflict) {
+        errors.timeConflict = true;
       }
     }
 
@@ -381,9 +409,9 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                 value={formData.class_date}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, class_date: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, date: false, pastDateTime: false }));
+                  setValidationErrors(prev => ({ ...prev, date: false, pastDateTime: false, timeConflict: false }));
                 }}
-                className={validationErrors.date || validationErrors.pastDateTime ? "border-destructive" : ""}
+                className={validationErrors.date || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
                 required
               />
             </div>
@@ -396,9 +424,9 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
                 value={formData.time}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, time: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, time: false, pastDateTime: false }));
+                  setValidationErrors(prev => ({ ...prev, time: false, pastDateTime: false, timeConflict: false }));
                 }}
-                className={validationErrors.time || validationErrors.pastDateTime ? "border-destructive" : ""}
+                className={validationErrors.time || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
                 required
               />
             </div>
@@ -407,6 +435,12 @@ export function ClassForm({ open, onOpenChange, students, services, onSubmit, lo
           {validationErrors.pastDateTime && (
             <p className="text-sm text-destructive">
               Não é possível agendar aulas para data/horário passado
+            </p>
+          )}
+          
+          {validationErrors.timeConflict && (
+            <p className="text-sm text-destructive">
+              Já existe uma aula agendada neste horário
             </p>
           )}
 

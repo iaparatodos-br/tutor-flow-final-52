@@ -10,7 +10,7 @@ import {
   CreditCard,
   Package
 } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -53,6 +53,8 @@ export function AppSidebar() {
   const currentPath = location.pathname;
   
   const isCollapsed = state === 'collapsed';
+  
+  const navigate = useNavigate();
   
   // Don't render role-specific content until we're sure of the user's role
   if (loading || !profile || (!isProfessor && !isAluno)) {
@@ -126,32 +128,37 @@ export function AppSidebar() {
                 <SidebarMenu>
                   {items.map((item) => (
                     <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild isActive={isActive(item.url)}>
-                         <Tooltip>
-                           <TooltipTrigger asChild>
-                                  <NavLink 
-                                    to={item.url} 
-                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                 >
-                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
-                                 {!isCollapsed && (
-                                   <div className="flex items-center justify-between w-full ml-4">
-                                     <span>{item.title}</span>
-                                     {/* Show premium indicators */}
-                                     {item.title === 'Financeiro' && !hasFeature('financial_module') && (
-                                       <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
-                                         Premium
-                                       </span>
-                                     )}
-                                   </div>
-                                 )}
-                               </NavLink>
-                           </TooltipTrigger>
-                          <TooltipContent side="right">
-                            <p>{item.title}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </SidebarMenuButton>
+                     <SidebarMenuButton 
+                        isActive={isActive(item.url)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(item.url);
+                        }}
+                      >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                                   <div 
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                  >
+                                   <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
+                                  {!isCollapsed && (
+                                    <div className="flex items-center justify-between w-full ml-4">
+                                      <span>{item.title}</span>
+                                      {/* Show premium indicators */}
+                                      {item.title === 'Financeiro' && !hasFeature('financial_module') && (
+                                        <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                                          Premium
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                            </TooltipTrigger>
+                           <TooltipContent side="right">
+                             <p>{item.title}</p>
+                           </TooltipContent>
+                         </Tooltip>
+                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
@@ -167,49 +174,59 @@ export function AppSidebar() {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton asChild isActive={isActive("/planos")}>
-                         <Tooltip>
-                           <TooltipTrigger asChild>
-                                   <NavLink 
-                                     to="/planos" 
-                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                  >
-                                   <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
-                                 {!isCollapsed && <span className="ml-4">Planos</span>}
-                               </NavLink>
+                       <SidebarMenuButton 
+                        isActive={isActive("/planos")}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate("/planos");
+                        }}
+                      >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                                    <div 
+                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   >
+                                    <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
+                                  {!isCollapsed && <span className="ml-4">Planos</span>}
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">
+                              <p>Planos</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </SidebarMenuButton>
+                     </SidebarMenuItem>
+                     <SidebarMenuItem>
+                        <SidebarMenuButton 
+                        isActive={isActive("/subscription")}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate("/subscription");
+                        }}
+                      >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                                     <div 
+                                       className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                    >
+                                     <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
+                                   {!isCollapsed && (
+                                     <div className="flex items-center justify-between w-full ml-4">
+                                       <span>Assinatura</span>
+                                       {currentPlan && (
+                                         <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                                           {currentPlan.name}
+                                         </span>
+                                       )}
+                                     </div>
+                                   )}
+                                 </div>
                            </TooltipTrigger>
                            <TooltipContent side="right">
-                             <p>Planos</p>
+                             <p>Assinatura</p>
                            </TooltipContent>
                          </Tooltip>
                        </SidebarMenuButton>
-                     </SidebarMenuItem>
-                     <SidebarMenuItem>
-                       <SidebarMenuButton asChild isActive={isActive("/subscription")}>
-                         <Tooltip>
-                           <TooltipTrigger asChild>
-                                    <NavLink 
-                                      to="/subscription" 
-                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                   >
-                                    <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
-                                  {!isCollapsed && (
-                                    <div className="flex items-center justify-between w-full ml-4">
-                                      <span>Assinatura</span>
-                                      {currentPlan && (
-                                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                                          {currentPlan.name}
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </NavLink>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">
-                            <p>Assinatura</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </SidebarMenuButton>
                     </SidebarMenuItem>
                   </SidebarMenu>
                 </SidebarGroupContent>

@@ -33,7 +33,7 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <div className="flex h-screen w-full bg-background">
         <AppSidebar />
         

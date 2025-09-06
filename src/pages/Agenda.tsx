@@ -565,6 +565,17 @@ export default function Agenda() {
           </p>
         </div>
 
+        {/* Calendar View */}
+        <SimpleCalendar 
+          classes={calendarClasses}
+          availabilityBlocks={availabilityBlocks}
+          isProfessor={isProfessor}
+          onConfirmClass={handleConfirmClass}
+          onCancelClass={handleCancelClass}
+          onCompleteClass={handleCompleteClass}
+          loading={loading}
+        />
+
         {/* Availability Manager - Only for professors */}
         {isProfessor && (
           <AvailabilityManager onAvailabilityChange={loadAvailabilityBlocks} />
@@ -608,17 +619,6 @@ export default function Agenda() {
             </CardContent>
           </Card>
         )}
-
-        {/* Calendar View */}
-        <SimpleCalendar 
-          classes={calendarClasses}
-          availabilityBlocks={availabilityBlocks}
-          isProfessor={isProfessor}
-          onConfirmClass={handleConfirmClass}
-          onCancelClass={handleCancelClass}
-          onCompleteClass={handleCompleteClass}
-          loading={loading}
-        />
       </div>
       
       <CancellationModal

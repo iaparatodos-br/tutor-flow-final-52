@@ -128,8 +128,9 @@ export default function Alunos() {
         }
       });
 
-      if (error) {
-        console.error('Erro ao convidar aluno:', error);
+      // Check for errors in the response
+      if (error || (data && !data.success)) {
+        console.error('Erro ao convidar aluno:', error, data);
         
         // Extract error message from the response
         let errorMessage = 'Erro ao convidar o aluno.';
@@ -138,7 +139,7 @@ export default function Alunos() {
           errorMessage = data.error;
         } else if (typeof error === 'string') {
           errorMessage = error;
-        } else if (error.message) {
+        } else if (error?.message) {
           errorMessage = error.message;
         }
         

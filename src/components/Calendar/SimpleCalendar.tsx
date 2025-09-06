@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
@@ -16,6 +16,7 @@ interface SimpleCalendarProps {
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   loading?: boolean;
+  onScheduleClass?: () => void;
 }
 
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -31,7 +32,8 @@ export function SimpleCalendar({
   onConfirmClass, 
   onCancelClass, 
   onCompleteClass, 
-  loading 
+  loading,
+  onScheduleClass
 }: SimpleCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
@@ -137,10 +139,16 @@ export function SimpleCalendar({
         <CardContent className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
-            <div>
+            <div className="flex items-center gap-4">
               <h2 className="text-2xl font-bold">
                 {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
               </h2>
+              {isProfessor && onScheduleClass && (
+                <Button onClick={onScheduleClass} size="sm">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Agendar Nova Aula
+                </Button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Button

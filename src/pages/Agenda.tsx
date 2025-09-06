@@ -573,37 +573,26 @@ export default function Agenda() {
           onConfirmClass={handleConfirmClass}
           onCancelClass={handleCancelClass}
           onCompleteClass={handleCompleteClass}
+          onScheduleClass={isProfessor ? () => setIsDialogOpen(true) : undefined}
           loading={loading}
         />
+
+        {/* Class Form Dialog */}
+        {isProfessor && (
+          <ClassForm
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            students={students}
+            services={services}
+            existingClasses={classes}
+            onSubmit={handleAddClass}
+            loading={submitting}
+          />
+        )}
 
         {/* Availability Manager - Only for professors */}
         {isProfessor && (
           <AvailabilityManager onAvailabilityChange={loadAvailabilityBlocks} />
-        )}
-
-        {/* Schedule/Add Class Button */}
-        {isProfessor && (
-          <Card className="shadow-card">
-            <CardHeader>
-              <CardTitle>Gerenciar Agenda</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => setIsDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Agendar Nova Aula
-              </Button>
-              
-              <ClassForm
-                open={isDialogOpen}
-                onOpenChange={setIsDialogOpen}
-                students={students}
-                services={services}
-                existingClasses={classes}
-                onSubmit={handleAddClass}
-                loading={submitting}
-              />
-            </CardContent>
-          </Card>
         )}
 
         {/* Infinite Recurrence Status */}

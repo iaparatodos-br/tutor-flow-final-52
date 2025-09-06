@@ -110,9 +110,11 @@ export default function Alunos() {
           }
         }
       }
-      // Criar aluno via Edge Function com privilégios de admin
+      
+      // Create student via Edge Function with admin privileges
       const redirectUrl = `${window.location.origin}/`;
 
+      console.log('Calling create-student function...');
       const { data, error } = await supabase.functions.invoke('create-student', {
         body: {
           name: formData.name,
@@ -131,33 +133,32 @@ export default function Alunos() {
       console.log('Supabase function response:', { data, error });
       
       // Check for errors in the response
-      if (error || (data && !data.success)) {
-        console.error('Erro ao convidar aluno:', error, data);
+      if (error) {
+        console.error('Supabase function error object:', error);
         console.log('Error type:', typeof error);
-        console.log('Data content:', JSON.stringify(data));
-        
-        // Extract error message from the response
-        let errorMessage = 'Erro ao convidar o aluno.';
-        
-        if (data?.error) {
-          errorMessage = data.error;
-          console.log('Using data.error:', errorMessage);
-        } else if (typeof error === 'string') {
-          errorMessage = error;
-          console.log('Using string error:', errorMessage);
-        } else if (error?.message) {
-          errorMessage = error.message;
-          console.log('Using error.message:', errorMessage);
-        }
+        console.log('Error JSON:', JSON.stringify(error));
         
         toast({
           title: 'Erro',
-          description: errorMessage,
+          description: 'Este e-mail já está sendo utilizado por outro aluno ou professor',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      // Check if the function returned success: false
+      if (data && !data.success) {
+        console.log('Function returned success: false, error:', data.error);
+        
+        toast({
+          title: 'Erro',
+          description: data.error || 'Este e-mail já está sendo utilizado por outro aluno ou professor',
           variant: 'destructive',
         });
         return;
       }
 
+      // Success case
       toast({
         title: 'Aluno convidado com sucesso!',
         description: `${formData.name} receberá um e-mail para concluir o cadastro.`,
@@ -165,7 +166,7 @@ export default function Alunos() {
       
       setIsAddDialogOpen(false);
       loadStudents();
-      
+        
     } catch (error: any) {
       console.error('Erro ao adicionar aluno:', error);
       toast({

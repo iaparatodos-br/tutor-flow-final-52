@@ -99,7 +99,7 @@ export function AppSidebar() {
     <TooltipProvider>
       <Sidebar 
         className="border-r bg-card data-[state=collapsed]:w-16"
-        collapsible="offcanvas"
+        collapsible="icon"
       >
         <div className="flex h-full flex-col">
           {/* Header */}

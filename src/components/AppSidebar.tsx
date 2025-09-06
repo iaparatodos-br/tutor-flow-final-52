@@ -131,7 +131,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                 <NavLink 
                                   to={item.url} 
-                                  className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                  className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                   onClick={(e) => {
                                     if (isCollapsed) {
                                       e.preventDefault();
@@ -140,7 +140,7 @@ export function AppSidebar() {
                                     }
                                   }}
                                 >
-                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary ml-2' : ''}`} />
+                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                  {!isCollapsed && (
                                    <div className="flex items-center justify-between w-full ml-4">
                                      <span>{item.title}</span>
@@ -177,18 +177,18 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild isActive={isActive("/planos")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                <NavLink 
-                                  to="/planos" 
-                                  className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                  onClick={(e) => {
-                                    if (isCollapsed) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      window.location.href = "/planos";
-                                    }
-                                  }}
-                                >
-                                  <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary ml-2' : ''}`} />
+                                 <NavLink 
+                                   to="/planos" 
+                                   className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   onClick={(e) => {
+                                     if (isCollapsed) {
+                                       e.preventDefault();
+                                       e.stopPropagation();
+                                       window.location.href = "/planos";
+                                     }
+                                   }}
+                                 >
+                                   <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                  {!isCollapsed && <span className="ml-4">Planos</span>}
                                </NavLink>
                            </TooltipTrigger>
@@ -202,18 +202,18 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild isActive={isActive("/subscription")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                 <NavLink 
-                                   to="/subscription" 
-                                   className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                   onClick={(e) => {
-                                     if (isCollapsed) {
-                                       e.preventDefault();
-                                       e.stopPropagation();
-                                       window.location.href = "/subscription";
-                                     }
-                                   }}
-                                 >
-                                   <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary ml-2' : ''}`} />
+                                  <NavLink 
+                                    to="/subscription" 
+                                    className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                    onClick={(e) => {
+                                      if (isCollapsed) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        window.location.href = "/subscription";
+                                      }
+                                    }}
+                                  >
+                                    <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                   {!isCollapsed && (
                                     <div className="flex items-center justify-between w-full ml-4">
                                       <span>Assinatura</span>

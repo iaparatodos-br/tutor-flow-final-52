@@ -25,7 +25,8 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenuItem,
+  useSidebar
 } from "@/components/ui/sidebar";
 
 const professorItems = [
@@ -44,13 +45,14 @@ const alunoItems = [
 ];
 
 export function AppSidebar() {
+  const { state } = useSidebar();
   const location = useLocation();
   const { profile, isProfessor, isAluno } = useProfile();
   const { signOut, loading } = useAuth();
   const { currentPlan, hasFeature } = useSubscription();
   const currentPath = location.pathname;
   
-  const isCollapsed = false; // Sidebar sempre expandida
+  const isCollapsed = state === 'collapsed';
   
   // Don't render role-specific content until we're sure of the user's role
   if (loading || !profile || (!isProfessor && !isAluno)) {
@@ -96,8 +98,8 @@ export function AppSidebar() {
   return (
     <TooltipProvider>
       <Sidebar 
-        className="border-r bg-card"
-        collapsible="none"
+        className="border-r bg-card data-[state=collapsed]:w-16"
+        collapsible="icon"
       >
         <div className="flex h-full flex-col">
           {/* Header */}

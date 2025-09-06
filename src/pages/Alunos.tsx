@@ -130,9 +130,21 @@ export default function Alunos() {
 
       if (error) {
         console.error('Erro ao convidar aluno:', error);
+        
+        // Extract error message from the response
+        let errorMessage = 'Erro ao convidar o aluno.';
+        
+        if (data?.error) {
+          errorMessage = data.error;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
         toast({
           title: 'Erro',
-          description: typeof error === 'string' ? error : (error.message || 'Erro ao convidar o aluno.'),
+          description: errorMessage,
           variant: 'destructive',
         });
         return;

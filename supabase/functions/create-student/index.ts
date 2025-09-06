@@ -60,9 +60,26 @@ serve(async (req) => {
 
     if (inviteError || !inviteData?.user) {
       console.error('Error inviting student:', inviteError);
+      
+      // Check for specific error types
+      let errorMessage = 'Failed to invite student';
+      let statusCode = 500;
+      
+      if (inviteError?.message) {
+        // Handle email already exists error
+        if (inviteError.message.includes('User already registered') || 
+            inviteError.message.includes('already exists') ||
+            inviteError.message.includes('email address is already registered')) {
+          errorMessage = 'Este e-mail já está sendo utilizado por outro aluno ou professor';
+          statusCode = 400;
+        } else {
+          errorMessage = inviteError.message;
+        }
+      }
+      
       return new Response(
-        JSON.stringify({ error: inviteError?.message || 'Failed to invite student' }),
-        { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ error: errorMessage }),
+        { status: statusCode, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 

@@ -126,12 +126,12 @@ export function AppSidebar() {
                 <SidebarMenu>
                   {items.map((item) => (
                     <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild>
+                      <SidebarMenuButton asChild isActive={isActive(item.url)}>
                          <Tooltip>
                            <TooltipTrigger asChild>
                                 <NavLink 
                                   to={item.url} 
-                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                  className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                 >
                                   <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) ? 'text-primary' : ''}`} />
                                  {!isCollapsed && (
@@ -167,12 +167,12 @@ export function AppSidebar() {
                 <SidebarGroupContent>
                   <SidebarMenu>
                     <SidebarMenuItem>
-                      <SidebarMenuButton asChild>
+                      <SidebarMenuButton asChild isActive={isActive("/planos")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
                                 <NavLink 
                                   to="/planos" 
-                                  className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                  className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                 >
                                   <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") ? 'text-primary' : ''}`} />
                                  {!isCollapsed && <span className="ml-4">Planos</span>}
@@ -185,12 +185,12 @@ export function AppSidebar() {
                        </SidebarMenuButton>
                      </SidebarMenuItem>
                      <SidebarMenuItem>
-                       <SidebarMenuButton asChild>
+                       <SidebarMenuButton asChild isActive={isActive("/subscription")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
                                  <NavLink 
                                    to="/subscription" 
-                                   className={({ isActive }) => `${getNavCls({ isActive })} flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200`}
+                                   className={`flex items-center ${isCollapsed ? 'justify-center w-full p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                  >
                                    <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") ? 'text-primary' : ''}`} />
                                   {!isCollapsed && (

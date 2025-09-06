@@ -129,9 +129,9 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild isActive={isActive(item.url)}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                <NavLink 
-                                  to={item.url} 
-                                  className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                 <NavLink 
+                                   to={item.url} 
+                                   className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                   onClick={(e) => {
                                     if (isCollapsed) {
                                       e.preventDefault();
@@ -177,9 +177,9 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild isActive={isActive("/planos")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                 <NavLink 
-                                   to="/planos" 
-                                   className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                  <NavLink 
+                                    to="/planos" 
+                                    className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                    onClick={(e) => {
                                      if (isCollapsed) {
                                        e.preventDefault();
@@ -202,9 +202,9 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild isActive={isActive("/subscription")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                  <NavLink 
-                                    to="/subscription" 
-                                    className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-0' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   <NavLink 
+                                     to="/subscription" 
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-10 h-10 p-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                     onClick={(e) => {
                                       if (isCollapsed) {
                                         e.preventDefault();

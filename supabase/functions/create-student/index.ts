@@ -45,11 +45,15 @@ serve(async (req) => {
     }
 
     // Force production URL for email verification links, ignoring localhost URLs
-    const productionUrl = Deno.env.get("SITE_URL") || "https://nwgomximjevgczwuyqcx.supabase.co";
+    const siteUrlFromEnv = Deno.env.get("SITE_URL");
+    const productionUrl = siteUrlFromEnv || "https://nwgomximjevgczwuyqcx.supabase.co";
     const redirectTo = body.redirect_url && !body.redirect_url.includes('localhost') 
       ? body.redirect_url 
       : `${productionUrl}/auth/callback`;
 
+    console.log('SITE_URL environment variable:', siteUrlFromEnv);
+    console.log('Production URL being used:', productionUrl);
+    console.log('Final redirectTo URL:', redirectTo);
     console.log('Attempting to invite user:', body.email);
     // Invite the student by email (Supabase sends the invite email)
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(

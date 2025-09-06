@@ -129,17 +129,10 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild isActive={isActive(item.url)}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                 <NavLink 
-                                   to={item.url} 
-                                   className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                  onClick={(e) => {
-                                    if (isCollapsed) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      window.location.href = item.url;
-                                    }
-                                  }}
-                                >
+                                  <NavLink 
+                                    to={item.url} 
+                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                 >
                                   <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                  {!isCollapsed && (
                                    <div className="flex items-center justify-between w-full ml-4">
@@ -177,17 +170,10 @@ export function AppSidebar() {
                       <SidebarMenuButton asChild isActive={isActive("/planos")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                  <NavLink 
-                                    to="/planos" 
-                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                   onClick={(e) => {
-                                     if (isCollapsed) {
-                                       e.preventDefault();
-                                       e.stopPropagation();
-                                       window.location.href = "/planos";
-                                     }
-                                   }}
-                                 >
+                                   <NavLink 
+                                     to="/planos" 
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                  >
                                    <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                  {!isCollapsed && <span className="ml-4">Planos</span>}
                                </NavLink>
@@ -202,17 +188,10 @@ export function AppSidebar() {
                        <SidebarMenuButton asChild isActive={isActive("/subscription")}>
                          <Tooltip>
                            <TooltipTrigger asChild>
-                                   <NavLink 
-                                     to="/subscription" 
-                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                    onClick={(e) => {
-                                      if (isCollapsed) {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        window.location.href = "/subscription";
-                                      }
-                                    }}
-                                  >
+                                    <NavLink 
+                                      to="/subscription" 
+                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   >
                                     <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                   {!isCollapsed && (
                                     <div className="flex items-center justify-between w-full ml-4">

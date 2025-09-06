@@ -112,7 +112,10 @@ export default function Alunos() {
       }
       
       // Create student via Edge Function with admin privileges
-      const redirectUrl = `${window.location.origin}/`;
+      // Don't send localhost URLs - let the function handle the redirect URL
+      const redirectUrl = window.location.hostname === 'localhost' 
+        ? undefined 
+        : `${window.location.origin}/auth/callback`;
 
       console.log('Calling create-student function...');
       const { data, error } = await supabase.functions.invoke('create-student', {

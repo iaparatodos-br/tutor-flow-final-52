@@ -131,7 +131,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                  <NavLink 
                                    to={item.url} 
-                                   className={`flex items-center ${isCollapsed ? 'justify-center w-full h-10 mx-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                   onClick={(e) => {
                                     if (isCollapsed) {
                                       e.preventDefault();
@@ -179,7 +179,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                   <NavLink 
                                     to="/planos" 
-                                    className={`flex items-center ${isCollapsed ? 'justify-center w-full h-10 mx-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                    onClick={(e) => {
                                      if (isCollapsed) {
                                        e.preventDefault();
@@ -204,7 +204,7 @@ export function AppSidebar() {
                            <TooltipTrigger asChild>
                                    <NavLink 
                                      to="/subscription" 
-                                     className={`flex items-center ${isCollapsed ? 'justify-center w-full h-10 mx-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                     onClick={(e) => {
                                       if (isCollapsed) {
                                         e.preventDefault();

@@ -125,20 +125,14 @@ export function AppSidebar() {
                 {isProfessor ? "Professor" : "Aluno"}
               </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <ul className="space-y-1">
                   {items.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                     <SidebarMenuButton 
-                        isActive={isActive(item.url)}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          navigate(item.url);
-                        }}
-                      >
+                    <li key={item.title}>
                           <Tooltip>
                             <TooltipTrigger asChild>
                                    <div 
-                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive(item.url) ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                     onClick={() => navigate(item.url)}
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                   >
                                    <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                   {!isCollapsed && (
@@ -158,10 +152,9 @@ export function AppSidebar() {
                              <p>{item.title}</p>
                            </TooltipContent>
                          </Tooltip>
-                       </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    </li>
                   ))}
-                </SidebarMenu>
+                </ul>
               </SidebarGroupContent>
             </SidebarGroup>
 
@@ -172,19 +165,13 @@ export function AppSidebar() {
                   Assinatura
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                       <SidebarMenuButton 
-                        isActive={isActive("/planos")}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          navigate("/planos");
-                        }}
-                      >
+                  <ul className="space-y-1">
+                    <li>
                           <Tooltip>
                             <TooltipTrigger asChild>
                                     <div 
-                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                      onClick={() => navigate("/planos")}
+                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                    >
                                     <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                   {!isCollapsed && <span className="ml-4">Planos</span>}
@@ -194,20 +181,13 @@ export function AppSidebar() {
                               <p>Planos</p>
                             </TooltipContent>
                           </Tooltip>
-                        </SidebarMenuButton>
-                     </SidebarMenuItem>
-                     <SidebarMenuItem>
-                        <SidebarMenuButton 
-                        isActive={isActive("/subscription")}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          navigate("/subscription");
-                        }}
-                      >
+                      </li>
+                      <li>
                           <Tooltip>
                             <TooltipTrigger asChild>
                                      <div 
-                                       className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/subscription") ? '!bg-primary/20 !text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                       onClick={() => navigate("/subscription")}
+                                       className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/subscription") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                                     >
                                      <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                    {!isCollapsed && (
@@ -226,9 +206,8 @@ export function AppSidebar() {
                              <p>Assinatura</p>
                            </TooltipContent>
                          </Tooltip>
-                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
+                     </li>
+                  </ul>
                 </SidebarGroupContent>
               </SidebarGroup>
             )}

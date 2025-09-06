@@ -88,7 +88,7 @@ export function AppSidebar() {
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
     isActive 
-      ? "bg-primary/10 text-primary font-medium border border-primary/20 shadow-sm" 
+      ? "bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm" 
       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200";
 
   const handleSignOut = async () => {

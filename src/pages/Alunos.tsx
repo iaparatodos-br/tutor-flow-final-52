@@ -128,19 +128,26 @@ export default function Alunos() {
         }
       });
 
+      console.log('Supabase function response:', { data, error });
+      
       // Check for errors in the response
       if (error || (data && !data.success)) {
         console.error('Erro ao convidar aluno:', error, data);
+        console.log('Error type:', typeof error);
+        console.log('Data content:', JSON.stringify(data));
         
         // Extract error message from the response
         let errorMessage = 'Erro ao convidar o aluno.';
         
         if (data?.error) {
           errorMessage = data.error;
+          console.log('Using data.error:', errorMessage);
         } else if (typeof error === 'string') {
           errorMessage = error;
+          console.log('Using string error:', errorMessage);
         } else if (error?.message) {
           errorMessage = error.message;
+          console.log('Using error.message:', errorMessage);
         }
         
         toast({

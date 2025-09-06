@@ -35,6 +35,7 @@ serve(async (req) => {
 
   try {
     const body: CreateStudentRequest = await req.json();
+    console.log('create-student function called with body:', JSON.stringify(body));
 
     if (!body?.email || !body?.name || !body?.teacher_id) {
       return new Response(
@@ -45,6 +46,7 @@ serve(async (req) => {
 
     const redirectTo = body.redirect_url || `${Deno.env.get("SUPABASE_URL")}/auth/v1/verify`;
 
+    console.log('Attempting to invite user:', body.email);
     // Invite the student by email (Supabase sends the invite email)
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
       body.email,
@@ -60,6 +62,7 @@ serve(async (req) => {
 
     if (inviteError || !inviteData?.user) {
       console.error('Error inviting student:', inviteError);
+      console.log('InviteError details:', JSON.stringify(inviteError));
       
       // Check for specific error types and return success response with error field
       let errorMessage = 'Failed to invite student';

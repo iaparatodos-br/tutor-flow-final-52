@@ -38,8 +38,8 @@ serve(async (req) => {
 
     if (!body?.email || !body?.name || !body?.teacher_id) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: name, email, teacher_id" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        JSON.stringify({ success: false, error: "Campos obrigatórios não informados: nome, email e professor" }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -141,9 +141,24 @@ serve(async (req) => {
     );
   } catch (error: any) {
     console.error('Error in create-student function:', error);
+    
+    // Check for specific error types and provide user-friendly messages
+    let errorMessage = 'Erro inesperado ao cadastrar aluno';
+    
+    if (error.message) {
+      if (error.message.includes('User already registered') || 
+          error.message.includes('already exists') ||
+          error.message.includes('email address is already registered')) {
+        errorMessage = 'Este e-mail já está sendo utilizado por outro aluno ou professor';
+      } else {
+        errorMessage = error.message;
+      }
+    }
+    
+    // Return 200 with error in response body instead of error status
     return new Response(
-      JSON.stringify({ error: error.message || 'Unexpected error' }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }
 });

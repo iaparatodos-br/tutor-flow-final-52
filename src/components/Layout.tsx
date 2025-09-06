@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppSidebar } from "@/components/AppSidebar";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
 
 interface LayoutProps {
@@ -40,9 +40,9 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Header com trigger sempre visível */}
           <header className="flex h-16 items-center border-b bg-card px-4">
-            <SidebarTrigger className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors">
+            <div className="mr-2 rounded-md p-2">
               <Menu className="h-5 w-5" />
-            </SidebarTrigger>
+            </div>
             <span className="font-semibold">TutorFlow</span>
           </header>
 

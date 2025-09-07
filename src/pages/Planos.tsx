@@ -49,6 +49,7 @@ export default function Planos() {
       case 'group_classes': return <Users className="h-4 w-4" />;
       case 'expenses': return <FileText className="h-4 w-4" />;
       case 'storage_mb': return <HardDrive className="h-4 w-4" />;
+      case 'material_sharing': return <FileText className="h-4 w-4" />;
       default: return <Check className="h-4 w-4" />;
     }
   };
@@ -69,7 +70,9 @@ export default function Planos() {
       case 'expenses':
         return value ? 'Cadastro de Despesas' : 'Sem Cadastro de Despesas';
       case 'storage_mb':
-        return `Armazenamento: ${formatStorage(value)}`;
+        return `Armazenamento de Materiais: ${formatStorage(value)}`;
+      case 'material_sharing':
+        return value ? 'Upload e Compartilhamento de Materiais' : 'Materiais Limitados';
       default:
         return key;
     }
@@ -81,7 +84,7 @@ export default function Planos() {
         <div className="text-center">
           <h1 className="text-3xl font-bold">Planos TutorFlow</h1>
           <p className="text-muted-foreground mt-2">
-            Escolha o plano ideal para sua atividade de ensino
+            Escolha o plano ideal para sua atividade de ensino. Todos os planos incluem upload e compartilhamento de materiais.
           </p>
         </div>
 
@@ -247,14 +250,22 @@ export default function Planos() {
                     </td>
                   ))}
                 </tr>
-                <tr>
-                  <td className="py-2">Armazenamento</td>
-                  {plans.map((plan) => (
-                    <td key={plan.id} className="text-center py-2 px-4">
-                      {formatStorage(plan.features.storage_mb)}
-                    </td>
-                  ))}
-                </tr>
+                <tr className="border-b">
+                   <td className="py-2">Upload e Compartilhamento de Materiais</td>
+                   {plans.map((plan) => (
+                     <td key={plan.id} className="text-center py-2 px-4">
+                       <Check className="h-4 w-4 text-green-500 mx-auto" />
+                     </td>
+                   ))}
+                 </tr>
+                 <tr>
+                   <td className="py-2">Armazenamento de Materiais</td>
+                   {plans.map((plan) => (
+                     <td key={plan.id} className="text-center py-2 px-4">
+                       <div className="font-medium">{formatStorage(plan.features.storage_mb)}</div>
+                     </td>
+                   ))}
+                 </tr>
               </tbody>
             </table>
           </div>

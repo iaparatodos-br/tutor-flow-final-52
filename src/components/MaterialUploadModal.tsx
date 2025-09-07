@@ -104,6 +104,7 @@ export function MaterialUploadModal({
   categories 
 }: MaterialUploadModalProps) {
   const { profile } = useProfile();
+  const { currentPlan } = useSubscription();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -134,7 +135,7 @@ export function MaterialUploadModal({
     }
 
     // Check if adding this file would exceed storage limit
-    const storageValidation = await checkStorageLimit(file.size);
+    const storageValidation = await checkStorageLimit(file.size, currentPlan);
     if (!storageValidation.valid) {
       return storageValidation;
     }
@@ -142,7 +143,7 @@ export function MaterialUploadModal({
     return { valid: true, errors: [] };
   };
 
-  const checkStorageLimit = async (newFileSize: number): Promise<{ valid: boolean; errors: string[] }> => {
+  const checkStorageLimit = async (newFileSize: number, plan: any): Promise<{ valid: boolean; errors: string[] }> => {
     if (!profile) return { valid: false, errors: ['Perfil não encontrado'] };
 
     try {
@@ -160,8 +161,7 @@ export function MaterialUploadModal({
       const totalUsageInMB = currentUsageInMB + newFileInMB;
 
       // Get storage limit from current plan
-      const { currentPlan } = useSubscription();
-      const storageLimitMB = currentPlan?.features.storage_mb || 150; // Default to free plan limit
+      const storageLimitMB = plan?.features.storage_mb || 150; // Default to free plan limit
 
       if (totalUsageInMB > storageLimitMB) {
         const overageMB = Math.ceil(totalUsageInMB - storageLimitMB);

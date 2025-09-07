@@ -35,7 +35,6 @@ const alunoItems = [
 
 interface AppSidebarProps {
   isOpen: boolean;
-  onClose?: () => void;
 }
 
 export function AppSidebar({ isOpen }: AppSidebarProps) {
@@ -46,8 +45,6 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   const currentPath = location.pathname;
   
   const navigate = useNavigate();
-  
-  console.log('AppSidebar render - isOpen:', isOpen);
   
   // Don't render role-specific content until we're sure of the user's role
   if (loading || !profile || (!isProfessor && !isAluno)) {
@@ -87,7 +84,6 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   };
 
   const handleNavigation = (url: string) => {
-    console.log('Navigating to:', url, 'Sidebar will remain open:', isOpen);
     navigate(url);
   };
 

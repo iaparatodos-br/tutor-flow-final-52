@@ -1,9 +1,10 @@
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSidebarState } from "@/contexts/SidebarContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,9 +13,7 @@ interface LayoutProps {
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
   const { loading, isAuthenticated } = useAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  console.log('Layout render - sidebarOpen:', sidebarOpen);
+  const { isOpen, toggle } = useSidebarState();
 
   if (loading) {
     return (
@@ -37,7 +36,7 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
 
   return (
     <div className="flex h-screen w-full bg-background">
-      <AppSidebar isOpen={sidebarOpen} />
+      <AppSidebar isOpen={isOpen} />
       
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header com trigger sempre visível */}
@@ -45,10 +44,7 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              console.log('Toggle clicked - current state:', sidebarOpen, 'new state:', !sidebarOpen);
-              setSidebarOpen(!sidebarOpen);
-            }}
+            onClick={toggle}
             className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors"
           >
             <Menu className="h-5 w-5" />

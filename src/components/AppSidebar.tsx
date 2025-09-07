@@ -129,10 +129,14 @@ export function AppSidebar() {
                   <li key={item.title}>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                                 <div 
-                                   onClick={() => navigate(item.url)}
-                                   className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                >
+                                  <div 
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      navigate(item.url);
+                                    }}
+                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                 >
                                  <item.icon className={`h-4 w-4 flex-shrink-0 ${isActive(item.url) && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                 {!isCollapsed && (
                                   <div className="flex items-center justify-between w-full ml-4">
@@ -166,10 +170,14 @@ export function AppSidebar() {
                   <li>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                                  <div 
-                                    onClick={() => navigate("/planos")}
-                                    className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                 >
+                                   <div 
+                                     onClick={(e) => {
+                                       e.preventDefault();
+                                       e.stopPropagation();
+                                       navigate("/planos");
+                                     }}
+                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                  >
                                   <Package className={`h-4 w-4 flex-shrink-0 ${isActive("/planos") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                 {!isCollapsed && <span className="ml-4">Planos</span>}
                               </div>
@@ -182,10 +190,14 @@ export function AppSidebar() {
                     <li>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                                   <div 
-                                     onClick={() => navigate("/subscription")}
-                                     className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/subscription") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-                                  >
+                                    <div 
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        navigate("/subscription");
+                                      }}
+                                      className={`flex items-center ${isCollapsed ? 'justify-center w-12 h-10 px-3 py-2' : 'px-0 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/subscription") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                                   >
                                    <CreditCard className={`h-4 w-4 flex-shrink-0 ${isActive("/subscription") && !isCollapsed ? 'text-primary ml-2' : 'text-primary'}`} />
                                  {!isCollapsed && (
                                    <div className="flex items-center justify-between w-full ml-4">

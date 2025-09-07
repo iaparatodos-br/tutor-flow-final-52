@@ -59,7 +59,7 @@ interface ClassFormProps {
 }
 
 export function ClassForm({ open, onOpenChange, students, services, existingClasses, onSubmit, loading }: ClassFormProps) {
-  const { hasFeature } = useSubscription();
+  const { hasFeature, currentPlan } = useSubscription();
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
     service_id: '',
@@ -124,8 +124,8 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check if it's a group class (more than 1 student) and user doesn't have access
-    if (formData.selectedStudents.length > 1 && !hasFeature('group_classes')) {
+    // Check if it's a group class (more than 1 student) and user is on free plan
+    if (formData.selectedStudents.length > 1 && currentPlan?.slug === 'free') {
       toast.error('Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.');
       return;
     }
@@ -255,13 +255,13 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       </Badge>
                     ))}
                   </div>
-                   {formData.selectedStudents.length > 1 && !hasFeature('group_classes') && (
+                   {formData.selectedStudents.length > 1 && currentPlan?.slug === 'free' && (
                      <Badge variant="destructive" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
                        Aula em Grupo - Premium
                      </Badge>
                    )}
-                   {formData.is_group_class && hasFeature('group_classes') && (
+                   {formData.is_group_class && currentPlan?.slug !== 'free' && (
                      <Badge variant="outline" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
                        Aula em Grupo

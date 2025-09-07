@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Calendar, Clock, Plus, User, AlertCircle } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -390,7 +390,7 @@ export function StudentScheduleRequest({ teacherId, studentId }: StudentSchedule
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                   {slots.map((slot, index) => (
-                    <Dialog key={index} open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                    <Dialog key={index} open={isDialogOpen && selectedTimeSlot === slot.datetime} onOpenChange={setIsDialogOpen}>
                       <DialogTrigger asChild>
                         <Button
                           variant={slot.available ? "outline" : "ghost"}
@@ -421,8 +421,10 @@ export function StudentScheduleRequest({ teacherId, studentId }: StudentSchedule
                       <DialogContent>
                         <DialogHeader>
                           <DialogTitle>Solicitar Aula</DialogTitle>
+                          <DialogDescription>
+                            Selecione o horário e confirme os detalhes da solicitação.
+                          </DialogDescription>
                         </DialogHeader>
-                        
                         <div className="space-y-4">
                           <div>
                             <Label>Data e Horário</Label>

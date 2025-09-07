@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -11,7 +11,6 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Upload, X, FileText, AlertCircle } from "lucide-react";
 import { validateFileUpload, sanitizeInput } from "@/utils/validation";
-import { FeatureGate } from "@/components/FeatureGate";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 
 interface MaterialUploadModalProps {
@@ -37,6 +36,67 @@ const ALLOWED_FILE_TYPES = [
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
+// Storage info component
+function StorageInfo() {
+  const { profile } = useProfile();
+  const { currentPlan } = useSubscription();
+  const [storageInfo, setStorageInfo] = useState<{
+    used: number;
+    limit: number;
+    loading: boolean;
+  }>({ used: 0, limit: 150, loading: true });
+
+  useEffect(() => {
+    const loadStorageInfo = async () => {
+      if (!profile) return;
+
+      try {
+        const { data: materials, error } = await supabase
+          .from('materials')
+          .select('file_size')
+          .eq('teacher_id', profile.id);
+
+        if (error) throw error;
+
+        const usedBytes = materials?.reduce((total, material) => total + material.file_size, 0) || 0;
+        const usedMB = Math.round(usedBytes / (1024 * 1024));
+        const limitMB = currentPlan?.features.storage_mb || 150;
+
+        setStorageInfo({ used: usedMB, limit: limitMB, loading: false });
+      } catch (error) {
+        console.error('Error loading storage info:', error);
+        setStorageInfo(prev => ({ ...prev, loading: false }));
+      }
+    };
+
+    loadStorageInfo();
+  }, [profile, currentPlan]);
+
+  if (storageInfo.loading) {
+    return <p className="text-xs text-muted-foreground">Carregando...</p>;
+  }
+
+  const percentageUsed = (storageInfo.used / storageInfo.limit) * 100;
+  const isNearLimit = percentageUsed > 80;
+
+  return (
+    <div className="text-xs space-y-1">
+      <p className={`${isNearLimit ? 'text-orange-600' : 'text-muted-foreground'}`}>
+        Armazenamento: {storageInfo.used}MB / {storageInfo.limit}MB ({Math.round(percentageUsed)}%)
+      </p>
+      <div className="w-full bg-secondary rounded-full h-1">
+        <div 
+          className={`h-1 rounded-full transition-all ${
+            percentageUsed > 90 ? 'bg-destructive' : 
+            percentageUsed > 80 ? 'bg-orange-500' : 'bg-primary'
+          }`}
+          style={{ width: `${Math.min(percentageUsed, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function MaterialUploadModal({ 
   isOpen, 
   onClose, 
@@ -44,7 +104,6 @@ export function MaterialUploadModal({
   categories 
 }: MaterialUploadModalProps) {
   const { profile } = useProfile();
-  const { hasFeature } = useSubscription();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -68,22 +127,63 @@ export function MaterialUploadModal({
     }
   };
 
-  const validateFile = (file: File): { valid: boolean; errors: string[] } => {
+  const validateFile = async (file: File): Promise<{ valid: boolean; errors: string[] }> => {
     const baseValidation = validateFileUpload(file);
-    
-    // Check storage limits for non-premium users
-    if (!hasFeature('storage_mb') && file.size > 10 * 1024 * 1024) { // 10MB limit for free users
-      return {
-        valid: false,
-        errors: ['Arquivo muito grande. Usuários do plano gratuito podem enviar arquivos de até 10MB. Faça upgrade para enviar arquivos maiores.']
-      };
+    if (!baseValidation.valid) {
+      return baseValidation;
+    }
+
+    // Check if adding this file would exceed storage limit
+    const storageValidation = await checkStorageLimit(file.size);
+    if (!storageValidation.valid) {
+      return storageValidation;
     }
     
-    return baseValidation;
+    return { valid: true, errors: [] };
   };
 
-  const handleFileSelect = (selectedFile: File) => {
-    const validation = validateFile(selectedFile);
+  const checkStorageLimit = async (newFileSize: number): Promise<{ valid: boolean; errors: string[] }> => {
+    if (!profile) return { valid: false, errors: ['Perfil não encontrado'] };
+
+    try {
+      // Get current storage usage
+      const { data: materials, error } = await supabase
+        .from('materials')
+        .select('file_size')
+        .eq('teacher_id', profile.id);
+
+      if (error) throw error;
+
+      const currentUsageMB = materials?.reduce((total, material) => total + material.file_size, 0) || 0;
+      const currentUsageInMB = currentUsageMB / (1024 * 1024);
+      const newFileInMB = newFileSize / (1024 * 1024);
+      const totalUsageInMB = currentUsageInMB + newFileInMB;
+
+      // Get storage limit from current plan
+      const { currentPlan } = useSubscription();
+      const storageLimitMB = currentPlan?.features.storage_mb || 150; // Default to free plan limit
+
+      if (totalUsageInMB > storageLimitMB) {
+        const overageMB = Math.ceil(totalUsageInMB - storageLimitMB);
+        return {
+          valid: false,
+          errors: [
+            `Limite de armazenamento excedido! Você tem ${Math.round(currentUsageInMB)}MB usados de ${storageLimitMB}MB disponíveis. ` +
+            `Este arquivo (${Math.round(newFileInMB)}MB) excederia seu limite em ${overageMB}MB. ` +
+            `Faça upgrade do seu plano ou remova alguns arquivos antes de continuar.`
+          ]
+        };
+      }
+
+      return { valid: true, errors: [] };
+    } catch (error) {
+      console.error('Error checking storage limit:', error);
+      return { valid: false, errors: ['Erro ao verificar limite de armazenamento'] };
+    }
+  };
+
+  const handleFileSelect = async (selectedFile: File) => {
+    const validation = await validateFile(selectedFile);
     if (!validation.valid) {
       validation.errors.forEach(error => toast.error(error));
       return;
@@ -112,7 +212,7 @@ export function MaterialUploadModal({
     if (files.length > 0) {
       handleFileSelect(files[0]);
     }
-  }, []);
+  }, [handleFileSelect]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -247,9 +347,9 @@ export function MaterialUploadModal({
                 type="file"
                 className="hidden"
                 accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.gif,.txt"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleFileSelect(file);
+                  if (file) await handleFileSelect(file);
                 }}
                 disabled={uploading}
               />
@@ -280,22 +380,14 @@ export function MaterialUploadModal({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
-                   <div>
-                     <p className="font-medium">Clique ou arraste um arquivo</p>
-                     <FeatureGate 
-                       feature="storage_mb"
-                       fallback={
-                         <p className="text-sm text-muted-foreground">
-                           PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 10MB - Plano Gratuito)
-                         </p>
-                       }
-                     >
-                       <p className="text-sm text-muted-foreground">
-                         PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 25MB)
-                       </p>
-                     </FeatureGate>
-                   </div>
+                   <Upload className="h-8 w-8 mx-auto text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">Clique ou arraste um arquivo</p>
+                      <p className="text-sm text-muted-foreground">
+                        PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 25MB por arquivo)
+                      </p>
+                      <StorageInfo />
+                    </div>
                 </div>
               )}
             </div>

@@ -14,6 +14,7 @@ import { AvailabilityManager } from "@/components/Availability/AvailabilityManag
 import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
 import { ClassReportModal } from "@/components/ClassReportModal";
+import { StudentScheduleRequest } from "@/components/StudentScheduleRequest";
 import { useInfiniteRecurrence } from "@/hooks/useInfiniteRecurrence";
 
 interface ClassWithParticipants {
@@ -576,6 +577,14 @@ export default function Agenda() {
           onScheduleClass={isProfessor ? () => setIsDialogOpen(true) : undefined}
           loading={loading}
         />
+
+        {/* Student Schedule Request - Only for students */}
+        {isAluno && profile?.teacher_id && (
+          <StudentScheduleRequest 
+            teacherId={profile.teacher_id}
+            studentId={profile.id}
+          />
+        )}
 
         {/* Class Form Dialog */}
         {isProfessor && (

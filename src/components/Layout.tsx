@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -12,6 +12,7 @@ interface LayoutProps {
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
   const { loading, isAuthenticated } = useAuth();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (loading) {
     return (
@@ -33,7 +34,10 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
   }
 
   return (
-    <SidebarProvider defaultOpen={false}>
+    <SidebarProvider 
+      open={sidebarOpen} 
+      onOpenChange={setSidebarOpen}
+    >
       <div className="flex h-screen w-full bg-background">
         <AppSidebar />
         

@@ -14,6 +14,8 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
   const { loading, isAuthenticated } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  console.log('Layout render - sidebarOpen:', sidebarOpen);
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-subtle">
@@ -36,7 +38,10 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
   return (
     <SidebarProvider 
       open={sidebarOpen} 
-      onOpenChange={setSidebarOpen}
+      onOpenChange={(open) => {
+        console.log('SidebarProvider onOpenChange:', open);
+        setSidebarOpen(open);
+      }}
     >
       <div className="flex h-screen w-full bg-background">
         <AppSidebar />

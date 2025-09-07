@@ -56,6 +56,8 @@ export function AppSidebar() {
   
   const navigate = useNavigate();
   
+  console.log('AppSidebar render - state:', state, 'isCollapsed:', isCollapsed);
+  
   // Don't render role-specific content until we're sure of the user's role
   if (loading || !profile || (!isProfessor && !isAluno)) {
     return (
@@ -131,6 +133,7 @@ export function AppSidebar() {
                           <TooltipTrigger asChild>
                                   <div 
                                     onClick={(e) => {
+                                      console.log('Item clicked, preventing propagation');
                                       e.preventDefault();
                                       e.stopPropagation();
                                       navigate(item.url);

@@ -25,6 +25,7 @@ import PoliticasCancelamento from "./pages/PoliticasCancelamento";
 import Planos from "./pages/Planos";
 import Subscription from "./pages/Subscription";
 import NotFound from "./pages/NotFound";
+import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
 const queryClient = new QueryClient();
 
@@ -81,11 +82,11 @@ const AppWithProviders = () => {
             <Route path="/alunos/:id" element={<PerfilAluno />} />
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/aulas" element={<Agenda />} />
-            <Route path="/financeiro" element={<Financeiro />} />
-            <Route path="/faturas" element={<Financeiro />} />
+            <Route path="/financeiro" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
+            <Route path="/faturas" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
             <Route path="/materiais" element={<Materiais />} />
             <Route path="/meus-materiais" element={<MeusMateriais />} />
-            <Route path="/contas-recebimento" element={<ContasRecebimento />} />
+            <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
             <Route path="/planos" element={<Planos />} />

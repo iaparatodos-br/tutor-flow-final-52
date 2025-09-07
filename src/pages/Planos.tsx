@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, Star, Zap, Users, FileText, DollarSign, HardDrive } from 'lucide-react';
+import { Check, Star, Zap, Users, FileText, DollarSign, HardDrive, X } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
@@ -221,7 +221,7 @@ export default function Planos() {
                       {plan.features.financial_module ? (
                         <Check className="h-4 w-4 text-green-500 mx-auto" />
                       ) : (
-                        <span className="text-muted-foreground">Básico</span>
+                        <X className="h-4 w-4 text-red-500 mx-auto" />
                       )}
                     </td>
                   ))}

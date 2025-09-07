@@ -44,14 +44,14 @@ interface TimeSlot {
 
 interface StudentScheduleRequestProps {
   teacherId: string;
-  studentId: string;
 }
+
 
 const DAYS_OF_WEEK = [
   'Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'
 ];
 
-export function StudentScheduleRequest({ teacherId, studentId }: StudentScheduleRequestProps) {
+export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProps) {
   const { toast } = useToast();
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
@@ -210,7 +210,6 @@ export function StudentScheduleRequest({ teacherId, studentId }: StudentSchedule
       const { error } = await supabase.functions.invoke('request-class', {
         body: {
           teacherId,
-          studentId,
           datetime: selectedTimeSlot,
           serviceId: selectedService,
           notes

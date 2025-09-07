@@ -582,7 +582,6 @@ export default function Agenda() {
         {isAluno && profile?.teacher_id && (
           <StudentScheduleRequest 
             teacherId={profile.teacher_id}
-            studentId={profile.id}
           />
         )}
 

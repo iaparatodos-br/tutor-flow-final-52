@@ -33,12 +33,12 @@ serve(async (req) => {
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
     const user = userData.user;
 
-    const { teacherId, studentId, datetime, serviceId, notes } = await req.json();
-    if (!teacherId || !studentId || !datetime || !serviceId) {
+    const { teacherId, datetime, serviceId, notes } = await req.json();
+    if (!teacherId || !datetime || !serviceId) {
       throw new Error("Missing required fields");
     }
 
-    if (user.id !== studentId) throw new Error("Student mismatch");
+    // Student derived from auth user; ignoring any provided studentId
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -67,7 +67,7 @@ serve(async (req) => {
       .from('classes')
       .insert({
         teacher_id: teacherId,
-        student_id: studentId,
+        student_id: user.id,
         class_date: new Date(datetime).toISOString(),
         duration_minutes: service.duration_minutes,
         service_id: serviceId,

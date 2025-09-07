@@ -2,8 +2,8 @@ import { ReactNode, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppSidebar } from "@/components/AppSidebar";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface LayoutProps {
   children: ReactNode;
@@ -36,31 +36,31 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
   }
 
   return (
-    <SidebarProvider 
-      open={sidebarOpen} 
-      onOpenChange={(open) => {
-        console.log('SidebarProvider onOpenChange:', open);
-        setSidebarOpen(open);
-      }}
-    >
-      <div className="flex h-screen w-full bg-background">
-        <AppSidebar />
-        
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Header com trigger sempre visível */}
-          <header className="flex h-16 items-center border-b bg-card px-4">
-            <SidebarTrigger className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors">
-              <Menu className="h-5 w-5" />
-            </SidebarTrigger>
-            <span className="font-semibold">TutorFlow</span>
-          </header>
+    <div className="flex h-screen w-full bg-background">
+      <AppSidebar isOpen={sidebarOpen} />
+      
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Header com trigger sempre visível */}
+        <header className="flex h-16 items-center border-b bg-card px-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              console.log('Toggle clicked - current state:', sidebarOpen, 'new state:', !sidebarOpen);
+              setSidebarOpen(!sidebarOpen);
+            }}
+            className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <span className="font-semibold">TutorFlow</span>
+        </header>
 
-          {/* Main content */}
-          <main className="flex-1 overflow-auto bg-gradient-subtle p-6">
-            {children}
-          </main>
-        </div>
+        {/* Main content */}
+        <main className="flex-1 overflow-auto bg-gradient-subtle p-6">
+          {children}
+        </main>
       </div>
-    </SidebarProvider>
+    </div>
   );
 }

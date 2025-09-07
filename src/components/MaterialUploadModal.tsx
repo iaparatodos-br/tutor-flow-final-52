@@ -384,7 +384,7 @@ export function MaterialUploadModal({
                     <div>
                       <p className="font-medium">Clique ou arraste um arquivo</p>
                       <p className="text-sm text-muted-foreground">
-                        PDF, DOCX, PPTX, JPG, PNG, GIF, TXT (máx. 25MB por arquivo)
+                        PDF, DOCX, PPTX, JPG, PNG, GIF, TXT
                       </p>
                       <StorageInfo />
                     </div>

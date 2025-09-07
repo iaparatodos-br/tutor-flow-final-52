@@ -50,7 +50,6 @@ export const sanitizeInput = (input: string): string => {
 // File upload security validation
 export const validateFileUpload = (file: File): { valid: boolean; errors: string[] } => {
   const errors: string[] = [];
-  const maxSize = 10 * 1024 * 1024; // 10MB
   const allowedTypes = [
     'application/pdf',
     'application/msword',
@@ -65,10 +64,6 @@ export const validateFileUpload = (file: File): { valid: boolean; errors: string
     'image/gif',
     'image/webp'
   ];
-  
-  if (file.size > maxSize) {
-    errors.push('Arquivo muito grande. Máximo permitido: 10MB');
-  }
   
   if (!allowedTypes.includes(file.type)) {
     errors.push('Tipo de arquivo não permitido');

@@ -105,6 +105,11 @@ export default function Agenda() {
           notes,
           is_experimental,
           is_group_class,
+          student_id,
+          profiles!classes_student_id_fkey (
+            name,
+            email
+          ),
           class_participants (
             student_id,
             profiles!class_participants_student_id_fkey (
@@ -119,13 +124,26 @@ export default function Agenda() {
 
       if (error) throw error;
       
-      const mappedClasses = (data || []).map(item => ({
-        ...item,
-        participants: item.class_participants.map(p => ({
-          student_id: p.student_id,
-          student: p.profiles
-        }))
-      })) as ClassWithParticipants[];
+      const mappedClasses = (data || []).map(item => {
+        // Para aulas individuais, usa o student_id direto da aula
+        // Para aulas em grupo, usa os participantes
+        const participants = item.is_group_class 
+          ? item.class_participants.map(p => ({
+              student_id: p.student_id,
+              student: p.profiles
+            }))
+          : item.student_id && item.profiles
+            ? [{
+                student_id: item.student_id,
+                student: item.profiles
+              }]
+            : [];
+
+        return {
+          ...item,
+          participants
+        };
+      }) as ClassWithParticipants[];
       
       setClasses(mappedClasses);
 

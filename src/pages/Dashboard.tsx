@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "@/components/Layout";
@@ -18,6 +19,7 @@ interface DashboardStats {
 export default function Dashboard() {
   const { profile, isProfessor, isAluno } = useProfile();
   const { loading: authLoading } = useAuth();
+  const { hasFeature } = useSubscription();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
@@ -218,14 +220,16 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">Marcar nova aula</p>
               </div>
               
-              <div 
-                className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
-                onClick={() => navigate("/financeiro")}
-              >
-                <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
-                <p className="font-medium">Nova Fatura</p>
-                <p className="text-sm text-muted-foreground">Criar cobrança</p>
-              </div>
+              {hasFeature('financial_module') && (
+                <div 
+                  className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
+                  onClick={() => navigate("/financeiro")}
+                >
+                  <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
+                  <p className="font-medium">Nova Fatura</p>
+                  <p className="text-sm text-muted-foreground">Criar cobrança</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

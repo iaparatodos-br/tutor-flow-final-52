@@ -83,46 +83,19 @@ export function StudentScheduleRequest({ teacherId, studentId }: StudentSchedule
 
   const loadTeacherAvailability = async () => {
     try {
-      const [
-        { data: workingHoursData, error: workingHoursError },
-        { data: blocksData, error: blocksError },
-        { data: classesData, error: classesError },
-        { data: servicesData, error: servicesError }
-      ] = await Promise.all([
-        supabase
-          .from('working_hours')
-          .select('*')
-          .eq('teacher_id', teacherId)
-          .eq('is_active', true),
-        supabase
-          .from('availability_blocks')
-          .select('*')
-          .eq('teacher_id', teacherId),
-        supabase
-          .from('classes')
-          .select('class_date, duration_minutes')
-          .eq('teacher_id', teacherId)
-          .in('status', ['pendente', 'confirmada']),
-        supabase
-          .from('class_services')
-          .select('*')
-          .eq('teacher_id', teacherId)
-          .eq('is_active', true)
-      ]);
+      const { data, error } = await supabase.functions.invoke('get-teacher-availability', {
+        body: { teacherId }
+      });
 
-      if (workingHoursError) throw workingHoursError;
-      if (blocksError) throw blocksError;
-      if (classesError) throw classesError;
-      if (servicesError) throw servicesError;
+      if (error) throw error;
 
-      setWorkingHours(workingHoursData || []);
-      setAvailabilityBlocks(blocksData || []);
-      setExistingClasses(classesData || []);
-      setServices(servicesData || []);
+      setWorkingHours(data?.workingHours || []);
+      setAvailabilityBlocks(data?.availabilityBlocks || []);
+      setExistingClasses(data?.existingClasses || []);
+      setServices(data?.services || []);
       
-      // Set default service if available
-      if (servicesData && servicesData.length > 0) {
-        const defaultService = servicesData.find(s => s.is_default) || servicesData[0];
+      if (data?.services && data.services.length > 0) {
+        const defaultService = data.services.find((s: any) => s.is_default) || data.services[0];
         setSelectedService(defaultService.id);
       }
     } catch (error) {
@@ -234,22 +207,15 @@ export function StudentScheduleRequest({ teacherId, studentId }: StudentSchedule
 
     setSubmitting(true);
     try {
-      const service = services.find(s => s.id === selectedService);
-      if (!service) throw new Error("Serviço não encontrado");
-
-      const { error } = await supabase
-        .from('classes')
-        .insert({
-          teacher_id: teacherId,
-          student_id: studentId,
-          class_date: selectedTimeSlot,
-          duration_minutes: service.duration_minutes,
-          service_id: selectedService,
-          status: 'pendente',
-          notes: notes.trim() || null,
-          is_experimental: false,
-          is_group_class: false
-        });
+      const { error } = await supabase.functions.invoke('request-class', {
+        body: {
+          teacherId,
+          studentId,
+          datetime: selectedTimeSlot,
+          serviceId: selectedService,
+          notes
+        }
+      });
 
       if (error) throw error;
 

@@ -41,7 +41,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   const location = useLocation();
   const { profile, isProfessor, isAluno } = useProfile();
   const { signOut, loading } = useAuth();
-  const { currentPlan, hasFeature } = useSubscription();
+  const { currentPlan, hasFeature, hasTeacherFeature } = useSubscription();
   const currentPath = location.pathname;
   
   const navigate = useNavigate();
@@ -75,7 +75,13 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
     );
   }
   
-  const items = isProfessor ? professorItems : alunoItems;
+  const items = isProfessor ? professorItems : alunoItems.filter(item => {
+    // Filter financial items for students based on teacher's plan
+    if (item.title === "Faturas") {
+      return hasTeacherFeature('financial_module');
+    }
+    return true;
+  });
   
   const isActive = (path: string) => currentPath === path;
 

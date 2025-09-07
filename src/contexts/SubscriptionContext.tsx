@@ -36,6 +36,7 @@ interface SubscriptionContextType {
   plans: SubscriptionPlan[];
   loading: boolean;
   hasFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
+  hasTeacherFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   canAddStudent: () => boolean;
   getStudentOverageInfo: (currentStudentCount: number) => {
     isOverLimit: boolean;
@@ -53,6 +54,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [currentPlan, setCurrentPlan] = useState<SubscriptionPlan | null>(null);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [teacherPlan, setTeacherPlan] = useState<SubscriptionPlan | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadPlans = async () => {
@@ -106,12 +108,51 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         }
         setSubscription(null);
       }
+
+      // Load teacher's plan if user is a student
+      if (profile?.role === 'aluno' && profile?.teacher_id) {
+        await loadTeacherSubscription(profile.teacher_id);
+      }
     } catch (error) {
       console.error('Error loading subscription:', error);
       // Fallback to free plan
       const freePlan = plans.find(p => p.slug === 'free');
       setCurrentPlan(freePlan || null);
       setSubscription(null);
+    }
+  };
+
+  const loadTeacherSubscription = async (teacherId: string) => {
+    try {
+      // Check if teacher has an active subscription
+      const { data: subscriptionData, error: subscriptionError } = await supabase
+        .from('user_subscriptions')
+        .select(`
+          *,
+          subscription_plans(*)
+        `)
+        .eq('user_id', teacherId)
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (subscriptionError && subscriptionError.code !== 'PGRST116') {
+        console.error('Error loading teacher subscription:', subscriptionError);
+        return;
+      }
+
+      if (subscriptionData && subscriptionData.subscription_plans) {
+        setTeacherPlan(subscriptionData.subscription_plans as unknown as SubscriptionPlan);
+      } else {
+        // Teacher has no active subscription, use free plan
+        const freePlan = plans.find(p => p.slug === 'free');
+        setTeacherPlan(freePlan || null);
+      }
+    } catch (error) {
+      console.error('Error loading teacher subscription:', error);
+      const freePlan = plans.find(p => p.slug === 'free');
+      setTeacherPlan(freePlan || null);
     }
   };
 
@@ -146,6 +187,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     if (!currentPlan) return false;
     const featureValue = currentPlan.features[feature];
     return typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
+  };
+
+  const hasTeacherFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
+    // For professors, use their own plan
+    if (profile?.role === 'professor') {
+      return hasFeature(feature);
+    }
+    
+    // For students, check teacher's plan
+    if (profile?.role === 'aluno' && teacherPlan) {
+      const featureValue = teacherPlan.features[feature];
+      return typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
+    }
+    
+    return false;
   };
 
   const canAddStudent = (): boolean => {
@@ -215,7 +271,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     if (plans.length > 0) {
       loadSubscription().finally(() => setLoading(false));
     }
-  }, [user, plans]);
+  }, [user, plans, profile]);
 
   return (
     <SubscriptionContext.Provider
@@ -225,6 +281,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         plans,
         loading,
         hasFeature,
+        hasTeacherFeature,
         canAddStudent,
         getStudentOverageInfo,
         refreshSubscription,

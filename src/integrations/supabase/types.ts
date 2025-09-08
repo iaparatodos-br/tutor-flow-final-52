@@ -1041,6 +1041,10 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      teacher_has_financial_module: {
+        Args: { teacher_id: string }
+        Returns: boolean
+      }
       user_owns_material: {
         Args: { p_material_id: string }
         Returns: boolean

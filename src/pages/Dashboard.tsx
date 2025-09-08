@@ -252,14 +252,16 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              <div 
-                className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
-                onClick={() => navigate("/contas-recebimento")}
-              >
-                <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Contas de Recebimento</p>
-                <p className="text-sm text-muted-foreground">Gerenciar contas bancárias e PIX</p>
-              </div>
+              {hasFeature('financial_module') && (
+                <div 
+                  className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
+                  onClick={() => navigate("/contas-recebimento")}
+                >
+                  <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
+                  <p className="font-medium">Contas de Recebimento</p>
+                  <p className="text-sm text-muted-foreground">Gerenciar contas bancárias e PIX</p>
+                </div>
+              )}
               
               <div 
                 className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
@@ -276,7 +278,7 @@ export default function Dashboard() {
               >
                 <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="font-medium">Políticas</p>
-                <p className="text-sm text-muted-foreground">Cancelamento e configurações</p>
+                <p className="text-sm text-muted-foregoing">Cancelamento e configurações</p>
               </div>
             </div>
           </CardContent>

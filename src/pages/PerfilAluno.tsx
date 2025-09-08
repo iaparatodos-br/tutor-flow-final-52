@@ -413,7 +413,9 @@ export default function PerfilAluno() {
             </Card>
 
             {/* Payment Account Selection */}
-            <PaymentAccountSelector studentId={id!} onUpdate={loadStudentData} />
+            {hasFeature('financial_module') && (
+              <PaymentAccountSelector studentId={id!} onUpdate={loadStudentData} />
+            )}
           </div>
 
           {/* History Sections */}

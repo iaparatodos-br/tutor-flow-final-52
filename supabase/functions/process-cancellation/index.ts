@@ -94,6 +94,37 @@ serve(async (req) => {
 
     // Create cancellation invoice if needed
     if (shouldCharge) {
+      // Check if teacher has financial module access
+      const { data: hasFinancialModule, error: featureError } = await supabaseClient
+        .rpc('teacher_has_financial_module', { teacher_id: classData.teacher_id });
+
+      if (featureError) {
+        console.error('Error checking financial module access:', featureError);
+        // Default to false if we can't check
+      }
+
+      if (!hasFinancialModule) {
+        console.log('Teacher does not have financial module access, skipping invoice creation');
+        // Update class but don't create invoice
+        const { error: updateError } = await supabaseClient
+          .from('classes')
+          .update({ charge_applied: false })
+          .eq('id', class_id);
+
+        if (updateError) {
+          console.error('Error updating class charge status:', updateError);
+        }
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          charged: false,
+          message: 'Aula cancelada sem cobrança - módulo financeiro não disponível'
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       // Get service price if available, otherwise default
       let baseAmount = 100; // Default fallback
       

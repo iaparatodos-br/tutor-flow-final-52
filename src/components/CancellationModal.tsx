@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Clock, DollarSign } from "lucide-react";
@@ -33,6 +34,7 @@ export function CancellationModal({
   onCancellationComplete 
 }: CancellationModalProps) {
   const { profile, isProfessor } = useAuth();
+  const { hasTeacherFeature } = useSubscription();
   const { toast } = useToast();
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,6 +42,9 @@ export function CancellationModal({
   const [willBeCharged, setWillBeCharged] = useState(false);
   const [chargeAmount, setChargeAmount] = useState(0);
   const [hoursUntilClass, setHoursUntilClass] = useState(0);
+
+  // Check if teacher has financial module
+  const teacherHasFinancialModule = hasTeacherFeature('financial_module');
 
   useEffect(() => {
     if (isOpen && classId) {
@@ -95,8 +100,8 @@ export function CancellationModal({
       
       setHoursUntilClass(hoursUntil);
 
-      // Only students get charged for late cancellations
-      if (!isProfessor && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
+      // Only students get charged for late cancellations AND only if teacher has financial module
+      if (!isProfessor && teacherHasFinancialModule && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
         setWillBeCharged(true);
         // Use actual service price or default to 100
         const baseAmount = classData.class_services?.price || 100;
@@ -185,16 +190,16 @@ export function CancellationModal({
               <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
                 <div className="font-medium text-foreground">Política de Cancelamento:</div>
                 <div>• Prazo limite para cancelamento gratuito: <strong>{policy.hours_before_class}h</strong> antes da aula</div>
-                {policy.charge_percentage > 0 && (
+                {teacherHasFinancialModule && policy.charge_percentage > 0 && (
                   <div>• Cobrança por cancelamento tardio: <strong>{policy.charge_percentage}%</strong> do valor da aula</div>
                 )}
-                {policy.allow_amnesty && (
+                {teacherHasFinancialModule && policy.allow_amnesty && (
                   <div>• O professor pode conceder amnistia em casos especiais</div>
                 )}
               </div>
 
               {/* Alerta sobre cobrança */}
-              {willBeCharged ? (
+              {willBeCharged && teacherHasFinancialModule ? (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
@@ -211,7 +216,9 @@ export function CancellationModal({
                     <strong>✅ Cancelamento Gratuito</strong><br />
                     {isProfessor ? 
                       "Professores podem cancelar aulas sem cobrança." :
-                      `Cancelamento realizado dentro do prazo de ${policy.hours_before_class}h.`
+                      teacherHasFinancialModule ?
+                        `Cancelamento realizado dentro do prazo de ${policy.hours_before_class}h.` :
+                        "Cancelamento sem cobrança - sistema de cobrança não disponível."
                     }
                   </AlertDescription>
                 </Alert>

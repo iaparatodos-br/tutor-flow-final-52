@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useProfile } from '@/contexts/ProfileContext';
 import { toast } from 'sonner';
 
 interface FinancialRouteGuardProps {
@@ -8,15 +9,23 @@ interface FinancialRouteGuardProps {
 }
 
 export function FinancialRouteGuard({ children }: FinancialRouteGuardProps) {
-  const { hasFeature, loading } = useSubscription();
+  const { hasFeature, hasTeacherFeature, loading } = useSubscription();
+  const { profile, isProfessor } = useProfile();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !hasFeature('financial_module')) {
-      toast.error('Acesso negado. Faça upgrade do seu plano para acessar o módulo financeiro.');
-      navigate('/dashboard');
+    if (!loading && profile) {
+      // Check if user has access to financial module
+      const hasAccess = isProfessor ? 
+        hasFeature('financial_module') : 
+        hasTeacherFeature('financial_module');
+      
+      if (!hasAccess) {
+        toast.error('Acesso negado. Faça upgrade do seu plano para acessar o módulo financeiro.');
+        navigate('/dashboard');
+      }
     }
-  }, [hasFeature, loading, navigate]);
+  }, [hasFeature, hasTeacherFeature, loading, navigate, profile, isProfessor]);
 
   // Show loading while checking permissions
   if (loading) {
@@ -28,7 +37,13 @@ export function FinancialRouteGuard({ children }: FinancialRouteGuardProps) {
   }
 
   // Don't render children if user doesn't have access
-  if (!hasFeature('financial_module')) {
+  if (!profile) return null;
+  
+  const hasAccess = isProfessor ? 
+    hasFeature('financial_module') : 
+    hasTeacherFeature('financial_module');
+    
+  if (!hasAccess) {
     return null;
   }
 

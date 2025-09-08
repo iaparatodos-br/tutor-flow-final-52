@@ -57,31 +57,38 @@ export default function Dashboard() {
         .eq('teacher_id', profile.id)
         .gte('class_date', new Date().toISOString());
 
-      // Buscar faturas pendentes
-      const { count: invoicesCount } = await supabase
-        .from('invoices')
-        .select('*', { count: 'exact', head: true })
-        .eq('teacher_id', profile.id)
-        .eq('status', 'pendente');
+      let invoicesCount = 0;
+      let monthlyRevenue = 0;
 
-      // Buscar receita do mês
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-      
-      const { data: paidInvoices } = await supabase
-        .from('invoices')
-        .select('amount')
-        .eq('teacher_id', profile.id)
-        .eq('status', 'paga')
-        .gte('updated_at', startOfMonth.toISOString());
+      // Only load financial data if user has financial module
+      if (hasFeature('financial_module')) {
+        // Buscar faturas pendentes
+        const { count: pendingInvoicesCount } = await supabase
+          .from('invoices')
+          .select('*', { count: 'exact', head: true })
+          .eq('teacher_id', profile.id)
+          .eq('status', 'pendente');
 
-      const monthlyRevenue = paidInvoices?.reduce((sum, invoice) => sum + Number(invoice.amount), 0) || 0;
+        // Buscar receita do mês
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        
+        const { data: paidInvoices } = await supabase
+          .from('invoices')
+          .select('amount')
+          .eq('teacher_id', profile.id)
+          .eq('status', 'paga')
+          .gte('updated_at', startOfMonth.toISOString());
+
+        invoicesCount = pendingInvoicesCount || 0;
+        monthlyRevenue = paidInvoices?.reduce((sum, invoice) => sum + Number(invoice.amount), 0) || 0;
+      }
 
       setStats({
         totalStudents: studentsCount || 0,
         upcomingClasses: classesCount || 0,
-        pendingInvoices: invoicesCount || 0,
+        pendingInvoices: invoicesCount,
         thisMonthRevenue: monthlyRevenue
       });
     } catch (error) {
@@ -164,35 +171,39 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-card hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pagamentos Pendentes</CardTitle>
-              <Clock className="h-4 w-4 text-warning" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : stats.pendingInvoices}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Faturas em aberto
-              </p>
-            </CardContent>
-          </Card>
+          {hasFeature('financial_module') && (
+            <Card className="shadow-card hover:shadow-lg transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Pagamentos Pendentes</CardTitle>
+                <Clock className="h-4 w-4 text-warning" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {loading ? "..." : stats.pendingInvoices}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Faturas em aberto
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="shadow-card hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Receita do Mês</CardTitle>
-              <DollarSign className="h-4 w-4 text-success" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {loading ? "..." : `R$ ${stats.thisMonthRevenue.toFixed(2)}`}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Valor recebido
-              </p>
-            </CardContent>
-          </Card>
+          {hasFeature('financial_module') && (
+            <Card className="shadow-card hover:shadow-lg transition-shadow">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Receita do Mês</CardTitle>
+                <DollarSign className="h-4 w-4 text-success" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {loading ? "..." : `R$ ${stats.thisMonthRevenue.toFixed(2)}`}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Valor recebido
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Quick Actions */}

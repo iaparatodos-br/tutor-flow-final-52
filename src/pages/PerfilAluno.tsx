@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,7 @@ export default function PerfilAluno() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { profile } = useProfile();
+  const { hasFeature } = useSubscription();
   const { toast } = useToast();
 
   const [student, setStudent] = useState<StudentProfile | null>(null);
@@ -138,24 +140,33 @@ export default function PerfilAluno() {
       
       setClasses(classesData || []);
 
-      // Load invoices
-      const { data: invoicesData, error: invoicesError } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('student_id', id)
-        .eq('teacher_id', profile.id)
-        .order('created_at', { ascending: false });
+      // Load invoices and calculate financial stats only if teacher has financial module
+      let invoicesData: Invoice[] = [];
+      let totalPaid = 0;
+      let pendingAmount = 0;
 
-      if (invoicesError) throw invoicesError;
-      setInvoices(invoicesData || []);
+      if (hasFeature('financial_module')) {
+        const { data: fetchedInvoices, error: invoicesError } = await supabase
+          .from('invoices')
+          .select('*')
+          .eq('student_id', id)
+          .eq('teacher_id', profile.id)
+          .order('created_at', { ascending: false });
+
+        if (invoicesError) throw invoicesError;
+        invoicesData = fetchedInvoices || [];
+        setInvoices(invoicesData);
+
+        // Calculate financial stats
+        totalPaid = invoicesData.filter(i => i.status === 'paga').reduce((sum, i) => sum + Number(i.amount), 0);
+        pendingAmount = invoicesData.filter(i => i.status === 'pendente').reduce((sum, i) => sum + Number(i.amount), 0);
+      }
 
       // Calculate stats
       const totalClasses = classesData?.length || 0;
       const completedClasses = classesData?.filter(c => c.status === 'concluida').length || 0;
       const cancelledClasses = classesData?.filter(c => c.status === 'cancelada').length || 0;
       const attendanceRate = totalClasses > 0 ? (completedClasses / totalClasses) * 100 : 0;
-      const totalPaid = invoicesData?.filter(i => i.status === 'paga').reduce((sum, i) => sum + Number(i.amount), 0) || 0;
-      const pendingAmount = invoicesData?.filter(i => i.status === 'pendente').reduce((sum, i) => sum + Number(i.amount), 0) || 0;
 
       setStats({
         totalClasses,
@@ -288,29 +299,33 @@ export default function PerfilAluno() {
             </CardContent>
           </Card>
 
-          <Card className="shadow-card">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Pago</p>
-                  <p className="text-2xl font-bold">R$ {stats.totalPaid.toFixed(2)}</p>
+          {hasFeature('financial_module') && (
+            <Card className="shadow-card">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Total Pago</p>
+                    <p className="text-2xl font-bold">R$ {stats.totalPaid.toFixed(2)}</p>
+                  </div>
+                  <CheckCircle className="h-8 w-8 text-success" />
                 </div>
-                <CheckCircle className="h-8 w-8 text-success" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="shadow-card">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Pendente</p>
-                  <p className="text-2xl font-bold">R$ {stats.pendingAmount.toFixed(2)}</p>
+          {hasFeature('financial_module') && (
+            <Card className="shadow-card">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Pendente</p>
+                    <p className="text-2xl font-bold">R$ {stats.pendingAmount.toFixed(2)}</p>
+                  </div>
+                  <AlertCircle className="h-8 w-8 text-warning" />
                 </div>
-                <AlertCircle className="h-8 w-8 text-warning" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Main Content */}
@@ -469,55 +484,57 @@ export default function PerfilAluno() {
             </Card>
 
             {/* Payment History */}
-            <Card className="shadow-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  Histórico de Pagamentos ({invoices.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {invoices.length === 0 ? (
-                  <div className="text-center py-8">
-                    <CreditCard className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                    <p className="text-muted-foreground">Nenhuma fatura registrada ainda</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {invoices.slice(0, 10).map((invoice) => (
-                      <div key={invoice.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                        <div>
-                          <p className="font-medium">R$ {Number(invoice.amount).toFixed(2)}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Vencimento: {new Date(invoice.due_date).toLocaleDateString('pt-BR')}
-                          </p>
-                          {invoice.description && (
+            {hasFeature('financial_module') && (
+              <Card className="shadow-card">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    Histórico de Pagamentos ({invoices.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {invoices.length === 0 ? (
+                    <div className="text-center py-8">
+                      <CreditCard className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground">Nenhuma fatura registrada ainda</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {invoices.slice(0, 10).map((invoice) => (
+                        <div key={invoice.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
+                          <div>
+                            <p className="font-medium">R$ {Number(invoice.amount).toFixed(2)}</p>
                             <p className="text-sm text-muted-foreground">
-                              {invoice.description}
+                              Vencimento: {new Date(invoice.due_date).toLocaleDateString('pt-BR')}
                             </p>
-                          )}
+                            {invoice.description && (
+                              <p className="text-sm text-muted-foreground">
+                                {invoice.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {getStatusBadge(invoice.status)}
+                            {invoice.stripe_invoice_url && (
+                              <Button variant="ghost" size="sm" asChild>
+                                <a href={invoice.stripe_invoice_url} target="_blank" rel="noopener noreferrer">
+                                  Ver Fatura
+                                </a>
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {getStatusBadge(invoice.status)}
-                          {invoice.stripe_invoice_url && (
-                            <Button variant="ghost" size="sm" asChild>
-                              <a href={invoice.stripe_invoice_url} target="_blank" rel="noopener noreferrer">
-                                Ver Fatura
-                              </a>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {invoices.length > 10 && (
-                      <p className="text-center text-sm text-muted-foreground">
-                        Mostrando 10 de {invoices.length} faturas
-                      </p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      ))}
+                      {invoices.length > 10 && (
+                        <p className="text-center text-sm text-muted-foreground">
+                          Mostrando 10 de {invoices.length} faturas
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>

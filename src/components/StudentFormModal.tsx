@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useProfile } from "@/contexts/ProfileContext";
 
 interface StudentFormData {
   name: string;
@@ -68,6 +69,8 @@ export function StudentFormModal({
   description
 }: StudentFormModalProps) {
   const { currentPlan, getStudentOverageInfo } = useSubscription();
+  const { profile } = useProfile();
+  const hasFinancialModule = profile?.role === 'professor' && profile.id;
   const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student));
 
   const [validationErrors, setValidationErrors] = useState({
@@ -335,7 +338,7 @@ export function StudentFormModal({
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      As faturas serão enviadas para este email
+                      {hasFinancialModule ? "As faturas serão enviadas para este email" : "Email para contato"}
                     </p>
                   </div>
                 </>
@@ -345,7 +348,10 @@ export function StudentFormModal({
                 <div className="bg-muted/50 p-3 rounded-md">
                   <p className="text-sm text-muted-foreground mb-2">
                     <UserCheck className="h-4 w-4 inline mr-1" />
-                    As faturas serão enviadas para: <strong>{formData.email}</strong>
+                    {hasFinancialModule ? 
+                      `As faturas serão enviadas para: ${formData.email}` :
+                      `Contato principal: ${formData.email}`
+                    }
                   </p>
                 </div>
               )}
@@ -353,7 +359,7 @@ export function StudentFormModal({
               <div className="space-y-2">
                 <Label htmlFor="billing-day">
                   <Calendar className="h-4 w-4 inline mr-1" />
-                  Dia da Cobrança Mensal *
+                  {hasFinancialModule ? "Dia da Cobrança Mensal *" : "Dia Preferencial de Contato *"}
                 </Label>
                 <Input
                   id="billing-day"
@@ -370,7 +376,10 @@ export function StudentFormModal({
                   required
                 />
                 <p className="text-xs text-muted-foreground">
-                  Dia do mês em que as mensalidades serão geradas automaticamente (1-28)
+                  {hasFinancialModule ? 
+                    "Dia do mês em que as mensalidades serão geradas automaticamente (1-28)" :
+                    "Dia do mês preferencial para contato e comunicação (1-28)"
+                  }
                 </p>
               </div>
             </div>

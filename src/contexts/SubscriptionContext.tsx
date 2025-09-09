@@ -124,7 +124,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const loadTeacherSubscription = async (teacherId: string) => {
     try {
-      console.log('🔍 Loading teacher subscription for:', teacherId);
       // Check if teacher has an active subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
         .from('user_subscriptions')
@@ -138,19 +137,15 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         .limit(1)
         .single();
       
-      console.log('📊 Teacher subscription query result:', { subscriptionData, subscriptionError });
-      
       if (subscriptionError && subscriptionError.code !== 'PGRST116') {
         console.error('Error loading teacher subscription:', subscriptionError);
         return;
       }
 
       if (subscriptionData && subscriptionData.subscription_plans) {
-        console.log('✅ Teacher has active subscription:', subscriptionData.subscription_plans);
         setTeacherPlan(subscriptionData.subscription_plans as unknown as SubscriptionPlan);
       } else {
         // Teacher has no active subscription, use free plan
-        console.log('⚠️ Teacher has no active subscription, using free plan');
         const freePlan = plans.find(p => p.slug === 'free');
         setTeacherPlan(freePlan || null);
       }
@@ -195,13 +190,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const hasTeacherFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
-    console.log('🎯 hasTeacherFeature called:', { 
-      feature, 
-      profileRole: profile?.role, 
-      teacherPlan: teacherPlan?.name,
-      teacherPlanFeatures: teacherPlan?.features 
-    });
-    
     // For professors, use their own plan
     if (profile?.role === 'professor') {
       return hasFeature(feature);
@@ -210,12 +198,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     // For students, check teacher's plan
     if (profile?.role === 'aluno' && teacherPlan) {
       const featureValue = teacherPlan.features[feature];
-      const result = typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
-      console.log('📝 Student feature check result:', { feature, featureValue, result });
-      return result;
+      return typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
     }
     
-    console.log('❌ hasTeacherFeature returning false - no teacher plan or not student');
     return false;
   };
 

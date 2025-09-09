@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CalendarDays, CreditCard, Settings, RefreshCw, ExternalLink } from 'lucide-react';
+import { CalendarDays, CreditCard, Settings, RefreshCw, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Invoice {
   id: string;
@@ -24,12 +25,13 @@ interface Invoice {
 }
 
 export default function Subscription() {
-  const { currentPlan, subscription, refreshSubscription, loading } = useSubscription();
+  const { currentPlan, subscription, refreshSubscription, cancelSubscription, loading } = useSubscription();
   const navigate = useNavigate();
   const location = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
+  const [isCanceling, setIsCanceling] = useState(false);
 
   const loadInvoices = async () => {
     setInvoicesLoading(true);
@@ -88,6 +90,46 @@ export default function Subscription() {
         description: "Não foi possível abrir o portal de gerenciamento.",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!confirm("Tem certeza que deseja cancelar sua assinatura? Ela ficará ativa até o final do período pago.")) return;
+    
+    setIsCanceling(true);
+    try {
+      await cancelSubscription('cancel');
+      toast({
+        title: "Assinatura cancelada",
+        description: "Sua assinatura será encerrada ao final do período de cobrança.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível cancelar a assinatura.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+
+  const handleReactivate = async () => {
+    setIsCanceling(true);
+    try {
+      await cancelSubscription('reactivate');
+      toast({
+        title: "Assinatura Reativada!",
+        description: "Sua assinatura foi reativada e continuará a ser cobrada normalmente.",
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível reativar a assinatura.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCanceling(false);
     }
   };
 
@@ -300,17 +342,41 @@ export default function Subscription() {
                   {subscription.cancel_at_period_end && (
                     <>
                       <Separator />
-                      <div className="bg-destructive/10 p-3 rounded-md">
-                        <p className="text-sm font-medium text-destructive">
-                          Assinatura será cancelada
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Acesso até {subscription.current_period_end 
+                      <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Cancelamento Agendado</AlertTitle>
+                        <AlertDescription>
+                          Sua assinatura será cancelada e seu acesso terminará em{' '}
+                          {subscription.current_period_end 
                             ? format(new Date(subscription.current_period_end), 'dd/MM/yyyy', { locale: ptBR })
                             : 'data não definida'
-                          }
-                        </p>
-                      </div>
+                          }.
+                        </AlertDescription>
+                      </Alert>
+                      <Button 
+                        className="w-full" 
+                        variant="outline"
+                        onClick={handleReactivate}
+                        disabled={isCanceling}
+                      >
+                        {isCanceling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Reativar Assinatura
+                      </Button>
+                    </>
+                  )}
+
+                  {!subscription.cancel_at_period_end && currentPlan?.slug !== 'free' && (
+                    <>
+                      <Separator />
+                      <Button 
+                        className="w-full" 
+                        variant="destructive"
+                        onClick={handleCancel}
+                        disabled={isCanceling}
+                      >
+                        {isCanceling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Cancelar Assinatura
+                      </Button>
                     </>
                   )}
                 </>

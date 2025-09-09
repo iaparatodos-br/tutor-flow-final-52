@@ -45,6 +45,7 @@ interface SubscriptionContextType {
   };
   refreshSubscription: () => Promise<void>;
   createCheckoutSession: (planSlug: string) => Promise<string>;
+  cancelSubscription: (action: 'cancel' | 'reactivate') => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -263,6 +264,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     return data.url;
   };
 
+  const cancelSubscription = async (action: 'cancel' | 'reactivate'): Promise<void> => {
+    try {
+      const { error } = await supabase.functions.invoke('cancel-subscription', {
+        body: { action },
+      });
+
+      if (error) throw error;
+
+      // Force refresh subscription state to reflect the change
+      await refreshSubscription();
+    } catch (error) {
+      console.error('Error canceling subscription:', error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     loadPlans();
   }, []);
@@ -286,6 +303,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         getStudentOverageInfo,
         refreshSubscription,
         createCheckoutSession,
+        cancelSubscription,
       }}
     >
       {children}

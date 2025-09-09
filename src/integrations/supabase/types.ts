@@ -1086,6 +1086,32 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_calendar_events: {
+        Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
+        Returns: {
+          amnesty_granted: boolean | null
+          amnesty_granted_at: string | null
+          amnesty_granted_by: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          charge_applied: boolean | null
+          class_date: string
+          created_at: string | null
+          duration_minutes: number
+          id: string
+          is_experimental: boolean
+          is_group_class: boolean
+          notes: string | null
+          parent_class_id: string | null
+          recurrence_pattern: Json | null
+          service_id: string | null
+          status: string
+          student_id: string | null
+          teacher_id: string
+          updated_at: string | null
+        }[]
+      }
       is_material_shared_with_user: {
         Args: { p_material_id: string }
         Returns: boolean

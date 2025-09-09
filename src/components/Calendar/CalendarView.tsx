@@ -39,6 +39,7 @@ export interface CalendarClass {
   notes?: string;
   is_experimental?: boolean;
   is_group_class?: boolean;
+  isVirtual?: boolean;
 }
 
 export interface AvailabilityBlock {

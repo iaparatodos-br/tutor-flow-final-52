@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { toast } from 'sonner';
@@ -520,21 +521,47 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                   </Select>
                 </div>
 
-                <div>
-                  <Label>Término da recorrência</Label>
-                  <Select value={recurrenceType} onValueChange={(value: "date" | "count" | "infinite") => setRecurrenceType(value as "date" | "count" | "infinite")}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="date">Até uma data</SelectItem>
-                      <SelectItem value="count">Número de aulas</SelectItem>
-                      <SelectItem value="infinite">Sem data limite</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="infinite-recurrence">Recorrência Contínua</Label>
+                    <p className="text-sm text-muted-foreground">
+                      A aula se repetirá indefinidamente
+                    </p>
+                  </div>
+                  <Switch
+                    id="infinite-recurrence"
+                    checked={recurrenceType === 'infinite'}
+                    onCheckedChange={(checked) => {
+                      setRecurrenceType(checked ? 'infinite' : 'date');
+                      setFormData(prev => ({
+                        ...prev,
+                        recurrence: { 
+                          ...prev.recurrence, 
+                          is_infinite: checked,
+                          end_date: checked ? undefined : prev.recurrence?.end_date,
+                          occurrences: checked ? undefined : prev.recurrence?.occurrences
+                        }
+                      }));
+                    }}
+                  />
                 </div>
 
-                {recurrenceType === 'date' ? (
+                {recurrenceType !== 'infinite' && (
+                  <div>
+                    <Label>Término da recorrência</Label>
+                    <Select value={recurrenceType} onValueChange={(value: "date" | "count") => setRecurrenceType(value as "date" | "count")}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="date">Até uma data</SelectItem>
+                        <SelectItem value="count">Número de aulas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {recurrenceType === 'date' && (
                   <div>
                     <Label htmlFor="end_date">Data final</Label>
                     <Input
@@ -549,7 +576,9 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       }
                     />
                   </div>
-                ) : recurrenceType === 'count' ? (
+                )}
+
+                {recurrenceType === 'count' && (
                   <div>
                     <Label htmlFor="occurrences">Número de aulas</Label>
                     <Input
@@ -566,15 +595,16 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       }
                     />
                   </div>
-                ) : (
+                )}
+
+                {recurrenceType === 'infinite' && (
                   <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
                       <Repeat className="h-4 w-4" />
-                      <span className="font-medium">Recorrência Infinita</span>
+                      <span className="font-medium">Recorrência Contínua</span>
                     </div>
                     <p className="text-sm text-blue-600/80 dark:text-blue-400/80">
-                      As aulas serão geradas automaticamente conforme necessário. 
-                      Você pode parar a recorrência a qualquer momento editando uma aula futura.
+                      As aulas serão geradas automaticamente na agenda conforme você navegar pelos meses.
                     </p>
                   </div>
                 )}

@@ -15,7 +15,7 @@ import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
 import { ClassReportModal } from "@/components/ClassReportModal";
 import { StudentScheduleRequest } from "@/components/StudentScheduleRequest";
-import { useInfiniteRecurrence } from "@/hooks/useInfiniteRecurrence";
+import { RRule, Frequency } from 'rrule';
 
 interface ClassWithParticipants {
   id: string;
@@ -25,6 +25,12 @@ interface ClassWithParticipants {
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
+  parent_class_id?: string;
+  recurrence_pattern?: any;
+  student_id?: string;
+  service_id?: string;
+  teacher_id?: string;
+  isVirtual?: boolean; // Flag for client-side generated instances
   participants: Array<{
     student_id: string;
     student: {
@@ -51,7 +57,6 @@ export default function Agenda() {
   const { loading: authLoading } = useAuth();
   const { hasFeature } = useSubscription();
   const { toast } = useToast();
-  const { checkAndGenerateClasses, isGenerating } = useInfiniteRecurrence();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
@@ -84,17 +89,39 @@ export default function Agenda() {
     }
   }, [profile, isProfessor, authLoading]);
 
+  // Helper function to generate virtual recurring instances
+  const generateVirtualInstances = (templateClass: ClassWithParticipants, endDate: Date): ClassWithParticipants[] => {
+    if (!templateClass.recurrence_pattern?.is_infinite) return [];
+    
+    const pattern = templateClass.recurrence_pattern;
+    const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY :
+                pattern.frequency === 'biweekly' ? Frequency.WEEKLY :
+                pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
+    
+    const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+    
+    const rule = new RRule({
+      freq,
+      interval,
+      dtstart: new Date(templateClass.class_date),
+      until: endDate
+    });
+    
+    const occurrences = rule.all();
+    
+    return occurrences.slice(1).map((date, index) => ({
+      ...templateClass,
+      id: `${templateClass.id}_virtual_${date.getTime()}`,
+      class_date: date.toISOString(),
+      isVirtual: true,
+      status: 'pendente' as const
+    }));
+  };
+
   const loadClasses = async () => {
     if (!profile?.id) return;
 
     try {
-      // Check for infinite recurring classes and generate more if needed
-      if (isProfessor) {
-        const now = new Date();
-        const futureDate = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000)); // 90 days ahead
-        await checkAndGenerateClasses(profile.id, now, futureDate);
-      }
-
       const { data, error } = await supabase
         .from('classes')
         .select(`
@@ -106,6 +133,10 @@ export default function Agenda() {
           is_experimental,
           is_group_class,
           student_id,
+          service_id,
+          teacher_id,
+          parent_class_id,
+          recurrence_pattern,
           profiles!classes_student_id_fkey (
             name,
             email
@@ -144,21 +175,50 @@ export default function Agenda() {
           participants
         };
       }) as ClassWithParticipants[];
+
+      // Generate virtual instances for infinite recurring classes
+      const allClasses = [...mappedClasses];
+      if (isProfessor) {
+        const now = new Date();
+        const futureDate = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000)); // 90 days ahead
+        
+        // Find template classes (those with recurrence_pattern and no parent)
+        const templates = mappedClasses.filter(cls => 
+          cls.recurrence_pattern?.is_infinite && !cls.parent_class_id
+        );
+        
+        // Generate virtual instances for each template
+        for (const template of templates) {
+          const virtualInstances = generateVirtualInstances(template, futureDate);
+          
+          // Filter out virtual instances that conflict with real classes
+          const realClassDates = new Set(mappedClasses.map(cls => 
+            new Date(cls.class_date).toDateString()
+          ));
+          
+          const filteredVirtual = virtualInstances.filter(virtual => 
+            !realClassDates.has(new Date(virtual.class_date).toDateString())
+          );
+          
+          allClasses.push(...filteredVirtual);
+        }
+      }
       
-      setClasses(mappedClasses);
+      setClasses(allClasses);
 
       // Transform for calendar view
-      const calendarEvents: CalendarClass[] = mappedClasses.map(cls => {
+      const calendarEvents: CalendarClass[] = allClasses.map(cls => {
         const startDate = new Date(cls.class_date);
         const endDate = new Date(startDate.getTime() + (cls.duration_minutes * 60 * 1000));
         
         const participantNames = cls.participants.map(p => p.student.name).join(', ');
         const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
         const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
+        const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
         
         return {
           id: cls.id,
-          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}`,
+          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
           start: startDate,
           end: endDate,
           status: cls.status,
@@ -166,7 +226,8 @@ export default function Agenda() {
           participants: cls.participants,
           notes: cls.notes || undefined,
           is_experimental: cls.is_experimental,
-          is_group_class: cls.is_group_class
+          is_group_class: cls.is_group_class,
+          isVirtual: cls.isVirtual
         };
       });
       
@@ -259,6 +320,12 @@ export default function Agenda() {
 
   const handleConfirmClass = async (classId: string) => {
     try {
+      // Check if it's a virtual instance (needs materialization)
+      if (classId.includes('_virtual_')) {
+        await materializeVirtualClass(classId);
+        return;
+      }
+
       const { error } = await supabase
         .from('classes')
         .update({ status: 'confirmada' })
@@ -274,6 +341,73 @@ export default function Agenda() {
       loadClasses();
     } catch (error: any) {
       console.error('Erro ao confirmar aula:', error);
+      toast({
+        title: "Erro ao confirmar aula",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const materializeVirtualClass = async (virtualId: string) => {
+    try {
+      // Find the virtual class in our current state
+      const virtualClass = classes.find(cls => cls.id === virtualId);
+      if (!virtualClass || !virtualClass.isVirtual) {
+        throw new Error('Virtual class not found');
+      }
+
+      // Find the template class (parent)
+      const templateId = virtualId.split('_virtual_')[0];
+      const templateClass = classes.find(cls => cls.id === templateId);
+      if (!templateClass) {
+        throw new Error('Template class not found');
+      }
+
+      // Create real class from virtual instance
+      const realClassData = {
+        teacher_id: profile?.id,
+        student_id: templateClass.student_id,
+        service_id: templateClass.service_id,
+        class_date: virtualClass.class_date,
+        duration_minutes: virtualClass.duration_minutes,
+        notes: virtualClass.notes,
+        status: 'confirmada',
+        is_experimental: virtualClass.is_experimental,
+        is_group_class: virtualClass.is_group_class,
+        parent_class_id: templateId
+      };
+
+      const { data: newClass, error } = await supabase
+        .from('classes')
+        .insert([realClassData])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Insert participants if it's a group class
+      if (virtualClass.is_group_class && virtualClass.participants.length > 0) {
+        const participantInserts = virtualClass.participants.map(p => ({
+          class_id: newClass.id,
+          student_id: p.student_id
+        }));
+
+        const { error: participantError } = await supabase
+          .from('class_participants')
+          .insert(participantInserts);
+
+        if (participantError) throw participantError;
+      }
+
+      toast({
+        title: "Aula confirmada!",
+        description: "A aula recorrente foi confirmada e agendada",
+      });
+
+      loadClasses();
+    } catch (error: any) {
+      console.error('Erro ao materializar aula virtual:', error);
       toast({
         title: "Erro ao confirmar aula",
         description: error.message || "Tente novamente mais tarde",
@@ -621,19 +755,6 @@ export default function Agenda() {
           <AvailabilityManager onAvailabilityChange={loadAvailabilityBlocks} />
         )}
 
-        {/* Infinite Recurrence Status */}
-        {isGenerating && (
-          <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                <span className="text-sm text-blue-600 dark:text-blue-400">
-                  Gerando aulas recorrentes automaticamente...
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
       
       <CancellationModal

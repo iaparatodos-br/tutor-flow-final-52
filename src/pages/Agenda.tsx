@@ -109,7 +109,7 @@ export default function Agenda() {
     
     const occurrences = rule.all();
     
-    return occurrences.slice(1).map((date, index) => ({
+    return occurrences.slice(1).map((date) => ({
       ...templateClass,
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
@@ -122,85 +122,142 @@ export default function Agenda() {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('classes')
-        .select(`
-          id,
-          class_date,
-          duration_minutes,
-          status,
-          notes,
-          is_experimental,
-          is_group_class,
-          student_id,
-          service_id,
-          teacher_id,
-          parent_class_id,
-          recurrence_pattern,
-          profiles!classes_student_id_fkey (
-            name,
-            email
-          ),
-          class_participants (
+      // Get viewing period (3 months ahead for dynamic generation)
+      const now = new Date();
+      const viewEnd = new Date(now);
+      viewEnd.setMonth(viewEnd.getMonth() + 3);
+      
+      // Use RPC to get optimized data for professors
+      let data;
+      let error;
+      
+      if (isProfessor) {
+        ({ data, error } = await supabase.rpc('get_calendar_events', {
+          p_teacher_id: profile.id,
+          p_start_date: now.toISOString(),
+          p_end_date: viewEnd.toISOString()
+        }));
+      } else {
+        // For students, get classes normally
+        ({ data, error } = await supabase
+          .from('classes')
+          .select(`
+            id,
+            class_date,
+            duration_minutes,
+            status,
+            notes,
+            is_experimental,
+            is_group_class,
             student_id,
-            profiles!class_participants_student_id_fkey (
+            service_id,
+            teacher_id,
+            parent_class_id,
+            recurrence_pattern,
+            profiles!classes_student_id_fkey (
               name,
               email
+            ),
+            class_participants (
+              student_id,
+              profiles!class_participants_student_id_fkey (
+                name,
+                email
+              )
             )
-          )
-        `)
-        .eq(isProfessor ? 'teacher_id' : 'student_id', profile.id)
-        .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-        .order('class_date');
+          `)
+          .eq('student_id', profile.id)
+          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('class_date'));
+      }
 
-      if (error) throw error;
-      
-      const mappedClasses = (data || []).map(item => {
-        // Para aulas individuais, usa o student_id direto da aula
-        // Para aulas em grupo, usa os participantes
-        const participants = item.is_group_class 
-          ? item.class_participants.map(p => ({
-              student_id: p.student_id,
-              student: p.profiles
-            }))
-          : item.student_id && item.profiles
-            ? [{
-                student_id: item.student_id,
-                student: item.profiles
-              }]
-            : [];
+      if (error) {
+        console.error('Error loading classes:', error);
+        throw error;
+      }
 
-        return {
-          ...item,
-          participants
-        };
-      }) as ClassWithParticipants[];
-
-      // Generate virtual instances for infinite recurring classes
-      const allClasses = [...mappedClasses];
+      // Fetch related data for each class (only for RPC results)
+      let classesWithDetails;
       if (isProfessor) {
-        const now = new Date();
-        const futureDate = new Date(now.getTime() + (90 * 24 * 60 * 60 * 1000)); // 90 days ahead
-        
-        // Find template classes (those with recurrence_pattern and no parent)
-        const templates = mappedClasses.filter(cls => 
-          cls.recurrence_pattern?.is_infinite && !cls.parent_class_id
-        );
-        
-        // Generate virtual instances for each template
-        for (const template of templates) {
-          const virtualInstances = generateVirtualInstances(template, futureDate);
-          
-          // Filter out virtual instances that conflict with real classes
-          const realClassDates = new Set(mappedClasses.map(cls => 
-            new Date(cls.class_date).toDateString()
-          ));
-          
-          const filteredVirtual = virtualInstances.filter(virtual => 
-            !realClassDates.has(new Date(virtual.class_date).toDateString())
-          );
-          
-          allClasses.push(...filteredVirtual);
+        classesWithDetails = await Promise.all((data || []).map(async (cls: any) => {
+          const [studentsData, participantsData] = await Promise.all([
+            // Get student data for individual classes
+            cls.student_id ? supabase
+              .from('profiles')
+              .select('id, name, email')
+              .eq('id', cls.student_id)
+              .single() : Promise.resolve({ data: null }),
+            
+            // Get participants for group classes
+            cls.is_group_class ? supabase
+              .from('class_participants')
+              .select(`
+                student_id,
+                profiles!class_participants_student_id_fkey (
+                  id, name, email
+                )
+              `)
+              .eq('class_id', cls.id) : Promise.resolve({ data: [] })
+          ]);
+
+          const participants = cls.is_group_class 
+            ? (participantsData.data || []).map((p: any) => ({
+                student_id: p.student_id,
+                student: p.profiles
+              }))
+            : studentsData.data 
+              ? [{ student_id: studentsData.data.id, student: studentsData.data }]
+              : [];
+
+          return {
+            ...cls,
+            participants
+          };
+        }));
+      } else {
+        // For students, data already comes with relations
+        classesWithDetails = (data || []).map((item: any) => {
+          const participants = item.is_group_class 
+            ? item.class_participants.map((p: any) => ({
+                student_id: p.student_id,
+                student: p.profiles
+              }))
+            : item.student_id && item.profiles
+              ? [{
+                  student_id: item.student_id,
+                  student: item.profiles
+                }]
+              : [];
+
+          return {
+            ...item,
+            participants
+          };
+        });
+      }
+
+      // Generate virtual instances for infinite recurrences (only for professors)
+      const allClasses: ClassWithParticipants[] = [...classesWithDetails];
+      
+      if (isProfessor) {
+        for (const cls of classesWithDetails) {
+          if (cls.recurrence_pattern?.is_infinite && !cls.parent_class_id) {
+            // This is a template class for infinite recurrence
+            const virtualInstances = generateVirtualInstances(cls, viewEnd);
+            
+            // Filter out virtual instances that conflict with real classes
+            const realClassDates = new Set(
+              classesWithDetails
+                .filter(c => c.parent_class_id === cls.id)
+                .map(c => new Date(c.class_date).toDateString())
+            );
+            
+            const filteredVirtual = virtualInstances.filter(virtual => 
+              !realClassDates.has(new Date(virtual.class_date).toDateString())
+            );
+            
+            allClasses.push(...filteredVirtual);
+          }
         }
       }
       
@@ -422,52 +479,7 @@ export default function Agenda() {
     // Normalize frequency to handle undefined values
     const normalizedFrequency = recurrence.frequency || 'weekly';
     
-    // For infinite recurrence, only generate initial batch (next 12 weeks)
-    if (recurrence.is_infinite) {
-      const startDate = new Date(baseClass.class_date);
-      let currentDate = new Date(startDate);
-      const initialBatchLimit = 12; // Generate 12 weeks ahead initially
-
-      const getNextDate = (current: Date, frequency: string) => {
-        const next = new Date(current);
-        switch (frequency) {
-          case 'weekly':
-            next.setDate(next.getDate() + 7);
-            break;
-          case 'biweekly':
-            next.setDate(next.getDate() + 14);
-            break;
-          case 'monthly':
-            next.setMonth(next.getMonth() + 1);
-            break;
-          default:
-            console.warn(`Unknown frequency: ${frequency}, defaulting to weekly`);
-            next.setDate(next.getDate() + 7);
-            break;
-        }
-        return next;
-      };
-
-      for (let i = 1; i < initialBatchLimit; i++) {
-        const nextDate = getNextDate(currentDate, normalizedFrequency);
-        
-        // Safety check: ensure date is advancing
-        if (nextDate.getTime() <= currentDate.getTime()) {
-          console.error(`Date not advancing for frequency ${normalizedFrequency}. Breaking loop.`);
-          break;
-        }
-        
-        currentDate = nextDate;
-        classes.push({
-          ...baseClass,
-          class_date: currentDate.toISOString()
-        });
-      }
-
-      return classes;
-    }
-
-    // Original logic for finite recurrence
+    // For finite recurrence, generate all instances
     const startDate = new Date(baseClass.class_date);
     let currentDate = new Date(startDate);
 
@@ -503,10 +515,12 @@ export default function Agenda() {
         break;
       }
       
-      currentDate = nextDate;
+      // Check if we've reached the end date
+      if (endDate && nextDate > endDate) {
+        break;
+      }
       
-      if (endDate && currentDate > endDate) break;
-
+      currentDate = nextDate;
       classes.push({
         ...baseClass,
         class_date: currentDate.toISOString()
@@ -516,7 +530,7 @@ export default function Agenda() {
     return classes;
   };
 
-  const handleAddClass = async (formData: any) => {
+  const handleClassSubmit = async (formData: any) => {
     if (!profile?.id) return;
 
     setSubmitting(true);
@@ -552,7 +566,7 @@ export default function Agenda() {
       
       if (formData.recurrence) {
         if (formData.recurrence.is_infinite) {
-          // For infinite recurrence, first insert the template class
+          // For infinite recurrence, only create the template class (anchor event)
           const { data: templateClass, error: templateError } = await supabase
             .from('classes')
             .insert([baseClassData])
@@ -561,48 +575,9 @@ export default function Agenda() {
 
           if (templateError) throw templateError;
 
-          // Generate initial batch of recurring classes
-          const recurringClasses = generateRecurringClasses(baseClassData, formData.recurrence)
-            .slice(1) // Skip the first one (template)
-            .map(cls => ({
-              ...cls,
-              parent_class_id: templateClass.id,
-              recurrence_pattern: null // Only template has the pattern
-            }));
-
-          // Before inserting, check for existing classes on the same dates to avoid duplicates
-          const newDates = recurringClasses.map(c => c.class_date);
-          let toInsert = recurringClasses;
-
-          if (newDates.length > 0) {
-            const { data: existing, error: existingError } = await supabase
-              .from('classes')
-              .select('class_date')
-              .eq('parent_class_id', templateClass.id)
-              .in('class_date', newDates);
-
-            if (existingError) {
-              console.warn('Falha ao verificar duplicidades, prosseguindo sem filtro:', existingError);
-            } else {
-              const existingSet = new Set((existing || []).map(e => new Date(e.class_date as unknown as string).toISOString()));
-              toInsert = recurringClasses.filter(c => !existingSet.has(c.class_date));
-            }
-          }
-
-          if (toInsert.length > 0) {
-            const { data: recurringInserted, error: recurringError } = await supabase
-              .from('classes')
-              .insert(toInsert)
-              .select();
-
-            if (recurringError) throw recurringError;
-
-            insertedClasses = [templateClass, ...(recurringInserted || [])];
-          } else {
-            insertedClasses = [templateClass];
-          }
+          insertedClasses = [templateClass];
         } else {
-          // Regular finite recurrence
+          // Regular finite recurrence - still create all instances
           const classesToCreate = generateRecurringClasses(baseClassData, formData.recurrence);
           const { data: classes, error: classError } = await supabase
             .from('classes')
@@ -623,36 +598,48 @@ export default function Agenda() {
         insertedClasses = classes;
       }
 
-      // Insert participants for each class
-      const participantInserts = [];
-      for (const classData of insertedClasses) {
-        for (const studentId of formData.selectedStudents) {
-          participantInserts.push({
-            class_id: classData.id,
+      // Insert participants for group classes
+      if (formData.is_group_class && formData.selectedStudents.length > 0) {
+        for (const classInstance of insertedClasses) {
+          const participantInserts = formData.selectedStudents.map((studentId: string) => ({
+            class_id: classInstance.id,
             student_id: studentId
-          });
+          }));
+
+          const { error: participantError } = await supabase
+            .from('class_participants')
+            .insert(participantInserts);
+
+          if (participantError) {
+            console.error('Error inserting participants:', participantError);
+            throw participantError;
+          }
         }
       }
 
-      if (participantInserts.length > 0) {
-        const { error: participantError } = await supabase
-          .from('class_participants')
-          .insert(participantInserts);
-
-        if (participantError) throw participantError;
+      if (formData.recurrence?.is_infinite) {
+        toast({
+          title: "Série recorrente criada!",
+          description: "A aula se repetirá automaticamente conforme a programação",
+        });
+      } else if (insertedClasses.length > 1) {
+        toast({
+          title: "Aulas agendadas!",
+          description: `${insertedClasses.length} aulas foram criadas com sucesso`,
+        });
+      } else {
+        toast({
+          title: "Aula agendada!",
+          description: "A aula foi criada com sucesso",
+        });
       }
 
-      toast({
-        title: "Sucesso",
-        description: `${insertedClasses.length} aula(s) agendada(s) com sucesso!`,
-      });
-
-      await loadClasses();
+      loadClasses();
     } catch (error: any) {
-      console.error('Erro ao agendar aula:', error);
+      console.error('Erro ao criar aula:', error);
       toast({
-        title: "Erro",
-        description: error.message || "Erro ao agendar a aula. Tente novamente.",
+        title: "Erro ao agendar aula",
+        description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
     } finally {
@@ -660,43 +647,43 @@ export default function Agenda() {
     }
   };
 
-  const handleCancelClass = (classId: string, className: string, classDate: string) => {
-    setCancellationModal({
-      isOpen: true,
-      classId,
-      className,
-      classDate
-    });
+  const handleCompleteClass = async (classId: string) => {
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ status: 'concluida' })
+        .eq('id', classId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Aula concluída!",
+        description: "A aula foi marcada como concluída",
+      });
+      
+      loadClasses();
+    } catch (error: any) {
+      console.error('Erro ao concluir aula:', error);
+      toast({
+        title: "Erro ao concluir aula",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleCancellationComplete = () => {
-    loadClasses(); // Reload classes to show updated status
-    setCancellationModal({ isOpen: false, classId: "", className: "", classDate: "" });
-  };
-
-  const handleCompleteClass = (classData: CalendarClass) => {
-    setReportModal({ isOpen: true, classData });
-  };
-
-  const handleReportCreated = () => {
-    loadClasses(); // Reload classes to show updated status
-    setReportModal({ isOpen: false, classData: null });
-  };
-
-  // Show loading until we're sure of user role
-  if (authLoading || !profile || (!isProfessor && !isAluno)) {
+  if (loading) {
     return (
       <Layout>
-        <div className="max-w-6xl mx-auto space-y-6">
-          <div className="space-y-2">
-            <div className="h-8 bg-muted/50 rounded animate-pulse max-w-xs" />
-            <div className="h-4 bg-muted/30 rounded animate-pulse max-w-md" />
-          </div>
-          <div className="grid gap-4">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 bg-muted/20 rounded animate-pulse" />
-            ))}
-          </div>
+        <div className="container mx-auto p-6 space-y-6">
+          <Card>
+            <CardContent className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                <p>Carregando agenda...</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </Layout>
     );
@@ -704,74 +691,67 @@ export default function Agenda() {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">
-            {isProfessor ? "Agenda de Aulas" : "Minhas Aulas"}
-          </h1>
-          <p className="text-muted-foreground">
-            {isProfessor 
-              ? "Gerencie sua agenda, horários de trabalho e disponibilidade"
-              : "Veja suas próximas aulas"
-            }
-          </p>
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Agenda</h1>
+          {isProfessor && (
+            <Button onClick={() => setIsDialogOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Nova Aula
+            </Button>
+          )}
         </div>
 
-        {/* Calendar View */}
+        {/* Schedule Request Component for Students */}
+        {isAluno && <StudentScheduleRequest teacherId={profile?.teacher_id} />}
+
         <SimpleCalendar 
           classes={calendarClasses}
           availabilityBlocks={availabilityBlocks}
-          isProfessor={isProfessor}
           onConfirmClass={handleConfirmClass}
-          onCancelClass={handleCancelClass}
-          onCompleteClass={handleCompleteClass}
-          onScheduleClass={isProfessor ? () => setIsDialogOpen(true) : undefined}
-          loading={loading}
+          onCancelClass={(classId: string, className: string, classDate: string) => 
+            setCancellationModal({
+              isOpen: true,
+              classId,
+              className,
+              classDate
+            })
+          }
+          onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)}
+          isProfessor={isProfessor}
         />
 
-        {/* Student Schedule Request - Only for students */}
-        {isAluno && profile?.teacher_id && (
-          <StudentScheduleRequest 
-            teacherId={profile.teacher_id}
-          />
-        )}
+        {/* Availability Manager for Professors */}
+        {isProfessor && <AvailabilityManager />}
 
         {/* Class Form Dialog */}
-        {isProfessor && (
-          <ClassForm
-            open={isDialogOpen}
-            onOpenChange={setIsDialogOpen}
-            students={students}
-            services={services}
-            existingClasses={classes}
-            onSubmit={handleAddClass}
-            loading={submitting}
-          />
-        )}
+        <ClassForm
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          onSubmit={handleClassSubmit}
+          students={students}
+          services={services}
+          existingClasses={classes}
+        />
 
-        {/* Availability Manager - Only for professors */}
-        {isProfessor && (
-          <AvailabilityManager onAvailabilityChange={loadAvailabilityBlocks} />
-        )}
+        {/* Cancellation Modal */}
+        <CancellationModal
+          isOpen={cancellationModal.isOpen}
+          onClose={() => setCancellationModal(prev => ({ ...prev, isOpen: false }))}
+          classId={cancellationModal.classId}
+          className={cancellationModal.className}
+          classDate={cancellationModal.classDate}
+          onCancellationComplete={loadClasses}
+        />
 
+        {/* Class Report Modal */}
+        <ClassReportModal
+          isOpen={reportModal.isOpen}
+          onOpenChange={(open) => setReportModal({ isOpen: open, classData: open ? reportModal.classData : null })}
+          classData={reportModal.classData}
+          onReportCreated={loadClasses}
+        />
       </div>
-      
-      <CancellationModal
-        isOpen={cancellationModal.isOpen}
-        onClose={() => setCancellationModal({ isOpen: false, classId: "", className: "", classDate: "" })}
-        classId={cancellationModal.classId}
-        className={cancellationModal.className}
-        classDate={cancellationModal.classDate}
-        onCancellationComplete={handleCancellationComplete}
-      />
-      
-      <ClassReportModal
-        isOpen={reportModal.isOpen}
-        onOpenChange={(open) => !open && setReportModal({ isOpen: false, classData: null })}
-        classData={reportModal.classData}
-        onReportCreated={handleReportCreated}
-      />
     </Layout>
   );
 }

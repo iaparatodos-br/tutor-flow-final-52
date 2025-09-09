@@ -755,6 +755,59 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_refunds: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          invoice_id: string | null
+          processed_at: string | null
+          processed_by: string | null
+          reason: string
+          requires_manual_review: boolean | null
+          stripe_payment_intent_id: string | null
+          student_id: string
+          teacher_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          invoice_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          reason?: string
+          requires_manual_review?: boolean | null
+          stripe_payment_intent_id?: string | null
+          student_id: string
+          teacher_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          invoice_id?: string | null
+          processed_at?: string | null
+          processed_by?: string | null
+          reason?: string
+          requires_manual_review?: boolean | null
+          stripe_payment_intent_id?: string | null
+          student_id?: string
+          teacher_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pending_refunds_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address_city: string | null

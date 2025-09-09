@@ -76,12 +76,11 @@ serve(async (req) => {
     for (const professor of professors || []) {
       console.log(`Processing billing for professor: ${professor.name}`);
       
-      // Check if professor has active subscription with financial module
-      const subscription = professor.user_subscriptions?.[0];
-      const hasFinancialModule = subscription?.subscription_plans?.features?.financial_module === true;
+      // Validate teacher can bill (has active subscription with financial module)
+      const canBill = await validateTeacherCanBill(professor);
       
-      if (!hasFinancialModule) {
-        console.log(`Skipping professor ${professor.name} - no access to financial module`);
+      if (!canBill) {
+        console.log(`Skipping professor ${professor.name} - inactive subscription or no financial module`);
         continue;
       }
       
@@ -275,3 +274,28 @@ serve(async (req) => {
     );
   }
 });
+
+// Validation function to check if teacher can bill
+async function validateTeacherCanBill(professor: any): Promise<boolean> {
+  try {
+    // Check if professor has active subscription
+    if (!professor.user_subscriptions || professor.user_subscriptions.length === 0) {
+      return false;
+    }
+
+    const subscription = professor.user_subscriptions[0];
+    
+    // Check if subscription is active
+    if (subscription.status !== 'active') {
+      return false;
+    }
+
+    // Check if plan has financial module
+    const hasFinancialModule = subscription.subscription_plans?.features?.financial_module === true;
+    
+    return hasFinancialModule;
+  } catch (error) {
+    console.error('Error validating teacher billing permissions:', error);
+    return false;
+  }
+}

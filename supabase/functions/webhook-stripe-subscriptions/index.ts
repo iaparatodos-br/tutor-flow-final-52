@@ -202,6 +202,12 @@ serve(async (req) => {
           log("User not found for customer on subscription.*", { customerId, subId: sub.id });
           break;
         }
+        
+        // Handle teacher subscription cancellation for updated/deleted subscriptions
+        if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+          await handleSubscriptionStatusChange(sub, userId);
+        }
+        
         const priceId = sub.items.data[0]?.price?.id ?? null;
         await upsertUserSubscription({
           userId,
@@ -289,3 +295,85 @@ serve(async (req) => {
     });
   }
 });
+
+// Handle subscription status changes for teacher cancellation
+async function handleSubscriptionStatusChange(subscription: Stripe.Subscription, userId: string) {
+  try {
+    log('Checking subscription status change', { 
+      status: subscription.status, 
+      customerId: subscription.customer,
+      userId 
+    });
+
+    // Only process if subscription became inactive
+    const inactiveStatuses = ['canceled', 'past_due', 'incomplete_expired'];
+    if (!inactiveStatuses.includes(subscription.status)) {
+      log('Subscription status is active, no cancellation needed');
+      return;
+    }
+
+    // Check if user is a professor
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', userId)
+      .single();
+
+    if (profile?.role !== 'professor') {
+      log('User is not a professor, skipping teacher cancellation');
+      return;
+    }
+
+    // Get previous plan features
+    const priceId = subscription.items?.data?.[0]?.price?.id;
+    if (!priceId) {
+      log('No price ID found in subscription');
+      return;
+    }
+
+    const previousPlan = await getPlanIdByPriceId(priceId);
+    if (!previousPlan) {
+      log('No plan found for price ID', { priceId });
+      return;
+    }
+
+    const { data: planDetails } = await supabase
+      .from('subscription_plans')
+      .select('features')
+      .eq('id', previousPlan)
+      .single();
+
+    const hadFinancialModule = planDetails?.features?.financial_module === true;
+    
+    if (!hadFinancialModule) {
+      log('Previous plan did not have financial module, skipping cancellation');
+      return;
+    }
+
+    log('Triggering teacher subscription cancellation', { 
+      teacherId: userId, 
+      reason: subscription.status 
+    });
+
+    // Call the teacher cancellation function
+    const { error: cancellationError } = await supabase.functions.invoke(
+      'handle-teacher-subscription-cancellation',
+      {
+        body: {
+          teacher_id: userId,
+          cancellation_reason: subscription.status,
+          previous_plan_features: planDetails.features
+        }
+      }
+    );
+
+    if (cancellationError) {
+      log('Error calling teacher cancellation function', { error: cancellationError });
+    } else {
+      log('Teacher cancellation function called successfully');
+    }
+
+  } catch (error) {
+    log('Error in handleSubscriptionStatusChange', { error: (error as Error).message });
+  }
+}

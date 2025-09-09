@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useProfile } from '@/contexts/ProfileContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Lock, ArrowRight } from 'lucide-react';
@@ -32,7 +33,8 @@ export function FeatureGate({
   showUpgrade = true,
   studentCount 
 }: FeatureGateProps) {
-  const { hasFeature, currentPlan, getStudentOverageInfo } = useSubscription();
+  const { hasFeature, hasTeacherFeature, currentPlan, getStudentOverageInfo } = useSubscription();
+  const { profile } = useProfile();
   const navigate = useNavigate();
 
   // If no feature specified, always show content
@@ -76,8 +78,10 @@ export function FeatureGate({
     }
   }
 
-  // Check feature access
-  const hasAccess = feature ? hasFeature(feature) : true;
+  // Check feature access - use hasTeacherFeature for students, hasFeature for professors
+  const hasAccess = feature ? 
+    (profile?.role === 'aluno' ? hasTeacherFeature(feature) : hasFeature(feature)) : 
+    true;
   
   // Check plan access
   const planAccess = requiredPlan ? currentPlan?.slug !== 'free' : true;

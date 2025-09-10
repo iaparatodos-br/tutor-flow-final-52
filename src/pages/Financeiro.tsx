@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AmnestyButton } from "@/components/AmnestyButton";
 import { ExpenseList } from "@/components/ExpenseList";
 import { PaymentOptionsCard } from "@/components/PaymentOptionsCard";
+import { ArchivedDataViewer } from "@/components/ArchivedDataViewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FeatureGate } from "@/components/FeatureGate";
 
@@ -177,16 +178,19 @@ export default function Financeiro() {
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">
-            {isProfessor ? "Gestão Financeira" : "Minhas Faturas"}
-          </h1>
-          <p className="text-muted-foreground">
-            {isProfessor 
-              ? "Acompanhe seus recebimentos, despesas e lucro"
-              : "Veja suas faturas e faça pagamentos"
-            }
-          </p>
+        <div className="flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold">
+              {isProfessor ? "Gestão Financeira" : "Minhas Faturas"}
+            </h1>
+            <p className="text-muted-foreground">
+              {isProfessor 
+                ? "Acompanhe seus recebimentos, despesas e lucro"
+                : "Veja suas faturas e faça pagamentos"
+              }
+            </p>
+          </div>
+          {isProfessor && <ArchivedDataViewer />}
         </div>
 
         <FeatureGate feature="financial_module">

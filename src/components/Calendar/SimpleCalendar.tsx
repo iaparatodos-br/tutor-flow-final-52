@@ -17,6 +17,7 @@ interface SimpleCalendarProps {
   onCompleteClass?: (classData: CalendarClass) => void;
   loading?: boolean;
   onScheduleClass?: () => void;
+  onVisibleRangeChange?: (start: Date, end: Date) => void;
 }
 
 const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -33,7 +34,8 @@ export function SimpleCalendar({
   onCancelClass, 
   onCompleteClass, 
   loading,
-  onScheduleClass
+  onScheduleClass,
+  onVisibleRangeChange
 }: SimpleCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
@@ -52,6 +54,15 @@ export function SimpleCalendar({
     const lastDayOfMonth = new Date(year, month + 1, 0);
     const startDate = new Date(firstDayOfMonth);
     startDate.setDate(startDate.getDate() - firstDayOfMonth.getDay());
+    
+    // Calculate end date (6 weeks of calendar grid)
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 41); // 42 days (6 weeks) - 1
+    
+    // Notify parent about visible range change
+    if (onVisibleRangeChange) {
+      onVisibleRangeChange(startDate, endDate);
+    }
     
     const days = [];
     const current = new Date(startDate);

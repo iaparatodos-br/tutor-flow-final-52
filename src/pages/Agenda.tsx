@@ -64,6 +64,7 @@ export default function Agenda() {
   const [students, setStudents] = useState<Student[]>([]);
   const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
+  const [visibleRange, setVisibleRange] = useState<{start: Date, end: Date} | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [cancellationModal, setCancellationModal] = useState<{
@@ -80,7 +81,20 @@ export default function Agenda() {
 
   useEffect(() => {
     if (!authLoading && profile) {
-      loadClasses();
+      // Initial load with default range (current month)
+      if (!visibleRange) {
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const startGrid = new Date(firstDay);
+        startGrid.setDate(startGrid.getDate() - firstDay.getDay());
+        const endGrid = new Date(startGrid);
+        endGrid.setDate(endGrid.getDate() + 41);
+        
+        setVisibleRange({ start: startGrid, end: endGrid });
+        loadClasses(startGrid, endGrid);
+      }
+      
       if (isProfessor) {
         loadStudents();
         loadAvailabilityBlocks();
@@ -89,8 +103,19 @@ export default function Agenda() {
     }
   }, [profile, isProfessor, authLoading]);
 
-  // Helper function to generate virtual recurring instances
-  const generateVirtualInstances = (templateClass: ClassWithParticipants, endDate: Date): ClassWithParticipants[] => {
+  // Load classes when visible range changes
+  useEffect(() => {
+    if (visibleRange && profile) {
+      loadClasses(visibleRange.start, visibleRange.end);
+    }
+  }, [visibleRange]);
+
+  const handleVisibleRangeChange = (start: Date, end: Date) => {
+    setVisibleRange({ start, end });
+  };
+
+  // Helper function to generate virtual recurring instances for visible range
+  const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
     if (!templateClass.recurrence_pattern?.is_infinite) return [];
     
     const pattern = templateClass.recurrence_pattern;
@@ -103,13 +128,19 @@ export default function Agenda() {
     const rule = new RRule({
       freq,
       interval,
-      dtstart: new Date(templateClass.class_date),
-      until: endDate
+      dtstart: new Date(templateClass.class_date)
     });
     
-    const occurrences = rule.all();
+    // Generate occurrences only within the visible range
+    const occurrences = rule.between(startDate, endDate, true);
     
-    return occurrences.slice(1).map((date) => ({
+    // Filter out the original template date if it's in range
+    const templateDate = new Date(templateClass.class_date);
+    const filteredOccurrences = occurrences.filter(date => 
+      date.getTime() !== templateDate.getTime()
+    );
+    
+    return filteredOccurrences.map((date) => ({
       ...templateClass,
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
@@ -118,14 +149,17 @@ export default function Agenda() {
     }));
   };
 
-  const loadClasses = async () => {
+  const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
     if (!profile?.id) return;
 
     try {
-      // Get viewing period (3 months ahead for dynamic generation)
-      const now = new Date();
-      const viewEnd = new Date(now);
-      viewEnd.setMonth(viewEnd.getMonth() + 3);
+      // Use provided range or fallback to default range
+      const startDate = rangeStart || new Date();
+      const endDate = rangeEnd || (() => {
+        const end = new Date(startDate);
+        end.setMonth(end.getMonth() + 1);
+        return end;
+      })();
       
       // Use RPC to get optimized data for professors
       let data;
@@ -134,8 +168,8 @@ export default function Agenda() {
       if (isProfessor) {
         ({ data, error } = await supabase.rpc('get_calendar_events', {
           p_teacher_id: profile.id,
-          p_start_date: now.toISOString(),
-          p_end_date: viewEnd.toISOString()
+          p_start_date: startDate.toISOString(),
+          p_end_date: endDate.toISOString()
         }));
       } else {
         // For students, get classes normally
@@ -243,7 +277,7 @@ export default function Agenda() {
         for (const cls of classesWithDetails) {
           if (cls.recurrence_pattern?.is_infinite && !cls.parent_class_id) {
             // This is a template class for infinite recurrence
-            const virtualInstances = generateVirtualInstances(cls, viewEnd);
+            const virtualInstances = generateVirtualInstances(cls, startDate, endDate);
             
             // Filter out virtual instances that conflict with real classes
             const realClassDates = new Set(
@@ -395,7 +429,9 @@ export default function Agenda() {
         description: "A aula foi confirmada com sucesso",
       });
       
-      loadClasses();
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
     } catch (error: any) {
       console.error('Erro ao confirmar aula:', error);
       toast({
@@ -462,7 +498,9 @@ export default function Agenda() {
         description: "A aula recorrente foi confirmada e agendada",
       });
 
-      loadClasses();
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
     } catch (error: any) {
       console.error('Erro ao materializar aula virtual:', error);
       toast({
@@ -634,7 +672,9 @@ export default function Agenda() {
         });
       }
 
-      loadClasses();
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
     } catch (error: any) {
       console.error('Erro ao criar aula:', error);
       toast({
@@ -661,7 +701,9 @@ export default function Agenda() {
         description: "A aula foi marcada como concluída",
       });
       
-      loadClasses();
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
     } catch (error: any) {
       console.error('Erro ao concluir aula:', error);
       toast({
@@ -719,6 +761,9 @@ export default function Agenda() {
           }
           onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)}
           isProfessor={isProfessor}
+          loading={loading}
+          onScheduleClass={() => setIsDialogOpen(true)}
+          onVisibleRangeChange={handleVisibleRangeChange}
         />
 
         {/* Availability Manager for Professors */}

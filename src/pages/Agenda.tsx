@@ -17,6 +17,7 @@ import { ClassReportModal } from "@/components/ClassReportModal";
 import { StudentScheduleRequest } from "@/components/StudentScheduleRequest";
 import { RecurringClassActionModal, RecurringActionType, ActionMode } from "@/components/RecurringClassActionModal";
 import { ClassExceptionForm } from "@/components/ClassExceptionForm";
+import { FutureClassExceptionForm } from "@/components/FutureClassExceptionForm";
 import { RRule, Frequency } from 'rrule';
 
 interface ClassWithParticipants {
@@ -86,6 +87,7 @@ export default function Agenda() {
   const [recurringActionMode, setRecurringActionMode] = useState<ActionMode>('edit');
   const [pendingClassForAction, setPendingClassForAction] = useState<CalendarClass | null>(null);
   const [showExceptionForm, setShowExceptionForm] = useState(false);
+  const [showFutureExceptionForm, setShowFutureExceptionForm] = useState(false);
 
   useEffect(() => {
     if (!authLoading && profile) {
@@ -814,8 +816,15 @@ export default function Agenda() {
         // Cancel just this occurrence
         handleCancelSingleOccurrence(pendingClassForAction);
       }
+    } else if (action === 'this_and_future') {
+      if (recurringActionMode === 'edit') {
+        setShowFutureExceptionForm(true);
+      } else if (recurringActionMode === 'cancel') {
+        // Cancel this and future occurrences
+        handleCancelFutureOccurrences(pendingClassForAction);
+      }
     }
-    // Future: handle 'this_and_future' and 'all_series'
+    // Future: handle 'all_series'
   };
 
   const handleCancelSingleOccurrence = async (classData: CalendarClass) => {
@@ -859,6 +868,43 @@ export default function Agenda() {
       loadClasses(visibleRange.start, visibleRange.end);
     }
     setPendingClassForAction(null);
+  };
+
+  const handleCancelFutureOccurrences = async (classData: CalendarClass) => {
+    try {
+      // For virtual instances, extract the original class ID
+      let originalClassId = classData.id;
+      if (classData.isVirtual && classData.id.includes('_virtual_')) {
+        originalClassId = classData.id.split('_virtual_')[0];
+      }
+
+      const { data, error } = await supabase.functions.invoke('manage-future-class-exceptions', {
+        body: {
+          original_class_id: originalClassId,
+          from_date: classData.start.toISOString(),
+          action: 'cancel'
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Aulas canceladas",
+        description: data.message || "Esta e as futuras aulas foram canceladas com sucesso",
+      });
+
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
+      setPendingClassForAction(null);
+    } catch (error) {
+      console.error('Erro ao cancelar aulas futuras:', error);
+      toast({
+        title: "Erro ao cancelar",
+        description: error instanceof Error ? error.message : "Tente novamente",
+        variant: "destructive",
+      });
+    }
   };
 
   if (loading) {
@@ -950,6 +996,28 @@ export default function Agenda() {
         <ClassExceptionForm
           open={showExceptionForm}
           onOpenChange={setShowExceptionForm}
+          originalClass={pendingClassForAction ? {
+            id: pendingClassForAction.id,
+            title: pendingClassForAction.title,
+            start: pendingClassForAction.start,
+            end: pendingClassForAction.end,
+            duration_minutes: 60, // Default, could be extracted from title or stored separately
+            notes: pendingClassForAction.notes
+          } : {
+            id: '',
+            title: '',
+            start: new Date(),
+            end: new Date(),
+            duration_minutes: 60
+          }}
+          services={services}
+          onSuccess={handleExceptionSuccess}
+        />
+
+        {/* Future Class Exception Form */}
+        <FutureClassExceptionForm
+          open={showFutureExceptionForm}
+          onOpenChange={setShowFutureExceptionForm}
           originalClass={pendingClassForAction ? {
             id: pendingClassForAction.id,
             title: pendingClassForAction.title,

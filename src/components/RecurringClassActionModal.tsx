@@ -80,13 +80,12 @@ export function RecurringClassActionModal({
                 </div>
               </div>
 
-              <div className="flex items-start space-x-3 p-3 rounded-lg border opacity-50">
-                <RadioGroupItem value="this_and_future" id="this_and_future" disabled className="mt-1" />
+              <div className="flex items-start space-x-3 p-3 rounded-lg border">
+                <RadioGroupItem value="this_and_future" id="this_and_future" className="mt-1" />
                 <div className="space-y-1">
-                  <Label htmlFor="this_and_future" className="flex items-center gap-2 font-medium text-muted-foreground">
+                  <Label htmlFor="this_and_future" className="flex items-center gap-2 font-medium">
                     <CalendarCheck className="h-4 w-4" />
                     Esta e futuras aulas
-                    <span className="text-xs bg-muted px-2 py-1 rounded">Em breve</span>
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     {actionTextCapitalized} esta aula e todas as ocorrências futuras da série.

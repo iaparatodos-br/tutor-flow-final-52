@@ -11,7 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Calendar, CalendarCheck } from "lucide-react";
 
-export type RecurringActionType = 'this_only' | 'this_and_future' | 'all_series';
+export type RecurringActionType = 'this_only' | 'this_and_future';
 export type ActionMode = 'edit' | 'cancel';
 
 interface RecurringClassActionModalProps {
@@ -89,20 +89,6 @@ export function RecurringClassActionModal({
                   </Label>
                   <p className="text-sm text-muted-foreground">
                     {actionTextCapitalized} esta aula e todas as ocorrências futuras da série.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3 p-3 rounded-lg border opacity-50">
-                <RadioGroupItem value="all_series" id="all_series" disabled className="mt-1" />
-                <div className="space-y-1">
-                  <Label htmlFor="all_series" className="flex items-center gap-2 font-medium text-muted-foreground">
-                    <CalendarCheck className="h-4 w-4" />
-                    Toda a série
-                    <span className="text-xs bg-muted px-2 py-1 rounded">Em breve</span>
-                  </Label>
-                  <p className="text-sm text-muted-foreground">
-                    {actionTextCapitalized} todas as aulas desta série recorrente.
                   </p>
                 </div>
               </div>

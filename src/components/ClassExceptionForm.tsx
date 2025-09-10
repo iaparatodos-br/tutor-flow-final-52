@@ -78,12 +78,18 @@ export function ClassExceptionForm({
         throw new Error('Data e horário são obrigatórios');
       }
 
+      // For virtual instances, extract the original class ID
+      let originalClassId = originalClass.id;
+      if (originalClass.id.includes('_virtual_')) {
+        originalClassId = originalClass.id.split('_virtual_')[0];
+      }
+
       const newStartDateTime = new Date(`${formData.new_start_date}T${formData.new_start_time}:00`);
       const newEndDateTime = new Date(newStartDateTime.getTime() + (formData.new_duration_minutes * 60 * 1000));
 
       const { data, error } = await supabase.functions.invoke('manage-class-exception', {
         body: {
-          original_class_id: originalClass.id,
+          original_class_id: originalClassId,
           exception_date: originalClass.start.toISOString(),
           action: 'reschedule',
           newData: {
@@ -121,9 +127,15 @@ export function ClassExceptionForm({
     setLoading(true);
 
     try {
+      // For virtual instances, extract the original class ID
+      let originalClassId = originalClass.id;
+      if (originalClass.id.includes('_virtual_')) {
+        originalClassId = originalClass.id.split('_virtual_')[0];
+      }
+
       const { data, error } = await supabase.functions.invoke('manage-class-exception', {
         body: {
-          original_class_id: originalClass.id,
+          original_class_id: originalClassId,
           exception_date: originalClass.start.toISOString(),
           action: 'cancel'
         }

@@ -820,9 +820,15 @@ export default function Agenda() {
 
   const handleCancelSingleOccurrence = async (classData: CalendarClass) => {
     try {
+      // For virtual instances, extract the original class ID from the composite ID
+      let originalClassId = classData.id;
+      if (classData.isVirtual && classData.id.includes('_virtual_')) {
+        originalClassId = classData.id.split('_virtual_')[0];
+      }
+
       const { data, error } = await supabase.functions.invoke('manage-class-exception', {
         body: {
-          original_class_id: classData.id,
+          original_class_id: originalClassId,
           exception_date: classData.start.toISOString(),
           action: 'cancel'
         }

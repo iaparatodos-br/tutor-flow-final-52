@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "npm:resend@4.0.0";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 
 const corsHeaders = {
@@ -8,10 +8,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+// Initialize services with guards
+const resendKey = Deno.env.get("RESEND_API_KEY");
+const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+
+const resend = resendKey ? new Resend(resendKey) : null;
+const stripe = stripeKey ? new Stripe(stripeKey, {
   apiVersion: "2023-10-16",
-});
+}) : null;
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -60,7 +64,8 @@ serve(async (req) => {
           address_city,
           address_state,
           address_postal_code,
-          address_complete
+          address_complete,
+          stripe_customer_id
         )
       `)
       .eq('role', 'professor')
@@ -145,9 +150,9 @@ serve(async (req) => {
             console.log(`Skipping boleto generation for student ${student.name} - incomplete profile data`);
           }
 
-          // Create Stripe invoice if student has Stripe customer ID
+          // Create Stripe invoice if student has Stripe customer ID and Stripe is available
           let stripeInvoiceUrl = null;
-          if (student.stripe_customer_id) {
+          if (student.stripe_customer_id && stripe) {
             try {
               const stripeInvoice = await stripe.invoices.create({
                 customer: student.stripe_customer_id,
@@ -189,7 +194,7 @@ serve(async (req) => {
           const emailRecipient = student.guardian_email || student.email;
           const recipientName = student.guardian_name || student.name;
 
-          if (emailRecipient) {
+          if (emailRecipient && resend) {
             try {
               await resend.emails.send({
                 from: `${professor.name} <noreply@resend.dev>`,

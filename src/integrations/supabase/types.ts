@@ -122,6 +122,56 @@ export type Database = {
         }
         Relationships: []
       }
+      class_exceptions: {
+        Row: {
+          created_at: string
+          exception_date: string
+          id: string
+          new_description: string | null
+          new_duration_minutes: number | null
+          new_end_time: string | null
+          new_start_time: string | null
+          new_title: string | null
+          original_class_id: string
+          status: Database["public"]["Enums"]["exception_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          exception_date: string
+          id?: string
+          new_description?: string | null
+          new_duration_minutes?: number | null
+          new_end_time?: string | null
+          new_start_time?: string | null
+          new_title?: string | null
+          original_class_id: string
+          status: Database["public"]["Enums"]["exception_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          exception_date?: string
+          id?: string
+          new_description?: string | null
+          new_duration_minutes?: number | null
+          new_end_time?: string | null
+          new_start_time?: string | null
+          new_title?: string | null
+          original_class_id?: string
+          status?: Database["public"]["Enums"]["exception_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_exceptions_original_class_id_fkey"
+            columns: ["original_class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       class_notifications: {
         Row: {
           class_id: string
@@ -1145,7 +1195,7 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      exception_status: "canceled" | "rescheduled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1272,6 +1322,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      exception_status: ["canceled", "rescheduled"],
+    },
   },
 } as const

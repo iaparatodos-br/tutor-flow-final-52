@@ -15,6 +15,8 @@ import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
 import { ClassReportModal } from "@/components/ClassReportModal";
 import { StudentScheduleRequest } from "@/components/StudentScheduleRequest";
+import { RecurringClassActionModal, RecurringActionType, ActionMode } from "@/components/RecurringClassActionModal";
+import { ClassExceptionForm } from "@/components/ClassExceptionForm";
 import { RRule, Frequency } from 'rrule';
 
 interface ClassWithParticipants {
@@ -78,6 +80,12 @@ export default function Agenda() {
     isOpen: boolean;
     classData: CalendarClass | null;
   }>({ isOpen: false, classData: null });
+  
+  // Exception handling states
+  const [showRecurringActionModal, setShowRecurringActionModal] = useState(false);
+  const [recurringActionMode, setRecurringActionMode] = useState<ActionMode>('edit');
+  const [pendingClassForAction, setPendingClassForAction] = useState<CalendarClass | null>(null);
+  const [showExceptionForm, setShowExceptionForm] = useState(false);
 
   useEffect(() => {
     if (!authLoading && profile) {
@@ -270,6 +278,36 @@ export default function Agenda() {
         });
       }
 
+      // Fetch class exceptions if professor
+      let exceptions: any[] = [];
+      if (isProfessor) {
+        const recurringClassIds = classesWithDetails
+          .filter(cls => cls.recurrence_pattern && !cls.parent_class_id)
+          .map(cls => cls.id);
+        
+        if (recurringClassIds.length > 0) {
+          const { data: exceptionsData, error: exceptionsError } = await supabase
+            .from('class_exceptions')
+            .select('*')
+            .in('original_class_id', recurringClassIds)
+            .gte('exception_date', startDate.toISOString())
+            .lte('exception_date', endDate.toISOString());
+          
+          if (exceptionsError) {
+            console.error('Error loading exceptions:', exceptionsError);
+          } else {
+            exceptions = exceptionsData || [];
+          }
+        }
+      }
+
+      // Create exceptions map for quick lookup
+      const exceptionsMap = new Map();
+      exceptions.forEach(ex => {
+        const key = `${ex.original_class_id}_${new Date(ex.exception_date).getTime()}`;
+        exceptionsMap.set(key, ex);
+      });
+
       // Generate virtual instances for infinite recurrences (only for professors)
       const allClasses: ClassWithParticipants[] = [...classesWithDetails];
       
@@ -279,18 +317,40 @@ export default function Agenda() {
             // This is a template class for infinite recurrence
             const virtualInstances = generateVirtualInstances(cls, startDate, endDate);
             
-            // Filter out virtual instances that conflict with real classes
+            // Filter out virtual instances that conflict with real classes or are cancelled
             const realClassDates = new Set(
               classesWithDetails
                 .filter(c => c.parent_class_id === cls.id)
                 .map(c => new Date(c.class_date).toDateString())
             );
             
-            const filteredVirtual = virtualInstances.filter(virtual => 
-              !realClassDates.has(new Date(virtual.class_date).toDateString())
-            );
+            const processedVirtual = virtualInstances
+              .filter(virtual => !realClassDates.has(new Date(virtual.class_date).toDateString()))
+              .map(virtual => {
+                const exceptionKey = `${cls.id}_${new Date(virtual.class_date).getTime()}`;
+                const exception = exceptionsMap.get(exceptionKey);
+                
+                if (exception) {
+                  if (exception.status === 'canceled') {
+                    return null; // Skip cancelled occurrences
+                  } else if (exception.status === 'rescheduled') {
+                    // Apply exception modifications
+                    return {
+                      ...virtual,
+                      id: exception.id,
+                      class_date: exception.new_start_time,
+                      duration_minutes: exception.new_duration_minutes || virtual.duration_minutes,
+                      notes: exception.new_description || virtual.notes,
+                      isException: true
+                    };
+                  }
+                }
+                
+                return virtual;
+              })
+              .filter(Boolean); // Remove null entries (cancelled classes)
             
-            allClasses.push(...filteredVirtual);
+            allClasses.push(...processedVirtual);
           }
         }
       }
@@ -714,6 +774,87 @@ export default function Agenda() {
     }
   };
 
+  // Handle recurring class actions
+  const handleRecurringClassEdit = (classData: CalendarClass) => {
+    // Check if this is a virtual recurring instance
+    if (classData.isVirtual) {
+      setPendingClassForAction(classData);
+      setRecurringActionMode('edit');
+      setShowRecurringActionModal(true);
+    } else {
+      // Handle normal class edit or show normal edit form
+      console.log('Edit normal class:', classData);
+    }
+  };
+
+  const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
+    const classData = calendarClasses.find(c => c.id === classId);
+    if (classData?.isVirtual) {
+      setPendingClassForAction(classData);
+      setRecurringActionMode('cancel');
+      setShowRecurringActionModal(true);
+    } else {
+      // Handle normal cancellation
+      setCancellationModal({
+        isOpen: true,
+        classId,
+        className,
+        classDate
+      });
+    }
+  };
+
+  const handleRecurringActionSelected = (action: RecurringActionType) => {
+    if (!pendingClassForAction) return;
+
+    if (action === 'this_only') {
+      if (recurringActionMode === 'edit') {
+        setShowExceptionForm(true);
+      } else if (recurringActionMode === 'cancel') {
+        // Cancel just this occurrence
+        handleCancelSingleOccurrence(pendingClassForAction);
+      }
+    }
+    // Future: handle 'this_and_future' and 'all_series'
+  };
+
+  const handleCancelSingleOccurrence = async (classData: CalendarClass) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-class-exception', {
+        body: {
+          original_class_id: classData.id,
+          exception_date: classData.start.toISOString(),
+          action: 'cancel'
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Aula cancelada",
+        description: "Esta ocorrência da aula foi cancelada com sucesso",
+      });
+
+      if (visibleRange) {
+        loadClasses(visibleRange.start, visibleRange.end);
+      }
+    } catch (error) {
+      console.error('Erro ao cancelar aula:', error);
+      toast({
+        title: "Erro ao cancelar",
+        description: error instanceof Error ? error.message : "Tente novamente",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExceptionSuccess = () => {
+    if (visibleRange) {
+      loadClasses(visibleRange.start, visibleRange.end);
+    }
+    setPendingClassForAction(null);
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -751,14 +892,7 @@ export default function Agenda() {
           classes={calendarClasses}
           availabilityBlocks={availabilityBlocks}
           onConfirmClass={handleConfirmClass}
-          onCancelClass={(classId: string, className: string, classDate: string) => 
-            setCancellationModal({
-              isOpen: true,
-              classId,
-              className,
-              classDate
-            })
-          }
+          onCancelClass={handleRecurringClassCancel}
           onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)}
           isProfessor={isProfessor}
           loading={loading}
@@ -795,6 +929,37 @@ export default function Agenda() {
           onOpenChange={(open) => setReportModal({ isOpen: open, classData: open ? reportModal.classData : null })}
           classData={reportModal.classData}
           onReportCreated={loadClasses}
+        />
+
+        {/* Recurring Class Action Modal */}
+        <RecurringClassActionModal
+          open={showRecurringActionModal}
+          onOpenChange={setShowRecurringActionModal}
+          onActionSelected={handleRecurringActionSelected}
+          mode={recurringActionMode}
+          classDate={pendingClassForAction?.start || new Date()}
+        />
+
+        {/* Class Exception Form */}
+        <ClassExceptionForm
+          open={showExceptionForm}
+          onOpenChange={setShowExceptionForm}
+          originalClass={pendingClassForAction ? {
+            id: pendingClassForAction.id,
+            title: pendingClassForAction.title,
+            start: pendingClassForAction.start,
+            end: pendingClassForAction.end,
+            duration_minutes: 60, // Default, could be extracted from title or stored separately
+            notes: pendingClassForAction.notes
+          } : {
+            id: '',
+            title: '',
+            start: new Date(),
+            end: new Date(),
+            duration_minutes: 60
+          }}
+          services={services}
+          onSuccess={handleExceptionSuccess}
         />
       </div>
     </Layout>

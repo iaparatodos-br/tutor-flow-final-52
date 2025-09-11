@@ -51,15 +51,23 @@ export function ShareMaterialModal({
 
     setLoading(true);
     try {
-      // Load all students of this teacher
+      // Load all students of this teacher using the relationships table
       const { data: studentsData, error: studentsError } = await supabase
-        .from('profiles')
-        .select('id, name, email')
-        .eq('teacher_id', profile.id)
-        .eq('role', 'aluno')
-        .order('name');
+        .from('teacher_student_relationships')
+        .select(`
+          student_id,
+          profiles!teacher_student_relationships_student_id_fkey (
+            id,
+            name,
+            email
+          )
+        `)
+        .eq('teacher_id', profile.id);
 
       if (studentsError) throw studentsError;
+
+      // Transform the data to extract student profiles
+      const students = studentsData?.map(rel => rel.profiles).filter(Boolean) || [];
 
       // Load existing access for this material
       const { data: accessData, error: accessError } = await supabase
@@ -71,8 +79,10 @@ export function ShareMaterialModal({
 
       const existingAccess = new Set(accessData.map(item => item.student_id));
 
-      const studentsWithAccess = studentsData.map(student => ({
-        ...student,
+      const studentsWithAccess = students.map(student => ({
+        id: student.id,
+        name: student.name,
+        email: student.email,
         hasAccess: existingAccess.has(student.id)
       }));
 

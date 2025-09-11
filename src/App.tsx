@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
+import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -71,10 +72,11 @@ const AppWithProviders = () => {
     <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
       <SubscriptionProvider>
         <SidebarProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
+          <TeacherProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
@@ -96,8 +98,9 @@ const AppWithProviders = () => {
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          </BrowserRouter>
-          </TooltipProvider>
+            </BrowserRouter>
+            </TooltipProvider>
+          </TeacherProvider>
         </SidebarProvider>
       </SubscriptionProvider>
     </ProfileProvider>

@@ -5,7 +5,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
-import { TeacherProvider } from "@/contexts/TeacherContext";
+
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
 
 interface LayoutProps {
@@ -68,11 +68,6 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
       </div>
     </div>
   );
-
-  // Wrap with TeacherProvider for students
-  if (isAluno) {
-    return <TeacherProvider>{content}</TeacherProvider>;
-  }
 
   return content;
 }

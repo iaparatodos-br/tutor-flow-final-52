@@ -111,8 +111,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
 
       // Load teacher's plan if user is a student
-      if (profile?.role === 'aluno' && profile?.teacher_id) {
-        await loadTeacherSubscription(profile.teacher_id);
+      if (profile?.role === 'aluno') {
+        await loadTeacherSubscriptions();
       }
     } catch (error) {
       console.error('Error loading subscription:', error);
@@ -123,8 +123,29 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loadTeacherSubscription = async (teacherId: string) => {
+  const loadTeacherSubscriptions = async () => {
+    if (!user) return;
+    
     try {
+      // Get teachers for this student
+      const { data: relationships, error: relationshipError } = await supabase
+        .from('teacher_student_relationships')
+        .select('teacher_id')
+        .eq('student_id', user.id);
+      
+      if (relationshipError) {
+        console.error('Error loading teacher relationships:', relationshipError);
+        return;
+      }
+      
+      if (!relationships || relationships.length === 0) {
+        console.log('No teachers found for student');
+        return;
+      }
+      
+      // Get the first teacher's subscription (for now, we'll use the first teacher)
+      const teacherId = relationships[0].teacher_id;
+      
       // Check if teacher has an active subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
         .from('user_subscriptions')

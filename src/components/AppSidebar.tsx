@@ -8,7 +8,8 @@ import {
   Settings,
   FileText,
   CreditCard,
-  Package
+  Package,
+  Archive
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -24,6 +25,7 @@ const professorItems = [
   { title: "Agenda", url: "/agenda", icon: Calendar },
   { title: "Materiais", url: "/materiais", icon: FileText },
   { title: "Financeiro", url: "/financeiro", icon: DollarSign },
+  { title: "Histórico", url: "/historico", icon: Archive },
   { title: "Políticas Cancelamento", url: "/politicas-cancelamento", icon: Settings },
 ];
 

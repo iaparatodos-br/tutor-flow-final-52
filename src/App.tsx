@@ -24,6 +24,7 @@ import Servicos from "./pages/Servicos";
 import PoliticasCancelamento from "./pages/PoliticasCancelamento";
 import Planos from "./pages/Planos";
 import Subscription from "./pages/Subscription";
+import Historico from "./pages/Historico";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
@@ -89,6 +90,7 @@ const AppWithProviders = () => {
             <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
+            <Route path="/historico" element={<Historico />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription" element={<Subscription />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

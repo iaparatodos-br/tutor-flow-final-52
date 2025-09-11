@@ -18,12 +18,38 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, year, month } = await req.json();
+    // ** Passo 1: Autenticação **
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization header" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
+        }
+      );
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     
-    if (!userId || !year || !month) {
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: "Authentication failed" }),
+        {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
+        }
+      );
+    }
+
+    // ** Passo 2: Receber Parâmetros **
+    const { year, month } = await req.json();
+    
+    if (!year || !month) {
       return new Response(
         JSON.stringify({ 
-          error: "Parâmetros obrigatórios: userId, year, month" 
+          error: "Parâmetros obrigatórios: year, month" 
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -32,27 +58,30 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Buscando dados arquivados para usuário ${userId}, período ${year}-${month}`);
+    console.log(`Buscando dados arquivados para usuário ${user.id}, período ${year}-${month}`);
     
-    // Construir caminho do arquivo
+    // ** Passo 3: Construir caminho do arquivo **
     const period = `${year}-${String(month).padStart(2, '0')}`;
-    const filePath = `${userId}/${period}.json`;
+    const filePath = `${user.id}/${period}.json`;
     
     // Buscar arquivo no Storage
     const { data: fileData, error: downloadError } = await supabaseAdmin.storage
       .from('archives')
       .download(filePath);
 
+    // ** Passo 5: Tratamento de Erros (Arquivo não encontrado) **
     if (downloadError) {
       console.log(`Arquivo não encontrado: ${filePath}`, downloadError);
       return new Response(
         JSON.stringify({ 
-          error: "Dados arquivados não encontrados para este período",
-          found: false
+          data: [],
+          period: period,
+          found: false,
+          success: true
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 404,
+          status: 200,
         }
       );
     }

@@ -59,7 +59,7 @@ interface ClassService {
 export default function Agenda() {
   const { profile, isProfessor, isAluno } = useProfile();
   const { loading: authLoading } = useAuth();
-  const { hasFeature } = useSubscription();
+  const { hasFeature, hasTeacherFeature } = useSubscription();
   const { toast } = useToast();
   const { selectedTeacherId } = useTeacherContext();
   
@@ -640,7 +640,7 @@ export default function Agenda() {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
       
       // Check if professor has access to financial module
-      const hasFinancialAccess = hasFeature('financial_module');
+      const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
       
       // If no financial access, mark class as experimental to prevent billing
       const shouldMarkExperimental = !hasFinancialAccess || formData.is_experimental;

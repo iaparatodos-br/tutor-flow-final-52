@@ -19,7 +19,7 @@ interface DashboardStats {
 export default function Dashboard() {
   const { profile, isProfessor, isAluno } = useProfile();
   const { loading: authLoading } = useAuth();
-  const { hasFeature } = useSubscription();
+  const { hasFeature, hasTeacherFeature } = useSubscription();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
@@ -59,7 +59,8 @@ export default function Dashboard() {
       let monthlyRevenue = 0;
 
       // Only load financial data if user has financial module
-      if (hasFeature('financial_module')) {
+      const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
+      if (hasFinancialAccess) {
         // Buscar faturas pendentes
         const { count: pendingInvoicesCount } = await supabase
           .from('invoices')
@@ -169,7 +170,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {hasFeature('financial_module') && (
+          {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
             <Card className="shadow-card hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Pagamentos Pendentes</CardTitle>
@@ -186,7 +187,7 @@ export default function Dashboard() {
             </Card>
           )}
 
-          {hasFeature('financial_module') && (
+          {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
             <Card className="shadow-card hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Receita do Mês</CardTitle>
@@ -229,7 +230,7 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">Marcar nova aula</p>
               </div>
               
-              {hasFeature('financial_module') && (
+              {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
                 <div 
                   className="text-center p-4 rounded-lg bg-success-light hover:bg-success-hover cursor-pointer transition-colors"
                   onClick={() => navigate("/financeiro")}
@@ -250,7 +251,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              {hasFeature('financial_module') && (
+              {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
                 <div 
                   className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
                   onClick={() => navigate("/contas-recebimento")}

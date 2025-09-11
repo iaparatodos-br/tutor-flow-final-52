@@ -93,8 +93,11 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
 
   const handleNavigation = (url: string) => {
     // Block access to financial module for free and basic plans
-    if (url === '/financeiro' && !hasFeature('financial_module')) {
-      return; // Don't navigate
+    if (url === '/financeiro') {
+      const hasAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
+      if (!hasAccess) {
+        return; // Don't navigate
+      }
     }
     navigate(url);
   };
@@ -130,22 +133,22 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                       <TooltipTrigger asChild>
                         <div 
                           onClick={() => handleNavigation(item.url)}
-                          className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${
-                            item.title === 'Financeiro' && !hasFeature('financial_module') 
-                              ? 'cursor-not-allowed opacity-50' 
-                              : 'cursor-pointer'
-                          } ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+                           className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${
+                             item.title === 'Financeiro' && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module'))
+                               ? 'cursor-not-allowed opacity-50' 
+                               : 'cursor-pointer'
+                           } ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                         >
                           <item.icon className={`h-4 w-4 flex-shrink-0 text-primary`} />
                           {isOpen && (
                             <div className="flex items-center justify-between w-full ml-4">
                               <span>{item.title}</span>
-                              {/* Show premium indicators */}
-                              {item.title === 'Financeiro' && !hasFeature('financial_module') && (
-                                <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
-                                  Premium
-                                </span>
-                              )}
+                               {/* Show premium indicators */}
+                               {item.title === 'Financeiro' && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
+                                 <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
+                                   Premium
+                                 </span>
+                               )}
                             </div>
                           )}
                         </div>

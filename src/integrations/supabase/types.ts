@@ -865,7 +865,6 @@ export type Database = {
           address_postal_code: string | null
           address_state: string | null
           address_street: string | null
-          billing_day: number | null
           cpf: string | null
           created_at: string | null
           current_plan_id: string | null
@@ -881,7 +880,6 @@ export type Database = {
           stripe_customer_id: string | null
           subscription_end_date: string | null
           subscription_status: string | null
-          teacher_id: string | null
           updated_at: string | null
         }
         Insert: {
@@ -890,7 +888,6 @@ export type Database = {
           address_postal_code?: string | null
           address_state?: string | null
           address_street?: string | null
-          billing_day?: number | null
           cpf?: string | null
           created_at?: string | null
           current_plan_id?: string | null
@@ -906,7 +903,6 @@ export type Database = {
           stripe_customer_id?: string | null
           subscription_end_date?: string | null
           subscription_status?: string | null
-          teacher_id?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -915,7 +911,6 @@ export type Database = {
           address_postal_code?: string | null
           address_state?: string | null
           address_street?: string | null
-          billing_day?: number | null
           cpf?: string | null
           created_at?: string | null
           current_plan_id?: string | null
@@ -931,7 +926,6 @@ export type Database = {
           stripe_customer_id?: string | null
           subscription_end_date?: string | null
           subscription_status?: string | null
-          teacher_id?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -947,13 +941,6 @@ export type Database = {
             columns: ["preferred_payment_account_id"]
             isOneToOne: false
             referencedRelation: "payment_accounts"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "profiles_teacher_id_fkey"
-            columns: ["teacher_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1041,6 +1028,61 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      teacher_student_relationships: {
+        Row: {
+          billing_day: number | null
+          created_at: string
+          id: string
+          preferred_payment_account_id: string | null
+          stripe_customer_id: string | null
+          student_id: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          billing_day?: number | null
+          created_at?: string
+          id?: string
+          preferred_payment_account_id?: string | null
+          stripe_customer_id?: string | null
+          student_id: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          billing_day?: number | null
+          created_at?: string
+          id?: string
+          preferred_payment_account_id?: string | null
+          stripe_customer_id?: string | null
+          student_id?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_student_relationships_preferred_payment_account_id_fkey"
+            columns: ["preferred_payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "payment_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teacher_student_relationships_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teacher_student_relationships_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_subscriptions: {
         Row: {
@@ -1160,6 +1202,32 @@ export type Database = {
           student_id: string | null
           teacher_id: string
           updated_at: string | null
+        }[]
+      }
+      get_student_teachers: {
+        Args: { student_user_id: string }
+        Returns: {
+          billing_day: number
+          created_at: string
+          relationship_id: string
+          teacher_email: string
+          teacher_id: string
+          teacher_name: string
+        }[]
+      }
+      get_teacher_students: {
+        Args: { teacher_user_id: string }
+        Returns: {
+          billing_day: number
+          created_at: string
+          guardian_email: string
+          guardian_name: string
+          guardian_phone: string
+          relationship_id: string
+          stripe_customer_id: string
+          student_email: string
+          student_id: string
+          student_name: string
         }[]
       }
       is_material_shared_with_user: {

@@ -5,6 +5,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
+import { TeacherProvider } from "@/contexts/TeacherContext";
+import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,7 +14,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, isAluno } = useAuth();
   const { isOpen, toggle } = useSidebarState();
 
   if (loading) {
@@ -34,7 +36,7 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
     return <div className="min-h-screen bg-gradient-subtle">{children}</div>;
   }
 
-  return (
+  const content = (
     <div className="flex h-screen w-full bg-background">
       <AppSidebar isOpen={isOpen} />
       
@@ -50,6 +52,13 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
             <Menu className="h-5 w-5" />
           </Button>
           <span className="font-semibold">TutorFlow</span>
+          
+          {/* Teacher context switcher for students */}
+          {isAluno && (
+            <div className="ml-auto max-w-[250px]">
+              <TeacherContextSwitcher />
+            </div>
+          )}
         </header>
 
         {/* Main content */}
@@ -59,4 +68,11 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
       </div>
     </div>
   );
+
+  // Wrap with TeacherProvider for students
+  if (isAluno) {
+    return <TeacherProvider>{content}</TeacherProvider>;
+  }
+
+  return content;
 }

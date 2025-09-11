@@ -35,24 +35,29 @@ serve(async (req) => {
     const now = new Date();
     const currentDay = now.getDate();
     
-    // Get all professors with students due for billing today
-    const { data: professors, error: profError } = await supabaseAdmin
-      .from('profiles')
+    // Get all professor-student relationships where billing is due today
+    const { data: relationships, error: profError } = await supabaseAdmin
+      .from('teacher_student_relationships')
       .select(`
         id,
-        name,
-        email,
+        teacher_id,
+        student_id,
         billing_day,
         stripe_customer_id,
-        user_subscriptions!inner (
+        teacher:profiles!teacher_id (
           id,
-          status,
-          subscription_plans!inner (
+          name,
+          email,
+          user_subscriptions!inner (
             id,
-            features
+            status,
+            subscription_plans!inner (
+              id,
+              features
+            )
           )
         ),
-        profiles_students:profiles!profiles_teacher_id_fkey (
+        student:profiles!student_id (
           id,
           name,
           email,
@@ -64,45 +69,41 @@ serve(async (req) => {
           address_city,
           address_state,
           address_postal_code,
-          address_complete,
-          stripe_customer_id
+          address_complete
         )
       `)
-      .eq('role', 'professor')
       .eq('billing_day', currentDay);
 
     if (profError) {
-      console.error("Error fetching professors:", profError);
+      console.error("Error fetching relationships:", profError);
       throw profError;
     }
 
-    console.log(`Found ${professors?.length || 0} professors with billing due today`);
+    console.log(`Found ${relationships?.length || 0} relationships with billing due today`);
 
-    for (const professor of professors || []) {
-      console.log(`Processing billing for professor: ${professor.name}`);
+    for (const relationship of relationships || []) {
+      const professor = relationship.teacher;
+      const student = relationship.student;
+      
+      console.log(`Processing billing for relationship: ${professor.name} -> ${student.name}`);
       
       // Validate teacher can bill (has active subscription with financial module)
       const canBill = await validateTeacherCanBill(professor);
       
       if (!canBill) {
-        console.log(`Skipping professor ${professor.name} - inactive subscription or no financial module`);
+        console.log(`Skipping relationship ${professor.name} -> ${student.name} - inactive subscription or no financial module`);
         continue;
       }
       
       console.log(`Professor ${professor.name} has financial module access, processing billing`);
-      
-      // Get students for this professor
-      const students = professor.profiles_students || [];
-      
-      for (const student of students) {
         try {
           console.log(`Processing student: ${student.name}`);
           
-          // Calculate monthly fee (for demo purposes, using a fixed amount)
-          const monthlyFee = 200.00; // R$ 200.00 per month
-          
-          // Create invoice in database
-          const dueDate = new Date(now.getFullYear(), now.getMonth() + 1, professor.billing_day);
+        // Calculate monthly fee (for demo purposes, using a fixed amount)
+        const monthlyFee = 200.00; // R$ 200.00 per month
+        
+        // Create invoice in database
+        const dueDate = new Date(now.getFullYear(), now.getMonth() + 1, relationship.billing_day);
           
           const { data: invoice, error: invoiceError } = await supabaseAdmin
             .from('invoices')
@@ -150,27 +151,29 @@ serve(async (req) => {
             console.log(`Skipping boleto generation for student ${student.name} - incomplete profile data`);
           }
 
-          // Create Stripe invoice if student has Stripe customer ID and Stripe is available
-          let stripeInvoiceUrl = null;
-          if (student.stripe_customer_id && stripe) {
-            try {
-              const stripeInvoice = await stripe.invoices.create({
-                customer: student.stripe_customer_id,
-                description: `Mensalidade - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
-                metadata: {
-                  supabase_invoice_id: invoice.id,
-                  professor_id: professor.id,
-                  student_id: student.id
-                }
-              });
+        // Create Stripe invoice if relationship has Stripe customer ID and Stripe is available
+        let stripeInvoiceUrl = null;
+        const stripeCustomerId = relationship.stripe_customer_id || student.stripe_customer_id;
+        if (stripeCustomerId && stripe) {
+          try {
+            const stripeInvoice = await stripe.invoices.create({
+              customer: stripeCustomerId,
+              description: `Mensalidade - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
+              metadata: {
+                supabase_invoice_id: invoice.id,
+                professor_id: professor.id,
+                student_id: student.id,
+                relationship_id: relationship.id
+              }
+            });
 
-              await stripe.invoiceItems.create({
-                customer: student.stripe_customer_id,
-                invoice: stripeInvoice.id,
-                amount: Math.round(monthlyFee * 100), // Convert to cents
-                currency: 'brl',
-                description: `Mensalidade - ${professor.name}`
-              });
+            await stripe.invoiceItems.create({
+              customer: stripeCustomerId,
+              invoice: stripeInvoice.id,
+              amount: Math.round(monthlyFee * 100), // Convert to cents
+              currency: 'brl',
+              description: `Mensalidade - ${professor.name}`
+            });
 
               const finalizedInvoice = await stripe.invoices.finalizeInvoice(stripeInvoice.id);
               stripeInvoiceUrl = finalizedInvoice.hosted_invoice_url;
@@ -246,10 +249,9 @@ serve(async (req) => {
             }
           }
 
-        } catch (studentError) {
-          console.error(`Error processing student ${student.name}:`, studentError);
-          continue;
-        }
+      } catch (relationshipError) {
+        console.error(`Error processing relationship ${professor.name} -> ${student.name}:`, relationshipError);
+        continue;
       }
     }
 
@@ -257,7 +259,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: "Automated billing completed",
-        processed_professors: professors?.length || 0
+        processed_relationships: relationships?.length || 0
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

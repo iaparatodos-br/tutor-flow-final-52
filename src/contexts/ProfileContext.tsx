@@ -5,7 +5,6 @@ export interface Profile {
   name: string | null;
   email: string | null;
   role: 'professor' | 'aluno';
-  teacher_id?: string | null;
   password_changed?: boolean;
 }
 

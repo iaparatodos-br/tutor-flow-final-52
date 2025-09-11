@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, Unlink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
@@ -22,6 +22,8 @@ interface Student {
   guardian_email?: string;
   guardian_phone?: string;
   billing_day?: number;
+  relationship_id?: string;
+  stripe_customer_id?: string;
 }
 
 export default function Alunos() {
@@ -47,15 +49,27 @@ export default function Alunos() {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name, email, created_at, guardian_name, guardian_email, guardian_phone, billing_day')
-        .eq('teacher_id', profile.id)
-        .eq('role', 'aluno')
-        .order('name');
+      const { data, error } = await supabase.rpc('get_teacher_students', {
+        teacher_user_id: profile.id
+      });
 
       if (error) throw error;
-      setStudents(data || []);
+      
+      // Transform the data to match the Student interface
+      const transformedData = data?.map((student: any) => ({
+        id: student.student_id,
+        name: student.student_name,
+        email: student.student_email,
+        created_at: student.created_at,
+        guardian_name: student.guardian_name,
+        guardian_email: student.guardian_email,
+        guardian_phone: student.guardian_phone,
+        billing_day: student.billing_day,
+        relationship_id: student.relationship_id,
+        stripe_customer_id: student.stripe_customer_id
+      })) || [];
+
+      setStudents(transformedData);
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
       toast({
@@ -194,7 +208,7 @@ export default function Alunos() {
     
     try {
       // Update student data in profiles table
-      const { error } = await supabase
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({
           name: formData.name,
@@ -202,18 +216,37 @@ export default function Alunos() {
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
           guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
-          billing_day: formData.billing_day
         })
         .eq('id', editingStudent.id);
 
-      if (error) {
-        console.error('Erro ao atualizar perfil:', error);
+      if (profileError) {
+        console.error('Erro ao atualizar perfil:', profileError);
         toast({
           title: "Erro",
           description: "Erro ao salvar alterações do aluno.",
           variant: "destructive",
         });
         return;
+      }
+
+      // Update relationship data if relationship exists
+      if (editingStudent.relationship_id) {
+        const { error: relationshipError } = await supabase
+          .from('teacher_student_relationships')
+          .update({
+            billing_day: formData.billing_day,
+            stripe_customer_id: formData.stripe_customer_id
+          })
+          .eq('id', editingStudent.relationship_id);
+
+        if (relationshipError) {
+          console.error('Erro ao atualizar relacionamento:', relationshipError);
+          toast({
+            title: "Aviso",
+            description: "Perfil atualizado, mas houve erro ao salvar configurações de cobrança.",
+            variant: "default",
+          });
+        }
       }
 
       toast({
@@ -237,8 +270,36 @@ export default function Alunos() {
     }
   };
 
+  const handleUnlinkStudent = async (student: Student) => {
+    if (!confirm(`Tem certeza que deseja desvincular o aluno ${student.name}? O aluno não será excluído, apenas removido da sua lista.`)) return;
+
+    try {
+      // Remove the relationship, not the student profile
+      const { error } = await supabase
+        .from('teacher_student_relationships')
+        .delete()
+        .eq('id', student.relationship_id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Aluno desvinculado",
+        description: `${student.name} foi removido da sua lista`,
+      });
+      
+      loadStudents();
+    } catch (error: any) {
+      console.error('Erro ao desvincular aluno:', error);
+      toast({
+        title: "Erro ao desvincular aluno",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleDeleteStudent = async (studentId: string, studentName: string) => {
-    if (!confirm(`Tem certeza que deseja excluir o aluno ${studentName}?`)) return;
+    if (!confirm(`Tem certeza que deseja EXCLUIR PERMANENTEMENTE o aluno ${studentName}? Esta ação não pode ser desfeita e removerá o aluno de todos os professores.`)) return;
 
     try {
       const { error } = await supabase
@@ -249,8 +310,8 @@ export default function Alunos() {
       if (error) throw error;
 
       toast({
-        title: "Aluno removido",
-        description: `${studentName} foi removido da sua lista`,
+        title: "Aluno excluído",
+        description: `${studentName} foi excluído permanentemente`,
       });
       
       loadStudents();
@@ -426,8 +487,18 @@ export default function Alunos() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="hover:bg-orange-100 hover:text-orange-600"
+                            onClick={() => handleUnlinkStudent(student)}
+                            title="Desvincular aluno (não excluir)"
+                          >
+                            <Unlink className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             className="hover:bg-destructive hover:text-destructive-foreground"
                             onClick={() => handleDeleteStudent(student.id, student.name)}
+                            title="Excluir aluno permanentemente"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

@@ -44,17 +44,34 @@ export function BillingSettings({ studentId, isModal = false }: BillingSettingsP
       const targetId = studentId || profile?.id;
       const { data, error } = await supabase
         .from('profiles')
-        .select('guardian_name, guardian_email, guardian_phone, billing_day, cpf, address_street, address_city, address_state, address_postal_code')
+        .select('guardian_name, guardian_email, guardian_phone, cpf, address_street, address_city, address_state, address_postal_code')
         .eq('id', targetId)
         .single();
 
       if (error) throw error;
 
+      // Determine billing day from relationship
+      let billingDay = 15;
+      if (isProfessor && studentId) {
+        const { data: rel } = await supabase
+          .from('teacher_student_relationships')
+          .select('billing_day')
+          .eq('teacher_id', profile?.id)
+          .eq('student_id', studentId)
+          .maybeSingle();
+        if (rel?.billing_day) billingDay = rel.billing_day;
+      } else if (profile?.role === 'aluno') {
+        const { data: teachers } = await supabase.rpc('get_student_teachers', {
+          student_user_id: profile.id
+        });
+        if (teachers && teachers.length > 0) billingDay = teachers[0].billing_day || 15;
+      }
+
       setSettings({
         guardian_name: data?.guardian_name || '',
         guardian_email: data?.guardian_email || '',
         guardian_phone: data?.guardian_phone || '',
-        billing_day: data?.billing_day || 15,
+        billing_day: billingDay,
         cpf: data?.cpf || '',
         address_street: data?.address_street || '',
         address_city: data?.address_city || '',
@@ -104,11 +121,29 @@ export function BillingSettings({ studentId, isModal = false }: BillingSettingsP
           address_state: settings.address_state || null,
           address_postal_code: settings.address_postal_code.replace(/\D/g, '') || null,
           address_complete: !!(settings.cpf && settings.address_street && settings.address_city && settings.address_state && settings.address_postal_code),
-          billing_day: settings.billing_day
         })
         .eq('id', targetId);
 
       if (error) throw error;
+
+      // Update billing day in relationship
+      if (isProfessor && studentId) {
+        await supabase
+          .from('teacher_student_relationships')
+          .update({ billing_day: settings.billing_day })
+          .eq('teacher_id', profile?.id)
+          .eq('student_id', studentId);
+      } else if (profile?.role === 'aluno') {
+        const { data: teachers } = await supabase.rpc('get_student_teachers', {
+          student_user_id: profile.id
+        });
+        if (teachers && teachers.length > 0) {
+          await supabase
+            .from('teacher_student_relationships')
+            .update({ billing_day: settings.billing_day })
+            .eq('id', teachers[0].relationship_id);
+        }
+      }
 
       toast({
         title: "Configurações salvas",

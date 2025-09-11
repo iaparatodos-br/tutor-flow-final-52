@@ -19,6 +19,7 @@ import { RecurringClassActionModal, RecurringActionType, ActionMode } from "@/co
 import { ClassExceptionForm } from "@/components/ClassExceptionForm";
 import { FutureClassExceptionForm } from "@/components/FutureClassExceptionForm";
 import { RRule, Frequency } from 'rrule';
+import { useTeacherContext } from "@/contexts/TeacherContext";
 
 interface ClassWithParticipants {
   id: string;
@@ -60,6 +61,7 @@ export default function Agenda() {
   const { loading: authLoading } = useAuth();
   const { hasFeature } = useSubscription();
   const { toast } = useToast();
+  const { selectedTeacherId } = useTeacherContext();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
@@ -431,18 +433,17 @@ export default function Agenda() {
     if (!profile?.id) return;
     
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, name')
-        .eq('teacher_id', profile.id)
-        .eq('role', 'aluno');
+      const { data, error } = await supabase.rpc('get_teacher_students', {
+        teacher_user_id: profile.id
+      });
 
       if (error) {
         console.error('Erro ao carregar alunos:', error);
         return;
       }
 
-      setStudents(data || []);
+      const mapped = (data || []).map((s: any) => ({ id: s.student_id, name: s.student_name }));
+      setStudents(mapped);
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
     }
@@ -938,7 +939,7 @@ export default function Agenda() {
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && <StudentScheduleRequest teacherId={profile?.teacher_id} />}
+        {isAluno && <StudentScheduleRequest teacherId={selectedTeacherId || undefined} />}
 
         <SimpleCalendar 
           classes={calendarClasses}

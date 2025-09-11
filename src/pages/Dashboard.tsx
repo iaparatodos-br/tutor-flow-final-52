@@ -44,11 +44,9 @@ export default function Dashboard() {
 
     try {
       // Buscar total de alunos
-      const { count: studentsCount } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .eq('teacher_id', profile.id)
-        .eq('role', 'aluno');
+      const { data: teacherStudents } = await supabase
+        .rpc('get_teacher_students', { teacher_user_id: profile.id });
+      const studentsCount = (teacherStudents || []).length;
 
       // Buscar aulas futuras
       const { count: classesCount } = await supabase

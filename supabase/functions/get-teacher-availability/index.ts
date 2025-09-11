@@ -38,14 +38,24 @@ serve(async (req) => {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, role, teacher_id')
+      .select('id, role')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profileError) throw profileError;
     if (!profile) throw new Error("Profile not found");
     if (profile.role !== 'aluno') throw new Error("Only students can access teacher availability");
-    if (profile.teacher_id !== teacherId) throw new Error("Student is not assigned to this teacher");
+
+    // Verify that this student is linked to the requested teacher
+    const { data: relationship, error: relationshipError } = await supabase
+      .from('teacher_student_relationships')
+      .select('id')
+      .eq('teacher_id', teacherId)
+      .eq('student_id', user.id)
+      .maybeSingle();
+
+    if (relationshipError) throw relationshipError;
+    if (!relationship) throw new Error("Student is not assigned to this teacher");
 
     const nowIso = new Date().toISOString();
 

@@ -102,12 +102,23 @@ export default function PerfilAluno() {
     if (!profile?.id || !id) return;
 
     try {
-      // Load student profile
+      // Load student profile - first verify teacher-student relationship
+      const { data: relationshipData, error: relationshipError } = await supabase
+        .from('teacher_student_relationships')
+        .select('student_id')
+        .eq('teacher_id', profile.id)
+        .eq('student_id', id)
+        .single();
+
+      if (relationshipError || !relationshipData) {
+        throw new Error('Acesso negado: Este aluno não está vinculado ao seu perfil.');
+      }
+
+      // Now load the student profile
       const { data: studentData, error: studentError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', id)
-        .eq('teacher_id', profile.id)
         .single();
 
       if (studentError) throw studentError;

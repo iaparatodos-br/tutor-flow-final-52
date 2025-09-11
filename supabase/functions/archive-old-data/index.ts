@@ -81,6 +81,20 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // ** Passo 1: Segurança **
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader !== `Bearer ${serviceRoleKey}`) {
+    console.error("Tentativa de acesso não autorizado ao arquivador");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized" }), 
+      { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401 
+      }
+    );
+  }
+
   try {
     console.log("Iniciando processo de arquivamento de dados antigos...");
     

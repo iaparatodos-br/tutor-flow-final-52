@@ -8,6 +8,7 @@ import { ProfileProvider } from "@/contexts/ProfileContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { TeacherProvider } from "@/contexts/TeacherContext";
+import { UserModeProvider } from "@/contexts/UserModeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -32,7 +33,7 @@ import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
-  const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
+  const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo, getIsProfessor, getIsAluno } = useAuth();
   
   // Aguardar o carregamento completo do auth e profile
   if (loading) {
@@ -69,11 +70,12 @@ const AppWithProviders = () => {
   }
   
   return (
-    <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
-      <SubscriptionProvider>
-        <SidebarProvider>
-          <TeacherProvider>
-            <TooltipProvider>
+    <UserModeProvider>
+      <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
+        <SubscriptionProvider>
+          <SidebarProvider>
+            <TeacherProvider>
+              <TooltipProvider>
               <Toaster />
               <Sonner />
               <BrowserRouter>
@@ -98,12 +100,13 @@ const AppWithProviders = () => {
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-            </BrowserRouter>
-            </TooltipProvider>
-          </TeacherProvider>
-        </SidebarProvider>
-      </SubscriptionProvider>
-    </ProfileProvider>
+              </BrowserRouter>
+              </TooltipProvider>
+            </TeacherProvider>
+          </SidebarProvider>
+        </SubscriptionProvider>
+      </ProfileProvider>
+    </UserModeProvider>
   );
 };
 

@@ -15,6 +15,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useUserMode } from "@/contexts/UserModeContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -41,10 +42,15 @@ interface AppSidebarProps {
 
 export function AppSidebar({ isOpen }: AppSidebarProps) {
   const location = useLocation();
-  const { profile, isProfessor, isAluno } = useProfile();
-  const { signOut, loading } = useAuth();
+  const { profile } = useProfile();
+  const { signOut, loading, getIsProfessor, getIsAluno } = useAuth();
   const { currentPlan, hasFeature, hasTeacherFeature } = useSubscription();
+  const { currentMode } = useUserMode();
   const currentPath = location.pathname;
+  
+  // Use mode-aware role checking
+  const isProfessor = getIsProfessor(currentMode);
+  const isAluno = getIsAluno(currentMode);
   
   const navigate = useNavigate();
   

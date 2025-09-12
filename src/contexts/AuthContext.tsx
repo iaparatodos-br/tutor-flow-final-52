@@ -30,6 +30,9 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string, role?: 'professor' | 'aluno') => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  // Mode-aware computed properties
+  getIsProfessor: (mode?: string) => boolean;
+  getIsAluno: (mode?: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -341,6 +344,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  // Helper functions for mode-aware role checking
+  const getIsProfessor = (mode?: string) => {
+    if (mode) {
+      return mode === 'professor';
+    }
+    return !!profile && profile.role === 'professor';
+  };
+
+  const getIsAluno = (mode?: string) => {
+    if (mode) {
+      return mode === 'aluno';
+    }
+    return !!profile && profile.role === 'aluno';
+  };
+
   const value: AuthContextType = {
     user,
     session,
@@ -353,7 +371,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     needsAddressInfo: !!profile && !profile.address_complete,
     signUp,
     signIn,
-    signOut
+    signOut,
+    getIsProfessor,
+    getIsAluno
   };
 
   return (

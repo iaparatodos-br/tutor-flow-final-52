@@ -219,13 +219,16 @@ export default function Agenda() {
               )
             )
           `)
-          .or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
         
-        // Filter by selected teacher if specified
+        // Build the filter condition based on whether teacher is selected
         if (selectedTeacherId) {
-          query = query.eq('teacher_id', selectedTeacherId);
+          query = query
+            .eq('teacher_id', selectedTeacherId)
+            .or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
+        } else {
+          query = query.or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
         }
         
         ({ data, error } = await query);

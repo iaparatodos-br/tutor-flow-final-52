@@ -19,6 +19,7 @@ interface CreateStudentRequest {
   name: string;
   email: string;
   teacher_id: string;
+  role?: string;
   redirect_url?: string;
   guardian_name?: string | null;
   guardian_email?: string | null;
@@ -62,7 +63,7 @@ serve(async (req) => {
       .from('profiles')
       .select('id, email, role')
       .eq('email', body.email)
-      .eq('role', 'aluno')
+      
       .maybeSingle();
 
     if (lookupError) {
@@ -108,10 +109,10 @@ serve(async (req) => {
         body.email,
         {
           redirectTo,
-          data: {
-            name: body.name,
-            role: 'aluno',
-          },
+        data: {
+          name: body.name,
+          role: body.role || 'aluno',
+        },
         }
       );
 

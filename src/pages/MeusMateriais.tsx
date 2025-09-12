@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useTeacherContext } from "@/contexts/TeacherContext";
 import { toast } from "sonner";
 import { Search, FileText, Download, Calendar, ExternalLink } from "lucide-react";
 
@@ -38,6 +39,7 @@ interface MaterialAccess {
 
 export default function MeusMateriais() {
   const { profile } = useProfile();
+  const { selectedTeacherId } = useTeacherContext();
   const [materialAccess, setMaterialAccess] = useState<MaterialAccess[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -48,22 +50,36 @@ export default function MeusMateriais() {
     }
   }, [profile]);
 
+  // Reload materials when selectedTeacherId changes
+  useEffect(() => {
+    if (profile?.role === 'aluno' && selectedTeacherId) {
+      loadMaterials();
+    }
+  }, [selectedTeacherId]);
+
   const loadMaterials = async () => {
     if (!profile) return;
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('material_access')
         .select(`
           *,
           material:materials(
             *,
-            category:material_categories(*)
+            category:material_categories(*),
+            teacher_id
           )
         `)
-        .eq('student_id', profile.id)
-        .order('granted_at', { ascending: false });
+        .eq('student_id', profile.id);
+
+      // Filter by selected teacher if specified
+      if (selectedTeacherId) {
+        query = query.eq('material.teacher_id', selectedTeacherId);
+      }
+
+      const { data, error } = await query.order('granted_at', { ascending: false });
 
       if (error) throw error;
 

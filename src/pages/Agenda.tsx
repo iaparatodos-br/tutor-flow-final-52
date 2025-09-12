@@ -115,6 +115,13 @@ export default function Agenda() {
     }
   }, [profile, isProfessor, authLoading]);
 
+  // Reload data when selectedTeacherId changes (for students)
+  useEffect(() => {
+    if (isAluno && selectedTeacherId && visibleRange) {
+      loadClasses(visibleRange.start, visibleRange.end);
+    }
+  }, [selectedTeacherId, isAluno]);
+
   // Load classes when visible range changes
   useEffect(() => {
     if (visibleRange && profile) {
@@ -184,8 +191,8 @@ export default function Agenda() {
           p_end_date: endDate.toISOString()
         }));
       } else {
-        // For students, get classes normally
-        ({ data, error } = await supabase
+        // For students, get classes normally and filter by selected teacher
+        let query = supabase
           .from('classes')
           .select(`
             id,
@@ -212,9 +219,16 @@ export default function Agenda() {
               )
             )
           `)
-          .eq('student_id', profile.id)
+          .or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('class_date'));
+          .order('class_date');
+        
+        // Filter by selected teacher if specified
+        if (selectedTeacherId) {
+          query = query.eq('teacher_id', selectedTeacherId);
+        }
+        
+        ({ data, error } = await query);
       }
 
       if (error) {

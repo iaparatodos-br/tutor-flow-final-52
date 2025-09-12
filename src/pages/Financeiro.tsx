@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useTeacherContext } from "@/contexts/TeacherContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,7 +50,8 @@ interface ExpenseSummary {
 }
 
 export default function Financeiro() {
-  const { profile, isProfessor } = useProfile();
+  const { profile, isProfessor, isAluno } = useProfile();
+  const { selectedTeacherId } = useTeacherContext();
   const { toast } = useToast();
   
   const [invoices, setInvoices] = useState<InvoiceWithStudent[]>([]);
@@ -66,6 +68,13 @@ export default function Financeiro() {
       }
     }
   }, [profile, isProfessor]);
+
+  // Reload invoices when selectedTeacherId changes (for students)
+  useEffect(() => {
+    if (isAluno && selectedTeacherId && profile?.id) {
+      loadInvoices();
+    }
+  }, [selectedTeacherId, isAluno]);
 
   const loadExpenseSummary = async () => {
     try {
@@ -90,7 +99,7 @@ export default function Financeiro() {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('invoices')
         .select(`
           id,
@@ -110,9 +119,19 @@ export default function Financeiro() {
             name,
             email
           )
-        `)
-        .eq(isProfessor ? 'teacher_id' : 'student_id', profile.id)
-        .order('due_date', { ascending: false });
+        `);
+
+      if (isProfessor) {
+        query = query.eq('teacher_id', profile.id);
+      } else {
+        query = query.eq('student_id', profile.id);
+        // Filter by selected teacher if specified
+        if (selectedTeacherId) {
+          query = query.eq('teacher_id', selectedTeacherId);
+        }
+      }
+
+      const { data, error } = await query.order('due_date', { ascending: false });
 
       if (error) throw error;
       setInvoices((data || []).map((item: any) => ({

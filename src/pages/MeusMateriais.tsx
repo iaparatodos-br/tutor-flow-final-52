@@ -94,6 +94,9 @@ export default function MeusMateriais() {
 
   const filteredMaterials = materialAccess.filter(access => {
     const material = access.material;
+    // Skip if material is null (can happen when teacher has no materials)
+    if (!material) return false;
+    
     return material.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
            material.description?.toLowerCase().includes(searchTerm.toLowerCase());
   });

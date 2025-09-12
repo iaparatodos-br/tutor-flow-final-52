@@ -222,16 +222,112 @@ export default function Agenda() {
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
         
-        // Build the filter condition based on whether teacher is selected
-        if (selectedTeacherId) {
-          query = query
-            .eq('teacher_id', selectedTeacherId)
-            .or(`student_id.eq.${profile.id},class_participants!inner(student_id).eq.${profile.id}`);
-        } else {
-          query = query.or(`student_id.eq.${profile.id},class_participants!inner(student_id).eq.${profile.id}`);
+        // Execute two separate queries to avoid PostgREST or() limitations with joins
+        const [individualClassesResult, groupClassesResult] = await Promise.all([
+          // Query 1: Individual classes where student_id matches
+          (() => {
+            let individualQuery = supabase
+              .from('classes')
+              .select(`
+                id,
+                class_date,
+                duration_minutes,
+                status,
+                notes,
+                is_experimental,
+                is_group_class,
+                student_id,
+                service_id,
+                teacher_id,
+                parent_class_id,
+                recurrence_pattern,
+                profiles!classes_student_id_fkey (
+                  name,
+                  email
+                ),
+                class_participants (
+                  student_id,
+                  profiles!class_participants_student_id_fkey (
+                    name,
+                    email
+                  )
+                )
+              `)
+              .eq('student_id', profile.id)
+              .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+              .order('class_date');
+            
+            if (selectedTeacherId) {
+              individualQuery = individualQuery.eq('teacher_id', selectedTeacherId);
+            }
+            
+            return individualQuery;
+          })(),
+          
+          // Query 2: Group classes where user is a participant
+          (() => {
+            let groupQuery = supabase
+              .from('classes')
+              .select(`
+                id,
+                class_date,
+                duration_minutes,
+                status,
+                notes,
+                is_experimental,
+                is_group_class,
+                student_id,
+                service_id,
+                teacher_id,
+                parent_class_id,
+                recurrence_pattern,
+                profiles!classes_student_id_fkey (
+                  name,
+                  email
+                ),
+                class_participants!inner (
+                  student_id,
+                  profiles!class_participants_student_id_fkey (
+                    name,
+                    email
+                  )
+                )
+              `)
+              .eq('class_participants.student_id', profile.id)
+              .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+              .order('class_date');
+            
+            if (selectedTeacherId) {
+              groupQuery = groupQuery.eq('teacher_id', selectedTeacherId);
+            }
+            
+            return groupQuery;
+          })()
+        ]);
+
+        // Handle errors from either query
+        if (individualClassesResult.error) {
+          console.error('Error loading individual classes:', individualClassesResult.error);
+          throw individualClassesResult.error;
         }
+        if (groupClassesResult.error) {
+          console.error('Error loading group classes:', groupClassesResult.error);
+          throw groupClassesResult.error;
+        }
+
+        // Combine results and remove duplicates
+        const allClasses = [
+          ...(individualClassesResult.data || []),
+          ...(groupClassesResult.data || [])
+        ];
         
-        ({ data, error } = await query);
+        // Remove duplicates based on class id
+        const uniqueClasses = allClasses.filter((cls, index, arr) => 
+          arr.findIndex(c => c.id === cls.id) === index
+        );
+        
+        data = uniqueClasses;
+        error = null;
       }
 
       if (error) {

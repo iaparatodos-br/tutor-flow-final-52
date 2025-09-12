@@ -226,9 +226,9 @@ export default function Agenda() {
         if (selectedTeacherId) {
           query = query
             .eq('teacher_id', selectedTeacherId)
-            .or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
+            .or(`student_id.eq.${profile.id},class_participants!inner(student_id).eq.${profile.id}`);
         } else {
-          query = query.or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
+          query = query.or(`student_id.eq.${profile.id},class_participants!inner(student_id).eq.${profile.id}`);
         }
         
         ({ data, error } = await query);

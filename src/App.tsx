@@ -23,7 +23,7 @@ import Materiais from "./pages/Materiais";
 import MeusMateriais from "./pages/MeusMateriais";
 import ContasRecebimento from "./pages/ContasRecebimento";
 import Servicos from "./pages/Servicos";
-import PoliticasCancelamento from "./pages/PoliticasCancelamento";
+import Configuracoes from "./pages/Configuracoes";
 import Planos from "./pages/Planos";
 import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
@@ -92,7 +92,8 @@ const AppWithProviders = () => {
             <Route path="/meus-materiais" element={<MeusMateriais />} />
             <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
             <Route path="/servicos" element={<Servicos />} />
-            <Route path="/politicas-cancelamento" element={<PoliticasCancelamento />} />
+            <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/politicas-cancelamento" element={<Configuracoes />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription" element={<Subscription />} />

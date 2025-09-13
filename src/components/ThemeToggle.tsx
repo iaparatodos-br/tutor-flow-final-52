@@ -7,9 +7,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTheme } from "next-themes";
+import { useTranslation } from "react-i18next";
 
 export function ThemeToggle() {
   const { setTheme, theme } = useTheme();
+  const { t } = useTranslation('settings');
 
   const getThemeIcon = () => {
     switch (theme) {
@@ -27,13 +29,13 @@ export function ThemeToggle() {
   const getThemeLabel = () => {
     switch (theme) {
       case "dark":
-        return "Escuro";
+        return t('preferences.theme.dark');
       case "light":
-        return "Claro";
+        return t('preferences.theme.light');
       case "system":
-        return "Sistema";
+        return t('preferences.theme.system');
       default:
-        return "Sistema";
+        return t('preferences.theme.system');
     }
   };
 
@@ -49,15 +51,15 @@ export function ThemeToggle() {
       <DropdownMenuContent align="end" className="z-50 bg-background border shadow-md">
         <DropdownMenuItem onClick={() => setTheme("light")} className="gap-2 cursor-pointer">
           <Sun className="h-4 w-4" />
-          <span>Claro</span>
+          <span>{t('preferences.theme.light')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("dark")} className="gap-2 cursor-pointer">
           <Moon className="h-4 w-4" />
-          <span>Escuro</span>
+          <span>{t('preferences.theme.dark')}</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")} className="gap-2 cursor-pointer">
           <Monitor className="h-4 w-4" />
-          <span>Sistema</span>
+          <span>{t('preferences.theme.system')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,0 +1,31 @@
+{
+  "title": "Students",
+  "addStudent": "Add Student",
+  "editStudent": "Edit Student",
+  "deleteStudent": "Delete Student",
+  "studentProfile": "Student Profile",
+  "fields": {
+    "name": "Name",
+    "email": "Email",
+    "phone": "Phone",
+    "address": "Address",
+    "birthDate": "Birth Date",
+    "notes": "Notes",
+    "status": "Status",
+    "enrollmentDate": "Enrollment Date"
+  },
+  "placeholders": {
+    "name": "Enter student name",
+    "email": "Enter student email",
+    "phone": "Enter phone number",
+    "address": "Enter address",
+    "notes": "Notes about the student"
+  },
+  "messages": {
+    "studentAdded": "Student added successfully!",
+    "studentUpdated": "Student updated successfully!",
+    "studentDeleted": "Student deleted successfully!",
+    "confirmDelete": "Are you sure you want to delete this student?",
+    "noStudents": "No students found"
+  }
+}

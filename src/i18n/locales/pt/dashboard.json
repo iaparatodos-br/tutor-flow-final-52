@@ -1,0 +1,41 @@
+{
+  "title": "Dashboard",
+  "welcome": "Bem-vindo",
+  "stats": {
+    "totalStudents": "Total de Alunos",
+    "upcomingClasses": "Próximas Aulas",
+    "pendingInvoices": "Faturas Pendentes",
+    "monthlyRevenue": "Receita Mensal"
+  },
+  "quickActions": {
+    "title": "Ações Rápidas",
+    "manageStudents": {
+      "title": "Gerenciar Alunos",
+      "description": "Adicionar, editar ou visualizar alunos"
+    },
+    "scheduleClass": {
+      "title": "Agendar Aula",
+      "description": "Criar um novo agendamento de aula"
+    },
+    "createInvoice": {
+      "title": "Criar Fatura",
+      "description": "Gerar uma nova fatura para cobrança"
+    },
+    "paymentAccounts": {
+      "title": "Contas de Recebimento",
+      "description": "Configurar métodos de pagamento"
+    },
+    "manageServices": {
+      "title": "Gerenciar Serviços",
+      "description": "Configurar tipos de aula e valores"
+    },
+    "policies": {
+      "title": "Políticas de Cancelamento",
+      "description": "Definir regras de cancelamento"
+    }
+  },
+  "studentPortal": {
+    "title": "Portal do Aluno",
+    "description": "Bem-vindo ao seu portal de estudos"
+  }
+}

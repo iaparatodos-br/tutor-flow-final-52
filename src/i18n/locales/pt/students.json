@@ -1,0 +1,31 @@
+{
+  "title": "Alunos",
+  "addStudent": "Adicionar Aluno",
+  "editStudent": "Editar Aluno",
+  "deleteStudent": "Excluir Aluno",
+  "studentProfile": "Perfil do Aluno",
+  "fields": {
+    "name": "Nome",
+    "email": "Email",
+    "phone": "Telefone",
+    "address": "Endereço",
+    "birthDate": "Data de Nascimento",
+    "notes": "Observações",
+    "status": "Status",
+    "enrollmentDate": "Data de Matrícula"
+  },
+  "placeholders": {
+    "name": "Digite o nome do aluno",
+    "email": "Digite o email do aluno",
+    "phone": "Digite o telefone",
+    "address": "Digite o endereço",
+    "notes": "Observações sobre o aluno"
+  },
+  "messages": {
+    "studentAdded": "Aluno adicionado com sucesso!",
+    "studentUpdated": "Aluno atualizado com sucesso!",
+    "studentDeleted": "Aluno excluído com sucesso!",
+    "confirmDelete": "Tem certeza que deseja excluir este aluno?",
+    "noStudents": "Nenhum aluno encontrado"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "title": "Classes",
+  "schedule": "Schedule",
+  "reschedule": "Reschedule",
+  "cancel": "Cancel",
+  "fields": {
+    "student": "Student",
+    "date": "Date",
+    "time": "Time",
+    "duration": "Duration",
+    "subject": "Subject",
+    "type": "Type",
+    "notes": "Notes",
+    "status": "Status",
+    "price": "Price"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "rescheduled": "Rescheduled"
+  },
+  "types": {
+    "individual": "Individual",
+    "group": "Group",
+    "online": "Online",
+    "presential": "In-person"
+  },
+  "messages": {
+    "classScheduled": "Class scheduled successfully!",
+    "classUpdated": "Class updated successfully!",
+    "classCancelled": "Class cancelled successfully!",
+    "confirmCancel": "Are you sure you want to cancel this class?",
+    "noClasses": "No classes found"
+  }
+}

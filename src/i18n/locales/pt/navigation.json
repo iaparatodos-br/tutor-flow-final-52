@@ -1,0 +1,24 @@
+{
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "students": "Alunos",
+    "agenda": "Agenda",
+    "materials": "Materiais",
+    "myMaterials": "Meus Materiais",
+    "financial": "Financeiro",
+    "paymentAccounts": "Contas de Recebimento",
+    "services": "Serviços",
+    "settings": "Configurações",
+    "plans": "Planos",
+    "subscription": "Assinatura",
+    "history": "Histórico"
+  },
+  "roles": {
+    "professor": "Professor",
+    "student": "Aluno"
+  },
+  "breadcrumbs": {
+    "home": "Início",
+    "profile": "Perfil"
+  }
+}

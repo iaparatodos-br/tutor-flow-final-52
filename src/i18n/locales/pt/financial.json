@@ -1,0 +1,41 @@
+{
+  "title": "Financeiro",
+  "invoices": "Faturas",
+  "expenses": "Despesas",
+  "revenue": "Receita",
+  "reports": "Relatórios",
+  "paymentAccounts": "Contas de Recebimento",
+  "fields": {
+    "amount": "Valor",
+    "date": "Data",
+    "description": "Descrição",
+    "status": "Status",
+    "dueDate": "Data de Vencimento",
+    "paymentDate": "Data de Pagamento",
+    "method": "Método",
+    "reference": "Referência",
+    "category": "Categoria"
+  },
+  "status": {
+    "paid": "Pago",
+    "pending": "Pendente",
+    "overdue": "Vencido",
+    "cancelled": "Cancelado",
+    "refunded": "Reembolsado"
+  },
+  "methods": {
+    "cash": "Dinheiro",
+    "card": "Cartão",
+    "transfer": "Transferência",
+    "pix": "PIX",
+    "boleto": "Boleto",
+    "check": "Cheque"
+  },
+  "messages": {
+    "invoiceCreated": "Fatura criada com sucesso!",
+    "expenseAdded": "Despesa adicionada com sucesso!",
+    "paymentProcessed": "Pagamento processado com sucesso!",
+    "confirmDelete": "Tem certeza que deseja excluir este item?",
+    "noData": "Nenhum dado financeiro encontrado"
+  }
+}

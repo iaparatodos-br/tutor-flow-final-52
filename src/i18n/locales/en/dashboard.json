@@ -1,0 +1,41 @@
+{
+  "title": "Dashboard",
+  "welcome": "Welcome",
+  "stats": {
+    "totalStudents": "Total Students",
+    "upcomingClasses": "Upcoming Classes",
+    "pendingInvoices": "Pending Invoices",
+    "monthlyRevenue": "Monthly Revenue"
+  },
+  "quickActions": {
+    "title": "Quick Actions",
+    "manageStudents": {
+      "title": "Manage Students",
+      "description": "Add, edit or view students"
+    },
+    "scheduleClass": {
+      "title": "Schedule Class",
+      "description": "Create a new class appointment"
+    },
+    "createInvoice": {
+      "title": "Create Invoice",
+      "description": "Generate a new invoice for billing"
+    },
+    "paymentAccounts": {
+      "title": "Payment Accounts",
+      "description": "Configure payment methods"
+    },
+    "manageServices": {
+      "title": "Manage Services",
+      "description": "Configure class types and prices"
+    },
+    "policies": {
+      "title": "Cancellation Policies",
+      "description": "Define cancellation rules"
+    }
+  },
+  "studentPortal": {
+    "title": "Student Portal",
+    "description": "Welcome to your study portal"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "title": "Materiais",
+  "myMaterials": "Meus Materiais",
+  "upload": "Enviar Material",
+  "share": "Compartilhar",
+  "download": "Baixar",
+  "fields": {
+    "name": "Nome",
+    "description": "Descrição",
+    "type": "Tipo",
+    "size": "Tamanho",
+    "uploadDate": "Data de Upload",
+    "category": "Categoria",
+    "tags": "Tags"
+  },
+  "types": {
+    "pdf": "PDF",
+    "image": "Imagem",
+    "video": "Vídeo",
+    "audio": "Áudio",
+    "document": "Documento",
+    "presentation": "Apresentação",
+    "other": "Outro"
+  },
+  "categories": {
+    "exercises": "Exercícios",
+    "theory": "Teoria",
+    "examples": "Exemplos",
+    "exams": "Provas",
+    "homework": "Lição de Casa",
+    "resources": "Recursos"
+  },
+  "messages": {
+    "materialUploaded": "Material enviado com sucesso!",
+    "materialDeleted": "Material excluído com sucesso!",
+    "materialShared": "Material compartilhado com sucesso!",
+    "confirmDelete": "Tem certeza que deseja excluir este material?",
+    "noMaterials": "Nenhum material encontrado"
+  }
+}

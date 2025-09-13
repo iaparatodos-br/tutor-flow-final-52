@@ -1,0 +1,45 @@
+{
+  "title": "Subscription",
+  "plans": "Plans",
+  "currentPlan": "Current Plan",
+  "upgrade": "Upgrade",
+  "downgrade": "Downgrade",
+  "cancel": "Cancel",
+  "renew": "Renew",
+  "billing": "Billing",
+  "features": "Features",
+  "planTypes": {
+    "free": "Free",
+    "basic": "Basic",
+    "premium": "Premium",
+    "enterprise": "Enterprise"
+  },
+  "periods": {
+    "monthly": "Monthly",
+    "annual": "Annual",
+    "lifetime": "Lifetime"
+  },
+  "status": {
+    "active": "Active",
+    "cancelled": "Cancelled",
+    "expired": "Expired",
+    "trial": "Trial"
+  },
+  "features": {
+    "unlimitedStudents": "Unlimited students",
+    "onlineClasses": "Online classes",
+    "materials": "Materials",
+    "reports": "Reports",
+    "support": "Support",
+    "customization": "Customization",
+    "integrations": "Integrations"
+  },
+  "messages": {
+    "planChanged": "Plan changed successfully!",
+    "subscriptionCancelled": "Subscription cancelled successfully!",
+    "paymentProcessed": "Payment processed successfully!",
+    "trialStarted": "Trial period started!",
+    "trialExpiring": "Your trial period expires soon",
+    "subscriptionExpired": "Your subscription has expired"
+  }
+}

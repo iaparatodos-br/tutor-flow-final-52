@@ -1,0 +1,45 @@
+{
+  "title": "Assinatura",
+  "plans": "Planos",
+  "currentPlan": "Plano Atual",
+  "upgrade": "Fazer Upgrade",
+  "downgrade": "Fazer Downgrade",
+  "cancel": "Cancelar",
+  "renew": "Renovar",
+  "billing": "Faturamento",
+  "features": "Recursos",
+  "planTypes": {
+    "free": "Gratuito",
+    "basic": "Básico",
+    "premium": "Premium",
+    "enterprise": "Empresarial"
+  },
+  "periods": {
+    "monthly": "Mensal",
+    "annual": "Anual",
+    "lifetime": "Vitalício"
+  },
+  "status": {
+    "active": "Ativo",
+    "cancelled": "Cancelado",
+    "expired": "Expirado",
+    "trial": "Teste"
+  },
+  "features": {
+    "unlimitedStudents": "Alunos ilimitados",
+    "onlineClasses": "Aulas online",
+    "materials": "Materiais",
+    "reports": "Relatórios",
+    "support": "Suporte",
+    "customization": "Personalização",
+    "integrations": "Integrações"
+  },
+  "messages": {
+    "planChanged": "Plano alterado com sucesso!",
+    "subscriptionCancelled": "Assinatura cancelada com sucesso!",
+    "paymentProcessed": "Pagamento processado com sucesso!",
+    "trialStarted": "Período de teste iniciado!",
+    "trialExpiring": "Seu período de teste expira em breve",
+    "subscriptionExpired": "Sua assinatura expirou"
+  }
+}

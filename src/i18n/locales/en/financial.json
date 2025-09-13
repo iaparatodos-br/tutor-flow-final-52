@@ -1,0 +1,41 @@
+{
+  "title": "Financial",
+  "invoices": "Invoices",
+  "expenses": "Expenses",
+  "revenue": "Revenue",
+  "reports": "Reports",
+  "paymentAccounts": "Payment Accounts",
+  "fields": {
+    "amount": "Amount",
+    "date": "Date",
+    "description": "Description",
+    "status": "Status",
+    "dueDate": "Due Date",
+    "paymentDate": "Payment Date",
+    "method": "Method",
+    "reference": "Reference",
+    "category": "Category"
+  },
+  "status": {
+    "paid": "Paid",
+    "pending": "Pending",
+    "overdue": "Overdue",
+    "cancelled": "Cancelled",
+    "refunded": "Refunded"
+  },
+  "methods": {
+    "cash": "Cash",
+    "card": "Card",
+    "transfer": "Transfer",
+    "pix": "PIX",
+    "boleto": "Bank Slip",
+    "check": "Check"
+  },
+  "messages": {
+    "invoiceCreated": "Invoice created successfully!",
+    "expenseAdded": "Expense added successfully!",
+    "paymentProcessed": "Payment processed successfully!",
+    "confirmDelete": "Are you sure you want to delete this item?",
+    "noData": "No financial data found"
+  }
+}

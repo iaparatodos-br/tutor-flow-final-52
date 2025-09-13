@@ -1,0 +1,70 @@
+{
+  "buttons": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "add": "Adicionar",
+    "create": "Criar",
+    "update": "Atualizar",
+    "remove": "Remover",
+    "close": "Fechar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "previous": "Anterior",
+    "submit": "Enviar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "clear": "Limpar",
+    "upload": "Enviar",
+    "download": "Baixar",
+    "view": "Visualizar",
+    "confirm": "Confirmar",
+    "retry": "Tentar novamente"
+  },
+  "status": {
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "pending": "Pendente",
+    "completed": "Concluído",
+    "cancelled": "Cancelado",
+    "draft": "Rascunho",
+    "published": "Publicado"
+  },
+  "messages": {
+    "loading": "Carregando...",
+    "noData": "Nenhum dado encontrado",
+    "error": "Erro",
+    "success": "Sucesso",
+    "warning": "Aviso",
+    "info": "Informação",
+    "deleteConfirmation": "Tem certeza que deseja excluir?",
+    "saveSuccess": "Salvo com sucesso!",
+    "updateSuccess": "Atualizado com sucesso!",
+    "deleteSuccess": "Excluído com sucesso!",
+    "errorOccurred": "Ocorreu um erro",
+    "tryAgain": "Tente novamente",
+    "accessDenied": "Acesso negado",
+    "notFound": "Não encontrado"
+  },
+  "time": {
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "tomorrow": "Amanhã",
+    "thisWeek": "Esta semana",
+    "thisMonth": "Este mês",
+    "thisYear": "Este ano",
+    "morning": "Manhã",
+    "afternoon": "Tarde",
+    "evening": "Noite"
+  },
+  "forms": {
+    "required": "Campo obrigatório",
+    "invalidEmail": "Email inválido",
+    "passwordTooShort": "Senha muito curta",
+    "passwordMismatch": "Senhas não coincidem",
+    "invalidPhone": "Telefone inválido",
+    "selectOption": "Selecione uma opção",
+    "enterValue": "Digite um valor"
+  }
+}

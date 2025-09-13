@@ -1,0 +1,39 @@
+{
+  "title": "Configurações",
+  "tabs": {
+    "profile": "Perfil",
+    "preferences": "Preferências",
+    "cancellation": "Cancelamentos",
+    "notifications": "Notificações"
+  },
+  "preferences": {
+    "title": "Preferências",
+    "description": "Personalize a aparência e idioma do aplicativo",
+    "theme": {
+      "title": "Tema",
+      "description": "Escolha entre tema claro, escuro ou automático",
+      "light": "Claro",
+      "dark": "Escuro",
+      "system": "Sistema"
+    },
+    "language": {
+      "title": "Idioma",
+      "description": "Selecione o idioma da interface",
+      "portuguese": "Português",
+      "english": "English"
+    },
+    "interface": {
+      "title": "Interface",
+      "description": "Configurações da interface do usuário",
+      "moreOptions": "Outras opções de personalização da interface serão adicionadas em breve."
+    }
+  },
+  "profile": {
+    "title": "Informações Pessoais",
+    "email": "Email",
+    "emailNote": "O email não pode ser alterado aqui",
+    "otherInfo": "Outras informações do perfil podem ser editadas em outro local.",
+    "viewFullProfile": "Ver Perfil Completo"
+  },
+  "accessDenied": "Acesso restrito a professores."
+}

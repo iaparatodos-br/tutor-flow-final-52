@@ -1,0 +1,36 @@
+{
+  "title": "Aulas",
+  "schedule": "Agendar",
+  "reschedule": "Reagendar",
+  "cancel": "Cancelar",
+  "fields": {
+    "student": "Aluno",
+    "date": "Data",
+    "time": "Horário",
+    "duration": "Duração",
+    "subject": "Matéria",
+    "type": "Tipo",
+    "notes": "Observações",
+    "status": "Status",
+    "price": "Preço"
+  },
+  "status": {
+    "scheduled": "Agendada",
+    "completed": "Concluída",
+    "cancelled": "Cancelada",
+    "rescheduled": "Reagendada"
+  },
+  "types": {
+    "individual": "Individual",
+    "group": "Grupo",
+    "online": "Online",
+    "presential": "Presencial"
+  },
+  "messages": {
+    "classScheduled": "Aula agendada com sucesso!",
+    "classUpdated": "Aula atualizada com sucesso!",
+    "classCancelled": "Aula cancelada com sucesso!",
+    "confirmCancel": "Tem certeza que deseja cancelar esta aula?",
+    "noClasses": "Nenhuma aula encontrada"
+  }
+}

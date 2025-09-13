@@ -7,15 +7,17 @@ import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
 import { Settings, User, Bell, Clock, Palette } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function Configuracoes() {
   const { isProfessor } = useProfile();
+  const { t } = useTranslation('settings');
 
   if (!isProfessor) {
     return (
       <Layout>
         <div className="text-center py-8">
-          <p>Acesso restrito a professores.</p>
+          <p>{t('accessDenied')}</p>
         </div>
       </Layout>
     );
@@ -27,7 +29,7 @@ export default function Configuracoes() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Settings className="h-8 w-8" />
-            Configurações
+            {t('title')}
           </h1>
           <p className="text-muted-foreground mt-2">
             Gerencie suas preferências e configurações da conta
@@ -38,19 +40,19 @@ export default function Configuracoes() {
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
-              Perfil
+              {t('tabs.profile')}
             </TabsTrigger>
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
-              Preferências
+              {t('tabs.preferences')}
             </TabsTrigger>
             <TabsTrigger value="cancellation" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
-              Cancelamentos
+              {t('tabs.cancellation')}
             </TabsTrigger>
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
-              Notificações
+              {t('tabs.notifications')}
             </TabsTrigger>
           </TabsList>
 

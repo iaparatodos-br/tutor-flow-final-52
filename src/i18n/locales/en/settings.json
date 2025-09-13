@@ -1,0 +1,39 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "profile": "Profile",
+    "preferences": "Preferences",
+    "cancellation": "Cancellation",
+    "notifications": "Notifications"
+  },
+  "preferences": {
+    "title": "Preferences",
+    "description": "Customize the appearance and language of the application",
+    "theme": {
+      "title": "Theme",
+      "description": "Choose between light, dark or automatic theme",
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Select the interface language",
+      "portuguese": "Português",
+      "english": "English"
+    },
+    "interface": {
+      "title": "Interface",
+      "description": "User interface settings",
+      "moreOptions": "Additional interface customization options will be added soon."
+    }
+  },
+  "profile": {
+    "title": "Personal Information",
+    "email": "Email",
+    "emailNote": "Email cannot be changed here",
+    "otherInfo": "Other profile information can be edited elsewhere.",
+    "viewFullProfile": "View Full Profile"
+  },
+  "accessDenied": "Access restricted to professors."
+}

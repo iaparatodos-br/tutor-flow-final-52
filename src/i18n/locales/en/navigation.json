@@ -1,0 +1,24 @@
+{
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "students": "Students",
+    "agenda": "Schedule",
+    "materials": "Materials",
+    "myMaterials": "My Materials",
+    "financial": "Financial",
+    "paymentAccounts": "Payment Accounts",
+    "services": "Services",
+    "settings": "Settings",
+    "plans": "Plans",
+    "subscription": "Subscription",
+    "history": "History"
+  },
+  "roles": {
+    "professor": "Professor",
+    "student": "Student"
+  },
+  "breadcrumbs": {
+    "home": "Home",
+    "profile": "Profile"
+  }
+}

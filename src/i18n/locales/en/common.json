@@ -1,0 +1,70 @@
+{
+  "buttons": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "create": "Create",
+    "update": "Update",
+    "remove": "Remove",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "search": "Search",
+    "filter": "Filter",
+    "clear": "Clear",
+    "upload": "Upload",
+    "download": "Download",
+    "view": "View",
+    "confirm": "Confirm",
+    "retry": "Retry"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "pending": "Pending",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "draft": "Draft",
+    "published": "Published"
+  },
+  "messages": {
+    "loading": "Loading...",
+    "noData": "No data found",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Information",
+    "deleteConfirmation": "Are you sure you want to delete?",
+    "saveSuccess": "Saved successfully!",
+    "updateSuccess": "Updated successfully!",
+    "deleteSuccess": "Deleted successfully!",
+    "errorOccurred": "An error occurred",
+    "tryAgain": "Try again",
+    "accessDenied": "Access denied",
+    "notFound": "Not found"
+  },
+  "time": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "tomorrow": "Tomorrow",
+    "thisWeek": "This week",
+    "thisMonth": "This month",
+    "thisYear": "This year",
+    "morning": "Morning",
+    "afternoon": "Afternoon",
+    "evening": "Evening"
+  },
+  "forms": {
+    "required": "Required field",
+    "invalidEmail": "Invalid email",
+    "passwordTooShort": "Password too short",
+    "passwordMismatch": "Passwords don't match",
+    "invalidPhone": "Invalid phone",
+    "selectOption": "Select an option",
+    "enterValue": "Enter a value"
+  }
+}

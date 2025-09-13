@@ -300,21 +300,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile]);
 
   const signUp = async (email: string, password: string, name: string, role: 'professor' | 'aluno' = 'professor') => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl,
-        data: {
-          name,
-          role
-        }
-      }
-    });
+    try {
+      setLoading(true);
+      
+      // Check if email is already in use
+      const { data: checkResult, error: checkError } = await supabase.functions.invoke('check-email-availability', {
+        body: { email }
+      });
 
-    return { error };
+      if (checkError) {
+        console.error('Error checking email availability:', checkError);
+        return { error: 'Erro ao verificar disponibilidade do e-mail' };
+      }
+
+      if (!checkResult.available) {
+        return { error: 'Este e-mail já está sendo usado por outro usuário. Use outro e-mail.' };
+      }
+
+      const redirectUrl = `${window.location.origin}/`;
+      
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            name,
+            role
+          }
+        }
+      });
+      
+      return { error: error?.message };
+    } catch (error) {
+      console.error('Signup error:', error);
+      return { error: 'Erro inesperado durante o cadastro' };
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signIn = async (email: string, password: string) => {

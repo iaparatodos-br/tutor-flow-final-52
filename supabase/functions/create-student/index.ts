@@ -57,7 +57,34 @@ serve(async (req) => {
     console.log('Final redirectTo URL:', redirectTo);
     console.log('Attempting to invite user:', body.email);
 
-    // Check if a user with this email already exists
+    // Check if email is already used by a professor
+    const { data: professorWithEmail, error: professorLookupError } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, role')
+      .eq('email', body.email)
+      .eq('role', 'professor')
+      .maybeSingle();
+
+    if (professorLookupError) {
+      console.error('Error looking up professor:', professorLookupError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Erro ao verificar e-mail' }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (professorWithEmail) {
+      console.log('Email already used by a professor:', body.email);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Este e-mail já está sendo usado por um professor. Use outro e-mail para cadastrar o aluno.'
+        }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Check if a user with this email already exists as a student
     const { data: existingUser, error: lookupError } = await supabaseAdmin
       .from('profiles')
       .select('id, email, role')

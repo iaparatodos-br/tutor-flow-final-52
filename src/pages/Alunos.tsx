@@ -168,7 +168,7 @@ export default function Alunos() {
         console.log('Function returned success: false, error:', data.error);
         
         toast({
-          title: 'Erro',
+          title: 'Erro ao cadastrar aluno',
           description: data.error || 'Este e-mail já está sendo utilizado por outro aluno ou professor',
           variant: 'destructive',
         });

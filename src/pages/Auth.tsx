@@ -84,9 +84,11 @@ export default function Auth() {
     if (error) {
       toast({
         title: "Erro ao criar conta",
-        description: error.message === "User already registered" 
+        description: error.includes("já está sendo usado") 
+          ? error
+          : error === "User already registered" 
           ? "Este e-mail já está registrado" 
-          : error.message,
+          : error,
         variant: "destructive",
       });
     } else {

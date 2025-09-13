@@ -314,7 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!checkResult.available) {
-        return { error: 'Este e-mail já está sendo usado por outro usuário. Use outro e-mail.' };
+        return { error: 'Este e-mail já está sendo usado por outro usuário. Por favor, use um e-mail diferente para criar sua conta.' };
       }
 
       const redirectUrl = `${window.location.origin}/`;

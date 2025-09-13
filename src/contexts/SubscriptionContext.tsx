@@ -311,19 +311,43 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [user, plans, profile]);
 
-  // Verificação periódica do status da subscription a cada 5 minutos
+  // Verificação diária do status da subscription à meia-noite
   useEffect(() => {
     if (!user) return;
 
-    const interval = setInterval(async () => {
-      try {
-        await refreshSubscription();
-      } catch (error) {
-        console.error('Error during periodic subscription check:', error);
-      }
-    }, 5 * 60 * 1000); // 5 minutos
+    const scheduleNextMidnightCheck = () => {
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0); // Meia-noite
+      
+      const msUntilMidnight = tomorrow.getTime() - now.getTime();
+      
+      return setTimeout(async () => {
+        try {
+          await refreshSubscription();
+        } catch (error) {
+          console.error('Error during midnight subscription check:', error);
+        }
+        
+        // Agendar próxima verificação em 24 horas
+        const interval = setInterval(async () => {
+          try {
+            await refreshSubscription();
+          } catch (error) {
+            console.error('Error during daily subscription check:', error);
+          }
+        }, 24 * 60 * 60 * 1000); // 24 horas
+        
+        return interval;
+      }, msUntilMidnight);
+    };
 
-    return () => clearInterval(interval);
+    const initialTimeout = scheduleNextMidnightCheck();
+    
+    return () => {
+      clearTimeout(initialTimeout);
+    };
   }, [user]);
 
   return (

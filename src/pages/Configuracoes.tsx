@@ -5,7 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CancellationPolicySettings } from "@/components/Settings/CancellationPolicySettings";
 import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
-import { Settings, User, Bell, Clock } from "lucide-react";
+import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
+import { Settings, User, Bell, Clock, Palette } from "lucide-react";
 
 export default function Configuracoes() {
   const { isProfessor } = useProfile();
@@ -34,10 +35,14 @@ export default function Configuracoes() {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
+            </TabsTrigger>
+            <TabsTrigger value="preferences" className="flex items-center gap-2">
+              <Palette className="h-4 w-4" />
+              Preferências
             </TabsTrigger>
             <TabsTrigger value="cancellation" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -56,6 +61,10 @@ export default function Configuracoes() {
 
             <TabsContent value="cancellation" className="space-y-6">
               <CancellationPolicySettings />
+            </TabsContent>
+
+            <TabsContent value="preferences" className="space-y-6">
+              <PreferencesSettings />
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-6">

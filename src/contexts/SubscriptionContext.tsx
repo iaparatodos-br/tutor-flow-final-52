@@ -311,6 +311,46 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [user, plans, profile]);
 
+  // Verificação por parâmetros de URL (retorno do Stripe)
+  useEffect(() => {
+    if (!user) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const stripeParams = [
+      'success',
+      'payment_intent',
+      'payment_intent_client_secret',
+      'setup_intent',
+      'setup_intent_client_secret',
+      'subscription_id',
+      'session_id'
+    ];
+
+    // Verifica se há parâmetros do Stripe na URL
+    const hasStripeParams = stripeParams.some(param => urlParams.has(param));
+
+    if (hasStripeParams) {
+      console.log('Stripe return detected, refreshing subscription status...');
+      
+      const verifyAndCleanUrl = async () => {
+        try {
+          await refreshSubscription();
+          
+          // Limpa os parâmetros da URL após a verificação
+          const newUrl = new URL(window.location.href);
+          stripeParams.forEach(param => newUrl.searchParams.delete(param));
+          
+          // Atualiza a URL sem recarregar a página
+          window.history.replaceState({}, '', newUrl.toString());
+        } catch (error) {
+          console.error('Error verifying subscription after Stripe return:', error);
+        }
+      };
+
+      verifyAndCleanUrl();
+    }
+  }, [user, refreshSubscription]);
+
   // Verificação diária do status da subscription à meia-noite
   useEffect(() => {
     if (!user) return;

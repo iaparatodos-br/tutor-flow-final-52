@@ -5,7 +5,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
-
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
 
 interface LayoutProps {
@@ -53,12 +53,16 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
           </Button>
           <span className="font-semibold">TutorFlow</span>
           
-          {/* Teacher context switcher for students */}
-          {isAluno && (
-            <div className="ml-auto max-w-[250px]">
-              <TeacherContextSwitcher />
-            </div>
-          )}
+          <div className="ml-auto flex items-center gap-4">
+            <ThemeToggle />
+            
+            {/* Teacher context switcher for students */}
+            {isAluno && (
+              <div className="max-w-[250px]">
+                <TeacherContextSwitcher />
+              </div>
+            )}
+          </div>
         </header>
 
         {/* Main content */}

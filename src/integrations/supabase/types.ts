@@ -1228,7 +1228,6 @@ export type Database = {
           student_email: string
           student_id: string
           student_name: string
-          student_role: string
         }[]
       }
       is_material_shared_with_user: {

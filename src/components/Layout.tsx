@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
 
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
-import { UserModeSwitcher } from "@/components/UserModeSwitcher";
-import { useUserMode } from "@/contexts/UserModeContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -16,8 +14,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
-  const { loading, isAuthenticated } = useAuth();
-  const { currentMode } = useUserMode();
+  const { loading, isAuthenticated, isAluno } = useAuth();
   const { isOpen, toggle } = useSidebarState();
 
   if (loading) {
@@ -56,17 +53,12 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
           </Button>
           <span className="font-semibold">TutorFlow</span>
           
-          <div className="ml-auto flex items-center gap-3">
-            {/* User mode switcher */}
-            <UserModeSwitcher />
-            
-            {/* Teacher context switcher for students */}
-            {currentMode === 'aluno' && (
-              <div className="max-w-[250px]">
-                <TeacherContextSwitcher />
-              </div>
-            )}
-          </div>
+          {/* Teacher context switcher for students */}
+          {isAluno && (
+            <div className="ml-auto max-w-[250px]">
+              <TeacherContextSwitcher />
+            </div>
+          )}
         </header>
 
         {/* Main content */}

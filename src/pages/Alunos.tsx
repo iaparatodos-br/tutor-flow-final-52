@@ -17,7 +17,6 @@ interface Student {
   id: string;
   name: string;
   email: string;
-  role?: string;
   created_at: string;
   guardian_name?: string;
   guardian_email?: string;
@@ -61,7 +60,6 @@ export default function Alunos() {
         id: student.student_id,
         name: student.student_name,
         email: student.student_email,
-        role: student.student_role,
         created_at: student.created_at,
         guardian_name: student.guardian_name,
         guardian_email: student.guardian_email,
@@ -138,7 +136,6 @@ export default function Alunos() {
         body: {
           name: formData.name,
           email: formData.email,
-          role: formData.role || 'aluno',
           teacher_id: profile.id,
           redirect_url: redirectUrl,
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
@@ -334,9 +331,9 @@ export default function Alunos() {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">Gestão de Estudantes</h1>
+            <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
             <p className="text-muted-foreground">
-              Gerencie seus estudantes cadastrados (alunos e professores)
+              Gerencie seus alunos cadastrados
             </p>
             {currentPlan && (() => {
               const { isOverLimit, additionalCost, message } = getStudentOverageInfo(students.length);
@@ -373,7 +370,7 @@ export default function Alunos() {
               className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
             >
               <Plus className="h-4 w-4 mr-2" />
-              Adicionar Estudante
+              Adicionar Aluno
             </Button>
           </FeatureGate>
         </div>
@@ -397,7 +394,7 @@ export default function Alunos() {
                 <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">Nenhum aluno cadastrado</h3>
                 <p className="text-muted-foreground mb-4">
-                  Comece adicionando seu primeiro estudante
+                  Comece adicionando seu primeiro aluno
                 </p>
                 <FeatureGate studentCount={students.length} showUpgrade={true}>
                   <Button 
@@ -405,7 +402,7 @@ export default function Alunos() {
                     className="bg-gradient-primary shadow-primary"
                   >
                     <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Primeiro Estudante
+                    Adicionar Primeiro Aluno
                   </Button>
                 </FeatureGate>
               </div>
@@ -413,13 +410,12 @@ export default function Alunos() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                     <TableHead>Nome</TableHead>
-                     <TableHead>E-mail</TableHead>
-                     <TableHead>Tipo</TableHead>
-                     <TableHead>Responsável</TableHead>
-                     <TableHead>Dia Cobrança</TableHead>
-                     <TableHead>Data de Cadastro</TableHead>
-                     <TableHead className="w-[120px]">Ações</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>E-mail</TableHead>
+                    <TableHead>Responsável</TableHead>
+                    <TableHead>Dia Cobrança</TableHead>
+                    <TableHead>Data de Cadastro</TableHead>
+                    <TableHead className="w-[120px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -433,18 +429,13 @@ export default function Alunos() {
                           {student.name}
                         </div>
                       </TableCell>
-                       <TableCell>
-                         <div className="flex items-center gap-2 text-muted-foreground">
-                           <Mail className="h-4 w-4" />
-                           {student.email}
-                         </div>
-                       </TableCell>
-                       <TableCell>
-                         <Badge variant={student.role === 'professor' ? 'default' : 'secondary'}>
-                           {student.role === 'professor' ? 'Professor' : 'Aluno'}
-                         </Badge>
-                       </TableCell>
-                       <TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-4 w-4" />
+                          {student.email}
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           {student.guardian_name ? (
                             <>

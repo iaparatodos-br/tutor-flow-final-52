@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -15,7 +14,6 @@ interface StudentFormData {
   name: string;
   email: string;
   phone: string;
-  role: string;
   isOwnResponsible: boolean;
   guardian_name: string;
   guardian_email: string;
@@ -49,7 +47,6 @@ const getInitialFormData = (student?: StudentFormModalProps['student']): Student
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
-    role: (student as any)?.role || 'aluno',
     // Se não há dados de responsável OU se os dados do responsável são iguais aos do aluno
     isOwnResponsible: student ? 
       (!student.guardian_name || student.guardian_name === student.name) : 
@@ -274,26 +271,6 @@ export function StudentFormModal({
                   required
                 />
               </div>
-            </div>
-
-            {/* Role Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="student-role">Tipo de Usuário</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, role: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tipo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="aluno">Aluno</SelectItem>
-                  <SelectItem value="professor">Professor (como aluno)</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Professores podem ser cadastrados como alunos de outros professores
-              </p>
             </div>
 
             <Separator />

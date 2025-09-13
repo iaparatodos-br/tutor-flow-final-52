@@ -311,6 +311,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [user, plans, profile]);
 
+  // Verificação periódica do status da subscription a cada 5 minutos
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshSubscription();
+      } catch (error) {
+        console.error('Error during periodic subscription check:', error);
+      }
+    }, 5 * 60 * 1000); // 5 minutos
+
+    return () => clearInterval(interval);
+  }, [user]);
+
   return (
     <SubscriptionContext.Provider
       value={{

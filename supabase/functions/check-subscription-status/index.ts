@@ -59,6 +59,57 @@ serve(async (req) => {
     if (subError) throw subError;
 
     if (subscription) {
+      logStep("Found subscription in database, checking expiration", { 
+        subscriptionId: subscription.id, 
+        currentPeriodEnd: subscription.current_period_end 
+      });
+      
+      // Check if subscription is expired
+      const now = new Date();
+      const periodEnd = new Date(subscription.current_period_end);
+      
+      if (now > periodEnd) {
+        logStep("Subscription is expired, updating status to expired");
+        
+        // Update subscription status to expired
+        await supabaseClient
+          .from('user_subscriptions')
+          .update({ 
+            status: 'expired',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', subscription.id);
+        
+        // Update user profile to free plan
+        const { data: freePlan } = await supabaseClient
+          .from('subscription_plans')
+          .select('*')
+          .eq('slug', 'free')
+          .single();
+        
+        if (freePlan) {
+          await supabaseClient
+            .from('profiles')
+            .update({
+              current_plan_id: freePlan.id,
+              subscription_status: 'expired',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', user.id);
+        }
+        
+        logStep("Subscription expired, user moved to free plan");
+        
+        // Return free plan instead of expired subscription
+        return new Response(JSON.stringify({
+          subscription: null,
+          plan: freePlan
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      
       logStep("Active subscription found in database", { subscriptionId: subscription.id });
       return new Response(JSON.stringify({
         subscription: {

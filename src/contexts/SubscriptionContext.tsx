@@ -76,10 +76,27 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     if (!user) return;
 
     try {
-      // Check subscription via edge function
-      const { data, error } = await supabase.functions.invoke('check-subscription-status');
+      // Timeout para evitar travamento na inicialização
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout no carregamento inicial')), 5000)
+      );
+
+      const invokePromise = supabase.functions.invoke('check-subscription-status', {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
       
-      if (error) throw error;
+      if (error) {
+        console.warn('Erro ao carregar subscription inicial:', error);
+        // Usar plano gratuito como fallback
+        const freePlan = plans.find(p => p.slug === 'free');
+        setCurrentPlan(freePlan || null);
+        setSubscription(null);
+        return;
+      }
 
       if (data?.subscription) {
         setSubscription(data.subscription);
@@ -183,10 +200,29 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     
     setLoading(true);
     try {
-      // Call edge function to refresh subscription status
-      const { data, error } = await supabase.functions.invoke('check-subscription-status');
+      // Usar timeout para evitar problemas de conectividade
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout na verificação da subscription')), 8000)
+      );
+
+      const invokePromise = supabase.functions.invoke('check-subscription-status', {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error checking subscription:', error);
+        
+        // Se não conseguiu acessar a função, usar plano gratuito
+        const freePlan = plans.find(p => p.slug === 'free');
+        setCurrentPlan(freePlan || null);
+        setSubscription(null);
+        console.log('Erro na verificação - usando plano gratuito como fallback');
+        return;
+      }
       
       if (data?.subscription) {
         setSubscription(data.subscription);
@@ -199,7 +235,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
-      throw error;
+      
+      // Em caso de erro, usar plano gratuito como fallback
+      const freePlan = plans.find(p => p.slug === 'free');
+      setCurrentPlan(freePlan || null);
+      setSubscription(null);
+      console.log('Fallback: usando plano gratuito após erro de conectividade');
     } finally {
       setLoading(false);
     }

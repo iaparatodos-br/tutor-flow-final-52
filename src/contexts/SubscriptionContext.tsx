@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
+import { toast } from 'sonner';
 
 interface SubscriptionPlan {
   id: string;
@@ -318,12 +319,53 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const createCheckoutSession = async (planSlug: string): Promise<string> => {
-    const { data, error } = await supabase.functions.invoke('create-subscription-checkout', {
-      body: { planSlug }
-    });
+    // Implementar retry com backoff exponencial
+    let retries = 0;
+    const maxRetries = 3;
+    
+    while (retries < maxRetries) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout na criação do checkout')), 15000)
+        );
 
-    if (error) throw error;
-    return data.url;
+        const invokePromise = supabase.functions.invoke('create-subscription-checkout', {
+          body: { planSlug },
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
+        
+        if (error) {
+          if (retries < maxRetries - 1) {
+            retries++;
+            console.log(`Retry ${retries}/${maxRetries} para checkout`);
+            await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // backoff exponencial
+            continue;
+          }
+          throw error;
+        }
+
+        if (data?.url) {
+          return data.url;
+        } else {
+          throw new Error('URL de checkout não recebida');
+        }
+      } catch (error) {
+        if (retries >= maxRetries - 1) {
+          console.error('Error creating checkout session após todos os retries:', error);
+          toast.error('Erro ao criar sessão de pagamento. Verifique sua conexão e tente novamente.');
+          throw error;
+        }
+        retries++;
+        console.log(`Retry ${retries}/${maxRetries} após erro:`, error);
+        await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+      }
+    }
+    
+    throw new Error('Falha após todas as tentativas');
   };
 
   const cancelSubscription = async (action: 'cancel' | 'reactivate'): Promise<void> => {

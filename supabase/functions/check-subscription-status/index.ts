@@ -282,8 +282,19 @@ serve(async (req) => {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    logStep("ERROR in check-subscription", { message: errorMessage });
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    logStep("ERROR in check-subscription", { 
+      message: errorMessage, 
+      stack: errorStack,
+      timestamp: new Date().toISOString()
+    });
+    
+    return new Response(JSON.stringify({ 
+      error: 'Erro interno do servidor',
+      details: errorMessage,
+      timestamp: new Date().toISOString()
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });

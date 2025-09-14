@@ -134,7 +134,7 @@ export default function Dashboard() {
         <UpgradeBanner />
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold">{t('dashboard:greeting', { name: profile?.name })}</h1>
+          <h1 className="text-3xl font-bold">{t('dashboard:greeting', { name: profile?.name || 'Usuário' })}</h1>
           <p className="text-muted-foreground">
             {t('dashboard:summary')}
           </p>

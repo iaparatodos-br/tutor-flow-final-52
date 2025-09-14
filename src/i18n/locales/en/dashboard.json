@@ -1,7 +1,7 @@
 {
   "title": "Dashboard",
   "welcome": "Welcome",
-  "greeting": "Hello, {name}!",
+  "greeting": "Hello, {{name}}!",
   "summary": "Here's a summary of your activities",
   "stats": {
     "totalStudents": "Total Students",
@@ -43,7 +43,7 @@
   },
   "studentPortal": {
     "title": "Student Portal",
-    "description": "Welcome, {name}! Use the sidebar to navigate through your classes and invoices."
+    "description": "Welcome, {{name}}! Use the sidebar to navigate through your classes and invoices."
   },
   "configuration": "Configuration"
 }

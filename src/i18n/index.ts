@@ -13,6 +13,7 @@ import ptFinancial from './locales/pt/financial.json';
 import ptSettings from './locales/pt/settings.json';
 import ptAuth from './locales/pt/auth.json';
 import ptSubscription from './locales/pt/subscription.json';
+import ptExpenses from './locales/pt/expenses.json';
 
 import enCommon from './locales/en/common.json';
 import enNavigation from './locales/en/navigation.json';
@@ -24,6 +25,7 @@ import enFinancial from './locales/en/financial.json';
 import enSettings from './locales/en/settings.json';
 import enAuth from './locales/en/auth.json';
 import enSubscription from './locales/en/subscription.json';
+import enExpenses from './locales/en/expenses.json';
 
 const resources = {
   pt: {
@@ -37,6 +39,7 @@ const resources = {
     settings: ptSettings,
     auth: ptAuth,
     subscription: ptSubscription,
+    expenses: ptExpenses,
   },
   en: {
     common: enCommon,
@@ -49,6 +52,7 @@ const resources = {
     settings: enSettings,
     auth: enAuth,
     subscription: enSubscription,
+    expenses: enExpenses,
   },
 };
 
@@ -71,7 +75,7 @@ i18n
       escapeValue: false,
     },
 
-    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription'],
+    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses'],
     defaultNS: 'common',
   });
 

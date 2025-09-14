@@ -18,21 +18,22 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTranslation } from "react-i18next";
 
-const professorItems = [
-  { title: "Dashboard", url: "/dashboard", icon: BookOpen },
-  { title: "Alunos", url: "/alunos", icon: Users },
-  { title: "Agenda", url: "/agenda", icon: Calendar },
-  { title: "Materiais", url: "/materiais", icon: FileText },
-  { title: "Financeiro", url: "/financeiro", icon: DollarSign },
-  { title: "Histórico", url: "/historico", icon: Archive },
-  { title: "Políticas Cancelamento", url: "/politicas-cancelamento", icon: Settings },
+const getProfessorItems = (t: any) => [
+  { title: t('navigation:sidebar.dashboard'), url: "/dashboard", icon: BookOpen },
+  { title: t('navigation:sidebar.students'), url: "/alunos", icon: Users },
+  { title: t('navigation:sidebar.agenda'), url: "/agenda", icon: Calendar },
+  { title: t('navigation:sidebar.materials'), url: "/materiais", icon: FileText },
+  { title: t('navigation:sidebar.financial'), url: "/financeiro", icon: DollarSign },
+  { title: t('navigation:sidebar.history'), url: "/historico", icon: Archive },
+  { title: t('navigation:sidebar.cancellationPolicies'), url: "/politicas-cancelamento", icon: Settings },
 ];
 
-const alunoItems = [
-  { title: "Minhas Aulas", url: "/aulas", icon: Calendar },
-  { title: "Meus Materiais", url: "/meus-materiais", icon: FileText },
-  { title: "Faturas", url: "/faturas", icon: DollarSign },
+const getAlunoItems = (t: any) => [
+  { title: t('navigation:sidebar.myClasses'), url: "/aulas", icon: Calendar },
+  { title: t('navigation:sidebar.myMaterials'), url: "/meus-materiais", icon: FileText },
+  { title: t('navigation:sidebar.invoices'), url: "/faturas", icon: DollarSign },
 ];
 
 interface AppSidebarProps {
@@ -45,6 +46,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   const { signOut, loading } = useAuth();
   const { currentPlan, hasFeature, hasTeacherFeature } = useSubscription();
   const currentPath = location.pathname;
+  const { t } = useTranslation();
   
   const navigate = useNavigate();
   
@@ -77,9 +79,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
     );
   }
   
-  const items = isProfessor ? professorItems : alunoItems.filter(item => {
+  const items = isProfessor ? getProfessorItems(t) : getAlunoItems(t).filter(item => {
     // Filter financial items for students based on teacher's plan
-    if (item.title === "Faturas") {
+    if (item.title === t('navigation:sidebar.invoices')) {
       return hasTeacherFeature('financial_module');
     }
     return true;
@@ -124,7 +126,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
           <div className={`flex-1 ${!isOpen ? 'px-2' : 'px-4'} py-4`}>
             <div className="mb-6">
               <h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 ${!isOpen ? "sr-only" : ""}`}>
-                {isProfessor ? "Professor" : "Aluno"}
+                {isProfessor ? t('navigation:roles.professor') : t('navigation:roles.student')}
               </h3>
               <ul className="space-y-1">
                 {items.map((item) => (
@@ -134,7 +136,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                         <div 
                           onClick={() => handleNavigation(item.url)}
                            className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 ${
-                             item.title === 'Financeiro' && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module'))
+                             item.title === t('navigation:sidebar.financial') && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module'))
                                ? 'cursor-not-allowed opacity-50' 
                                : 'cursor-pointer'
                            } ${isActive(item.url) ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
@@ -144,9 +146,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                             <div className="flex items-center justify-between w-full ml-4">
                               <span>{item.title}</span>
                                {/* Show premium indicators */}
-                               {item.title === 'Financeiro' && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
+                               {item.title === t('navigation:sidebar.financial') && !(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
                                  <span className="text-xs bg-warning/10 text-warning px-1.5 py-0.5 rounded">
-                                   Premium
+                                   {t('navigation:tooltips.premium')}
                                  </span>
                                )}
                             </div>
@@ -166,7 +168,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
             {isProfessor && (
               <div>
                 <h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 ${!isOpen ? "sr-only" : ""}`}>
-                  Assinatura
+                  {t('navigation:sidebar.subscription')}
                 </h3>
                 <ul className="space-y-1">
                   <li>
@@ -177,12 +179,12 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                           className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/planos") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
                         >
                           <Package className={`h-4 w-4 flex-shrink-0 text-primary`} />
-                          {isOpen && <span className="ml-4">Planos</span>}
+                          {isOpen && <span className="ml-4">{t('navigation:sidebar.plans')}</span>}
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p>Planos</p>
-                      </TooltipContent>
+                       <TooltipContent side="right">
+                         <p>{t('navigation:sidebar.plans')}</p>
+                       </TooltipContent>
                     </Tooltip>
                   </li>
                   <li>
@@ -194,8 +196,8 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                         >
                           <CreditCard className={`h-4 w-4 flex-shrink-0 text-primary`} />
                           {isOpen && (
-                            <div className="flex items-center justify-between w-full ml-4">
-                              <span>Assinatura</span>
+                             <div className="flex items-center justify-between w-full ml-4">
+                               <span>{t('navigation:sidebar.subscription')}</span>
                               {currentPlan && (
                                 <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                                   {currentPlan.name}
@@ -205,9 +207,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                           )}
                         </div>
                       </TooltipTrigger>
-                      <TooltipContent side="right">
-                        <p>Assinatura</p>
-                      </TooltipContent>
+                       <TooltipContent side="right">
+                         <p>{t('navigation:sidebar.subscription')}</p>
+                       </TooltipContent>
                     </Tooltip>
                   </li>
                 </ul>
@@ -221,9 +223,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
               {isOpen && (
                 <div className="flex flex-col">
                   <p className="text-sm font-medium">{profile?.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {isProfessor ? "Professor" : "Aluno"}
-                  </p>
+                   <p className="text-xs text-muted-foreground">
+                     {isProfessor ? t('navigation:roles.professor') : t('navigation:roles.student')}
+                   </p>
                 </div>
               )}
               {!isOpen ? (
@@ -238,9 +240,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                       <LogOut className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p>Sair</p>
-                  </TooltipContent>
+                   <TooltipContent side="right">
+                     <p>{t('navigation:tooltips.logout')}</p>
+                   </TooltipContent>
                 </Tooltip>
               ) : (
                 <Button
@@ -248,7 +250,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                   size="sm"
                   onClick={handleSignOut}
                   className="hover:bg-destructive hover:text-destructive-foreground"
-                  title="Sair"
+                  title={t('navigation:tooltips.logout')}
                 >
                   <LogOut className="h-4 w-4" />
                 </Button>

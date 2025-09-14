@@ -11,7 +11,10 @@
     "settings": "Settings",
     "plans": "Plans",
     "subscription": "Subscription",
-    "history": "History"
+    "history": "History",
+    "myClasses": "My Classes",
+    "invoices": "Invoices",
+    "cancellationPolicies": "Cancellation Policies"
   },
   "roles": {
     "professor": "Professor",
@@ -20,5 +23,9 @@
   "breadcrumbs": {
     "home": "Home",
     "profile": "Profile"
+  },
+  "tooltips": {
+    "logout": "Sign Out",
+    "premium": "Premium"
   }
 }

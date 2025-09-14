@@ -11,7 +11,10 @@
     "settings": "Configurações",
     "plans": "Planos",
     "subscription": "Assinatura",
-    "history": "Histórico"
+    "history": "Histórico",
+    "myClasses": "Minhas Aulas",
+    "invoices": "Faturas",
+    "cancellationPolicies": "Políticas Cancelamento"
   },
   "roles": {
     "professor": "Professor",
@@ -20,5 +23,9 @@
   "breadcrumbs": {
     "home": "Início",
     "profile": "Perfil"
+  },
+  "tooltips": {
+    "logout": "Sair",
+    "premium": "Premium"
   }
 }

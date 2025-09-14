@@ -4,6 +4,30 @@
   "editStudent": "Edit Student",
   "deleteStudent": "Delete Student",
   "studentProfile": "Student Profile",
+  "management": "Student Management",
+  "description": "Manage your registered students",
+  "loading": "Loading students...",
+  "inviteStudent": "Student invited successfully!",
+  "inviteDescription": "{name} will receive an email to complete registration.",
+  "unlinkStudent": "Unlink Student",
+  "unlinkConfirm": "Are you sure you want to unlink student {name}? The student will not be deleted, just removed from your list.",
+  "deleteConfirm": "Are you sure you want to PERMANENTLY DELETE student {name}? This action cannot be undone and will remove the student from all teachers.",
+  "studentUnlinked": "Student unlinked",
+  "studentUnlinkedMessage": "{name} was removed from your list",
+  "studentDeleted": "Student deleted",
+  "studentDeletedMessage": "{name} was permanently deleted",
+  "emailAlreadyExists": "This email is already being used by another student or teacher",
+  "updateSuccess": "Student updated successfully!",
+  "updateDescription": "{name}'s information has been updated.",
+  "updateWarning": "Profile updated, but there was an error saving billing settings.",
+  "noStudentsTitle": "No students registered",
+  "noStudentsDescription": "Start by adding your first student",
+  "addFirstStudent": "Add First Student",
+  "studentsList": "Students List ({count})",
+  "billingConfig": "Billing Configured",
+  "billingWarning": "Student will be added, but there may be additional charge of ${amount}.",
+  "studentLimit": "{current} of {limit} students included in plan",
+  "studentLimitFree": "{current} of {limit} students (free plan)",
   "fields": {
     "name": "Name",
     "email": "Email",
@@ -12,7 +36,10 @@
     "birthDate": "Birth Date",
     "notes": "Notes",
     "status": "Status",
-    "enrollmentDate": "Enrollment Date"
+    "enrollmentDate": "Registration Date",
+    "responsible": "Guardian",
+    "billingDay": "Billing Day",
+    "actions": "Actions"
   },
   "placeholders": {
     "name": "Enter student name",
@@ -20,6 +47,10 @@
     "phone": "Enter phone number",
     "address": "Enter address",
     "notes": "Notes about the student"
+  },
+  "responsible": {
+    "ownStudent": "Own student",
+    "notConfigured": "Not configured"
   },
   "messages": {
     "studentAdded": "Student added successfully!",

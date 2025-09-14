@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
@@ -21,6 +22,7 @@ export default function Dashboard() {
   const { loading: authLoading } = useAuth();
   const { hasFeature, hasTeacherFeature } = useSubscription();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [stats, setStats] = useState<DashboardStats>({
     totalStudents: 0,
     upcomingClasses: 0,
@@ -116,9 +118,9 @@ export default function Dashboard() {
       <Layout>
         <div className="max-w-4xl mx-auto">
           <div className="text-center">
-            <h1 className="text-3xl font-bold mb-4">Portal do Aluno</h1>
+            <h1 className="text-3xl font-bold mb-4">{t('dashboard:studentPortal.title')}</h1>
             <p className="text-muted-foreground">
-              Bem-vindo, {profile?.name}! Use o menu lateral para navegar pelas suas aulas e faturas.
+              {t('dashboard:studentPortal.description', { name: profile?.name })}
             </p>
           </div>
         </div>
@@ -132,9 +134,9 @@ export default function Dashboard() {
         <UpgradeBanner />
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold">Olá, {profile?.name}!</h1>
+          <h1 className="text-3xl font-bold">{t('dashboard:greeting', { name: profile?.name })}</h1>
           <p className="text-muted-foreground">
-            Aqui está um resumo das suas atividades
+            {t('dashboard:summary')}
           </p>
         </div>
 
@@ -142,7 +144,7 @@ export default function Dashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="shadow-card hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de Alunos</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard:stats.totalStudents')}</CardTitle>
               <Users className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
@@ -150,14 +152,14 @@ export default function Dashboard() {
                 {loading ? "..." : stats.totalStudents}
               </div>
               <p className="text-xs text-muted-foreground">
-                Alunos cadastrados
+                {t('dashboard:stats.studentsRegistered')}
               </p>
             </CardContent>
           </Card>
 
           <Card className="shadow-card hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Próximas Aulas</CardTitle>
+              <CardTitle className="text-sm font-medium">{t('dashboard:stats.upcomingClasses')}</CardTitle>
               <Calendar className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
@@ -165,7 +167,7 @@ export default function Dashboard() {
                 {loading ? "..." : stats.upcomingClasses}
               </div>
               <p className="text-xs text-muted-foreground">
-                Aulas agendadas
+                {t('dashboard:stats.classesScheduled')}
               </p>
             </CardContent>
           </Card>
@@ -173,7 +175,7 @@ export default function Dashboard() {
           {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
             <Card className="shadow-card hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pagamentos Pendentes</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard:stats.pendingPayments')}</CardTitle>
                 <Clock className="h-4 w-4 text-warning" />
               </CardHeader>
               <CardContent>
@@ -181,7 +183,7 @@ export default function Dashboard() {
                   {loading ? "..." : stats.pendingInvoices}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Faturas em aberto
+                  {t('dashboard:stats.openInvoices')}
                 </p>
               </CardContent>
             </Card>
@@ -190,7 +192,7 @@ export default function Dashboard() {
           {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
             <Card className="shadow-card hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Receita do Mês</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('dashboard:stats.monthlyRevenue')}</CardTitle>
                 <DollarSign className="h-4 w-4 text-success" />
               </CardHeader>
               <CardContent>
@@ -198,7 +200,7 @@ export default function Dashboard() {
                   {loading ? "..." : `R$ ${stats.thisMonthRevenue.toFixed(2)}`}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Valor recebido
+                  {t('dashboard:stats.receivedAmount')}
                 </p>
               </CardContent>
             </Card>
@@ -208,7 +210,7 @@ export default function Dashboard() {
         {/* Quick Actions */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Ações Rápidas</CardTitle>
+            <CardTitle>{t('dashboard:quickActions.title')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
@@ -217,8 +219,8 @@ export default function Dashboard() {
                 onClick={() => navigate("/alunos")}
               >
                 <Users className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Gerenciar Alunos</p>
-                <p className="text-sm text-muted-foreground">Adicionar e editar alunos</p>
+                <p className="font-medium">{t('dashboard:quickActions.manageStudents.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.manageStudents.description')}</p>
               </div>
               
               <div 
@@ -226,8 +228,8 @@ export default function Dashboard() {
                 onClick={() => navigate("/agenda")}
               >
                 <Calendar className="h-8 w-8 mx-auto mb-2 text-primary" />
-                <p className="font-medium">Agendar Aula</p>
-                <p className="text-sm text-muted-foreground">Marcar nova aula</p>
+                <p className="font-medium">{t('dashboard:quickActions.scheduleClass.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.scheduleClass.description')}</p>
               </div>
               
               {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
@@ -236,8 +238,8 @@ export default function Dashboard() {
                   onClick={() => navigate("/financeiro")}
                 >
                   <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
-                  <p className="font-medium">Nova Fatura</p>
-                  <p className="text-sm text-muted-foreground">Criar cobrança</p>
+                  <p className="font-medium">{t('dashboard:quickActions.createInvoice.title')}</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.createInvoice.description')}</p>
                 </div>
               )}
             </div>
@@ -247,7 +249,7 @@ export default function Dashboard() {
         {/* Payment Accounts Management */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Configurações</CardTitle>
+            <CardTitle>{t('dashboard:configuration')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
@@ -257,8 +259,8 @@ export default function Dashboard() {
                   onClick={() => navigate("/contas-recebimento")}
                 >
                   <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
-                  <p className="font-medium">Contas de Recebimento</p>
-                  <p className="text-sm text-muted-foreground">Gerenciar contas bancárias e PIX</p>
+                  <p className="font-medium">{t('dashboard:quickActions.paymentAccounts.title')}</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.paymentAccounts.description')}</p>
                 </div>
               )}
               
@@ -267,8 +269,8 @@ export default function Dashboard() {
                 onClick={() => navigate("/servicos")}
               >
                 <DollarSign className="h-8 w-8 mx-auto mb-2 text-success" />
-                <p className="font-medium">Serviços e Preços</p>
-                <p className="text-sm text-muted-foreground">Cadastrar tipos de aula e valores</p>
+                <p className="font-medium">{t('dashboard:quickActions.manageServices.title')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.manageServices.description')}</p>
               </div>
               
               <div 
@@ -276,8 +278,8 @@ export default function Dashboard() {
                 onClick={() => navigate("/politicas-cancelamento")}
               >
                 <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="font-medium">Políticas</p>
-                <p className="text-sm text-muted-foregoing">Cancelamento e configurações</p>
+                <p className="font-medium">{t('dashboard:quickActions.policies.title')}</p>
+                <p className="text-sm text-muted-foregoing">{t('dashboard:quickActions.policies.description')}</p>
               </div>
             </div>
           </CardContent>

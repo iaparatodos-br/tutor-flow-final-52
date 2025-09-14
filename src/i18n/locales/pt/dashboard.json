@@ -1,41 +1,49 @@
 {
   "title": "Dashboard",
   "welcome": "Bem-vindo",
+  "greeting": "Olá, {name}!",
+  "summary": "Aqui está um resumo das suas atividades",
   "stats": {
     "totalStudents": "Total de Alunos",
     "upcomingClasses": "Próximas Aulas",
     "pendingInvoices": "Faturas Pendentes",
-    "monthlyRevenue": "Receita Mensal"
+    "monthlyRevenue": "Receita Mensal",
+    "studentsRegistered": "Alunos cadastrados",
+    "classesScheduled": "Aulas agendadas",
+    "pendingPayments": "Pagamentos Pendentes",
+    "openInvoices": "Faturas em aberto",
+    "receivedAmount": "Valor recebido"
   },
   "quickActions": {
     "title": "Ações Rápidas",
     "manageStudents": {
       "title": "Gerenciar Alunos",
-      "description": "Adicionar, editar ou visualizar alunos"
+      "description": "Adicionar e editar alunos"
     },
     "scheduleClass": {
       "title": "Agendar Aula",
-      "description": "Criar um novo agendamento de aula"
+      "description": "Marcar nova aula"
     },
     "createInvoice": {
-      "title": "Criar Fatura",
-      "description": "Gerar uma nova fatura para cobrança"
+      "title": "Nova Fatura",
+      "description": "Criar cobrança"
     },
     "paymentAccounts": {
       "title": "Contas de Recebimento",
-      "description": "Configurar métodos de pagamento"
+      "description": "Gerenciar contas bancárias e PIX"
     },
     "manageServices": {
-      "title": "Gerenciar Serviços",
-      "description": "Configurar tipos de aula e valores"
+      "title": "Serviços e Preços",
+      "description": "Cadastrar tipos de aula e valores"
     },
     "policies": {
-      "title": "Políticas de Cancelamento",
-      "description": "Definir regras de cancelamento"
+      "title": "Políticas",
+      "description": "Cancelamento e configurações"
     }
   },
   "studentPortal": {
     "title": "Portal do Aluno",
-    "description": "Bem-vindo ao seu portal de estudos"
-  }
+    "description": "Bem-vindo, {name}! Use o menu lateral para navegar pelas suas aulas e faturas."
+  },
+  "configuration": "Configurações"
 }

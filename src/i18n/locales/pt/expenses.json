@@ -1,0 +1,48 @@
+{
+  "title": "Despesas",
+  "newExpense": "Nova Despesa",
+  "editExpense": "Editar Despesa",
+  "addExpense": "Adicionar Despesa",
+  "description": "Cadastre uma nova despesa",
+  "updateDescription": "Atualize os dados da despesa",
+  "fields": {
+    "description": "Descrição",
+    "amount": "Valor",
+    "date": "Data",
+    "category": "Categoria",
+    "receipt": "Comprovante"
+  },
+  "placeholders": {
+    "description": "Descreva a despesa...",
+    "amount": "0,00"
+  },
+  "receipt": {
+    "upload": "Clique para fazer upload",
+    "formats": "JPG, PNG ou PDF até 5MB",
+    "attached": "Comprovante anexado",
+    "preview": "Comprovante"
+  },
+  "category": {
+    "newCategory": "Nova Categoria",
+    "selectCategory": "Selecione uma categoria",
+    "noCategoriesFound": "Nenhuma categoria encontrada"
+  },
+  "validation": {
+    "fillRequired": "Preencha todos os campos obrigatórios.",
+    "fileSizeLimit": "O arquivo deve ter no máximo 5MB.",
+    "invalidFileType": "Apenas arquivos JPG, PNG ou PDF são permitidos."
+  },
+  "messages": {
+    "expenseRegistered": "Despesa Cadastrada",
+    "expenseUpdated": "Despesa Atualizada",
+    "registeredSuccess": "A despesa foi cadastrada com sucesso.",
+    "updatedSuccess": "A despesa foi atualizada com sucesso.",
+    "saveError": "Não foi possível salvar a despesa. Tente novamente."
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "register": "Cadastrar",
+    "update": "Atualizar",
+    "saving": "Salvando..."
+  }
+}

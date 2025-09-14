@@ -1,0 +1,48 @@
+{
+  "title": "Expenses",
+  "newExpense": "New Expense",
+  "editExpense": "Edit Expense",
+  "addExpense": "Add Expense",
+  "description": "Register a new expense",
+  "updateDescription": "Update expense data",
+  "fields": {
+    "description": "Description",
+    "amount": "Amount",
+    "date": "Date",
+    "category": "Category",
+    "receipt": "Receipt"
+  },
+  "placeholders": {
+    "description": "Describe the expense...",
+    "amount": "0.00"
+  },
+  "receipt": {
+    "upload": "Click to upload",
+    "formats": "JPG, PNG or PDF up to 5MB",
+    "attached": "Receipt attached",
+    "preview": "Receipt"
+  },
+  "category": {
+    "newCategory": "New Category",
+    "selectCategory": "Select a category",
+    "noCategoriesFound": "No categories found"
+  },
+  "validation": {
+    "fillRequired": "Fill in all required fields.",
+    "fileSizeLimit": "File must be no larger than 5MB.",
+    "invalidFileType": "Only JPG, PNG or PDF files are allowed."
+  },
+  "messages": {
+    "expenseRegistered": "Expense Registered",
+    "expenseUpdated": "Expense Updated",
+    "registeredSuccess": "The expense was registered successfully.",
+    "updatedSuccess": "The expense was updated successfully.",
+    "saveError": "Could not save the expense. Please try again."
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "register": "Register",
+    "update": "Update",
+    "saving": "Saving..."
+  }
+}

@@ -1,41 +1,49 @@
 {
   "title": "Dashboard",
   "welcome": "Welcome",
+  "greeting": "Hello, {name}!",
+  "summary": "Here's a summary of your activities",
   "stats": {
     "totalStudents": "Total Students",
     "upcomingClasses": "Upcoming Classes",
     "pendingInvoices": "Pending Invoices",
-    "monthlyRevenue": "Monthly Revenue"
+    "monthlyRevenue": "Monthly Revenue",
+    "studentsRegistered": "Registered students",
+    "classesScheduled": "Scheduled classes",
+    "pendingPayments": "Pending Payments",
+    "openInvoices": "Open invoices",
+    "receivedAmount": "Amount received"
   },
   "quickActions": {
     "title": "Quick Actions",
     "manageStudents": {
       "title": "Manage Students",
-      "description": "Add, edit or view students"
+      "description": "Add and edit students"
     },
     "scheduleClass": {
       "title": "Schedule Class",
-      "description": "Create a new class appointment"
+      "description": "Create new appointment"
     },
     "createInvoice": {
-      "title": "Create Invoice",
-      "description": "Generate a new invoice for billing"
+      "title": "New Invoice",
+      "description": "Create billing"
     },
     "paymentAccounts": {
       "title": "Payment Accounts",
-      "description": "Configure payment methods"
+      "description": "Manage bank accounts and PIX"
     },
     "manageServices": {
-      "title": "Manage Services",
-      "description": "Configure class types and prices"
+      "title": "Services & Pricing",
+      "description": "Set up class types and rates"
     },
     "policies": {
-      "title": "Cancellation Policies",
-      "description": "Define cancellation rules"
+      "title": "Policies",
+      "description": "Cancellation and settings"
     }
   },
   "studentPortal": {
     "title": "Student Portal",
-    "description": "Welcome to your study portal"
-  }
+    "description": "Welcome, {name}! Use the sidebar to navigate through your classes and invoices."
+  },
+  "configuration": "Configuration"
 }

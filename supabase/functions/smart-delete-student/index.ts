@@ -113,13 +113,34 @@ Deno.serve(async (req) => {
       // Student has no other teachers - delete completely
       console.log('Student has no other teachers, deleting completely');
       
-      // First delete from auth.users (this will cascade to profiles due to foreign key)
+      // First, always delete the relationship to ensure it's removed
+      const { error: relationshipDeleteError } = await supabaseAdmin
+        .from('teacher_student_relationships')
+        .delete()
+        .eq('id', relationship_id)
+        .eq('teacher_id', teacher_id);
+      
+      if (relationshipDeleteError) {
+        console.error('Error deleting relationship:', relationshipDeleteError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Error removing student relationship'
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        );
+      }
+      
+      // Try to delete from auth.users (this will cascade to profiles due to foreign key)
       const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(student_id);
       
       if (authDeleteError) {
         console.error('Error deleting user from auth:', authDeleteError);
         
-        // If auth deletion fails, try to delete profile directly
+        // If auth deletion fails, try to delete profile directly as fallback
         console.log('Attempting to delete profile directly as fallback');
         
         const { error: profileDeleteError } = await supabaseAdmin
@@ -129,16 +150,8 @@ Deno.serve(async (req) => {
 
         if (profileDeleteError) {
           console.error('Error deleting profile:', profileDeleteError);
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: 'Error deleting student permanently'
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 500 
-            }
-          );
+          // Don't return error here since relationship was already deleted
+          console.log('Profile deletion failed, but relationship was removed successfully');
         }
       }
 

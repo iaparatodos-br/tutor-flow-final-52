@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, Unlink } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
@@ -270,33 +270,6 @@ export default function Alunos() {
     }
   };
 
-  const handleUnlinkStudent = async (student: Student) => {
-    if (!confirm(`Tem certeza que deseja desvincular o aluno ${student.name}? O aluno não será excluído, apenas removido da sua lista.`)) return;
-
-    try {
-      // Remove the relationship, not the student profile
-      const { error } = await supabase
-        .from('teacher_student_relationships')
-        .delete()
-        .eq('id', student.relationship_id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Aluno desvinculado",
-        description: `${student.name} foi removido da sua lista`,
-      });
-      
-      loadStudents();
-    } catch (error: any) {
-      console.error('Erro ao desvincular aluno:', error);
-      toast({
-        title: "Erro ao desvincular aluno",
-        description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
-      });
-    }
-  };
 
   const handleSmartDelete = async (student: Student) => {
     if (!student.relationship_id) {
@@ -337,14 +310,10 @@ export default function Alunos() {
         return;
       }
 
-      // Show success message based on action taken
-      const action = data?.action;
-      const message = data?.message || 
-        (action === 'deleted' ? 'Aluno excluído permanentemente' : 'Aluno desvinculado com sucesso');
-
+      // Show generic success message
       toast({
-        title: action === 'deleted' ? "Aluno Excluído" : "Aluno Desvinculado", 
-        description: message,
+        title: "Aluno removido com sucesso",
+        description: `${student.name} perdeu acesso à sua área da plataforma`,
       });
       
       loadStudents();
@@ -359,11 +328,8 @@ export default function Alunos() {
   };
 
   const handleConfirmSmartDelete = async (student: Student) => {
-    // Check if student might have other teachers by looking at email domain or name patterns
     const confirmMessage = `Tem certeza que deseja remover o aluno ${student.name}?\n\n` +
-      `• Se este aluno só estuda com você, ele será excluído permanentemente\n` +
-      `• Se este aluno também estuda com outros professores, ele será apenas desvinculado da sua lista\n\n` +
-      `Esta operação é segura e não afetará outros professores.`;
+      `O aluno perderá acesso à sua área da plataforma.`;
     
     if (!confirm(confirmMessage)) return;
     
@@ -532,21 +498,12 @@ export default function Alunos() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="hover:bg-orange-100 hover:text-orange-600"
-                            onClick={() => handleUnlinkStudent(student)}
-                            title="Desvincular aluno (não excluir)"
+                            className="hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => handleConfirmSmartDelete(student)}
+                            title="Remover aluno"
                           >
-                            <Unlink className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                           <Button
-                             variant="ghost"
-                             size="sm"
-                             className="hover:bg-destructive hover:text-destructive-foreground"
-                             onClick={() => handleConfirmSmartDelete(student)}
-                             title="Remover aluno (inteligente: desvincula ou exclui conforme necessário)"
-                           >
-                             <Trash2 className="h-4 w-4" />
-                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>

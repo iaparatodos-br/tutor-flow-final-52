@@ -66,7 +66,26 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const requestBody = await req.json();
+    let requestBody;
+    try {
+      const bodyText = await req.text();
+      logStep("Raw request body", { bodyText });
+      
+      if (!bodyText) {
+        logStep("ERROR: Empty request body");
+        throw new Error("Request body is empty");
+      }
+      
+      requestBody = JSON.parse(bodyText);
+      logStep("Parsed request body", { requestBody });
+    } catch (parseError) {
+      logStep("ERROR: Invalid JSON in request body", { 
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+        rawBody: await req.text()
+      });
+      throw new Error("Invalid JSON in request body");
+    }
+    
     const { planSlug } = requestBody;
     if (!planSlug) {
       logStep("ERROR: No plan slug provided", { body: requestBody });

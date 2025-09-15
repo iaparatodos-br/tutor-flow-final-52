@@ -207,45 +207,28 @@ export default function Alunos() {
     setSubmitting(true);
     
     try {
-      // Update student data in profiles table
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          name: formData.name,
-          email: formData.email,
-          guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
-          guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
-        })
-        .eq('id', editingStudent.id);
-
-      if (profileError) {
-        console.error('Erro ao atualizar perfil:', profileError);
-        toast({
-          title: "Erro",
-          description: "Erro ao salvar alterações do aluno.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update relationship data if relationship exists
+      // Update teacher-specific student data in relationship table
       if (editingStudent.relationship_id) {
         const { error: relationshipError } = await supabase
           .from('teacher_student_relationships')
           .update({
             billing_day: formData.billing_day,
-            stripe_customer_id: formData.stripe_customer_id
+            stripe_customer_id: formData.stripe_customer_id,
+            student_name: formData.name,
+            student_guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
+            student_guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
+            student_guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
           })
           .eq('id', editingStudent.relationship_id);
 
         if (relationshipError) {
           console.error('Erro ao atualizar relacionamento:', relationshipError);
           toast({
-            title: "Aviso",
-            description: "Perfil atualizado, mas houve erro ao salvar configurações de cobrança.",
-            variant: "default",
+            title: "Erro",
+            description: "Erro ao salvar alterações do aluno.",
+            variant: "destructive",
           });
+          return;
         }
       }
 

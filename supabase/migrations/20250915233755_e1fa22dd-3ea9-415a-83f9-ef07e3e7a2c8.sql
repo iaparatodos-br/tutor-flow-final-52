@@ -1,0 +1,53 @@
+-- Add teacher-specific student data columns to teacher_student_relationships
+ALTER TABLE public.teacher_student_relationships 
+ADD COLUMN student_name text,
+ADD COLUMN student_guardian_name text,
+ADD COLUMN student_guardian_email text,
+ADD COLUMN student_guardian_phone text;
+
+-- Migrate existing data from profiles to relationships
+UPDATE public.teacher_student_relationships tsr
+SET 
+  student_name = p.name,
+  student_guardian_name = p.guardian_name,
+  student_guardian_email = p.guardian_email,
+  student_guardian_phone = p.guardian_phone
+FROM public.profiles p
+WHERE tsr.student_id = p.id;
+
+-- Update the get_teacher_students function to return relationship data
+CREATE OR REPLACE FUNCTION public.get_teacher_students(teacher_user_id uuid)
+ RETURNS TABLE(
+   student_id uuid, 
+   student_name text, 
+   student_email text, 
+   student_role text, 
+   guardian_name text, 
+   guardian_email text, 
+   guardian_phone text, 
+   relationship_id uuid, 
+   billing_day integer, 
+   stripe_customer_id text, 
+   created_at timestamp with time zone
+ )
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT 
+    tsr.student_id,
+    COALESCE(tsr.student_name, p.name) as student_name,
+    p.email as student_email,
+    p.role as student_role,
+    COALESCE(tsr.student_guardian_name, p.guardian_name) as guardian_name,
+    COALESCE(tsr.student_guardian_email, p.guardian_email) as guardian_email,
+    COALESCE(tsr.student_guardian_phone, p.guardian_phone) as guardian_phone,
+    tsr.id as relationship_id,
+    tsr.billing_day,
+    tsr.stripe_customer_id,
+    tsr.created_at
+  FROM teacher_student_relationships tsr
+  JOIN profiles p ON p.id = tsr.student_id
+  WHERE tsr.teacher_id = teacher_user_id
+  ORDER BY COALESCE(tsr.student_name, p.name) ASC;
+$function$;

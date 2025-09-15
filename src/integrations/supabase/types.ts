@@ -1036,7 +1036,11 @@ export type Database = {
           id: string
           preferred_payment_account_id: string | null
           stripe_customer_id: string | null
+          student_guardian_email: string | null
+          student_guardian_name: string | null
+          student_guardian_phone: string | null
           student_id: string
+          student_name: string | null
           teacher_id: string
           updated_at: string
         }
@@ -1046,7 +1050,11 @@ export type Database = {
           id?: string
           preferred_payment_account_id?: string | null
           stripe_customer_id?: string | null
+          student_guardian_email?: string | null
+          student_guardian_name?: string | null
+          student_guardian_phone?: string | null
           student_id: string
+          student_name?: string | null
           teacher_id: string
           updated_at?: string
         }
@@ -1056,7 +1064,11 @@ export type Database = {
           id?: string
           preferred_payment_account_id?: string | null
           stripe_customer_id?: string | null
+          student_guardian_email?: string | null
+          student_guardian_name?: string | null
+          student_guardian_phone?: string | null
           student_id?: string
+          student_name?: string | null
           teacher_id?: string
           updated_at?: string
         }
@@ -1228,6 +1240,7 @@ export type Database = {
           student_email: string
           student_id: string
           student_name: string
+          student_role: string
         }[]
       }
       is_material_shared_with_user: {

@@ -198,7 +198,7 @@ serve(async (req) => {
       }
     }
 
-    // Create the teacher-student relationship
+    // Create the teacher-student relationship with teacher-specific data
     const { error: relationshipError } = await supabaseAdmin
       .from('teacher_student_relationships')
       .insert({
@@ -206,6 +206,10 @@ serve(async (req) => {
         student_id: studentId,
         billing_day: body.billing_day ?? 15,
         stripe_customer_id: body.stripe_customer_id ?? null,
+        student_name: body.name,
+        student_guardian_name: body.guardian_name ?? null,
+        student_guardian_email: body.guardian_email ?? null,
+        student_guardian_phone: body.guardian_phone ?? null,
       });
 
     if (relationshipError) {

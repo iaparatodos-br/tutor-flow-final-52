@@ -298,31 +298,76 @@ export default function Alunos() {
     }
   };
 
-  const handleDeleteStudent = async (studentId: string, studentName: string) => {
-    if (!confirm(`Tem certeza que deseja EXCLUIR PERMANENTEMENTE o aluno ${studentName}? Esta ação não pode ser desfeita e removerá o aluno de todos os professores.`)) return;
+  const handleSmartDelete = async (student: Student) => {
+    if (!student.relationship_id) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível encontrar o relacionamento do aluno",
+        variant: "destructive",
+      });
+      return;
+    }
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .delete()
-        .eq('id', studentId);
+      // Call the smart delete function to determine the action
+      const { data, error } = await supabase.functions.invoke('smart-delete-student', {
+        body: {
+          student_id: student.id,
+          teacher_id: profile?.id,
+          relationship_id: student.relationship_id
+        }
+      });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Smart delete error:', error);
+        toast({
+          title: "Erro",
+          description: "Erro ao processar a remoção do aluno",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data && !data.success) {
+        toast({
+          title: "Erro",
+          description: data.error || "Erro ao processar a remoção do aluno",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Show success message based on action taken
+      const action = data?.action;
+      const message = data?.message || 
+        (action === 'deleted' ? 'Aluno excluído permanentemente' : 'Aluno desvinculado com sucesso');
 
       toast({
-        title: "Aluno excluído",
-        description: `${studentName} foi excluído permanentemente`,
+        title: action === 'deleted' ? "Aluno Excluído" : "Aluno Desvinculado", 
+        description: message,
       });
       
       loadStudents();
     } catch (error: any) {
-      console.error('Erro ao excluir aluno:', error);
+      console.error('Erro ao remover aluno:', error);
       toast({
-        title: "Erro ao excluir aluno",
+        title: "Erro ao remover aluno",
         description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
     }
+  };
+
+  const handleConfirmSmartDelete = async (student: Student) => {
+    // Check if student might have other teachers by looking at email domain or name patterns
+    const confirmMessage = `Tem certeza que deseja remover o aluno ${student.name}?\n\n` +
+      `• Se este aluno só estuda com você, ele será excluído permanentemente\n` +
+      `• Se este aluno também estuda com outros professores, ele será apenas desvinculado da sua lista\n\n` +
+      `Esta operação é segura e não afetará outros professores.`;
+    
+    if (!confirm(confirmMessage)) return;
+    
+    await handleSmartDelete(student);
   };
 
   return (
@@ -493,15 +538,15 @@ export default function Alunos() {
                           >
                             <Unlink className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => handleDeleteStudent(student.id, student.name)}
-                            title="Excluir aluno permanentemente"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                           <Button
+                             variant="ghost"
+                             size="sm"
+                             className="hover:bg-destructive hover:text-destructive-foreground"
+                             onClick={() => handleConfirmSmartDelete(student)}
+                             title="Remover aluno (inteligente: desvincula ou exclui conforme necessário)"
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
                         </div>
                       </TableCell>
                     </TableRow>

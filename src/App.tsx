@@ -36,6 +36,11 @@ const queryClient = new QueryClient();
 const AppWithProviders = () => {
   const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
   
+  // Check if user is on reset-password page with tokens
+  const isOnResetPasswordPage = window.location.pathname === '/reset-password';
+  const urlParams = new URLSearchParams(window.location.search);
+  const hasResetTokens = !!(urlParams.get('access_token') && urlParams.get('refresh_token'));
+  
   // Aguardar o carregamento completo do auth e profile
   if (loading) {
     return (
@@ -49,7 +54,8 @@ const AppWithProviders = () => {
   }
 
   // If authenticated but needs password change, show force password change
-  if (isAuthenticated && needsPasswordChange) {
+  // EXCEPT when user is on reset-password page with valid tokens
+  if (isAuthenticated && needsPasswordChange && !(isOnResetPasswordPage && hasResetTokens)) {
     return (
       <BrowserRouter>
         <Routes>

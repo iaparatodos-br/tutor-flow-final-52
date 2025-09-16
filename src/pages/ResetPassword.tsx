@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next";
 export default function ResetPassword() {
   const { isAuthenticated, updatePassword } = useAuth();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t } = useTranslation('auth');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   
@@ -22,24 +22,30 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Check if we have the required tokens from the URL
+  // Capture tokens immediately when component mounts, before Supabase processes them
+  const [hasResetTokens] = useState(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return !!(urlParams.get('access_token') && urlParams.get('refresh_token'));
+  });
+
+  // Check if we have the required tokens from the URL (may be processed already)
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
 
   useEffect(() => {
-    // If no tokens, redirect to auth page
-    if (!accessToken || !refreshToken) {
+    // If no tokens were ever present, redirect to auth page
+    if (!hasResetTokens && !accessToken && !refreshToken) {
       toast({
         title: "Link inválido",
-        description: t('auth.messages.resetLinkInvalid'),
+        description: t('messages.resetLinkInvalid'),
         variant: "destructive",
       });
       navigate('/auth');
     }
-  }, [accessToken, refreshToken, navigate, toast, t]);
+  }, [hasResetTokens, accessToken, refreshToken, navigate, toast, t]);
 
-  // If user is already authenticated (but came from reset link), allow password change
-  if (isAuthenticated && !accessToken) {
+  // Allow password change if user has reset tokens (even if authenticated)
+  if (isAuthenticated && !hasResetTokens && !accessToken) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -67,14 +73,14 @@ export default function ResetPassword() {
       toast({
         title: "Erro ao redefinir senha",
         description: error.includes("expired") 
-          ? t('auth.messages.resetLinkExpired')
+          ? t('messages.resetLinkExpired')
           : error,
         variant: "destructive",
       });
     } else {
       toast({
         title: "Senha redefinida!",
-        description: t('auth.messages.resetPasswordSuccess'),
+        description: t('messages.resetPasswordSuccess'),
       });
       
       // Redirect to login page after success
@@ -104,7 +110,7 @@ export default function ResetPassword() {
             TutorFlow
           </h1>
           <p className="text-muted-foreground mt-2">
-            {t('auth.resetPassword')}
+            {t('resetPassword')}
           </p>
         </div>
 
@@ -121,7 +127,7 @@ export default function ResetPassword() {
                 >
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
-                {t('auth.resetPassword')}
+                {t('resetPassword')}
               </CardTitle>
               <CardDescription>
                 Digite sua nova senha. Ela deve ter pelo menos 8 caracteres com maiúscula, minúscula e número.
@@ -129,7 +135,7 @@ export default function ResetPassword() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">{t('auth.fields.newPassword')}</Label>
+                <Label htmlFor="password">{t('fields.newPassword')}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -166,7 +172,7 @@ export default function ResetPassword() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">{t('auth.fields.confirmPassword')}</Label>
+                <Label htmlFor="confirmPassword">{t('fields.confirmPassword')}</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
@@ -208,7 +214,7 @@ export default function ResetPassword() {
                 disabled={loading}
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {t('auth.resetPassword')}
+                {t('resetPassword')}
               </Button>
             </CardContent>
           </form>

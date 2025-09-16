@@ -66,52 +66,68 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    let requestBody;
     let planSlug;
     
     try {
-      // Check if request has a body
+      // Try multiple approaches to get the planSlug
       const contentLength = req.headers.get('content-length');
-      logStep("Request headers", { 
-        contentType: req.headers.get('content-type'),
-        contentLength: contentLength 
+      const contentType = req.headers.get('content-type');
+      const url = new URL(req.url);
+      
+      logStep("Request details", { 
+        method: req.method,
+        contentType,
+        contentLength,
+        hasSearchParams: url.searchParams.toString() !== '',
+        searchParams: url.searchParams.toString()
       });
       
-      if (!contentLength || contentLength === '0') {
-        logStep("ERROR: No content in request body");
-        throw new Error("Request body is required");
+      // First, try to get planSlug from query parameters as fallback
+      const planSlugFromQuery = url.searchParams.get('planSlug');
+      if (planSlugFromQuery) {
+        logStep("Plan slug found in query parameters", { planSlug: planSlugFromQuery });
+        planSlug = planSlugFromQuery;
       }
       
-      // Clone the request to read the body safely
-      const clonedRequest = req.clone();
-      const bodyText = await clonedRequest.text();
-      
-      logStep("Raw request body", { 
-        bodyText: bodyText,
-        bodyLength: bodyText.length 
-      });
-      
-      if (!bodyText || bodyText.trim() === '') {
-        logStep("ERROR: Empty or whitespace-only request body");
-        throw new Error("Request body cannot be empty");
+      // Then try to read from request body if it exists
+      if (contentLength && contentLength !== '0') {
+        try {
+          const bodyText = await req.text();
+          logStep("Raw request body", { 
+            bodyText: bodyText,
+            bodyLength: bodyText.length 
+          });
+          
+          if (bodyText && bodyText.trim() !== '') {
+            const requestBody = JSON.parse(bodyText);
+            logStep("Successfully parsed request body", { requestBody });
+            
+            if (requestBody.planSlug) {
+              planSlug = requestBody.planSlug;
+              logStep("Plan slug found in request body", { planSlug });
+            }
+          }
+        } catch (bodyError) {
+          logStep("Failed to parse request body, using query params if available", { 
+            error: bodyError instanceof Error ? bodyError.message : String(bodyError)
+          });
+          // Continue with planSlug from query params if body parsing fails
+        }
+      } else {
+        logStep("No request body, using query parameters");
       }
-      
-      requestBody = JSON.parse(bodyText);
-      logStep("Successfully parsed request body", { requestBody });
-      
-      planSlug = requestBody.planSlug;
       
     } catch (parseError) {
-      logStep("ERROR: Failed to parse request", { 
+      logStep("ERROR: Failed to process request", { 
         error: parseError instanceof Error ? parseError.message : String(parseError),
         stack: parseError instanceof Error ? parseError.stack : undefined
       });
-      throw new Error(`Invalid request format: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+      throw new Error(`Request processing error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
     if (!planSlug) {
-      logStep("ERROR: No plan slug provided", { body: requestBody });
-      throw new Error("Plan slug is required in request body");
+      logStep("ERROR: No plan slug provided in body or query params");
+      throw new Error("Plan slug is required in request body or as query parameter 'planSlug'");
     }
     
     logStep("Plan slug received", { planSlug });

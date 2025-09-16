@@ -323,20 +323,27 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     let retries = 0;
     const maxRetries = 3;
     
+    console.log(`SubscriptionContext: Iniciando checkout para plano ${planSlug}`);
+    
     while (retries < maxRetries) {
       try {
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Timeout na criação do checkout')), 15000)
         );
 
+        // Prepare the request body explicitly
+        const requestBody = { planSlug };
+        console.log(`SubscriptionContext: Tentativa ${retries + 1}, enviando body:`, requestBody);
+
         const invokePromise = supabase.functions.invoke('create-subscription-checkout', {
-          body: { planSlug },
+          body: JSON.stringify(requestBody),
           headers: {
             'Content-Type': 'application/json',
           }
         });
 
         const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
+        console.log(`SubscriptionContext: Resposta recebida:`, { data, error });
         
         if (error) {
           if (retries < maxRetries - 1) {

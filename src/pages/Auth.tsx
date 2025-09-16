@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 export default function Auth() {
   const { isAuthenticated, signIn, signUp, resetPassword } = useAuth();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t } = useTranslation('auth');
   
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "" });
@@ -130,14 +130,14 @@ export default function Auth() {
       toast({
         title: "Erro ao enviar email",
         description: error.includes("not found") 
-          ? t('auth.messages.emailNotFound')
+          ? t('messages.emailNotFound')
           : error,
         variant: "destructive",
       });
     } else {
       toast({
-        title: t('auth.messages.resetEmailSent'),
-        description: t('auth.messages.resetEmailSentDescription'),
+        title: t('messages.resetEmailSent'),
+        description: t('messages.resetEmailSentDescription'),
       });
       
       // Switch back to login form after success
@@ -234,7 +234,7 @@ export default function Auth() {
                           className="px-0 font-normal text-sm text-muted-foreground hover:text-primary"
                           onClick={() => setShowResetForm(true)}
                         >
-                          {t('auth.forgotPassword')}
+                          {t('forgotPassword')}
                         </Button>
                       </div>
                     </div>
@@ -263,19 +263,19 @@ export default function Auth() {
                       >
                         <ArrowLeft className="h-4 w-4" />
                       </Button>
-                      {t('auth.forgotPassword')}
+                      {t('forgotPassword')}
                     </CardTitle>
                     <CardDescription>
-                      {t('auth.resetPasswordDescription')}
+                      {t('resetPasswordDescription')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="reset-email">{t('auth.fields.email')}</Label>
+                      <Label htmlFor="reset-email">{t('fields.email')}</Label>
                       <Input
                         id="reset-email"
                         type="email"
-                        placeholder={t('auth.placeholders.email')}
+                        placeholder={t('placeholders.email')}
                         value={resetForm.email}
                         onChange={(e) => {
                           setResetForm(prev => ({ ...prev, email: e.target.value }));
@@ -286,7 +286,7 @@ export default function Auth() {
                       />
                       {resetErrors.email && (
                         <p className="text-sm text-destructive">
-                          {t('auth.validation.invalidEmail')}
+                          {t('validation.invalidEmail')}
                         </p>
                       )}
                     </div>
@@ -298,7 +298,7 @@ export default function Auth() {
                       disabled={loading}
                     >
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {t('auth.sendResetEmail')}
+                      {t('sendResetEmail')}
                     </Button>
                   </CardFooter>
                 </form>

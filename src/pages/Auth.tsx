@@ -6,20 +6,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, Loader2, Eye, EyeOff } from "lucide-react";
+import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 export default function Auth() {
-  const { isAuthenticated, signIn, signUp } = useAuth();
+  const { isAuthenticated, signIn, signUp, resetPassword } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
   const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "" });
+  const [resetForm, setResetForm] = useState({ email: "" });
   const [loading, setLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState({ email: false, password: false });
   const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false });
+  const [resetErrors, setResetErrors] = useState({ email: false });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [currentTab, setCurrentTab] = useState("login");
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -103,6 +108,44 @@ export default function Auth() {
     setLoading(false);
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Validation
+    const errors = {
+      email: !resetForm.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(resetForm.email)
+    };
+    setResetErrors(errors);
+    
+    if (Object.values(errors).some(Boolean)) {
+      return;
+    }
+    
+    setLoading(true);
+    
+    const { error } = await resetPassword(resetForm.email);
+    
+    if (error) {
+      toast({
+        title: "Erro ao enviar email",
+        description: error.includes("not found") 
+          ? t('auth.messages.emailNotFound')
+          : error,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: t('auth.messages.resetEmailSent'),
+        description: t('auth.messages.resetEmailSentDescription'),
+      });
+      
+      // Switch back to login tab after success
+      setCurrentTab("login");
+    }
+    
+    setLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-subtle flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -122,10 +165,11 @@ export default function Auth() {
         </div>
 
         <Card className="shadow-card">
-          <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Registrar</TabsTrigger>
+              <TabsTrigger value="reset">Recuperar</TabsTrigger>
             </TabsList>
             
             {/* Login Tab */}
@@ -277,6 +321,61 @@ export default function Auth() {
                   >
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Criar Conta
+                  </Button>
+                </CardFooter>
+              </form>
+            </TabsContent>
+
+            {/* Reset Password Tab */}
+            <TabsContent value="reset">
+              <form onSubmit={handleResetPassword}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCurrentTab("login")}
+                      className="p-1 h-auto"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </Button>
+                    {t('auth.forgotPassword')}
+                  </CardTitle>
+                  <CardDescription>
+                    Digite seu email para receber um link de recuperação de senha
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">{t('auth.fields.email')}</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder={t('auth.placeholders.email')}
+                      value={resetForm.email}
+                      onChange={(e) => {
+                        setResetForm(prev => ({ ...prev, email: e.target.value }));
+                        setResetErrors(prev => ({ ...prev, email: false }));
+                      }}
+                      className={resetErrors.email ? "border-destructive" : ""}
+                      required
+                    />
+                    {resetErrors.email && (
+                      <p className="text-sm text-destructive">
+                        Digite um email válido
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button 
+                    type="submit" 
+                    className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
+                    disabled={loading}
+                  >
+                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {t('auth.sendResetEmail')}
                   </Button>
                 </CardFooter>
               </form>

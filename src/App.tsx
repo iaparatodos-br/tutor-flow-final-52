@@ -12,6 +12,7 @@ import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import ResetPassword from "./pages/ResetPassword";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import ProfileSetupPage from "./pages/ProfileSetupPage";
 import Dashboard from "./pages/Dashboard";
@@ -81,6 +82,7 @@ const AppWithProviders = () => {
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/alunos" element={<Alunos />} />
             <Route path="/alunos/:id" element={<PerfilAluno />} />

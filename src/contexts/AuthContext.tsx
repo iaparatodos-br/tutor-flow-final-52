@@ -30,6 +30,8 @@ interface AuthContextType {
   signUp: (email: string, password: string, name: string, role?: 'professor' | 'aluno') => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  updatePassword: (password: string) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -364,6 +366,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const resetPassword = async (email: string) => {
+    try {
+      const redirectUrl = `${window.location.origin}/reset-password`;
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectUrl
+      });
+      
+      return { error: error?.message };
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return { error: 'Erro inesperado ao solicitar redefinição de senha' };
+    }
+  };
+
+  const updatePassword = async (password: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: password
+      });
+      
+      return { error: error?.message };
+    } catch (error) {
+      console.error('Update password error:', error);
+      return { error: 'Erro inesperado ao atualizar senha' };
+    }
+  };
+
   const value: AuthContextType = {
     user,
     session,
@@ -376,7 +406,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     needsAddressInfo: !!profile && !profile.address_complete,
     signUp,
     signIn,
-    signOut
+    signOut,
+    resetPassword,
+    updatePassword
   };
 
   return (

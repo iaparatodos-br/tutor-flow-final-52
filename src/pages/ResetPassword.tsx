@@ -25,16 +25,37 @@ export default function ResetPassword() {
   // Capture tokens immediately when component mounts, before Supabase processes them
   const [hasResetTokens] = useState(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    return !!(urlParams.get('access_token') && urlParams.get('refresh_token'));
+    const accessToken = urlParams.get('access_token');
+    const refreshToken = urlParams.get('refresh_token');
+    const type = urlParams.get('type');
+    
+    console.log('ResetPassword: Tokens found:', { 
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      type,
+      fullUrl: window.location.href 
+    });
+    
+    return !!(accessToken && refreshToken && type === 'recovery');
   });
 
   // Check if we have the required tokens from the URL (may be processed already)
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
+  const type = searchParams.get('type');
 
   useEffect(() => {
-    // If no tokens were ever present, redirect to auth page
-    if (!hasResetTokens && !accessToken && !refreshToken) {
+    console.log('ResetPassword: useEffect check:', {
+      hasResetTokens,
+      accessToken: !!accessToken,
+      refreshToken: !!refreshToken,
+      type,
+      isAuthenticated
+    });
+    
+    // If no tokens were ever present and no type=recovery, redirect to auth page
+    if (!hasResetTokens && !accessToken && !refreshToken && type !== 'recovery') {
+      console.log('ResetPassword: No valid reset tokens, redirecting to auth');
       toast({
         title: "Link inválido",
         description: t('messages.resetLinkInvalid'),
@@ -42,10 +63,11 @@ export default function ResetPassword() {
       });
       navigate('/auth');
     }
-  }, [hasResetTokens, accessToken, refreshToken, navigate, toast, t]);
+  }, [hasResetTokens, accessToken, refreshToken, type, navigate, toast, t]);
 
-  // Allow password change if user has reset tokens (even if authenticated)
-  if (isAuthenticated && !hasResetTokens && !accessToken) {
+  // Allow password change if user has reset tokens OR is coming from recovery email
+  if (isAuthenticated && !hasResetTokens && !accessToken && type !== 'recovery') {
+    console.log('ResetPassword: Authenticated without reset context, redirecting to dashboard');
     return <Navigate to="/dashboard" replace />;
   }
 

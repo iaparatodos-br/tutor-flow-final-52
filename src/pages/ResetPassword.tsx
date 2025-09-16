@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function ResetPassword() {
   const { isAuthenticated, updatePassword } = useAuth();
@@ -21,41 +22,33 @@ export default function ResetPassword() {
   const [errors, setErrors] = useState({ password: false, confirmPassword: false });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [validTokens, setValidTokens] = useState<{access: string, refresh: string} | null>(null);
 
-  // Capture tokens immediately when component mounts, before Supabase processes them
-  const [hasResetTokens] = useState(() => {
+  // Capture and validate tokens immediately when component mounts
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const accessToken = urlParams.get('access_token');
     const refreshToken = urlParams.get('refresh_token');
     const type = urlParams.get('type');
     
-    console.log('ResetPassword: Tokens found:', { 
+    console.log('ResetPassword: Checking tokens:', { 
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
       type,
       fullUrl: window.location.href 
     });
     
-    return !!(accessToken && refreshToken && type === 'recovery');
-  });
-
-  // Check if we have the required tokens from the URL (may be processed already)
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
-  const type = searchParams.get('type');
-
-  useEffect(() => {
-    console.log('ResetPassword: useEffect check:', {
-      hasResetTokens,
-      accessToken: !!accessToken,
-      refreshToken: !!refreshToken,
-      type,
-      isAuthenticated
-    });
-    
-    // If no tokens were ever present and no type=recovery, redirect to auth page
-    if (!hasResetTokens && !accessToken && !refreshToken && type !== 'recovery') {
-      console.log('ResetPassword: No valid reset tokens, redirecting to auth');
+    // Check if we have valid recovery tokens
+    if (accessToken && refreshToken && type === 'recovery') {
+      console.log('ResetPassword: Valid recovery tokens found, preventing auto-login');
+      setValidTokens({ access: accessToken, refresh: refreshToken });
+      
+      // Clear the URL to prevent Supabase from auto-processing
+      const newUrl = window.location.pathname;
+      window.history.replaceState(null, '', newUrl);
+    } else if (!accessToken && !refreshToken && !type) {
+      // No tokens at all, redirect to auth
+      console.log('ResetPassword: No tokens found, redirecting to auth');
       toast({
         title: "Link inválido",
         description: t('messages.resetLinkInvalid'),
@@ -63,10 +56,10 @@ export default function ResetPassword() {
       });
       navigate('/auth');
     }
-  }, [hasResetTokens, accessToken, refreshToken, type, navigate, toast, t]);
+  }, [navigate, toast, t]);
 
-  // Allow password change if user has reset tokens OR is coming from recovery email
-  if (isAuthenticated && !hasResetTokens && !accessToken && type !== 'recovery') {
+  // Don't redirect authenticated users if they have valid reset tokens
+  if (isAuthenticated && !validTokens) {
     console.log('ResetPassword: Authenticated without reset context, redirecting to dashboard');
     return <Navigate to="/dashboard" replace />;
   }
@@ -89,29 +82,69 @@ export default function ResetPassword() {
     
     setLoading(true);
     
-    const { error } = await updatePassword(form.password);
-    
-    if (error) {
+    try {
+      // If we have tokens, use them to update password directly
+      if (validTokens) {
+        console.log('ResetPassword: Using tokens to update password');
+        
+        // Set session with the tokens first
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: validTokens.access,
+          refresh_token: validTokens.refresh
+        });
+        
+        if (sessionError) {
+          throw new Error(sessionError.message);
+        }
+        
+        // Now update the password
+        const { error: updateError } = await supabase.auth.updateUser({
+          password: form.password
+        });
+        
+        if (updateError) {
+          throw new Error(updateError.message);
+        }
+        
+        toast({
+          title: "Senha redefinida!",
+          description: t('messages.resetPasswordSuccess'),
+        });
+        
+        // Clear tokens and redirect
+        setValidTokens(null);
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 2000);
+      } else {
+        // Fallback to the existing method
+        const { error } = await updatePassword(form.password);
+        
+        if (error) {
+          throw new Error(error);
+        }
+        
+        toast({
+          title: "Senha redefinida!",
+          description: t('messages.resetPasswordSuccess'),
+        });
+        
+        setTimeout(() => {
+          navigate('/auth');
+        }, 2000);
+      }
+    } catch (error: any) {
+      console.error('ResetPassword: Error updating password:', error);
       toast({
         title: "Erro ao redefinir senha",
-        description: error.includes("expired") 
+        description: error.message?.includes("expired") 
           ? t('messages.resetLinkExpired')
-          : error,
+          : error.message || 'Erro inesperado',
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Senha redefinida!",
-        description: t('messages.resetPasswordSuccess'),
-      });
-      
-      // Redirect to login page after success
-      setTimeout(() => {
-        navigate('/auth');
-      }, 2000);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const handleBackToLogin = () => {

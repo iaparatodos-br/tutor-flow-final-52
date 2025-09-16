@@ -336,10 +336,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         console.log(`SubscriptionContext: Tentativa ${retries + 1}, enviando body:`, requestBody);
 
         const invokePromise = supabase.functions.invoke('create-subscription-checkout', {
-          body: JSON.stringify(requestBody),
-          headers: {
-            'Content-Type': 'application/json',
-          }
+          body: requestBody
         });
 
         const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;

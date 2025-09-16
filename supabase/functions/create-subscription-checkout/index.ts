@@ -69,48 +69,31 @@ serve(async (req) => {
     let planSlug;
     
     try {
-      // Try multiple approaches to get the planSlug
-      const contentLength = req.headers.get('content-length');
-      const contentType = req.headers.get('content-type');
       const url = new URL(req.url);
       
       logStep("Request details", { 
         method: req.method,
-        contentType,
-        contentLength,
-        hasSearchParams: url.searchParams.toString() !== '',
-        searchParams: url.searchParams.toString()
+        contentType: req.headers.get('content-type'),
+        hasSearchParams: url.searchParams.toString() !== ''
       });
       
-      // First, try to get planSlug from query parameters as fallback
-      const planSlugFromQuery = url.searchParams.get('planSlug');
-      if (planSlugFromQuery) {
-        logStep("Plan slug found in query parameters", { planSlug: planSlugFromQuery });
-        planSlug = planSlugFromQuery;
+      // Try to get planSlug from query parameters first
+      planSlug = url.searchParams.get('planSlug');
+      if (planSlug) {
+        logStep("Plan slug found in query parameters", { planSlug });
       }
       
-      // Then try to read from request body (always attempt, regardless of Content-Length header)
+      // Then try to read from request body
       try {
-        const bodyText = await req.text();
-        logStep("Raw request body", { 
-          bodyText: bodyText,
-          bodyLength: bodyText.length,
-          contentLength: contentLength
-        });
+        const requestBody = await req.json();
+        logStep("Successfully parsed request body", { requestBody });
         
-        if (bodyText && bodyText.trim() !== '') {
-          const requestBody = JSON.parse(bodyText);
-          logStep("Successfully parsed request body", { requestBody });
-          
-          if (requestBody.planSlug) {
-            planSlug = requestBody.planSlug;
-            logStep("Plan slug found in request body", { planSlug });
-          }
-        } else {
-          logStep("Request body is empty or whitespace only");
+        if (requestBody?.planSlug) {
+          planSlug = requestBody.planSlug;
+          logStep("Plan slug found in request body", { planSlug });
         }
       } catch (bodyError) {
-        logStep("Failed to parse request body, using query params if available", { 
+        logStep("Failed to parse request body as JSON", { 
           error: bodyError instanceof Error ? bodyError.message : String(bodyError)
         });
         // Continue with planSlug from query params if body parsing fails

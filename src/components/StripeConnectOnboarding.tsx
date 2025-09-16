@@ -40,17 +40,32 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   const loadConnectAccount = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('stripe_connect_accounts')
-        .select('*')
-        .eq('teacher_id', profile.id)
-        .single();
+      if (!paymentAccountId) {
+        // Se não há paymentAccountId, busca pela conta padrão do professor
+        const { data, error } = await supabase
+          .from('stripe_connect_accounts')
+          .select('*')
+          .eq('teacher_id', profile.id)
+          .single();
 
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+        setConnectAccount(data);
+      } else {
+        // Se há paymentAccountId, busca pela conta específica
+        const { data, error } = await supabase
+          .from('stripe_connect_accounts')
+          .select('*')
+          .eq('payment_account_id', paymentAccountId)
+          .eq('teacher_id', profile.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+        setConnectAccount(data);
       }
-
-      setConnectAccount(data);
     } catch (error) {
       console.error('Error loading connect account:', error);
     } finally {
@@ -59,12 +74,22 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   };
 
   const createConnectAccount = async () => {
+    if (!paymentAccountId) {
+      toast({
+        title: "Erro",
+        description: "ID da conta de pagamento é necessário",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setCreating(true);
     try {
       const { data, error } = await supabase.functions.invoke('create-connect-account', {
         body: { 
           country: 'BR', 
-          account_type: 'express' 
+          account_type: 'express',
+          payment_account_id: paymentAccountId
         }
       });
 
@@ -94,9 +119,20 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   };
 
   const startOnboarding = async () => {
+    if (!paymentAccountId) {
+      toast({
+        title: "Erro",
+        description: "ID da conta de pagamento é necessário",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('create-connect-onboarding-link');
+      const { data, error } = await supabase.functions.invoke('create-connect-onboarding-link', {
+        body: { payment_account_id: paymentAccountId }
+      });
 
       if (error) throw error;
 
@@ -120,9 +156,20 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   };
 
   const syncWithStripe = async () => {
+    if (!paymentAccountId) {
+      toast({
+        title: "Erro",
+        description: "ID da conta de pagamento é necessário",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('refresh-stripe-connect-account');
+      const { data, error } = await supabase.functions.invoke('refresh-stripe-connect-account', {
+        body: { payment_account_id: paymentAccountId }
+      });
 
       if (error) throw error;
 

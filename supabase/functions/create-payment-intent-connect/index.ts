@@ -52,10 +52,39 @@ serve(async (req) => {
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
 
-    // Get teacher's connect account
+    // Get student's preferred payment account
+    const { data: studentProfile, error: studentError } = await supabaseClient
+      .from("profiles")
+      .select("preferred_payment_account_id")
+      .eq("id", invoice.student_id)
+      .single();
+
+    let selectedPaymentAccountId = studentProfile?.preferred_payment_account_id;
+
+    // If no preferred account is set, get teacher's default payment account
+    if (!selectedPaymentAccountId) {
+      const { data: defaultPaymentAccount, error: defaultAccountError } = await supabaseClient
+        .from("payment_accounts")
+        .select("id")
+        .eq("teacher_id", invoice.teacher_id)
+        .eq("is_default", true)
+        .eq("account_type", "stripe")
+        .single();
+
+      if (defaultAccountError || !defaultPaymentAccount) {
+        throw new Error("No default Stripe payment account found for teacher");
+      }
+      
+      selectedPaymentAccountId = defaultPaymentAccount.id;
+    }
+
+    logStep("Selected payment account", { selectedPaymentAccountId });
+
+    // Get teacher's connect account for the selected payment account
     const { data: connectAccount, error: accountError } = await supabaseClient
       .from("stripe_connect_accounts")
       .select("*")
+      .eq("payment_account_id", selectedPaymentAccountId)
       .eq("teacher_id", invoice.teacher_id)
       .single();
 
@@ -160,7 +189,8 @@ serve(async (req) => {
         .from("invoices")
         .update({
           stripe_payment_intent_id: session.payment_intent as string,
-          gateway_provider: "stripe"
+          gateway_provider: "stripe",
+          payment_account_used_id: selectedPaymentAccountId,
         })
         .eq("id", invoice_id);
 
@@ -219,6 +249,7 @@ serve(async (req) => {
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
+          payment_account_used_id: selectedPaymentAccountId,
         };
         if (confirmedPI.next_action?.pix_display_qr_code) {
           const pixDetails: any = confirmedPI.next_action.pix_display_qr_code;
@@ -288,7 +319,8 @@ serve(async (req) => {
         // Update invoice with payment intent details
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
-          gateway_provider: "stripe"
+          gateway_provider: "stripe",
+          payment_account_used_id: selectedPaymentAccountId,
         };
 
         // Handle boleto confirmation and retrieve boleto details

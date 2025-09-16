@@ -534,6 +534,7 @@ export type Database = {
           invoice_type: string | null
           linha_digitavel: string | null
           original_amount: number | null
+          payment_account_used_id: string | null
           payment_due_date: string | null
           payment_method: string | null
           pix_copy_paste: string | null
@@ -561,6 +562,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           original_amount?: number | null
+          payment_account_used_id?: string | null
           payment_due_date?: string | null
           payment_method?: string | null
           pix_copy_paste?: string | null
@@ -588,6 +590,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           original_amount?: number | null
+          payment_account_used_id?: string | null
           payment_due_date?: string | null
           payment_method?: string | null
           pix_copy_paste?: string | null
@@ -602,6 +605,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_payment_account_used_id_fkey"
+            columns: ["payment_account_used_id"]
+            isOneToOne: false
+            referencedRelation: "payment_accounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_student_id_fkey"
             columns: ["student_id"]
@@ -953,6 +963,7 @@ export type Database = {
           created_at: string
           details_submitted: boolean | null
           id: string
+          payment_account_id: string | null
           payouts_enabled: boolean | null
           requirements: Json | null
           stripe_account_id: string
@@ -966,6 +977,7 @@ export type Database = {
           created_at?: string
           details_submitted?: boolean | null
           id?: string
+          payment_account_id?: string | null
           payouts_enabled?: boolean | null
           requirements?: Json | null
           stripe_account_id: string
@@ -979,13 +991,22 @@ export type Database = {
           created_at?: string
           details_submitted?: boolean | null
           id?: string
+          payment_account_id?: string | null
           payouts_enabled?: boolean | null
           requirements?: Json | null
           stripe_account_id?: string
           teacher_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "stripe_connect_accounts_payment_account_id_fkey"
+            columns: ["payment_account_id"]
+            isOneToOne: false
+            referencedRelation: "payment_accounts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscription_plans: {
         Row: {

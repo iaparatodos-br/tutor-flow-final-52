@@ -291,6 +291,13 @@ export function PaymentAccountsManager() {
                   {getAccountDetails(account)}
                 </div>
 
+                {/* Stripe Connect Onboarding para contas stripe */}
+                {account.account_type === 'stripe' && (
+                  <div className="pt-2">
+                    <StripeConnectOnboarding paymentAccountId={account.id} />
+                  </div>
+                )}
+
                 <div className="flex justify-between items-center pt-2">
                   <div className="flex gap-1">
                     <Button

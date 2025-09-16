@@ -49,10 +49,19 @@ serve(async (req) => {
       auth: { persistSession: false }
     });
 
-    // Get user's Stripe Connect account
+    const { payment_account_id } = await req.json();
+    
+    if (!payment_account_id) {
+      throw new Error("payment_account_id is required");
+    }
+    
+    logStep("Request data", { payment_account_id });
+
+    // Get user's Stripe Connect account for the specific payment account
     const { data: connectAccount, error: accountError } = await supabaseService
       .from('stripe_connect_accounts')
       .select('*')
+      .eq('payment_account_id', payment_account_id)
       .eq('teacher_id', user.id)
       .single();
 
@@ -88,6 +97,7 @@ serve(async (req) => {
         capabilities: stripeAccount.capabilities,
         updated_at: new Date().toISOString()
       })
+      .eq('payment_account_id', payment_account_id)
       .eq('teacher_id', user.id);
 
     if (updateError) {
@@ -106,8 +116,7 @@ serve(async (req) => {
         stripe_onboarding_status: stripeAccount.details_submitted ? 'completed' : 'pending',
         updated_at: new Date().toISOString()
       })
-      .eq('teacher_id', user.id)
-      .eq('account_type', 'stripe_connect');
+      .eq('id', payment_account_id);
 
     logStep("Payment accounts updated", { error: paymentAccountError });
 

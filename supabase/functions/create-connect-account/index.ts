@@ -40,15 +40,39 @@ serve(async (req) => {
     if (!user?.email) throw new Error("User not authenticated or email not available");
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    const { country = "BR", account_type = "express" } = await req.json();
+    const { country = "BR", account_type = "express", payment_account_id } = await req.json();
+    
+    if (!payment_account_id) {
+      throw new Error("payment_account_id is required");
+    }
+    
+    logStep("Request data", { country, account_type, payment_account_id });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // Check if user already has a connect account
+    // Verify payment account belongs to the authenticated user
+    const { data: paymentAccount, error: paymentAccountError } = await supabaseClient
+      .from("payment_accounts")
+      .select("*")
+      .eq("id", payment_account_id)
+      .eq("teacher_id", user.id)
+      .single();
+
+    if (paymentAccountError || !paymentAccount) {
+      throw new Error("Payment account not found or doesn't belong to you");
+    }
+
+    if (paymentAccount.account_type !== "stripe") {
+      throw new Error("Payment account must be of type 'stripe' to create a Stripe Connect account");
+    }
+
+    logStep("Payment account verified", { paymentAccountId: payment_account_id, accountName: paymentAccount.account_name });
+
+    // Check if this payment account already has a connect account
     const { data: existingAccount } = await supabaseClient
       .from("stripe_connect_accounts")
       .select("*")
-      .eq("teacher_id", user.id)
+      .eq("payment_account_id", payment_account_id)
       .single();
 
     if (existingAccount) {
@@ -85,6 +109,7 @@ serve(async (req) => {
       .from("stripe_connect_accounts")
       .insert({
         teacher_id: user.id,
+        payment_account_id: payment_account_id,
         stripe_account_id: account.id,
         account_type: account_type,
         charges_enabled: account.charges_enabled,

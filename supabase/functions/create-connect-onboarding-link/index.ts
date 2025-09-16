@@ -40,10 +40,19 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
-    // Get user's connect account
+    const { payment_account_id } = await req.json();
+    
+    if (!payment_account_id) {
+      throw new Error("payment_account_id is required");
+    }
+    
+    logStep("Request data", { payment_account_id });
+
+    // Get user's connect account for this specific payment account
     const { data: connectAccount, error: accountError } = await supabaseClient
       .from("stripe_connect_accounts")
       .select("*")
+      .eq("payment_account_id", payment_account_id)
       .eq("teacher_id", user.id)
       .single();
 

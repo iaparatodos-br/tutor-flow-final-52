@@ -67,29 +67,51 @@ serve(async (req) => {
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     let requestBody;
+    let planSlug;
+    
     try {
-      const bodyText = await req.text();
-      logStep("Raw request body", { bodyText });
+      // Check if request has a body
+      const contentLength = req.headers.get('content-length');
+      logStep("Request headers", { 
+        contentType: req.headers.get('content-type'),
+        contentLength: contentLength 
+      });
       
-      if (!bodyText) {
-        logStep("ERROR: Empty request body");
-        throw new Error("Request body is empty");
+      if (!contentLength || contentLength === '0') {
+        logStep("ERROR: No content in request body");
+        throw new Error("Request body is required");
+      }
+      
+      // Clone the request to read the body safely
+      const clonedRequest = req.clone();
+      const bodyText = await clonedRequest.text();
+      
+      logStep("Raw request body", { 
+        bodyText: bodyText,
+        bodyLength: bodyText.length 
+      });
+      
+      if (!bodyText || bodyText.trim() === '') {
+        logStep("ERROR: Empty or whitespace-only request body");
+        throw new Error("Request body cannot be empty");
       }
       
       requestBody = JSON.parse(bodyText);
-      logStep("Parsed request body", { requestBody });
+      logStep("Successfully parsed request body", { requestBody });
+      
+      planSlug = requestBody.planSlug;
+      
     } catch (parseError) {
-      logStep("ERROR: Invalid JSON in request body", { 
+      logStep("ERROR: Failed to parse request", { 
         error: parseError instanceof Error ? parseError.message : String(parseError),
-        rawBody: await req.text()
+        stack: parseError instanceof Error ? parseError.stack : undefined
       });
-      throw new Error("Invalid JSON in request body");
+      throw new Error(`Invalid request format: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
-    const { planSlug } = requestBody;
     if (!planSlug) {
       logStep("ERROR: No plan slug provided", { body: requestBody });
-      throw new Error("Plan slug is required");
+      throw new Error("Plan slug is required in request body");
     }
     
     logStep("Plan slug received", { planSlug });

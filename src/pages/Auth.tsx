@@ -234,7 +234,7 @@ export default function Auth() {
                           className="px-0 font-normal text-sm text-muted-foreground hover:text-primary"
                           onClick={() => setShowResetForm(true)}
                         >
-                          Esqueceu sua senha?
+                          {t('auth.forgotPassword')}
                         </Button>
                       </div>
                     </div>
@@ -266,7 +266,7 @@ export default function Auth() {
                       {t('auth.forgotPassword')}
                     </CardTitle>
                     <CardDescription>
-                      Digite seu email para receber um link de recuperação de senha
+                      {t('auth.resetPasswordDescription')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -286,7 +286,7 @@ export default function Auth() {
                       />
                       {resetErrors.email && (
                         <p className="text-sm text-destructive">
-                          Digite um email válido
+                          {t('auth.validation.invalidEmail')}
                         </p>
                       )}
                     </div>

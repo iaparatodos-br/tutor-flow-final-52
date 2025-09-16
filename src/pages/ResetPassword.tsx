@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
+import { useState } from "react";
+import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,57 +10,25 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function ResetPassword() {
-  const { isAuthenticated, updatePassword } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation('auth');
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   
   const [form, setForm] = useState({ password: "", confirmPassword: "" });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({ password: false, confirmPassword: false });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [validTokens, setValidTokens] = useState<{access: string, refresh: string} | null>(null);
 
-  // Capture and validate tokens immediately when component mounts
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessToken = urlParams.get('access_token');
-    const refreshToken = urlParams.get('refresh_token');
-    const type = urlParams.get('type');
-    
-    console.log('ResetPassword: Checking tokens:', { 
-      hasAccessToken: !!accessToken,
-      hasRefreshToken: !!refreshToken,
-      type,
-      fullUrl: window.location.href 
-    });
-    
-    // Check if we have valid recovery tokens
-    if (accessToken && refreshToken && type === 'recovery') {
-      console.log('ResetPassword: Valid recovery tokens found, preventing auto-login');
-      setValidTokens({ access: accessToken, refresh: refreshToken });
-      
-      // Clear the URL to prevent Supabase from auto-processing
-      const newUrl = window.location.pathname;
-      window.history.replaceState(null, '', newUrl);
-    } else if (!accessToken && !refreshToken && !type) {
-      // No tokens at all, redirect to auth
-      console.log('ResetPassword: No tokens found, redirecting to auth');
-      toast({
-        title: "Link inválido",
-        description: t('messages.resetLinkInvalid'),
-        variant: "destructive",
-      });
-      navigate('/auth');
-    }
-  }, [navigate, toast, t]);
-
-  // Don't redirect authenticated users if they have valid reset tokens
-  if (isAuthenticated && !validTokens) {
-    console.log('ResetPassword: Authenticated without reset context, redirecting to dashboard');
-    return <Navigate to="/dashboard" replace />;
+  // Check if we have recovery tokens in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const accessToken = urlParams.get('access_token');
+  const refreshToken = urlParams.get('refresh_token');
+  const type = urlParams.get('type');
+  
+  // If no recovery tokens, redirect to auth
+  if (!accessToken || !refreshToken || type !== 'recovery') {
+    return <Navigate to="/auth" replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -83,56 +50,38 @@ export default function ResetPassword() {
     setLoading(true);
     
     try {
-      // If we have tokens, use them to update password directly
-      if (validTokens) {
-        console.log('ResetPassword: Using tokens to update password');
-        
-        // Set session with the tokens first
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: validTokens.access,
-          refresh_token: validTokens.refresh
-        });
-        
-        if (sessionError) {
-          throw new Error(sessionError.message);
-        }
-        
-        // Now update the password
-        const { error: updateError } = await supabase.auth.updateUser({
-          password: form.password
-        });
-        
-        if (updateError) {
-          throw new Error(updateError.message);
-        }
-        
-        toast({
-          title: "Senha redefinida!",
-          description: t('messages.resetPasswordSuccess'),
-        });
-        
-        // Clear tokens and redirect
-        setValidTokens(null);
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 2000);
-      } else {
-        // Fallback to the existing method
-        const { error } = await updatePassword(form.password);
-        
-        if (error) {
-          throw new Error(error);
-        }
-        
-        toast({
-          title: "Senha redefinida!",
-          description: t('messages.resetPasswordSuccess'),
-        });
-        
-        setTimeout(() => {
-          navigate('/auth');
-        }, 2000);
+      console.log('ResetPassword: Setting session and updating password');
+      
+      // Set session with recovery tokens first
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      });
+      
+      if (sessionError) {
+        throw new Error(sessionError.message);
       }
+      
+      // Now update the password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: form.password
+      });
+      
+      if (updateError) {
+        throw new Error(updateError.message);
+      }
+      
+      toast({
+        title: "Senha redefinida!",
+        description: t('messages.resetPasswordSuccess'),
+      });
+      
+      // Clear URL params and redirect to dashboard
+      window.history.replaceState(null, '', '/reset-password');
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 2000);
+      
     } catch (error: any) {
       console.error('ResetPassword: Error updating password:', error);
       toast({

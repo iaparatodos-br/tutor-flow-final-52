@@ -89,32 +89,31 @@ serve(async (req) => {
         planSlug = planSlugFromQuery;
       }
       
-      // Then try to read from request body if it exists
-      if (contentLength && contentLength !== '0') {
-        try {
-          const bodyText = await req.text();
-          logStep("Raw request body", { 
-            bodyText: bodyText,
-            bodyLength: bodyText.length 
-          });
+      // Then try to read from request body (always attempt, regardless of Content-Length header)
+      try {
+        const bodyText = await req.text();
+        logStep("Raw request body", { 
+          bodyText: bodyText,
+          bodyLength: bodyText.length,
+          contentLength: contentLength
+        });
+        
+        if (bodyText && bodyText.trim() !== '') {
+          const requestBody = JSON.parse(bodyText);
+          logStep("Successfully parsed request body", { requestBody });
           
-          if (bodyText && bodyText.trim() !== '') {
-            const requestBody = JSON.parse(bodyText);
-            logStep("Successfully parsed request body", { requestBody });
-            
-            if (requestBody.planSlug) {
-              planSlug = requestBody.planSlug;
-              logStep("Plan slug found in request body", { planSlug });
-            }
+          if (requestBody.planSlug) {
+            planSlug = requestBody.planSlug;
+            logStep("Plan slug found in request body", { planSlug });
           }
-        } catch (bodyError) {
-          logStep("Failed to parse request body, using query params if available", { 
-            error: bodyError instanceof Error ? bodyError.message : String(bodyError)
-          });
-          // Continue with planSlug from query params if body parsing fails
+        } else {
+          logStep("Request body is empty or whitespace only");
         }
-      } else {
-        logStep("No request body, using query parameters");
+      } catch (bodyError) {
+        logStep("Failed to parse request body, using query params if available", { 
+          error: bodyError instanceof Error ? bodyError.message : String(bodyError)
+        });
+        // Continue with planSlug from query params if body parsing fails
       }
       
     } catch (parseError) {

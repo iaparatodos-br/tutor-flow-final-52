@@ -29,10 +29,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if email exists in auth.users
-    const { data: authUser, error: authError } = await supabaseClient.auth.admin.getUserByEmail(email)
+    // Check if email exists in auth.users using listUsers
+    const { data: users, error: authError } = await supabaseClient.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000 // Should be enough for most cases, could paginate if needed
+    })
 
-    if (authError && authError.message !== 'User not found') {
+    if (authError) {
       console.error('Error checking auth users:', authError)
       return new Response(
         JSON.stringify({ error: 'Error checking email availability' }),
@@ -43,7 +46,9 @@ Deno.serve(async (req) => {
       )
     }
 
-    const available = !authUser.user
+    // Check if any user has this email
+    const emailExists = users.users?.some(user => user.email === email) || false
+    const available = !emailExists
 
     return new Response(
       JSON.stringify({ available }),

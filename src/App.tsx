@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
@@ -61,24 +61,20 @@ const AppWithProviders = () => {
   // If authenticated but needs password change (but allow reset-password with tokens)
   if (isAuthenticated && needsPasswordChange && !isResetPasswordWithTokens()) {
     return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="*" element={<ForcePasswordChange />} />
-        </Routes>
-      </BrowserRouter>
+      <Routes>
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="*" element={<ForcePasswordChange />} />
+      </Routes>
     );
   }
 
   // If authenticated but needs address info (but allow reset-password with tokens)
   if (isAuthenticated && needsAddressInfo && !isResetPasswordWithTokens()) {
     return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="*" element={<ProfileSetupPage />} />
-        </Routes>
-      </BrowserRouter>
+      <Routes>
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="*" element={<ProfileSetupPage />} />
+      </Routes>
     );
   }
   
@@ -90,8 +86,7 @@ const AppWithProviders = () => {
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <BrowserRouter>
-          <Routes>
+              <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -114,7 +109,6 @@ const AppWithProviders = () => {
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-            </BrowserRouter>
             </TooltipProvider>
           </TeacherProvider>
         </SidebarProvider>

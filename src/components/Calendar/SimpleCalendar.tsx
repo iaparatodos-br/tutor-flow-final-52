@@ -15,6 +15,7 @@ interface SimpleCalendarProps {
   onConfirmClass?: (classId: string) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
+  onManageReport?: (classData: CalendarClass) => void;
   loading?: boolean;
   onScheduleClass?: () => void;
   onVisibleRangeChange?: (start: Date, end: Date) => void;
@@ -32,7 +33,8 @@ export function SimpleCalendar({
   isProfessor, 
   onConfirmClass, 
   onCancelClass, 
-  onCompleteClass, 
+  onCompleteClass,
+  onManageReport,
   loading,
   onScheduleClass,
   onVisibleRangeChange
@@ -396,8 +398,8 @@ export function SimpleCalendar({
                       <ClassReportView
                         classId={(selectedEvent as CalendarClass).id}
                         onEditReport={() => {
-                          if (onCompleteClass) {
-                            onCompleteClass(selectedEvent as CalendarClass);
+                          if (onManageReport) {
+                            onManageReport(selectedEvent as CalendarClass);
                           }
                         }}
                         showEditButton={isProfessor}
@@ -406,56 +408,69 @@ export function SimpleCalendar({
                   )}
 
                   {/* Action Buttons */}
-                  {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && (
-                    <div className="flex justify-end gap-3 pt-4 border-t">
-                      {/* Cancel Button */}
-                      {onCancelClass && (
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            const classEvent = selectedEvent as CalendarClass;
-                            onCancelClass(
-                              classEvent.id, 
-                              classEvent.title, 
-                              classEvent.start.toISOString()
-                            );
-                            setSelectedEvent(null);
-                          }}
-                        >
-                          <X className="h-4 w-4 mr-2" />
-                          Cancelar Aula
-                        </Button>
-                      )}
-                      
-                      {/* Complete Class Button - Only for professors */}
-                      {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
-                        <Button
-                          onClick={() => {
-                            onCompleteClass(selectedEvent as CalendarClass);
-                            setSelectedEvent(null);
-                          }}
-                          className="bg-gradient-primary"
-                        >
-                          <FileText className="h-4 w-4 mr-2" />
-                          Concluir Aula
-                        </Button>
-                      )}
-                      
-                      {/* Confirm Button - Only for professors */}
-                      {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
-                        <Button
-                          onClick={() => {
-                            onConfirmClass((selectedEvent as CalendarClass).id);
-                            setSelectedEvent(null);
-                          }}
-                          className="bg-gradient-success"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Confirmar Aula
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex justify-end gap-3 pt-4 border-t">
+                    {/* Cancel Button - Only for pending/confirmed classes */}
+                    {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          const classEvent = selectedEvent as CalendarClass;
+                          onCancelClass(
+                            classEvent.id, 
+                            classEvent.title, 
+                            classEvent.start.toISOString()
+                          );
+                          setSelectedEvent(null);
+                        }}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancelar Aula
+                      </Button>
+                    )}
+                    
+                    {/* Manage Report Button - Available for all class statuses for professors */}
+                    {isProfessor && onManageReport && (
+                      <Button
+                        onClick={() => {
+                          onManageReport(selectedEvent as CalendarClass);
+                          setSelectedEvent(null);
+                        }}
+                        variant="outline"
+                        className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        {(selectedEvent as CalendarClass).status === 'concluida' ? 'Editar Relatório' : 'Criar Relatório'}
+                      </Button>
+                    )}
+                    
+                    {/* Complete Class Button - Only for confirmed classes without report */}
+                    {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
+                      <Button
+                        onClick={() => {
+                          onCompleteClass(selectedEvent as CalendarClass);
+                          setSelectedEvent(null);
+                        }}
+                        className="bg-gradient-primary"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Marcar como Concluída
+                      </Button>
+                    )}
+                    
+                    {/* Confirm Button - Only for pending classes */}
+                    {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
+                      <Button
+                        onClick={() => {
+                          onConfirmClass((selectedEvent as CalendarClass).id);
+                          setSelectedEvent(null);
+                        }}
+                        className="bg-gradient-success"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Confirmar Aula
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

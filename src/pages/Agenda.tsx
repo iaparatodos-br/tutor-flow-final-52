@@ -890,6 +890,14 @@ export default function Agenda() {
     }
   };
 
+  // Nova função para gerenciar relatórios
+  const handleManageReport = (classData: CalendarClass) => {
+    setReportModal({
+      isOpen: true,
+      classData: classData
+    });
+  };
+
   // Handle recurring class actions
   const handleRecurringClassEdit = (classData: CalendarClass) => {
     // Check if this is a virtual recurring instance
@@ -1060,6 +1068,7 @@ export default function Agenda() {
           onConfirmClass={handleConfirmClass}
           onCancelClass={handleRecurringClassCancel}
           onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)}
+          onManageReport={handleManageReport}
           isProfessor={isProfessor}
           loading={loading}
           onScheduleClass={() => setIsDialogOpen(true)}

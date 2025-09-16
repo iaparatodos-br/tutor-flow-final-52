@@ -390,18 +390,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // Limpar cache e tracker ao fazer logout
-    if (user?.id) {
-      profileCache.delete(user.id);
-      loadingTracker.delete(user.id);
+    try {
+      // Limpar cache e tracker ao fazer logout
+      if (user?.id) {
+        profileCache.delete(user.id);
+        loadingTracker.delete(user.id);
+      }
+      
+      // Limpar timeout
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+      }
+      
+      // Tentar fazer logout no servidor
+      await supabase.auth.signOut();
+    } catch (error) {
+      // Se falhar (ex: sessão já expirada), apenas log o erro
+      // O estado local será limpo pelo onAuthStateChange
+      console.warn('AuthProvider: Erro no logout do servidor (provavelmente sessão já expirada):', error);
     }
     
-    // Limpar timeout
-    if (loadingTimeoutRef.current) {
-      clearTimeout(loadingTimeoutRef.current);
-    }
-    
-    await supabase.auth.signOut();
+    // Forçar limpeza do estado local independente do resultado do servidor
+    setUser(null);
+    setSession(null);
+    setProfile(null);
   };
 
   const resetPassword = async (email: string) => {

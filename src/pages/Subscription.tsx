@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { CalendarDays, CreditCard, Settings, RefreshCw, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -26,6 +27,7 @@ interface Invoice {
 
 export default function Subscription() {
   const { currentPlan, subscription, refreshSubscription, cancelSubscription, loading } = useSubscription();
+  const { signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -40,7 +42,15 @@ export default function Subscription() {
     try {
       const { data, error } = await supabase.functions.invoke('list-subscription-invoices');
       
-      if (error) throw error;
+      if (error) {
+        // Check if it's an authentication error
+        if (error.status === 401 || (error.context && error.context.code === 'INVALID_SESSION')) {
+          console.warn('Session expired, redirecting to login');
+          await signOut();
+          return;
+        }
+        throw error;
+      }
       
       setInvoices(data?.invoices || []);
     } catch (error) {

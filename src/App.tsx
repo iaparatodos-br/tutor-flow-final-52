@@ -48,22 +48,34 @@ const AppWithProviders = () => {
     );
   }
 
-  // If authenticated but needs password change, show force password change
-  if (isAuthenticated && needsPasswordChange) {
+  // Check if we're on reset-password page with recovery tokens
+  const isResetPasswordWithTokens = () => {
+    const currentPath = window.location.pathname;
+    const urlParams = new URLSearchParams(window.location.search);
+    return currentPath === '/reset-password' && 
+           urlParams.get('access_token') && 
+           urlParams.get('refresh_token') && 
+           urlParams.get('type') === 'recovery';
+  };
+
+  // If authenticated but needs password change (but allow reset-password with tokens)
+  if (isAuthenticated && needsPasswordChange && !isResetPasswordWithTokens()) {
     return (
       <BrowserRouter>
         <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<ForcePasswordChange />} />
         </Routes>
       </BrowserRouter>
     );
   }
 
-  // If authenticated but needs address info, show profile setup
-  if (isAuthenticated && needsAddressInfo) {
+  // If authenticated but needs address info (but allow reset-password with tokens)
+  if (isAuthenticated && needsAddressInfo && !isResetPasswordWithTokens()) {
     return (
       <BrowserRouter>
         <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<ProfileSetupPage />} />
         </Routes>
       </BrowserRouter>

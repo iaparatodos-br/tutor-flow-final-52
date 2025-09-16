@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -248,12 +249,10 @@ export function StudentFormModal({
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="student-phone">Telefone</Label>
-                  <Input
+                  <PhoneInput
                     id="student-phone"
-                    type="tel"
-                    placeholder="(11) 99999-9999"
                     value={formData.phone}
-                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    onChange={handlePhoneChange}
                     className={validationErrors.phone ? "border-destructive" : ""}
                   />
                 </div>
@@ -313,12 +312,10 @@ export function StudentFormModal({
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="guardian-phone">Telefone</Label>
-                      <Input
+                      <PhoneInput
                         id="guardian-phone"
-                        type="tel"
-                        placeholder="(11) 99999-9999"
                         value={formData.guardian_phone}
-                        onChange={(e) => setFormData(prev => ({ ...prev, guardian_phone: e.target.value }))}
+                        onChange={(value) => setFormData(prev => ({ ...prev, guardian_phone: value }))}
                       />
                     </div>
                   </div>

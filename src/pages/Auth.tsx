@@ -25,6 +25,7 @@ export default function Auth() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [currentTab, setCurrentTab] = useState("login");
+  const [showResetForm, setShowResetForm] = useState(false);
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
@@ -139,8 +140,8 @@ export default function Auth() {
         description: t('auth.messages.resetEmailSentDescription'),
       });
       
-      // Switch back to login tab after success
-      setCurrentTab("login");
+      // Switch back to login form after success
+      setShowResetForm(false);
     }
     
     setLoading(false);
@@ -166,79 +167,142 @@ export default function Auth() {
 
         <Card className="shadow-card">
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="login">Entrar</TabsTrigger>
               <TabsTrigger value="signup">Registrar</TabsTrigger>
-              <TabsTrigger value="reset">Recuperar</TabsTrigger>
             </TabsList>
             
             {/* Login Tab */}
             <TabsContent value="login">
-              <form onSubmit={handleLogin}>
-                <CardHeader>
-                  <CardTitle>Fazer Login</CardTitle>
-                  <CardDescription>
-                    Entre com sua conta para acessar a plataforma
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">E-mail</Label>
-                    <Input
-                      id="login-email"
-                      type="email"
-                      placeholder="seu@email.com"
-                      value={loginForm.email}
-                      onChange={(e) => {
-                        setLoginForm(prev => ({ ...prev, email: e.target.value }));
-                        setLoginErrors(prev => ({ ...prev, email: false }));
-                      }}
-                      className={loginErrors.email ? "border-destructive" : ""}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Senha</Label>
-                    <div className="relative">
+              {!showResetForm ? (
+                <form onSubmit={handleLogin}>
+                  <CardHeader>
+                    <CardTitle>Fazer Login</CardTitle>
+                    <CardDescription>
+                      Entre com sua conta para acessar a plataforma
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="login-email">E-mail</Label>
                       <Input
-                        id="login-password"
-                        type={showLoginPassword ? "text" : "password"}
-                        placeholder="Sua senha"
-                        value={loginForm.password}
+                        id="login-email"
+                        type="email"
+                        placeholder="seu@email.com"
+                        value={loginForm.email}
                         onChange={(e) => {
-                          setLoginForm(prev => ({ ...prev, password: e.target.value }));
-                          setLoginErrors(prev => ({ ...prev, password: false }));
+                          setLoginForm(prev => ({ ...prev, email: e.target.value }));
+                          setLoginErrors(prev => ({ ...prev, email: false }));
                         }}
-                        className={loginErrors.password ? "border-destructive pr-10" : "pr-10"}
+                        className={loginErrors.email ? "border-destructive" : ""}
                         required
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="login-password">Senha</Label>
+                      <div className="relative">
+                        <Input
+                          id="login-password"
+                          type={showLoginPassword ? "text" : "password"}
+                          placeholder="Sua senha"
+                          value={loginForm.password}
+                          onChange={(e) => {
+                            setLoginForm(prev => ({ ...prev, password: e.target.value }));
+                            setLoginErrors(prev => ({ ...prev, password: false }));
+                          }}
+                          className={loginErrors.password ? "border-destructive pr-10" : "pr-10"}
+                          required
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        >
+                          {showLoginPassword ? (
+                            <EyeOff className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <Eye className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </Button>
+                      </div>
+                      <div className="text-right">
+                        <Button
+                          type="button"
+                          variant="link"
+                          className="px-0 font-normal text-sm text-muted-foreground hover:text-primary"
+                          onClick={() => setShowResetForm(true)}
+                        >
+                          Esqueceu sua senha?
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
+                      disabled={loading}
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Entrar
+                    </Button>
+                  </CardFooter>
+                </form>
+              ) : (
+                <form onSubmit={handleResetPassword}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        onClick={() => setShowResetForm(false)}
+                        className="p-1 h-auto"
                       >
-                        {showLoginPassword ? (
-                          <EyeOff className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                        )}
+                        <ArrowLeft className="h-4 w-4" />
                       </Button>
+                      {t('auth.forgotPassword')}
+                    </CardTitle>
+                    <CardDescription>
+                      Digite seu email para receber um link de recuperação de senha
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reset-email">{t('auth.fields.email')}</Label>
+                      <Input
+                        id="reset-email"
+                        type="email"
+                        placeholder={t('auth.placeholders.email')}
+                        value={resetForm.email}
+                        onChange={(e) => {
+                          setResetForm(prev => ({ ...prev, email: e.target.value }));
+                          setResetErrors(prev => ({ ...prev, email: false }));
+                        }}
+                        className={resetErrors.email ? "border-destructive" : ""}
+                        required
+                      />
+                      {resetErrors.email && (
+                        <p className="text-sm text-destructive">
+                          Digite um email válido
+                        </p>
+                      )}
                     </div>
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
-                    disabled={loading}
-                  >
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Entrar
-                  </Button>
-                </CardFooter>
-              </form>
+                  </CardContent>
+                  <CardFooter>
+                    <Button 
+                      type="submit" 
+                      className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
+                      disabled={loading}
+                    >
+                      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      {t('auth.sendResetEmail')}
+                    </Button>
+                  </CardFooter>
+                </form>
+              )}
             </TabsContent>
 
             {/* Signup Tab */}
@@ -321,61 +385,6 @@ export default function Auth() {
                   >
                     {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Criar Conta
-                  </Button>
-                </CardFooter>
-              </form>
-            </TabsContent>
-
-            {/* Reset Password Tab */}
-            <TabsContent value="reset">
-              <form onSubmit={handleResetPassword}>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setCurrentTab("login")}
-                      className="p-1 h-auto"
-                    >
-                      <ArrowLeft className="h-4 w-4" />
-                    </Button>
-                    {t('auth.forgotPassword')}
-                  </CardTitle>
-                  <CardDescription>
-                    Digite seu email para receber um link de recuperação de senha
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="reset-email">{t('auth.fields.email')}</Label>
-                    <Input
-                      id="reset-email"
-                      type="email"
-                      placeholder={t('auth.placeholders.email')}
-                      value={resetForm.email}
-                      onChange={(e) => {
-                        setResetForm(prev => ({ ...prev, email: e.target.value }));
-                        setResetErrors(prev => ({ ...prev, email: false }));
-                      }}
-                      className={resetErrors.email ? "border-destructive" : ""}
-                      required
-                    />
-                    {resetErrors.email && (
-                      <p className="text-sm text-destructive">
-                        Digite um email válido
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-                <CardFooter>
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
-                    disabled={loading}
-                  >
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    {t('auth.sendResetEmail')}
                   </Button>
                 </CardFooter>
               </form>

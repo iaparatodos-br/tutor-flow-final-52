@@ -45,9 +45,16 @@ export default function StudentDashboard() {
         .from('profiles')
         .select('id, name, policy_document_url')
         .eq('id', selectedTeacherId)
-        .single();
+        .maybeSingle();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Erro ao buscar perfil do professor:', profileError);
+        throw profileError;
+      }
+
+      if (!teacherProfile) {
+        throw new Error('Professor não encontrado');
+      }
 
       // Load teacher's cancellation policy
       const { data: policy, error: policyError } = await supabase

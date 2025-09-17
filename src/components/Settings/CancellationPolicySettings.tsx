@@ -245,142 +245,187 @@ export function CancellationPolicySettings() {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Política de Cancelamento
-          </CardTitle>
-          <CardDescription>
-            Defina os termos para cancelamentos de suas aulas
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="hours">
-                Prazo Mínimo para Cancelamento (horas)
-              </Label>
-              <div className="mt-4">
-                <Slider
-                  value={hoursBeforeClass}
-                  onValueChange={setHoursBeforeClass}
-                  max={168}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                  <span>1h</span>
-                  <span className="font-medium">
-                    {hoursBeforeClass[0]}h ({Math.round(hoursBeforeClass[0] / 24 * 10) / 10} dias)
-                  </span>
-                  <span>168h (7 dias)</span>
-                </div>
-              </div>
-            </div>
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Header Section */}
+      <div className="text-center space-y-2">
+        <h1 className="text-2xl font-bold flex items-center justify-center gap-2">
+          <Clock className="h-6 w-6" />
+          Política do Professor
+        </h1>
+        <p className="text-muted-foreground">
+          Configure as regras e políticas para suas aulas
+        </p>
+      </div>
 
-            <div>
-              <Label htmlFor="percentage">
-                Percentual de Cobrança por Cancelamento Tardio
-              </Label>
-              <div className="mt-4">
-                <Slider
-                  value={chargePercentage}
-                  onValueChange={setChargePercentage}
-                  max={100}
-                  min={0}
-                  step={5}
-                  className="w-full"
-                />
-                <div className="flex justify-between text-sm text-muted-foreground mt-2">
-                  <span>0%</span>
-                  <span className="font-medium">{chargePercentage[0]}%</span>
-                  <span>100%</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="amnesty">Permitir Anistia</Label>
-                <p className="text-sm text-muted-foreground">
-                  Permite que você cancele cobranças individualmente
-                </p>
-              </div>
-              <Switch
-                id="amnesty"
-                checked={allowAmnesty}
-                onCheckedChange={setAllowAmnesty}
-              />
-            </div>
-          </div>
-
-          <Button onClick={savePolicy} disabled={saving} className="w-full">
-            {saving ? "Salvando..." : policy ? "Atualizar Política" : "Criar Política"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5" />
-            Preview da Política
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Alert>
-            <AlertDescription>
-              <strong>Sua política atual:</strong><br />
-              • Alunos devem cancelar com pelo menos <strong>{hoursBeforeClass[0]} horas</strong> de antecedência<br />
-              • Cancelamentos tardios serão cobrados em <strong>{chargePercentage[0]}%</strong> do valor da aula<br />
-              • Anistia {allowAmnesty ? "permitida" : "não permitida"} pelo professor<br />
-              • Cancelamentos pelo professor são sempre gratuitos para o aluno
-            </AlertDescription>
-          </Alert>
-        </CardContent>
-      </Card>
-
-      {policy && (
-        <Card>
+      {/* Main Settings Grid */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Policy Configuration */}
+        <Card className="shadow-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              Informações da Política
+              <Clock className="h-5 w-5" />
+              Regras de Cancelamento
             </CardTitle>
+            <CardDescription>
+              Defina os termos para cancelamentos de suas aulas
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm">
-              <strong>Criada em:</strong> {new Date(policy.created_at).toLocaleDateString()}
-            </p>
-            <p className="text-sm">
-              <strong>Última atualização:</strong> {new Date(policy.updated_at).toLocaleDateString()}
-            </p>
-            <p className="text-sm">
-              <strong>Status:</strong> {policy.is_active ? "Ativa" : "Inativa"}
-            </p>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="hours" className="text-sm font-medium">
+                  Prazo Mínimo para Cancelamento
+                </Label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Tempo mínimo que o aluno deve cancelar antes da aula
+                </p>
+                <div className="px-2">
+                  <Slider
+                    value={hoursBeforeClass}
+                    onValueChange={setHoursBeforeClass}
+                    max={168}
+                    min={1}
+                    step={1}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                    <span>1h</span>
+                    <span className="font-semibold text-foreground">
+                      {hoursBeforeClass[0]}h ({Math.round(hoursBeforeClass[0] / 24 * 10) / 10} dias)
+                    </span>
+                    <span>168h</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="percentage" className="text-sm font-medium">
+                  Cobrança por Cancelamento Tardio
+                </Label>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Percentual a ser cobrado se cancelar após o prazo
+                </p>
+                <div className="px-2">
+                  <Slider
+                    value={chargePercentage}
+                    onValueChange={setChargePercentage}
+                    max={100}
+                    min={0}
+                    step={5}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground mt-2">
+                    <span>0%</span>
+                    <span className="font-semibold text-foreground">{chargePercentage[0]}%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div>
+                  <Label htmlFor="amnesty" className="text-sm font-medium">Permitir Anistia</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Permite cancelar cobranças caso a caso
+                  </p>
+                </div>
+                <Switch
+                  id="amnesty"
+                  checked={allowAmnesty}
+                  onCheckedChange={setAllowAmnesty}
+                />
+              </div>
+            </div>
+
+            <Button onClick={savePolicy} disabled={saving} className="w-full" size="lg">
+              {saving ? "Salvando..." : policy ? "Atualizar Política" : "Criar Política"}
+            </Button>
           </CardContent>
         </Card>
-      )}
 
-      <Card>
+        {/* Preview da Política */}
+        <Card className="shadow-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5" />
+              Resumo da Política
+            </CardTitle>
+            <CardDescription>
+              Como seus alunos verão suas regras
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Alert className="border-primary/20 bg-primary/5">
+              <AlertDescription className="text-sm">
+                <div className="space-y-2">
+                  <p className="font-semibold text-foreground">Política de Cancelamento:</p>
+                  <ul className="space-y-1 ml-4">
+                    <li className="flex items-start gap-2">
+                      <span className="text-primary">•</span>
+                      <span>Prazo: <strong>{hoursBeforeClass[0]} horas</strong> antes da aula</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-warning">•</span>
+                      <span>Cobrança tardio: <strong>{chargePercentage[0]}%</strong> do valor</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-success">•</span>
+                      <span>Anistia {allowAmnesty ? "permitida" : "não permitida"}</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-success">•</span>
+                      <span>Cancelamento pelo professor sempre gratuito</span>
+                    </li>
+                  </ul>
+                </div>
+              </AlertDescription>
+            </Alert>
+
+            {policy && (
+              <div className="mt-4 pt-4 border-t space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Criada:</strong> {new Date(policy.created_at).toLocaleDateString('pt-BR')}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  <strong>Atualizada:</strong> {new Date(policy.updated_at).toLocaleDateString('pt-BR')}
+                </p>
+                <p className="text-xs">
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    policy.is_active 
+                      ? 'bg-success/10 text-success' 
+                      : 'bg-muted text-muted-foreground'
+                  }`}>
+                    {policy.is_active ? "✓ Política Ativa" : "○ Política Inativa"}
+                  </span>
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Document Upload */}
+      <Card className="shadow-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Documento da Política Completa
+            Documento Completo da Política
           </CardTitle>
           <CardDescription>
-            Faça upload de um PDF com sua política completa de aulas
+            Faça upload de um PDF com sua política detalhada de aulas (opcional)
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {policyDocumentUrl ? (
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <span className="text-sm">policy.pdf</span>
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-success/5 border-success/20">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-success" />
+                </div>
+                <div>
+                  <p className="font-medium">policy.pdf</p>
+                  <p className="text-sm text-muted-foreground">Documento disponível para alunos</p>
+                </div>
               </div>
               <Button
                 variant="destructive"
@@ -393,33 +438,36 @@ export function CancellationPolicySettings() {
               </Button>
             </div>
           ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(uploadPolicyDocument)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="policyDocument"
-                  render={({ field: { value, onChange, ...field } }) => (
-                    <FormItem>
-                      <FormLabel>Arquivo PDF (máx. 5MB)</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type="file"
-                          accept=".pdf"
-                          onChange={(e) => onChange(e.target.files)}
-                          disabled={uploadingDocument}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" disabled={uploadingDocument} className="w-full">
-                  <Upload className="h-4 w-4 mr-2" />
-                  {uploadingDocument ? "Enviando..." : "Enviar Documento"}
-                </Button>
-              </form>
-            </Form>
+            <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(uploadPolicyDocument)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="policyDocument"
+                    render={({ field: { value, onChange, ...field } }) => (
+                      <FormItem>
+                        <FormLabel>Selecionar arquivo PDF (máx. 5MB)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="file"
+                            accept=".pdf"
+                            onChange={(e) => onChange(e.target.files)}
+                            disabled={uploadingDocument}
+                            className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={uploadingDocument} className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    {uploadingDocument ? "Enviando..." : "Enviar Documento"}
+                  </Button>
+                </form>
+              </Form>
+            </div>
           )}
         </CardContent>
       </Card>

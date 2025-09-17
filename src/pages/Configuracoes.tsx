@@ -7,6 +7,7 @@ import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
 import { Settings, User, Bell, Clock, Palette } from "lucide-react";
+import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { useTranslation } from "react-i18next";
 
 export default function Configuracoes() {
@@ -37,7 +38,7 @@ export default function Configuracoes() {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               {t('tabs.profile')}
@@ -45,6 +46,10 @@ export default function Configuracoes() {
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
               {t('tabs.preferences')}
+            </TabsTrigger>
+            <TabsTrigger value="billing" className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Cobrança
             </TabsTrigger>
             <TabsTrigger value="cancellation" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -67,6 +72,10 @@ export default function Configuracoes() {
 
             <TabsContent value="preferences" className="space-y-6">
               <PreferencesSettings />
+            </TabsContent>
+
+            <TabsContent value="billing" className="space-y-6">
+              <BillingSettings />
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-6">

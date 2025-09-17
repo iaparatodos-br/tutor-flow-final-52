@@ -14,15 +14,17 @@ import { ExpenseList } from "@/components/ExpenseList";
 import { PaymentOptionsCard } from "@/components/PaymentOptionsCard";
 import { ArchivedDataViewer } from "@/components/ArchivedDataViewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
 
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle } from "lucide-react";
 
 interface InvoiceWithStudent {
   id: string;
   amount: number;
   due_date: string;
-  status: 'pendente' | 'paga' | 'vencida' | 'cancelada';
+  status: 'open' | 'paid' | 'overdue' | 'void' | 'pendente' | 'paga' | 'vencida' | 'cancelada';
   description: string | null;
   invoice_type?: string;
   class_id?: string;
@@ -155,12 +157,41 @@ export default function Financeiro() {
     setPaymentDialogOpen(true);
   };
 
+  const handleMarkAsPaid = async (invoiceId: string) => {
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .update({ status: 'paid' })
+        .eq('id', invoiceId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Fatura marcada como paga",
+        description: "A fatura foi marcada como paga com sucesso.",
+      });
+
+      loadInvoices();
+    } catch (error) {
+      console.error('Erro ao marcar fatura como paga:', error);
+      toast({
+        title: "Erro ao marcar fatura como paga",
+        description: "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
       pendente: { label: "Pendente", variant: "secondary" as const },
+      open: { label: "Em Aberto", variant: "secondary" as const },
       paga: { label: "Paga", variant: "default" as const },
+      paid: { label: "Paga", variant: "default" as const },
       vencida: { label: "Vencida", variant: "destructive" as const },
-      cancelada: { label: "Cancelada", variant: "outline" as const }
+      overdue: { label: "Vencida", variant: "destructive" as const },
+      cancelada: { label: "Cancelada", variant: "outline" as const },
+      void: { label: "Cancelada", variant: "outline" as const }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
@@ -183,11 +214,11 @@ export default function Financeiro() {
   };
 
   const totalPendente = invoices
-    .filter(invoice => invoice.status === 'pendente')
+    .filter(invoice => ['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status))
     .reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
   const totalPago = invoices
-    .filter(invoice => invoice.status === 'paga')
+    .filter(invoice => ['paga', 'paid'].includes(invoice.status))
     .reduce((sum, invoice) => sum + Number(invoice.amount), 0);
 
   // Calculate net profit (only for professors)
@@ -364,12 +395,48 @@ export default function Financeiro() {
                                 {invoice.invoice_type === 'cancellation' && 
                                  invoice.class?.charge_applied && 
                                  !invoice.class?.amnesty_granted &&
-                                 invoice.status === 'pendente' && (
+                                 ['pendente', 'open'].includes(invoice.status) && (
                                   <AmnestyButton
                                     classId={invoice.class_id!}
                                     studentName={invoice.student.name}
                                     onAmnestyGranted={loadInvoices}
                                   />
+                                )}
+                                
+                                {/* Mark as Paid button for unpaid invoices */}
+                                {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" className="h-8 w-8 p-0">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                            <CheckCircle className="mr-2 h-4 w-4" />
+                                            Marcar como Paga
+                                          </DropdownMenuItem>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Confirmar Pagamento</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Tem certeza que deseja marcar esta fatura como paga manualmente? 
+                                              Esta ação registrará o pagamento como recebido fora da plataforma.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleMarkAsPaid(invoice.id)}>
+                                              Confirmar
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 )}
                               </div>
                             </TableCell>

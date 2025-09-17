@@ -7,10 +7,6 @@ import { GraduationCap, Users, Calendar, DollarSign, ArrowRight } from "lucide-r
 const Index = () => {
   const { loading, isAuthenticated } = useAuth();
 
-  // VERIFICAÇÃO CRUCIAL:
-  // Previne o redirecionamento para /dashboard se a URL indicar um fluxo de recuperação.
-  const isPasswordRecoveryFlow = window.location.hash.includes('type=recovery');
-
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-subtle">
@@ -22,8 +18,7 @@ const Index = () => {
     );
   }
 
-  // Apenas redireciona se autenticado E NÃO estiver em recuperação de senha.
-  if (isAuthenticated && !isPasswordRecoveryFlow) {
+  if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;
   }
 

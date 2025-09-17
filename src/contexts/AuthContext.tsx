@@ -226,17 +226,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Configurar listener de mudanças de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // **A MUDANÇA ARQUITETURAL CHAVE ESTÁ AQUI:**
-      // Se o evento é de recuperação de senha, o AuthProvider não deve fazer nada.
-      // Isso previne o carregamento do perfil e a race condition.
-      // O listener em App.tsx cuidará da navegação para /reset-password.
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('AuthProvider: Password recovery detected, skipping auth processing');
-        return;
-      }
-      
       console.log('AuthProvider: Estado de autenticação mudou', { event, hasSession: !!session });
       
+      // Handle password recovery flow - MUST be first to prevent auto-login
+      if (event === 'PASSWORD_RECOVERY') {
+        console.log('AuthProvider: Password recovery detected, handling special flow');
+        
+        // Get the recovery tokens from URL before they get cleared
+        const url = window.location.href;
+        let accessToken = null;
+        let refreshToken = null;
+        let type = null;
+        
+        // Check both search params and hash fragments
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        
+        accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+        refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+        type = searchParams.get('type') || hashParams.get('type');
+        
+        console.log('AuthProvider: Recovery tokens found', { 
+          hasAccessToken: !!accessToken, 
+          hasRefreshToken: !!refreshToken, 
+          type 
+        });
+        
+        // Force logout to prevent auto-login and redirect with tokens
+        if (accessToken && refreshToken && type === 'recovery') {
+          console.log('AuthProvider: Forcing logout and redirecting to reset page');
+          
+          // Clear the session immediately to prevent auto-login
+          await supabase.auth.signOut();
+          
+          // Redirect to reset password page with tokens in URL params (not hash)
+          const resetUrl = `/reset-password?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}&type=recovery`;
+          window.location.href = resetUrl;
+          return; // Exit early to prevent further processing
+        }
+      }
       
       // Limpar timeout anterior
       if (loadingTimeoutRef.current) {

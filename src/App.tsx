@@ -2,10 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { useEffect } from 'react';
-import { supabase } from "./integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
@@ -37,32 +35,9 @@ const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
   const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
-  const navigate = useNavigate();
   
-  // Orquestrador de navegação para recuperação de senha
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        // A biblioteca Supabase já criou a sessão.
-        // A única tarefa da nossa aplicação é garantir que o usuário esteja na página correta.
-        navigate('/reset-password');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  // Função CORRIGIDA e centralizada para detectar o fluxo de recuperação de senha via HASH.
-  const isPasswordRecoveryFlow = () => {
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    return hashParams.get('type') === 'recovery';
-  };
-  
-  // Aguardar o carregamento, mas permitir a passagem imediata se for recuperação de senha
-  // para evitar um piscar da tela de loading.
-  if (loading && !isPasswordRecoveryFlow()) {
+  // Aguardar o carregamento completo do auth e profile
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-subtle">
         <div className="text-center">
@@ -73,8 +48,18 @@ const AppWithProviders = () => {
     );
   }
 
-  // Guarda de Rota: Forçar troca de senha, mas IGNORAR se estiver no fluxo de recuperação.
-  if (isAuthenticated && needsPasswordChange && !isPasswordRecoveryFlow()) {
+  // Check if we're on reset-password page with recovery tokens
+  const isResetPasswordWithTokens = () => {
+    const currentPath = window.location.pathname;
+    const urlParams = new URLSearchParams(window.location.search);
+    return currentPath === '/reset-password' && 
+           urlParams.get('access_token') && 
+           urlParams.get('refresh_token') && 
+           urlParams.get('type') === 'recovery';
+  };
+
+  // If authenticated but needs password change (but allow reset-password with tokens)
+  if (isAuthenticated && needsPasswordChange && !isResetPasswordWithTokens()) {
     return (
       <Routes>
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -83,8 +68,8 @@ const AppWithProviders = () => {
     );
   }
 
-  // Guarda de Rota: Forçar preenchimento de endereço, mas IGNORAR se estiver no fluxo de recuperação.
-  if (isAuthenticated && needsAddressInfo && !isPasswordRecoveryFlow()) {
+  // If authenticated but needs address info (but allow reset-password with tokens)
+  if (isAuthenticated && needsAddressInfo && !isResetPasswordWithTokens()) {
     return (
       <Routes>
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -102,27 +87,28 @@ const AppWithProviders = () => {
               <Toaster />
               <Sonner />
               <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/auth" element={<Auth />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/alunos" element={<Alunos />} />
-                <Route path="/alunos/:id" element={<PerfilAluno />} />
-                <Route path="/agenda" element={<Agenda />} />
-                <Route path="/aulas" element={<Agenda />} />
-                <Route path="/financeiro" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
-                <Route path="/faturas" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
-                <Route path="/materiais" element={<Materiais />} />
-                <Route path="/meus-materiais" element={<MeusMateriais />} />
-                <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
-                <Route path="/servicos" element={<Servicos />} />
-                <Route path="/configuracoes" element={<Configuracoes />} />
-                <Route path="/politicas-cancelamento" element={<Configuracoes />} />
-                <Route path="/historico" element={<Historico />} />
-                <Route path="/planos" element={<Planos />} />
-                <Route path="/subscription" element={<Subscription />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/alunos" element={<Alunos />} />
+            <Route path="/alunos/:id" element={<PerfilAluno />} />
+            <Route path="/agenda" element={<Agenda />} />
+            <Route path="/aulas" element={<Agenda />} />
+            <Route path="/financeiro" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
+            <Route path="/faturas" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
+            <Route path="/materiais" element={<Materiais />} />
+            <Route path="/meus-materiais" element={<MeusMateriais />} />
+            <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
+            <Route path="/servicos" element={<Servicos />} />
+            <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/politicas-cancelamento" element={<Configuracoes />} />
+            <Route path="/historico" element={<Historico />} />
+            <Route path="/planos" element={<Planos />} />
+            <Route path="/subscription" element={<Subscription />} />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
             </TooltipProvider>
           </TeacherProvider>
         </SidebarProvider>
@@ -139,11 +125,9 @@ const App = () => (
     disableTransitionOnChange
   >
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <AppWithProviders />
-        </AuthProvider>
-      </BrowserRouter>
+      <AuthProvider>
+        <AppWithProviders />
+      </AuthProvider>
     </QueryClientProvider>
   </ThemeProvider>
 );

@@ -28,6 +28,7 @@ import Configuracoes from "./pages/Configuracoes";
 import Planos from "./pages/Planos";
 import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
+import StudentDashboard from "./pages/StudentDashboard";
 import Faturas from "./pages/Faturas";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
@@ -107,6 +108,7 @@ const AppWithProviders = () => {
             <Route path="/historico" element={<Historico />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription" element={<Subscription />} />
+            <Route path="/portal-do-aluno" element={<StudentDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

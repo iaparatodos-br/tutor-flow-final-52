@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Clock, Shield } from "lucide-react";
+import { AlertCircle, Clock, Shield, Upload, FileText, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 
 interface CancellationPolicy {
   id: string;
@@ -20,22 +25,59 @@ interface CancellationPolicy {
   updated_at: string;
 }
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ACCEPTED_FILE_TYPES = ['application/pdf'];
+
+const policyDocumentSchema = z.object({
+  policyDocument: z
+    .instanceof(FileList)
+    .optional()
+    .refine((files) => !files || files.length === 0 || files[0]?.size <= MAX_FILE_SIZE, 
+      'Tamanho máximo do arquivo é 5MB.')
+    .refine((files) => !files || files.length === 0 || ACCEPTED_FILE_TYPES.includes(files[0]?.type), 
+      'Apenas arquivos PDF são aceitos.')
+});
+
 export function CancellationPolicySettings() {
   const { profile } = useProfile();
   const { toast } = useToast();
   const [policy, setPolicy] = useState<CancellationPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [policyDocumentUrl, setPolicyDocumentUrl] = useState<string | null>(null);
   
   const [hoursBeforeClass, setHoursBeforeClass] = useState([24]);
   const [chargePercentage, setChargePercentage] = useState([50]);
   const [allowAmnesty, setAllowAmnesty] = useState(true);
 
+  const form = useForm<z.infer<typeof policyDocumentSchema>>({
+    resolver: zodResolver(policyDocumentSchema),
+  });
+
   useEffect(() => {
     if (profile?.id) {
       loadPolicy();
+      loadPolicyDocument();
     }
   }, [profile]);
+
+  const loadPolicyDocument = async () => {
+    if (!profile?.id) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('policy_document_url')
+        .eq('id', profile.id)
+        .single();
+
+      if (error) throw error;
+      setPolicyDocumentUrl(data?.policy_document_url || null);
+    } catch (error) {
+      console.error('Erro ao carregar documento da política:', error);
+    }
+  };
 
   const loadPolicy = async () => {
     try {
@@ -113,6 +155,84 @@ export function CancellationPolicySettings() {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const uploadPolicyDocument = async (data: z.infer<typeof policyDocumentSchema>) => {
+    if (!profile?.id || !data.policyDocument || data.policyDocument.length === 0) return;
+
+    const file = data.policyDocument[0];
+    setUploadingDocument(true);
+
+    try {
+      const filePath = `${profile.id}/policy.pdf`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('policies')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ policy_document_url: filePath })
+        .eq('id', profile.id);
+
+      if (updateError) throw updateError;
+
+      setPolicyDocumentUrl(filePath);
+      form.reset();
+      
+      toast({
+        title: "Sucesso",
+        description: "Documento da política enviado com sucesso.",
+      });
+    } catch (error) {
+      console.error('Erro ao fazer upload:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível enviar o documento.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDocument(false);
+    }
+  };
+
+  const removePolicyDocument = async () => {
+    if (!profile?.id || !policyDocumentUrl) return;
+
+    setUploadingDocument(true);
+
+    try {
+      const { error: deleteError } = await supabase.storage
+        .from('policies')
+        .remove([policyDocumentUrl]);
+
+      if (deleteError) throw deleteError;
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ policy_document_url: null })
+        .eq('id', profile.id);
+
+      if (updateError) throw updateError;
+
+      setPolicyDocumentUrl(null);
+      
+      toast({
+        title: "Sucesso",
+        description: "Documento removido com sucesso.",
+      });
+    } catch (error) {
+      console.error('Erro ao remover documento:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível remover o documento.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingDocument(false);
     }
   };
 
@@ -244,6 +364,65 @@ export function CancellationPolicySettings() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Documento da Política Completa
+          </CardTitle>
+          <CardDescription>
+            Faça upload de um PDF com sua política completa de aulas
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {policyDocumentUrl ? (
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                <span className="text-sm">policy.pdf</span>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={removePolicyDocument}
+                disabled={uploadingDocument}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Remover
+              </Button>
+            </div>
+          ) : (
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(uploadPolicyDocument)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="policyDocument"
+                  render={({ field: { value, onChange, ...field } }) => (
+                    <FormItem>
+                      <FormLabel>Arquivo PDF (máx. 5MB)</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="file"
+                          accept=".pdf"
+                          onChange={(e) => onChange(e.target.files)}
+                          disabled={uploadingDocument}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={uploadingDocument} className="w-full">
+                  <Upload className="h-4 w-4 mr-2" />
+                  {uploadingDocument ? "Enviando..." : "Enviar Documento"}
+                </Button>
+              </form>
+            </Form>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

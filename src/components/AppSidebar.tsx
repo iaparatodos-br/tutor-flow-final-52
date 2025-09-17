@@ -33,6 +33,7 @@ const getProfessorItems = (t: any) => [
 ];
 
 const getAlunoItems = (t: any) => [
+  { title: t('navigation:sidebar.studentPortal'), url: "/portal-do-aluno", icon: Users },
   { title: t('navigation:sidebar.myClasses'), url: "/aulas", icon: Calendar },
   { title: t('navigation:sidebar.myMaterials'), url: "/meus-materiais", icon: FileText },
   { title: t('navigation:sidebar.invoices'), url: "/faturas", icon: DollarSign },
@@ -127,7 +128,11 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
 
           {/* Navigation */}
           <div className={`flex-1 ${!isOpen ? 'px-2' : 'px-4'} py-4`}>
-            {/* Teacher Context Switcher for Students */}
+        {isAluno && !isProfessor && (
+          <div className="mb-4">
+            <TeacherContextSwitcher />
+          </div>
+        )}
             {isAluno && teacherContext && teacherContext.teachers.length > 1 && isOpen && (
               <div className="mb-6">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">

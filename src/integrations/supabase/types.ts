@@ -890,6 +890,7 @@ export type Database = {
           name: string
           password_changed: boolean
           payment_due_days: number
+          policy_document_url: string | null
           preferred_payment_account_id: string | null
           role: string
           stripe_customer_id: string | null
@@ -915,6 +916,7 @@ export type Database = {
           name: string
           password_changed?: boolean
           payment_due_days?: number
+          policy_document_url?: string | null
           preferred_payment_account_id?: string | null
           role: string
           stripe_customer_id?: string | null
@@ -940,6 +942,7 @@ export type Database = {
           name?: string
           password_changed?: boolean
           payment_due_days?: number
+          policy_document_url?: string | null
           preferred_payment_account_id?: string | null
           role?: string
           stripe_customer_id?: string | null

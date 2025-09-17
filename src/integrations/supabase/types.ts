@@ -1270,6 +1270,10 @@ export type Database = {
           student_role: string
         }[]
       }
+      has_overdue_invoices: {
+        Args: { p_student_id: string }
+        Returns: boolean
+      }
       is_material_shared_with_user: {
         Args: { p_material_id: string }
         Returns: boolean

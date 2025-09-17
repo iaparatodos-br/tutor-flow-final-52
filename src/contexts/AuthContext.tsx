@@ -231,6 +231,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Isso previne o carregamento do perfil e a race condition.
       // O listener em App.tsx cuidará da navegação para /reset-password.
       if (event === 'PASSWORD_RECOVERY') {
+        console.log('AuthProvider: Password recovery detected, skipping auth processing');
         return;
       }
       

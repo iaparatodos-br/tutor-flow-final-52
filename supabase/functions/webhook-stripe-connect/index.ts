@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.21.0";
+import Stripe from "https://esm.sh/stripe@14.24.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
@@ -8,6 +13,10 @@ const logStep = (step: string, details?: any) => {
 };
 
 serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
   try {
     logStep("Webhook received");
 
@@ -21,7 +30,10 @@ serve(async (req) => {
     if (!signature) throw new Error("No stripe signature header");
 
     const body = await req.text();
-    const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    const stripe = new Stripe(stripeKey, { 
+      apiVersion: "2023-10-16",
+      httpClient: Stripe.createFetchHttpClient(),
+    });
 
     // Verify webhook signature
     let event: Stripe.Event;
@@ -33,63 +45,20 @@ serve(async (req) => {
       return new Response(`Webhook Error: ${err.message}`, { status: 400 });
     }
 
-    logStep("Webhook verified", { type: event.type, id: event.id });
-
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );
 
-    // Handle different event types
+    const eventObject = event.data.object as any;
+    logStep("Processing event", { type: event.type, id: event.id });
+
+    // Handle different event types with focus on invoicing
     switch (event.type) {
-      case "payment_intent.succeeded": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        logStep("Payment succeeded", { paymentIntentId: paymentIntent.id });
-
-        if (paymentIntent.metadata?.invoice_id) {
-          const { error } = await supabaseClient
-            .from("invoices")
-            .update({
-              status: "paga",
-              payment_method: paymentIntent.payment_method_types[0],
-              updated_at: new Date().toISOString()
-            })
-            .eq("stripe_payment_intent_id", paymentIntent.id);
-
-          if (error) {
-            logStep("Error updating invoice status", error);
-          } else {
-            logStep("Invoice marked as paid", { invoiceId: paymentIntent.metadata.invoice_id });
-          }
-        }
-        break;
-      }
-
-      case "payment_intent.payment_failed": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        logStep("Payment failed", { paymentIntentId: paymentIntent.id });
-
-        if (paymentIntent.metadata?.invoice_id) {
-          const { error } = await supabaseClient
-            .from("invoices")
-            .update({
-              status: "falha_pagamento",
-              updated_at: new Date().toISOString()
-            })
-            .eq("stripe_payment_intent_id", paymentIntent.id);
-
-          if (error) {
-            logStep("Error updating invoice status", error);
-          } else {
-            logStep("Invoice marked as payment failed", { invoiceId: paymentIntent.metadata.invoice_id });
-          }
-        }
-        break;
-      }
-
-      case "account.updated": {
-        const account = event.data.object as Stripe.Account;
+      case 'account.updated': {
+        // Manter a lógica existente para onboarding do Connect
+        const account = eventObject as Stripe.Account;
         logStep("Account updated", { accountId: account.id });
 
         const { error } = await supabaseClient
@@ -128,23 +97,163 @@ serve(async (req) => {
         break;
       }
 
-      case "invoice.payment_succeeded": {
-        const invoice = event.data.object as Stripe.Invoice;
-        logStep("Invoice payment succeeded", { invoiceId: invoice.id });
-        
-        // Handle Stripe invoice payments if using invoices instead of payment intents
-        if (invoice.metadata?.invoice_id) {
+      case 'invoice.paid': {
+        // NOVO: A fatura foi paga com sucesso
+        const paidInvoice = eventObject as Stripe.Invoice;
+        logStep("Invoice paid", { invoiceId: paidInvoice.id });
+
+        const { error: paidError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            status: 'paga',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', paidInvoice.id);
+
+        if (paidError) {
+          logStep("Error updating invoice status to paid", paidError);
+          return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { 
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        logStep("Invoice marked as paid", { invoiceId: paidInvoice.id });
+        break;
+      }
+
+      case 'invoice.payment_succeeded': {
+        // NOVO: Pagamento da fatura foi bem-sucedido
+        const succeededInvoice = eventObject as Stripe.Invoice;
+        logStep("Invoice payment succeeded", { invoiceId: succeededInvoice.id });
+
+        const { error: succeededError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            status: 'paga',
+            payment_method: 'stripe_invoice',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', succeededInvoice.id);
+
+        if (succeededError) {
+          logStep("Error updating invoice payment succeeded", succeededError);
+        } else {
+          logStep("Invoice payment succeeded processed", { invoiceId: succeededInvoice.id });
+        }
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        // NOVO: A tentativa de pagamento falhou
+        const failedInvoice = eventObject as Stripe.Invoice;
+        logStep("Invoice payment failed", { 
+          invoiceId: failedInvoice.id, 
+          reason: failedInvoice.last_payment_error?.message 
+        });
+
+        const { error: failedError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            status: 'falha_pagamento',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', failedInvoice.id);
+
+        if (failedError) {
+          logStep("Error updating invoice payment failed", failedError);
+        } else {
+          logStep("Invoice marked as payment failed", { invoiceId: failedInvoice.id });
+        }
+        break;
+      }
+      
+      case 'invoice.marked_uncollectible': {
+        // NOVO: O Stripe marcou a fatura como incobrável (gatilho de inadimplência)
+        const uncollectibleInvoice = eventObject as Stripe.Invoice;
+        logStep("Invoice marked uncollectible", { invoiceId: uncollectibleInvoice.id });
+
+        const { error: overdueError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            status: 'overdue',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', uncollectibleInvoice.id);
+
+        if (overdueError) {
+          logStep("Error updating invoice status to overdue", overdueError);
+          return new Response(JSON.stringify({ error: 'Failed to update invoice to overdue' }), { 
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+        logStep("Invoice marked as overdue", { invoiceId: uncollectibleInvoice.id });
+        break;
+      }
+
+      case 'invoice.voided': {
+        // NOVO: Fatura foi cancelada/anulada
+        const voidedInvoice = eventObject as Stripe.Invoice;
+        logStep("Invoice voided", { invoiceId: voidedInvoice.id });
+
+        const { error: voidError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            status: 'cancelada',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_invoice_id', voidedInvoice.id);
+
+        if (voidError) {
+          logStep("Error updating invoice status to voided", voidError);
+        } else {
+          logStep("Invoice marked as voided", { invoiceId: voidedInvoice.id });
+        }
+        break;
+      }
+
+      case "payment_intent.succeeded": {
+        // Manter compatibilidade com payment intents existentes
+        const paymentIntent = eventObject as Stripe.PaymentIntent;
+        logStep("Payment intent succeeded", { paymentIntentId: paymentIntent.id });
+
+        if (paymentIntent.metadata?.invoice_id) {
           const { error } = await supabaseClient
             .from("invoices")
             .update({
               status: "paga",
-              payment_method: "stripe_invoice",
+              payment_method: paymentIntent.payment_method_types[0],
               updated_at: new Date().toISOString()
             })
-            .eq("stripe_invoice_id", invoice.id);
+            .eq("stripe_payment_intent_id", paymentIntent.id);
 
           if (error) {
-            logStep("Error updating invoice from Stripe invoice", error);
+            logStep("Error updating invoice from payment intent", error);
+          } else {
+            logStep("Invoice updated from payment intent", { invoiceId: paymentIntent.metadata.invoice_id });
+          }
+        }
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        // Manter compatibilidade com payment intents existentes
+        const paymentIntent = eventObject as Stripe.PaymentIntent;
+        logStep("Payment intent failed", { paymentIntentId: paymentIntent.id });
+
+        if (paymentIntent.metadata?.invoice_id) {
+          const { error } = await supabaseClient
+            .from("invoices")
+            .update({
+              status: "falha_pagamento",
+              updated_at: new Date().toISOString()
+            })
+            .eq("stripe_payment_intent_id", paymentIntent.id);
+
+          if (error) {
+            logStep("Error updating invoice payment intent failed", error);
+          } else {
+            logStep("Invoice marked as failed from payment intent", { invoiceId: paymentIntent.metadata.invoice_id });
           }
         }
         break;
@@ -156,7 +265,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
-      headers: { "Content-Type": "application/json" }
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
 
   } catch (error) {
@@ -164,7 +273,7 @@ serve(async (req) => {
     logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
-      headers: { "Content-Type": "application/json" }
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
 });

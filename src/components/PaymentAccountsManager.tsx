@@ -134,7 +134,11 @@ export function PaymentAccountsManager() {
   };
 
   const handleDelete = async (accountId: string) => {
-    if (accounts.filter(a => a.is_active).length <= 1) {
+    const accountToDelete = accounts.find(a => a.id === accountId);
+    const activeAccounts = accounts.filter(a => a.is_active);
+    
+    // Só impedir exclusão se for uma conta ativa e for a única conta ativa
+    if (accountToDelete?.is_active && activeAccounts.length <= 1) {
       toast({
         title: "Não é possível excluir",
         description: "Você deve ter pelo menos uma conta ativa",
@@ -318,7 +322,7 @@ export function PaymentAccountsManager() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleDelete(account.id)}
-                      disabled={accounts.filter(a => a.is_active).length <= 1}
+                      disabled={account.is_active && accounts.filter(a => a.is_active).length <= 1}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

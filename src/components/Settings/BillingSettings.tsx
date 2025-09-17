@@ -49,8 +49,8 @@ export function BillingSettings() {
       if (error) throw error;
 
       form.reset({
-        payment_due_days: data.payment_due_days || 15,
-        default_billing_day: data.default_billing_day,
+        payment_due_days: (data as any)?.payment_due_days || 15,
+        default_billing_day: (data as any)?.default_billing_day || null,
       });
     } catch (error) {
       console.error('Erro ao carregar configurações de cobrança:', error);

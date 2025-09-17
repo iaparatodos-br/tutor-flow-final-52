@@ -881,6 +881,7 @@ export type Database = {
           cpf: string | null
           created_at: string | null
           current_plan_id: string | null
+          default_billing_day: number | null
           email: string
           guardian_email: string | null
           guardian_name: string | null
@@ -905,6 +906,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string | null
           current_plan_id?: string | null
+          default_billing_day?: number | null
           email: string
           guardian_email?: string | null
           guardian_name?: string | null
@@ -929,6 +931,7 @@ export type Database = {
           cpf?: string | null
           created_at?: string | null
           current_plan_id?: string | null
+          default_billing_day?: number | null
           email?: string
           guardian_email?: string | null
           guardian_name?: string | null

@@ -97,8 +97,8 @@ export function StudentFormModal({
             .eq('id', profile.id)
             .single();
 
-          if (!error && data?.default_billing_day) {
-            setTeacherDefaultBillingDay(data.default_billing_day);
+          if (!error && data && (data as any)?.default_billing_day) {
+            setTeacherDefaultBillingDay((data as any).default_billing_day);
           }
         } catch (error) {
           console.error('Error loading teacher defaults:', error);

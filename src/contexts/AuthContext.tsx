@@ -226,6 +226,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Configurar listener de mudanças de auth
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // **A MUDANÇA ARQUITETURAL CHAVE ESTÁ AQUI:**
+      // Se o evento é de recuperação de senha, o AuthProvider não deve fazer nada.
+      // Isso previne o carregamento do perfil e a race condition.
+      // O listener em App.tsx cuidará da navegação para /reset-password.
+      if (event === 'PASSWORD_RECOVERY') {
+        return;
+      }
+      
       console.log('AuthProvider: Estado de autenticação mudou', { event, hasSession: !!session });
       
       

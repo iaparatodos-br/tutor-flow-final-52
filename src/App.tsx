@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { useEffect } from 'react';
 import { supabase } from "./integrations/supabase/client";
@@ -37,6 +37,22 @@ const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
   const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
+  const navigate = useNavigate();
+  
+  // Orquestrador de navegação para recuperação de senha
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        // A biblioteca Supabase já criou a sessão.
+        // A única tarefa da nossa aplicação é garantir que o usuário esteja na página correta.
+        navigate('/reset-password');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate]);
 
   // Função CORRIGIDA e centralizada para detectar o fluxo de recuperação de senha via HASH.
   const isPasswordRecoveryFlow = () => {
@@ -115,37 +131,21 @@ const AppWithProviders = () => {
   );
 };
 
-const App = () => {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        navigate('/reset-password');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [navigate]);
-
-  return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <QueryClientProvider client={queryClient}>
+const App = () => (
+  <ThemeProvider
+    attribute="class"
+    defaultTheme="light"
+    enableSystem
+    disableTransitionOnChange
+  >
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
         <AuthProvider>
           <AppWithProviders />
         </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
-  );
-};
+      </BrowserRouter>
+    </QueryClientProvider>
+  </ThemeProvider>
+);
 
 export default App;

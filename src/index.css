@@ -1,3 +1,9 @@
+/* Import React Big Calendar styles */
+@import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+/* Import custom calendar styles */
+@import './components/Calendar/calendar.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -168,9 +174,3 @@
     @apply bg-background text-foreground;
   }
 }
-
-/* Import React Big Calendar styles */
-@import 'react-big-calendar/lib/css/react-big-calendar.css';
-
-/* Import custom calendar styles */
-@import './components/Calendar/calendar.css';

@@ -109,14 +109,19 @@ export default function Faturas() {
                         {(invoice.status === 'open' || 
                           invoice.status === 'overdue' || 
                           invoice.status === 'pendente' || 
-                          invoice.status === 'vencida') && 
-                         invoice.stripe_hosted_invoice_url && (
-                          <Button 
-                            onClick={() => handlePayNow(invoice.stripe_hosted_invoice_url!)}
-                            size="sm"
-                          >
-                            Pagar Agora
-                          </Button>
+                          invoice.status === 'vencida') && (
+                          invoice.stripe_hosted_invoice_url ? (
+                            <Button 
+                              onClick={() => handlePayNow(invoice.stripe_hosted_invoice_url!)}
+                              size="sm"
+                            >
+                              Pagar Agora
+                            </Button>
+                          ) : (
+                            <div className="text-sm text-muted-foreground">
+                              URL de pagamento não disponível
+                            </div>
+                          )
                         )}
                       </TableCell>
                     </TableRow>

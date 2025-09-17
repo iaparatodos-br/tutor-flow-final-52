@@ -25,16 +25,46 @@ interface TeacherProviderProps {
   children: ReactNode;
 }
 
+const TEACHER_SELECTION_KEY = 'selectedTeacherId';
+
+const getPersistedTeacherId = (): string | null => {
+  try {
+    return localStorage.getItem(TEACHER_SELECTION_KEY);
+  } catch (error) {
+    console.warn('Error reading teacher selection from localStorage:', error);
+    return null;
+  }
+};
+
+const persistTeacherId = (teacherId: string | null): void => {
+  try {
+    if (teacherId) {
+      localStorage.setItem(TEACHER_SELECTION_KEY, teacherId);
+      console.log('Teacher selection persisted:', teacherId);
+    } else {
+      localStorage.removeItem(TEACHER_SELECTION_KEY);
+      console.log('Teacher selection cleared from localStorage');
+    }
+  } catch (error) {
+    console.warn('Error persisting teacher selection:', error);
+  }
+};
+
 export function TeacherProvider({ children }: TeacherProviderProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(() => getPersistedTeacherId());
   const [loading, setLoading] = useState(true);
   const { user, isAluno } = useAuth();
+
+  const handleSetSelectedTeacherId = (teacherId: string | null) => {
+    setSelectedTeacherId(teacherId);
+    persistTeacherId(teacherId);
+  };
 
   const refreshTeachers = async () => {
     if (!user || !isAluno) {
       setTeachers([]);
-      setSelectedTeacherId(null);
+      handleSetSelectedTeacherId(null);
       setLoading(false);
       return;
     }
@@ -49,25 +79,38 @@ export function TeacherProvider({ children }: TeacherProviderProps) {
       if (error) {
         console.error('Error fetching student teachers:', error);
         setTeachers([]);
-        setSelectedTeacherId(null);
+        handleSetSelectedTeacherId(null);
         return;
       }
 
       setTeachers(data || []);
       
-      // Auto-select first teacher if none selected and teachers available
-      if (data && data.length > 0 && !selectedTeacherId) {
-        setSelectedTeacherId(data[0].teacher_id);
+      const persistedTeacherId = selectedTeacherId;
+      
+      // Check if persisted teacher is still valid
+      if (persistedTeacherId && data && data.find(t => t.teacher_id === persistedTeacherId)) {
+        console.log('Using persisted teacher selection:', persistedTeacherId);
+        // Selection is already set from localStorage, no need to change
+        return;
       }
       
-      // Clear selection if selected teacher is no longer in the list
-      if (selectedTeacherId && data && !data.find(t => t.teacher_id === selectedTeacherId)) {
-        setSelectedTeacherId(data.length > 0 ? data[0].teacher_id : null);
+      // Clear invalid selection or auto-select first teacher if no valid selection
+      if (data && data.length > 0) {
+        if (!persistedTeacherId) {
+          console.log('No teacher selected, auto-selecting first teacher:', data[0].teacher_id);
+          handleSetSelectedTeacherId(data[0].teacher_id);
+        } else {
+          console.log('Previously selected teacher no longer available, selecting first teacher:', data[0].teacher_id);
+          handleSetSelectedTeacherId(data[0].teacher_id);
+        }
+      } else {
+        console.log('No teachers available, clearing selection');
+        handleSetSelectedTeacherId(null);
       }
     } catch (error) {
       console.error('Error in refreshTeachers:', error);
       setTeachers([]);
-      setSelectedTeacherId(null);
+      handleSetSelectedTeacherId(null);
     } finally {
       setLoading(false);
     }
@@ -82,7 +125,7 @@ export function TeacherProvider({ children }: TeacherProviderProps) {
       value={{ 
         teachers, 
         selectedTeacherId, 
-        setSelectedTeacherId, 
+        setSelectedTeacherId: handleSetSelectedTeacherId, 
         loading, 
         refreshTeachers 
       }}

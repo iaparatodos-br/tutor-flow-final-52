@@ -245,18 +245,7 @@ export function CancellationPolicySettings() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header Section */}
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl font-bold flex items-center justify-center gap-2">
-          <Clock className="h-6 w-6" />
-          Política do Professor
-        </h1>
-        <p className="text-muted-foreground">
-          Configure as regras e políticas para suas aulas
-        </p>
-      </div>
-
+    <div className="max-w-5xl mx-auto space-y-6">
       {/* Main Settings Grid */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Policy Configuration */}
@@ -440,7 +429,7 @@ export function CancellationPolicySettings() {
           ) : (
             <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(uploadPolicyDocument)} className="space-y-4">
+                <form onSubmit={form.handleSubmit(uploadPolicyDocument)} className="space-y-6">
                   <FormField
                     control={form.control}
                     name="policyDocument"
@@ -448,14 +437,16 @@ export function CancellationPolicySettings() {
                       <FormItem>
                         <FormLabel>Selecionar arquivo PDF (máx. 5MB)</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            type="file"
-                            accept=".pdf"
-                            onChange={(e) => onChange(e.target.files)}
-                            disabled={uploadingDocument}
-                            className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-                          />
+                          <div className="min-h-[50px] flex items-center">
+                            <Input
+                              {...field}
+                              type="file"
+                              accept=".pdf"
+                              onChange={(e) => onChange(e.target.files)}
+                              disabled={uploadingDocument}
+                              className="h-12 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                            />
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>

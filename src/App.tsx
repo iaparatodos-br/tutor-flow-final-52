@@ -28,6 +28,7 @@ import Configuracoes from "./pages/Configuracoes";
 import Planos from "./pages/Planos";
 import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
+import Faturas from "./pages/Faturas";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
@@ -96,7 +97,7 @@ const AppWithProviders = () => {
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/aulas" element={<Agenda />} />
             <Route path="/financeiro" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
-            <Route path="/faturas" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
+            <Route path="/faturas" element={<FinancialRouteGuard><Faturas /></FinancialRouteGuard>} />
             <Route path="/materiais" element={<Materiais />} />
             <Route path="/meus-materiais" element={<MeusMateriais />} />
             <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />

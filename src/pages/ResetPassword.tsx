@@ -20,11 +20,18 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Check if we have recovery tokens in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const accessToken = urlParams.get('access_token');
-  const refreshToken = urlParams.get('refresh_token');
-  const type = urlParams.get('type');
+  // Check if we have recovery tokens in URL hash
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+  const type = hashParams.get('type');
+  
+  console.log('ResetPassword: Checking tokens in hash', { 
+    hash: window.location.hash,
+    hasAccessToken: !!accessToken, 
+    hasRefreshToken: !!refreshToken, 
+    type 
+  });
   
   // If no recovery tokens, redirect to auth
   if (!accessToken || !refreshToken || type !== 'recovery') {

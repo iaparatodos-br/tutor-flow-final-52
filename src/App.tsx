@@ -53,11 +53,11 @@ const AppWithProviders = () => {
   // Check if we're on reset-password page with recovery tokens
   const isResetPasswordWithTokens = () => {
     const currentPath = window.location.pathname;
-    const urlParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.substring(1));
     return currentPath === '/reset-password' && 
-           urlParams.get('access_token') && 
-           urlParams.get('refresh_token') && 
-           urlParams.get('type') === 'recovery';
+           hashParams.get('access_token') && 
+           hashParams.get('refresh_token') && 
+           hashParams.get('type') === 'recovery';
   };
 
   // If authenticated but needs password change (but allow reset-password with tokens)

@@ -81,9 +81,9 @@ const AppWithProviders = () => {
   
   return (
     <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
-      <SubscriptionProvider>
-        <SidebarProvider>
-          <TeacherProvider>
+      <TeacherProvider>
+        <SubscriptionProvider>
+          <SidebarProvider>
             <TooltipProvider>
               <Toaster />
               <Sonner />
@@ -111,9 +111,9 @@ const AppWithProviders = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
             </TooltipProvider>
-          </TeacherProvider>
-        </SidebarProvider>
-      </SubscriptionProvider>
+          </SidebarProvider>
+        </SubscriptionProvider>
+      </TeacherProvider>
     </ProfileProvider>
   );
 };

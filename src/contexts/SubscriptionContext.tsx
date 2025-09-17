@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
+import { useTeacherContext } from './TeacherContext';
 import { toast } from 'sonner';
 
 interface SubscriptionPlan {
@@ -58,6 +59,16 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [teacherPlan, setTeacherPlan] = useState<SubscriptionPlan | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get teacher context conditionally
+  let teacherContext = null;
+  if (profile?.role === 'aluno') {
+    try {
+      teacherContext = useTeacherContext();
+    } catch (error) {
+      console.warn('TeacherContext not available, this is expected during initial loading');
+    }
+  }
 
   const loadPlans = async () => {
     try {
@@ -142,27 +153,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const loadTeacherSubscriptions = async () => {
-    if (!user) return;
+    if (!user || profile?.role !== 'aluno') return;
+    
+    // Use selected teacher ID from context, fallback to first teacher if none selected
+    const selectedTeacherId = teacherContext?.selectedTeacherId;
+    
+    if (!selectedTeacherId) {
+      console.log('No teacher selected');
+      const freePlan = plans.find(p => p.slug === 'free');
+      setTeacherPlan(freePlan || null);
+      return;
+    }
     
     try {
-      // Get teachers for this student
-      const { data: relationships, error: relationshipError } = await supabase
-        .from('teacher_student_relationships')
-        .select('teacher_id')
-        .eq('student_id', user.id);
-      
-      if (relationshipError) {
-        console.error('Error loading teacher relationships:', relationshipError);
-        return;
-      }
-      
-      if (!relationships || relationships.length === 0) {
-        console.log('No teachers found for student');
-        return;
-      }
-      
-      // Get the first teacher's subscription (for now, we'll use the first teacher)
-      const teacherId = relationships[0].teacher_id;
+      // Get the selected teacher's subscription
+      const teacherId = selectedTeacherId;
       
       // Check if teacher has an active subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
@@ -451,6 +456,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       loadSubscription().finally(() => setLoading(false));
     }
   }, [user, plans, profile]);
+
+  // React to teacher selection changes for students
+  useEffect(() => {
+    if (profile?.role === 'aluno' && teacherContext && plans.length > 0) {
+      loadTeacherSubscriptions();
+    }
+  }, [teacherContext?.selectedTeacherId, plans, profile]);
 
   // Verificação por parâmetros de URL (retorno do Stripe)
   useEffect(() => {

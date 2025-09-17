@@ -15,6 +15,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
+import { useTeacherContext } from "@/contexts/TeacherContext";
+import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -45,6 +47,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   const { profile, isProfessor, isAluno } = useProfile();
   const { signOut, loading } = useAuth();
   const { currentPlan, hasFeature, hasTeacherFeature } = useSubscription();
+  const teacherContext = isAluno ? useTeacherContext() : null;
   const currentPath = location.pathname;
   const { t } = useTranslation();
   
@@ -124,6 +127,16 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
 
           {/* Navigation */}
           <div className={`flex-1 ${!isOpen ? 'px-2' : 'px-4'} py-4`}>
+            {/* Teacher Context Switcher for Students */}
+            {isAluno && teacherContext && teacherContext.teachers.length > 1 && isOpen && (
+              <div className="mb-6">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  {t('navigation:sidebar.teacher')}
+                </h3>
+                <TeacherContextSwitcher />
+              </div>
+            )}
+            
             <div className="mb-6">
               <h3 className={`text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3 ${!isOpen ? "sr-only" : ""}`}>
                 {isProfessor ? t('navigation:roles.professor') : t('navigation:roles.student')}

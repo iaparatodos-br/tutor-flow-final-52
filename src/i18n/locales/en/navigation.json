@@ -14,7 +14,8 @@
     "history": "History",
     "myClasses": "My Classes",
     "invoices": "Invoices",
-    "cancellationPolicies": "Cancellation Policies"
+    "cancellationPolicies": "Cancellation Policies",
+    "teacher": "Teacher"
   },
   "roles": {
     "professor": "Professor",

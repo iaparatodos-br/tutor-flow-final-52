@@ -14,7 +14,8 @@
     "history": "Histórico",
     "myClasses": "Minhas Aulas",
     "invoices": "Faturas",
-    "cancellationPolicies": "Políticas Cancelamento"
+    "cancellationPolicies": "Políticas Cancelamento",
+    "teacher": "Professor"
   },
   "roles": {
     "professor": "Professor",

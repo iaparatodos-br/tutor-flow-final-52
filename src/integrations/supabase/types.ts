@@ -541,6 +541,7 @@ export type Database = {
           pix_qr_code: string | null
           sent_to_guardian: boolean | null
           status: string
+          stripe_hosted_invoice_url: string | null
           stripe_invoice_id: string | null
           stripe_invoice_url: string | null
           stripe_payment_intent_id: string | null
@@ -569,6 +570,7 @@ export type Database = {
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
+          stripe_hosted_invoice_url?: string | null
           stripe_invoice_id?: string | null
           stripe_invoice_url?: string | null
           stripe_payment_intent_id?: string | null
@@ -597,6 +599,7 @@ export type Database = {
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
+          stripe_hosted_invoice_url?: string | null
           stripe_invoice_id?: string | null
           stripe_invoice_url?: string | null
           stripe_payment_intent_id?: string | null
@@ -885,6 +888,7 @@ export type Database = {
           id: string
           name: string
           password_changed: boolean
+          payment_due_days: number
           preferred_payment_account_id: string | null
           role: string
           stripe_customer_id: string | null
@@ -908,6 +912,7 @@ export type Database = {
           id?: string
           name: string
           password_changed?: boolean
+          payment_due_days?: number
           preferred_payment_account_id?: string | null
           role: string
           stripe_customer_id?: string | null
@@ -931,6 +936,7 @@ export type Database = {
           id?: string
           name?: string
           password_changed?: boolean
+          payment_due_days?: number
           preferred_payment_account_id?: string | null
           role?: string
           stripe_customer_id?: string | null

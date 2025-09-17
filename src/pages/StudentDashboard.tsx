@@ -100,6 +100,9 @@ export default function StudentDashboard() {
         throw policyError;
       }
 
+      console.log('Policy loaded in StudentDashboard:', policy);
+      console.log('Teacher ID:', selectedTeacherId);
+
       setTeacherData({
         ...teacherProfile,
         cancellation_policy: policy

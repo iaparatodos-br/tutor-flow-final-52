@@ -48,6 +48,8 @@ export function CancellationModal({
 
   useEffect(() => {
     if (isOpen && classId) {
+      // Clear previous policy data to ensure fresh load
+      setPolicy(null);
       loadPolicyAndCalculateCharge();
     }
   }, [isOpen, classId]);
@@ -71,12 +73,13 @@ export function CancellationModal({
         return;
       }
 
-      // Get teacher's policy
+      // Get teacher's policy - always fetch fresh data
       const { data: policyData, error: policyError } = await supabase
         .from('cancellation_policies')
         .select('*')
         .eq('teacher_id', classData.teacher_id)
         .eq('is_active', true)
+        .order('updated_at', { ascending: false })
         .maybeSingle();
 
       if (policyError && policyError.code !== 'PGRST116') {
@@ -91,6 +94,7 @@ export function CancellationModal({
         allow_amnesty: true
       };
 
+      console.log('Loaded policy:', currentPolicy);
       setPolicy(currentPolicy);
 
       // Calculate charge

@@ -319,6 +319,46 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const createCheckoutSession = async (planSlug: string): Promise<string> => {
+    // Verificar se o usuário está autenticado e a sessão é válida
+    if (!user) {
+      throw new Error('Usuário não autenticado');
+    }
+
+    // Verificar e renovar a sessão antes de fazer a chamada
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        console.error('Erro ao verificar sessão:', sessionError);
+        throw new Error('Sessão inválida');
+      }
+
+      if (!session) {
+        console.error('Sessão não encontrada - fazendo logout');
+        await supabase.auth.signOut();
+        window.location.href = '/auth';
+        throw new Error('Sessão expirada');
+      }
+
+      // Verificar se a sessão está próxima do vencimento (< 5 minutos)
+      const expiresAt = session.expires_at;
+      const now = Math.floor(Date.now() / 1000);
+      const timeUntilExpiry = expiresAt - now;
+
+      if (timeUntilExpiry < 300) { // 5 minutos
+        console.log('Sessão próxima do vencimento, renovando...');
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError) {
+          console.error('Erro ao renovar sessão:', refreshError);
+          await supabase.auth.signOut();
+          window.location.href = '/auth';
+          throw new Error('Não foi possível renovar a sessão');
+        }
+      }
+    } catch (error) {
+      console.error('Erro na verificação/renovação da sessão:', error);
+      throw error;
+    }
+
     // Implementar retry com backoff exponencial
     let retries = 0;
     const maxRetries = 3;
@@ -343,6 +383,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         console.log(`SubscriptionContext: Resposta recebida:`, { data, error });
         
         if (error) {
+          // Se receber erro 401 (Unauthorized), tratar como sessão expirada
+          if (error.message?.includes('status code') && error.message?.includes('401')) {
+            console.error('Erro 401 - Sessão expirada, fazendo logout');
+            await supabase.auth.signOut();
+            window.location.href = '/auth';
+            throw new Error('Sessão expirada. Por favor, faça login novamente.');
+          }
+
           if (retries < maxRetries - 1) {
             retries++;
             console.log(`Retry ${retries}/${maxRetries} para checkout`);
@@ -360,7 +408,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (retries >= maxRetries - 1) {
           console.error('Error creating checkout session após todos os retries:', error);
-          toast.error('Erro ao criar sessão de pagamento. Verifique sua conexão e tente novamente.');
+          
+          // Diferentes mensagens de erro baseadas no tipo
+          if (error instanceof Error && error.message.includes('Sessão expirada')) {
+            toast.error('Sua sessão expirou. Por favor, faça login novamente.');
+          } else {
+            toast.error('Erro ao criar sessão de pagamento. Verifique sua conexão e tente novamente.');
+          }
           throw error;
         }
         retries++;

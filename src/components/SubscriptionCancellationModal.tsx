@@ -27,7 +27,7 @@ export function SubscriptionCancellationModal({
   onClose,
   onConfirm
 }: SubscriptionCancellationModalProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('subscription');
   const { currentPlan } = useSubscription();
   const [confirmationText, setConfirmationText] = useState('');
   const [students, setStudents] = useState<Student[]>([]);

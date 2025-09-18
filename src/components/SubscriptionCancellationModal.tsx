@@ -27,7 +27,14 @@ export function SubscriptionCancellationModal({
   onClose,
   onConfirm
 }: SubscriptionCancellationModalProps) {
-  const { t } = useTranslation('subscription');
+  const { t, i18n, ready } = useTranslation('subscription');
+  
+  // Debug logging
+  console.log('i18n ready:', ready);
+  console.log('Current language:', i18n.language);
+  console.log('Available namespaces:', i18n.options.ns);
+  console.log('Translation test:', t('cancellation.title'));
+  console.log('Resources:', i18n.getResourceBundle('pt', 'subscription'));
   const { currentPlan } = useSubscription();
   const [confirmationText, setConfirmationText] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -37,6 +44,11 @@ export function SubscriptionCancellationModal({
 
   const hasFinancialModule = currentPlan?.features?.financial_module;
   const isConfirmationValid = confirmationText === 'CANCELAR';
+
+  // Don't render if translations are not ready
+  if (!ready) {
+    return null;
+  }
 
   useEffect(() => {
     if (isOpen && hasFinancialModule) {

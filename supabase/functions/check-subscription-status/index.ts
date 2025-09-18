@@ -69,7 +69,7 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's current subscription from database
+    // Get user's current subscription from database (including expired ones)
     const { data: subscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select(`
@@ -77,22 +77,44 @@ serve(async (req) => {
         subscription_plans (*)
       `)
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'expired'])
+      .order('updated_at', { ascending: false })
       .maybeSingle();
 
     if (subError) throw subError;
 
     if (subscription) {
-      logStep("Found subscription in database, checking expiration", { 
+      logStep("Found subscription in database", { 
         subscriptionId: subscription.id, 
+        status: subscription.status,
         currentPeriodEnd: subscription.current_period_end 
       });
       
-      // Check if subscription is expired
+      // If subscription is already expired, don't revert it
+      if (subscription.status === 'expired') {
+        logStep("Subscription already marked as expired, maintaining status");
+        
+        // Get free plan
+        const { data: freePlan } = await supabaseClient
+          .from('subscription_plans')
+          .select('*')
+          .eq('slug', 'free')
+          .single();
+        
+        return new Response(JSON.stringify({
+          subscription: null,
+          plan: freePlan
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      
+      // Check if active subscription is expired
       const now = new Date();
       const periodEnd = new Date(subscription.current_period_end);
       
-      if (now > periodEnd) {
+      if (subscription.status === 'active' && now > periodEnd) {
         logStep("Subscription is expired, updating status to expired");
         
         // Update subscription status to expired
@@ -152,7 +174,7 @@ serve(async (req) => {
       });
     }
 
-    logStep("No active subscription in database, checking Stripe");
+    logStep("No subscription in database, checking Stripe");
 
     // No subscription in database - check Stripe directly
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
@@ -161,20 +183,7 @@ serve(async (req) => {
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     
     if (customers.data.length === 0) {
-      logStep("No Stripe customer found, updating unsubscribed state");
-      await supabaseClient.from("user_subscriptions").upsert({
-        user_id: user.id,
-        plan_id: null,
-        status: 'cancelled',
-        stripe_customer_id: null,
-        stripe_subscription_id: null,
-        current_period_start: null,
-        current_period_end: null,
-        cancel_at_period_end: false,
-        extra_students: 0,
-        extra_cost_cents: 0,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
+      logStep("No Stripe customer found, returning free plan");
       
       // Get free plan
       const { data: freePlan } = await supabaseClient
@@ -222,7 +231,7 @@ serve(async (req) => {
       });
     }
 
-    // Active subscription found in Stripe - sync to database
+    // Active subscription found in Stripe - sync to database ONLY if no local subscription exists
     const stripeSubscription = subscriptions.data[0];
     logStep("Active subscription found in Stripe", { 
       subscriptionId: stripeSubscription.id, 
@@ -246,7 +255,7 @@ serve(async (req) => {
 
     logStep("Found plan for subscription", { planId: plan.id, planName: plan.name });
 
-    // Create subscription record in database
+    // Create subscription record in database (only if none exists)
     const subscriptionData = {
       user_id: user.id,
       plan_id: plan.id,
@@ -261,15 +270,15 @@ serve(async (req) => {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: newSubscription, error: upsertError } = await supabaseClient
+    const { data: newSubscription, error: insertError } = await supabaseClient
       .from('user_subscriptions')
-      .upsert(subscriptionData, { onConflict: 'user_id' })
+      .insert(subscriptionData)
       .select()
       .single();
 
-    if (upsertError) {
-      logStep("Error upserting subscription", { error: upsertError });
-      throw upsertError;
+    if (insertError) {
+      logStep("Error inserting subscription", { error: insertError });
+      throw insertError;
     }
 
     // Update user profile

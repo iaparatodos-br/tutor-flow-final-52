@@ -63,7 +63,7 @@ i18n
     resources,
     fallbackLng: 'pt',
     lng: 'pt', // default language
-    debug: true, // Temporariamente para debug
+    debug: false,
     
     detection: {
       order: ['localStorage', 'navigator', 'htmlTag'],

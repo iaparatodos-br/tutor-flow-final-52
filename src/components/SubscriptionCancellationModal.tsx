@@ -27,7 +27,7 @@ export function SubscriptionCancellationModal({
   onClose,
   onConfirm
 }: SubscriptionCancellationModalProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation('subscription');
   const { currentPlan } = useSubscription();
   const [confirmationText, setConfirmationText] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -118,7 +118,7 @@ export function SubscriptionCancellationModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <AlertTriangle className="h-6 w-6 text-destructive" />
-            {t('subscription.cancellation.title')}
+            {t('cancellation.title')}
           </DialogTitle>
         </DialogHeader>
 
@@ -128,16 +128,16 @@ export function SubscriptionCancellationModal({
               {/* Warning Alert */}
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>{t('subscription.cancellation.warning')}</AlertTitle>
+                <AlertTitle>{t('cancellation.warning')}</AlertTitle>
                 <AlertDescription className="mt-2">
                   <p className="font-semibold mb-2">
-                    {t('subscription.cancellation.financialModuleWarning')}
+                    {t('cancellation.financialModuleWarning')}
                   </p>
                   <ul className="space-y-1 text-sm">
-                    <li>• {t('subscription.cancellation.consequences.invoicesWillBeCancelled')}</li>
-                    <li>• {t('subscription.cancellation.consequences.loseFinancialAccess')}</li>
-                    <li>• {t('subscription.cancellation.consequences.noRefunds')}</li>
-                    <li>• {t('subscription.cancellation.consequences.dataWillBePreserved')}</li>
+                    <li>• {t('cancellation.consequences.invoicesWillBeCancelled')}</li>
+                    <li>• {t('cancellation.consequences.loseFinancialAccess')}</li>
+                    <li>• {t('cancellation.consequences.noRefunds')}</li>
+                    <li>• {t('cancellation.consequences.dataWillBePreserved')}</li>
                   </ul>
                 </AlertDescription>
               </Alert>
@@ -146,7 +146,7 @@ export function SubscriptionCancellationModal({
               {loading && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>{t('subscription.cancellation.loadingStudents')}</span>
+                  <span>{t('cancellation.loadingStudents')}</span>
                 </div>
               )}
 
@@ -156,14 +156,14 @@ export function SubscriptionCancellationModal({
                   <div className="bg-muted p-4 rounded-lg">
                     <h4 className="font-semibold flex items-center gap-2 mb-3">
                       <Users className="h-4 w-4" />
-                      {t('subscription.cancellation.studentsAffected')} ({students.length})
+                      {t('cancellation.studentsAffected')} ({students.length})
                     </h4>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
                       {students.map((student) => (
                         <div key={student.student_id} className="flex justify-between text-sm">
                           <span>{student.student_name}</span>
                           <span className="text-muted-foreground">
-                            {student.pendingInvoices} {t('subscription.cancellation.pendingInvoicesCount')}
+                            {student.pendingInvoices} {t('cancellation.pendingInvoicesCount')}
                           </span>
                         </div>
                       ))}
@@ -173,10 +173,10 @@ export function SubscriptionCancellationModal({
                   {totalPendingInvoices > 0 && (
                     <Alert>
                       <CreditCard className="h-4 w-4" />
-                      <AlertTitle>{t('subscription.cancellation.pendingInvoices')}</AlertTitle>
+                      <AlertTitle>{t('cancellation.pendingInvoices')}</AlertTitle>
                       <AlertDescription>
                         <span className="font-semibold text-lg">
-                          {totalPendingInvoices} {t('subscription.cancellation.invoicesWillBeCancelledCount')}
+                          {totalPendingInvoices} {t('cancellation.invoicesWillBeCancelledCount')}
                         </span>
                       </AlertDescription>
                     </Alert>
@@ -187,13 +187,13 @@ export function SubscriptionCancellationModal({
               {/* Confirmation Input */}
               <div className="space-y-2">
                 <label className="text-sm font-medium">
-                  {t('subscription.cancellation.confirmationRequired')}
+                  {t('cancellation.confirmationRequired')}
                 </label>
                 <Input
                   type="text"
                   value={confirmationText}
                   onChange={(e) => setConfirmationText(e.target.value)}
-                  placeholder={t('subscription.cancellation.typeToConfirm')}
+                  placeholder={t('cancellation.typeToConfirm')}
                   className="font-mono"
                 />
               </div>
@@ -201,9 +201,9 @@ export function SubscriptionCancellationModal({
           ) : (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>{t('subscription.cancellation.simpleConfirmationTitle')}</AlertTitle>
+              <AlertTitle>{t('cancellation.simpleConfirmationTitle')}</AlertTitle>
               <AlertDescription>
-                {t('subscription.cancellation.simpleConfirmationDescription')}
+                {t('cancellation.simpleConfirmationDescription')}
               </AlertDescription>
             </Alert>
           )}
@@ -217,8 +217,8 @@ export function SubscriptionCancellationModal({
               disabled={cancelling}
             >
               {hasFinancialModule 
-                ? t('subscription.cancellation.backToSafety')
-                : t('subscription.cancellation.cancelAction')
+                ? t('cancellation.backToSafety')
+                : t('cancellation.cancelAction')
               }
             </Button>
             
@@ -229,7 +229,7 @@ export function SubscriptionCancellationModal({
               disabled={hasFinancialModule ? !isConfirmationValid : false || cancelling}
             >
               {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('subscription.cancellation.confirmCancel')}
+              {t('cancellation.confirmCancel')}
             </Button>
           </div>
         </div>

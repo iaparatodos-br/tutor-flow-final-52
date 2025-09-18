@@ -32,7 +32,8 @@
     "reports": "Relatórios",
     "support": "Suporte",
     "customization": "Personalização",
-    "integrations": "Integrações"
+    "integrations": "Integrações",
+    "financialModule": "Módulo Financeiro Completo"
   },
   "messages": {
     "planChanged": "Plano alterado com sucesso!",
@@ -41,5 +42,23 @@
     "trialStarted": "Período de teste iniciado!",
     "trialExpiring": "Seu período de teste expira em breve",
     "subscriptionExpired": "Sua assinatura expirou"
+  },
+  "cancellation": {
+    "title": "Cancelar Assinatura",
+    "warning": "⚠️ ATENÇÃO: Consequências do Cancelamento",
+    "financialModuleWarning": "Seu plano atual inclui o Módulo Financeiro. Ao cancelar:",
+    "consequences": {
+      "invoicesWillBeCancelled": "Todas as faturas pendentes dos seus alunos serão automaticamente canceladas",
+      "loseFinancialAccess": "Você e seus alunos perderão acesso ao módulo financeiro imediatamente",
+      "noRefunds": "Faturas já pagas não serão reembolsadas automaticamente",
+      "dataWillBePreserved": "Seus dados serão preservados, mas sem acesso até reativar um plano pago"
+    },
+    "studentsAffected": "Alunos que serão afetados",
+    "pendingInvoices": "Faturas pendentes que serão canceladas",
+    "confirmationRequired": "Digite 'CANCELAR' para confirmar:",
+    "typeToConfirm": "Digite aqui...",
+    "confirmCancel": "Confirmar Cancelamento",
+    "cancelAction": "Cancelar",
+    "backToSafety": "Voltar (Recomendado)"
   }
 }

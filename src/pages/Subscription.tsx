@@ -14,6 +14,7 @@ import { ptBR } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { SubscriptionCancellationModal } from '@/components/SubscriptionCancellationModal';
 
 interface Invoice {
   id: string;
@@ -34,6 +35,7 @@ export default function Subscription() {
   const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [invoicesError, setInvoicesError] = useState<string | null>(null);
   const [isCanceling, setIsCanceling] = useState(false);
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
 
   const loadInvoices = async () => {
     setInvoicesLoading(true);
@@ -104,8 +106,10 @@ export default function Subscription() {
   };
 
   const handleCancel = async () => {
-    if (!confirm("Tem certeza que deseja cancelar sua assinatura? Ela ficará ativa até o final do período pago.")) return;
-    
+    setShowCancellationModal(true);
+  };
+
+  const handleConfirmCancel = async () => {
     setIsCanceling(true);
     try {
       await cancelSubscription('cancel');
@@ -265,7 +269,14 @@ export default function Subscription() {
                     <div className={`h-2 w-2 rounded-full ${
                       currentPlan?.features.financial_module ? 'bg-green-500' : 'bg-gray-300'
                     }`} />
-                    Módulo Financeiro {currentPlan?.features.financial_module ? 'Completo' : 'Básico'}
+                    <div>
+                      <span>Módulo Financeiro {currentPlan?.features.financial_module ? 'Completo' : 'Básico'}</span>
+                      {currentPlan?.features.financial_module && (
+                        <div className="text-xs text-muted-foreground">
+                          Gerencie faturas, pagamentos e cobranças dos seus alunos
+                        </div>
+                      )}
+                    </div>
                   </li>
                   <li className="flex items-center gap-2">
                     <div className={`h-2 w-2 rounded-full ${
@@ -378,6 +389,23 @@ export default function Subscription() {
                   {!subscription.cancel_at_period_end && currentPlan?.slug !== 'free' && (
                     <>
                       <Separator />
+                      
+                      {/* Financial Module Warning */}
+                      {currentPlan?.features?.financial_module && (
+                        <Alert variant="default" className="border-amber-200 bg-amber-50">
+                          <AlertTriangle className="h-4 w-4 text-amber-600" />
+                          <AlertTitle className="text-amber-800">Módulo Financeiro Ativo</AlertTitle>
+                          <AlertDescription className="text-amber-700">
+                            <p className="mb-2">
+                              Seu plano inclui o Módulo Financeiro. <strong>Ao cancelar, todas as faturas pendentes dos seus alunos serão automaticamente canceladas</strong> e vocês perderão acesso imediatamente ao módulo.
+                            </p>
+                            <p className="text-sm">
+                              Considere cuidadosamente antes de prosseguir. Suas configurações serão preservadas para reativação futura.
+                            </p>
+                          </AlertDescription>
+                        </Alert>
+                      )}
+
                       <Button 
                         className="w-full" 
                         variant="destructive"
@@ -483,6 +511,13 @@ export default function Subscription() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Cancellation Modal */}
+      <SubscriptionCancellationModal
+        isOpen={showCancellationModal}
+        onClose={() => setShowCancellationModal(false)}
+        onConfirm={handleConfirmCancel}
+      />
     </Layout>
   );
 }

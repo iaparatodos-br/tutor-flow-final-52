@@ -59,6 +59,11 @@
     "typeToConfirm": "Type here...",
     "confirmCancel": "Confirm Cancellation",
     "cancelAction": "Cancel",
-    "backToSafety": "Go Back (Recommended)"
+    "backToSafety": "Go Back (Recommended)",
+    "loadingStudents": "Loading student information...",
+    "pendingInvoicesCount": "pending invoice(s)",
+    "invoicesWillBeCancelledCount": "invoice(s) will be automatically cancelled",
+    "simpleConfirmationTitle": "Cancellation Confirmation",
+    "simpleConfirmationDescription": "Are you sure you want to cancel your subscription? It will remain active until the end of the paid period."
   }
 }

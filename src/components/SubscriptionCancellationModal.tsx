@@ -146,7 +146,7 @@ export function SubscriptionCancellationModal({
               {loading && (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                  <span>Carregando informações dos alunos...</span>
+                  <span>{t('subscription.cancellation.loadingStudents')}</span>
                 </div>
               )}
 
@@ -163,7 +163,7 @@ export function SubscriptionCancellationModal({
                         <div key={student.student_id} className="flex justify-between text-sm">
                           <span>{student.student_name}</span>
                           <span className="text-muted-foreground">
-                            {student.pendingInvoices} fatura(s) pendente(s)
+                            {student.pendingInvoices} {t('subscription.cancellation.pendingInvoicesCount')}
                           </span>
                         </div>
                       ))}
@@ -176,7 +176,7 @@ export function SubscriptionCancellationModal({
                       <AlertTitle>{t('subscription.cancellation.pendingInvoices')}</AlertTitle>
                       <AlertDescription>
                         <span className="font-semibold text-lg">
-                          {totalPendingInvoices} fatura(s) serão canceladas automaticamente
+                          {totalPendingInvoices} {t('subscription.cancellation.invoicesWillBeCancelledCount')}
                         </span>
                       </AlertDescription>
                     </Alert>
@@ -201,9 +201,9 @@ export function SubscriptionCancellationModal({
           ) : (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Confirmação de Cancelamento</AlertTitle>
+              <AlertTitle>{t('subscription.cancellation.simpleConfirmationTitle')}</AlertTitle>
               <AlertDescription>
-                Tem certeza que deseja cancelar sua assinatura? Ela ficará ativa até o final do período pago.
+                {t('subscription.cancellation.simpleConfirmationDescription')}
               </AlertDescription>
             </Alert>
           )}
@@ -218,7 +218,7 @@ export function SubscriptionCancellationModal({
             >
               {hasFinancialModule 
                 ? t('subscription.cancellation.backToSafety')
-                : 'Cancelar'
+                : t('subscription.cancellation.cancelAction')
               }
             </Button>
             
@@ -231,7 +231,7 @@ export function SubscriptionCancellationModal({
               {cancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {hasFinancialModule 
                 ? t('subscription.cancellation.confirmCancel')
-                : 'Confirmar Cancelamento'
+                : t('subscription.cancellation.confirmCancel')
               }
             </Button>
           </div>

@@ -59,6 +59,11 @@
     "typeToConfirm": "Digite aqui...",
     "confirmCancel": "Confirmar Cancelamento",
     "cancelAction": "Cancelar",
-    "backToSafety": "Voltar (Recomendado)"
+    "backToSafety": "Voltar (Recomendado)",
+    "loadingStudents": "Carregando informações dos alunos...",
+    "pendingInvoicesCount": "fatura(s) pendente(s)",
+    "invoicesWillBeCancelledCount": "fatura(s) serão canceladas automaticamente",
+    "simpleConfirmationTitle": "Confirmação de Cancelamento",
+    "simpleConfirmationDescription": "Tem certeza que deseja cancelar sua assinatura? Ela ficará ativa até o final do período pago."
   }
 }

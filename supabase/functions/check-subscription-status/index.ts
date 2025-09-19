@@ -69,7 +69,7 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's current subscription from database (including expired ones)
+    // Get user's current subscription from database (only active ones for validation)
     const { data: subscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select(`
@@ -77,38 +77,18 @@ serve(async (req) => {
         subscription_plans (*)
       `)
       .eq('user_id', user.id)
-      .in('status', ['active', 'expired'])
+      .eq('status', 'active')
       .order('updated_at', { ascending: false })
       .maybeSingle();
 
     if (subError) throw subError;
 
     if (subscription) {
-      logStep("Found subscription in database", { 
+      logStep("Found active subscription in database", { 
         subscriptionId: subscription.id, 
         status: subscription.status,
         currentPeriodEnd: subscription.current_period_end 
       });
-      
-      // If subscription is already expired, don't revert it
-      if (subscription.status === 'expired') {
-        logStep("Subscription already marked as expired, maintaining status");
-        
-        // Get free plan
-        const { data: freePlan } = await supabaseClient
-          .from('subscription_plans')
-          .select('*')
-          .eq('slug', 'free')
-          .single();
-        
-        return new Response(JSON.stringify({
-          subscription: null,
-          plan: freePlan
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
-        });
-      }
       
       // Check if active subscription is expired
       const now = new Date();

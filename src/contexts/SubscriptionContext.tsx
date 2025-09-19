@@ -37,6 +37,8 @@ interface SubscriptionContextType {
   subscription: UserSubscription | null;
   plans: SubscriptionPlan[];
   loading: boolean;
+  needsStudentSelection: boolean;
+  studentSelectionData: any;
   hasFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   hasTeacherFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   canAddStudent: () => boolean;
@@ -48,6 +50,7 @@ interface SubscriptionContextType {
   refreshSubscription: () => Promise<void>;
   createCheckoutSession: (planSlug: string) => Promise<string>;
   cancelSubscription: (action: 'cancel' | 'reactivate') => Promise<void>;
+  completeStudentSelection: () => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -59,6 +62,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [teacherPlan, setTeacherPlan] = useState<SubscriptionPlan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsStudentSelection, setNeedsStudentSelection] = useState(false);
+  const [studentSelectionData, setStudentSelectionData] = useState<any>(null);
 
   // Get teacher context conditionally
   let teacherContext = null;
@@ -128,6 +133,19 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             setCurrentPlan(planData as unknown as SubscriptionPlan);
           }
         }
+      } else if (data?.needs_student_selection) {
+        // Handle student selection requirement
+        setNeedsStudentSelection(true);
+        setStudentSelectionData({
+          students: data.current_students,
+          currentPlan: data.previous_plan,
+          newPlan: data.plan,
+          currentCount: data.current_students?.length || 0,
+          targetLimit: data.plan?.student_limit || 0,
+          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0)
+        });
+        setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        setSubscription(null);
       } else {
         // Use plan from response (should be free plan) or find free plan
         if (data?.plan) {
@@ -137,6 +155,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           setCurrentPlan(freePlan || null);
         }
         setSubscription(null);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
       }
 
       // Load teacher's plan if user is a student
@@ -233,11 +253,28 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (data?.subscription) {
         setSubscription(data.subscription);
         setCurrentPlan(data.plan);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+      } else if (data?.needs_student_selection) {
+        // Handle student selection requirement
+        setNeedsStudentSelection(true);
+        setStudentSelectionData({
+          students: data.current_students,
+          currentPlan: data.previous_plan,
+          newPlan: data.plan,
+          currentCount: data.current_students?.length || 0,
+          targetLimit: data.plan?.student_limit || 0,
+          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0)
+        });
+        setCurrentPlan(data.plan);
+        setSubscription(null);
       } else {
         // No active subscription - user is on free plan
         setSubscription(null);
         const freePlan = plans.find(p => p.slug === 'free');
         setCurrentPlan(freePlan || null);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
@@ -431,6 +468,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     throw new Error('Falha após todas as tentativas');
   };
 
+  const completeStudentSelection = async () => {
+    setNeedsStudentSelection(false);
+    setStudentSelectionData(null);
+    // Refresh subscription after selection is complete
+    await refreshSubscription();
+  };
+
   const cancelSubscription = async (action: 'cancel' | 'reactivate'): Promise<void> => {
     try {
       const { error } = await supabase.functions.invoke('cancel-subscription', {
@@ -550,6 +594,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         subscription,
         plans,
         loading,
+        needsStudentSelection,
+        studentSelectionData,
         hasFeature,
         hasTeacherFeature,
         canAddStudent,
@@ -557,6 +603,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         refreshSubscription,
         createCheckoutSession,
         cancelSubscription,
+        completeStudentSelection,
       }}
     >
       {children}

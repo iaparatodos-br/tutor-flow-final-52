@@ -10,6 +10,7 @@ import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -86,6 +87,7 @@ const AppWithProviders = () => {
         <SubscriptionProvider>
           <SidebarProvider>
             <TooltipProvider>
+              <StudentSelectionBlocker />
               <Toaster />
               <Sonner />
               <Routes>

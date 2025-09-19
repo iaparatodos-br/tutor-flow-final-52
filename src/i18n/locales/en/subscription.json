@@ -43,27 +43,47 @@
     "trialExpiring": "Your trial period expires soon",
     "subscriptionExpired": "Your subscription has expired"
   },
-  "cancellation": {
-    "title": "Cancel Subscription",
-    "warning": "⚠️ WARNING: Cancellation Consequences",
-    "financialModuleWarning": "Your current plan includes the Financial Module. By canceling:",
-    "consequences": {
-      "invoicesWillBeCancelled": "All pending invoices from your students will be automatically cancelled",
-      "loseFinancialAccess": "You and your students will lose access to the financial module immediately",
-      "noRefunds": "Already paid invoices will not be automatically refunded",
-      "dataWillBePreserved": "Your data will be preserved, but inaccessible until you reactivate a paid plan"
+  "downgrade": {
+    "warning": {
+      "title": "Plan Downgrade Warning",
+      "description": "You are about to change to a plan with fewer student slots",
+      "currentStudents": "Current Students",
+      "changeDate": "Change Date",
+      "timeline": "What happens now?",
+      "now": "Now",
+      "planWillChange": "Your plan will be changed and billing adjusted",
+      "selectionRequired": "Mandatory student selection",
+      "alternatives": "Available Alternatives",
+      "keepCurrentPlan": "Keep current plan: Cancel this change",
+      "chooseHigherPlan": "Plan that accommodates all students: Choose a plan with higher limit",
+      "payForExtra": "Extra students: Pay $5.00/month for each additional student",
+      "cancelChange": "Cancel Change",
+      "confirmDowngrade": "Confirm Downgrade",
+      "confirmChange": "Confirm Change"
     },
-    "studentsAffected": "Students that will be affected",
-    "pendingInvoices": "Pending invoices that will be cancelled",
-    "confirmationRequired": "Type 'CANCEL' to confirm:",
-    "typeToConfirm": "Type here...",
-    "confirmCancel": "Confirm Cancellation",
-    "cancelAction": "Cancel",
-    "backToSafety": "Go Back (Recommended)",
-    "loadingStudents": "Loading student information...",
-    "pendingInvoicesCount": "pending invoice(s)",
-    "invoicesWillBeCancelledCount": "invoice(s) will be automatically cancelled",
-    "simpleConfirmationTitle": "Cancellation Confirmation",
-    "simpleConfirmationDescription": "Are you sure you want to cancel your subscription? It will remain active until the end of the paid period."
+    "selection": {
+      "title": "Mandatory Student Selection",
+      "description": "Your plan has changed to one with a lower student limit. Select which students you want to keep.",
+      "permanentDeletion": "⚠️ WARNING: Permanent Deletion",
+      "mustSelect": "You must select exactly {limit} student(s) from {total} current ones.",
+      "willBeDeleted": "The {count} unselected student(s) will be PERMANENTLY DELETED from the system, including all data, classes, reports and history.",
+      "cannotBeUndone": "This action cannot be undone. Consider upgrading your plan to keep all students.",
+      "currentStudents": "Current Students",
+      "selected": "Selected",
+      "willBeDeleted2": "Will Be Deleted",
+      "selectStudents": "Select {limit} student(s) to keep",
+      "clearSelection": "Clear Selection",
+      "selectFirst": "Select First",
+      "selectedBadge": "Selected",
+      "studentSince": "Student since {date}",
+      "studentsToBeDeleted": "Students that will be permanently deleted:",
+      "backButton": "Back",
+      "confirmSelection": "Confirm Selection ({selected}/{limit})",
+      "processing": "Processing...",
+      "incompleteSelection": "Incomplete Selection",
+      "mustSelectExactly": "You must select exactly {limit} student(s).",
+      "downgradeCompleted": "Downgrade Completed",
+      "errorProcessing": "Error processing downgrade. Please try again."
+    }
   }
 }

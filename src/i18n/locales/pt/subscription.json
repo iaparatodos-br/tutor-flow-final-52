@@ -43,27 +43,47 @@
     "trialExpiring": "Seu período de teste expira em breve",
     "subscriptionExpired": "Sua assinatura expirou"
   },
-  "cancellation": {
-    "title": "Cancelar Assinatura",
-    "warning": "⚠️ ATENÇÃO: Consequências do Cancelamento",
-    "financialModuleWarning": "Seu plano atual inclui o Módulo Financeiro. Ao cancelar:",
-    "consequences": {
-      "invoicesWillBeCancelled": "Todas as faturas pendentes dos seus alunos serão automaticamente canceladas",
-      "loseFinancialAccess": "Você e seus alunos perderão acesso ao módulo financeiro imediatamente",
-      "noRefunds": "Faturas já pagas não serão reembolsadas automaticamente",
-      "dataWillBePreserved": "Seus dados serão preservados, mas sem acesso até reativar um plano pago"
+  "downgrade": {
+    "warning": {
+      "title": "Aviso de Downgrade do Plano",
+      "description": "Você está prestes a alterar para um plano com menos vagas de alunos",
+      "currentStudents": "Alunos Atuais",
+      "changeDate": "Data de Mudança",
+      "timeline": "O que acontece agora?",
+      "now": "Agora",
+      "planWillChange": "Seu plano será alterado e a cobrança ajustada",
+      "selectionRequired": "Seleção obrigatória de alunos",
+      "alternatives": "Alternativas Disponíveis",
+      "keepCurrentPlan": "Manter plano atual: Cancele esta alteração",
+      "chooseHigherPlan": "Plano que comporta todos os alunos: Escolha um plano com limite maior",
+      "payForExtra": "Alunos extras: Pague R$ 5,00/mês por cada aluno adicional",
+      "cancelChange": "Cancelar Alteração",
+      "confirmDowngrade": "Confirmar Downgrade",
+      "confirmChange": "Confirmar Alteração"
     },
-    "studentsAffected": "Alunos que serão afetados",
-    "pendingInvoices": "Faturas pendentes que serão canceladas",
-    "confirmationRequired": "Digite 'CANCELAR' para confirmar:",
-    "typeToConfirm": "Digite aqui...",
-    "confirmCancel": "Confirmar Cancelamento",
-    "cancelAction": "Cancelar",
-    "backToSafety": "Voltar (Recomendado)",
-    "loadingStudents": "Carregando informações dos alunos...",
-    "pendingInvoicesCount": "fatura(s) pendente(s)",
-    "invoicesWillBeCancelledCount": "fatura(s) serão canceladas automaticamente",
-    "simpleConfirmationTitle": "Confirmação de Cancelamento",
-    "simpleConfirmationDescription": "Tem certeza que deseja cancelar sua assinatura? Ela ficará ativa até o final do período pago."
+    "selection": {
+      "title": "Seleção Obrigatória de Alunos",
+      "description": "Seu plano mudou para um com menor limite de alunos. Selecione quais alunos deseja manter.",
+      "permanentDeletion": "⚠️ ATENÇÃO: Exclusão Permanente",
+      "mustSelect": "Você deve selecionar exatamente {limit} aluno(s) dos {total} atuais.",
+      "willBeDeleted": "Os {count} aluno(s) não selecionado(s) serão EXCLUÍDOS PERMANENTEMENTE do sistema, incluindo todos os dados, aulas, relatórios e histórico.",
+      "cannotBeUndone": "Esta ação não pode ser desfeita. Considere fazer upgrade do seu plano para manter todos os alunos.",
+      "currentStudents": "Alunos Atuais",
+      "selected": "Selecionados",
+      "willBeDeleted2": "Serão Excluídos",
+      "selectStudents": "Selecione {limit} aluno(s) para manter",
+      "clearSelection": "Limpar Seleção",
+      "selectFirst": "Selecionar Primeiros",
+      "selectedBadge": "Selecionado",
+      "studentSince": "Aluno desde {date}",
+      "studentsToBeDeleted": "Alunos que serão excluídos permanentemente:",
+      "backButton": "Voltar",
+      "confirmSelection": "Confirmar Seleção ({selected}/{limit})",
+      "processing": "Processando...",
+      "incompleteSelection": "Seleção incompleta",
+      "mustSelectExactly": "Você deve selecionar exatamente {limit} aluno(s).",
+      "downgradeCompleted": "Downgrade concluído",
+      "errorProcessing": "Erro no downgrade. Tente novamente."
+    }
   }
 }

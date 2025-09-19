@@ -13,6 +13,64 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CHECK-SUBSCRIPTION] ${step}${detailsStr}`);
 };
 
+// Helper function to check if user needs student selection for plan downgrade
+const checkNeedsStudentSelection = async (
+  supabaseClient: any,
+  userId: string,
+  newPlan: any,
+  currentPlan: any
+) => {
+  try {
+    // Only check if going to a plan with fewer student slots
+    if (newPlan.student_limit >= currentPlan.student_limit) {
+      return null;
+    }
+
+    // Get current student count
+    const { data: students, error: studentsError } = await supabaseClient
+      .from('teacher_student_relationships')
+      .select(`
+        id,
+        student_id,
+        student_name,
+        created_at,
+        profiles!inner(name, email)
+      `)
+      .eq('teacher_id', userId);
+
+    if (studentsError) {
+      logStep("Error fetching students for downgrade check", { error: studentsError });
+      return null;
+    }
+
+    if (!students || students.length <= newPlan.student_limit) {
+      return null; // No selection needed
+    }
+
+    logStep("Student selection needed", {
+      currentCount: students.length,
+      newLimit: newPlan.student_limit,
+      needToRemove: students.length - newPlan.student_limit
+    });
+
+    return {
+      students: students.map(s => ({
+        id: s.student_id,
+        relationship_id: s.id,
+        name: s.student_name || s.profiles.name,
+        email: s.profiles.email,
+        created_at: s.created_at
+      })),
+      current_count: students.length,
+      target_limit: newPlan.student_limit,
+      need_to_remove: students.length - newPlan.student_limit
+    };
+  } catch (error) {
+    logStep("Exception in checkNeedsStudentSelection", { error: error.message });
+    return null;
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -136,6 +194,29 @@ serve(async (req) => {
         if (profileUpdateError) {
           logStep("Error updating user profile", { error: profileUpdateError });
           throw profileUpdateError;
+        }
+
+        // Check if user needs to select students for plan downgrade
+        const needsStudentSelection = await checkNeedsStudentSelection(
+          supabaseClient,
+          user.id,
+          freePlan,
+          subscription.subscription_plans
+        );
+
+        if (needsStudentSelection) {
+          logStep("User needs to select students for plan downgrade");
+          
+          return new Response(JSON.stringify({
+            subscription: null,
+            plan: freePlan,
+            needs_student_selection: true,
+            current_students: needsStudentSelection.students,
+            previous_plan: subscription.subscription_plans
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
         }
 
         // Check if user is professor with financial module and process cancellation

@@ -562,6 +562,7 @@ export type Database = {
           amount: number
           barcode: string | null
           boleto_url: string | null
+          business_profile_id: string | null
           cancellation_policy_id: string | null
           class_id: string | null
           created_at: string | null
@@ -591,6 +592,7 @@ export type Database = {
           amount: number
           barcode?: string | null
           boleto_url?: string | null
+          business_profile_id?: string | null
           cancellation_policy_id?: string | null
           class_id?: string | null
           created_at?: string | null
@@ -620,6 +622,7 @@ export type Database = {
           amount?: number
           barcode?: string | null
           boleto_url?: string | null
+          business_profile_id?: string | null
           cancellation_policy_id?: string | null
           class_id?: string | null
           created_at?: string | null
@@ -646,6 +649,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_business_profile_id_fkey"
+            columns: ["business_profile_id"]
+            isOneToOne: false
+            referencedRelation: "business_profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_payment_account_used_id_fkey"
             columns: ["payment_account_used_id"]

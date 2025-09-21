@@ -120,6 +120,12 @@ serve(async (req) => {
         continue;
       }
 
+      // Validar se há business_profile_id definido
+      if (!relationship.business_profile_id) {
+        console.warn(`Skipping student ${studentInfo.student_name}: no business profile defined for payment routing`);
+        continue;
+      }
+
       if (!studentInfo.teacher_stripe_account_id) {
         console.warn(`Skipping student ${studentInfo.student_name}: teacher missing stripe_connect_account_id`);
         continue;
@@ -213,6 +219,7 @@ serve(async (req) => {
             stripe_hosted_invoice_url: invoice.hosted_invoice_url,
             description: `Fatura - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
             invoice_type: 'regular',
+            business_profile_id: relationship.business_profile_id,
           })
           .select()
           .single();

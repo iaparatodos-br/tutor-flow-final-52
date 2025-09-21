@@ -146,6 +146,19 @@ serve(async (req) => {
       
       const chargeAmount = (baseAmount * chargePercentage) / 100;
 
+      // Get business_profile_id from teacher_student_relationships
+      const { data: relationship, error: relationshipError } = await supabaseClient
+        .from('teacher_student_relationships')
+        .select('business_profile_id')
+        .eq('student_id', classData.student_id)
+        .eq('teacher_id', classData.teacher_id)
+        .single();
+
+      if (relationshipError || !relationship?.business_profile_id) {
+        console.error('Error getting business profile for cancellation invoice:', relationshipError);
+        // Continue without business_profile_id for backward compatibility
+      }
+
       const { data: cancellationInvoice, error: invoiceError } = await supabaseClient
         .from('invoices')
         .insert({
@@ -158,7 +171,8 @@ serve(async (req) => {
           due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
           status: 'pendente',
           invoice_type: 'cancellation',
-          cancellation_policy_id: policy?.id
+          cancellation_policy_id: policy?.id,
+          business_profile_id: relationship?.business_profile_id || null,
         })
         .select()
         .single();

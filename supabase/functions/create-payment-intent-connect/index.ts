@@ -32,7 +32,7 @@ serve(async (req) => {
     const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email, payer_address } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
-    // Get invoice details
+    // Get invoice details with business profile
     const { data: invoice, error: invoiceError } = await supabaseClient
       .from("invoices")
       .select(`
@@ -41,7 +41,10 @@ serve(async (req) => {
           name, email, cpf, guardian_name, guardian_email,
           address_street, address_city, address_state, address_postal_code, address_complete
         ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email)
+        teacher:profiles!invoices_teacher_id_fkey(name, email),
+        business_profile:business_profiles!invoices_business_profile_id_fkey(
+          id, business_name, stripe_connect_id
+        )
       `)
       .eq("id", invoice_id)
       .single();
@@ -52,53 +55,43 @@ serve(async (req) => {
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
 
-    // Get student's preferred payment account
-    const { data: studentProfile, error: studentError } = await supabaseClient
-      .from("profiles")
-      .select("preferred_payment_account_id")
-      .eq("id", invoice.student_id)
-      .single();
-
-    let selectedPaymentAccountId = studentProfile?.preferred_payment_account_id;
-
-    // If no preferred account is set, get teacher's default payment account
-    if (!selectedPaymentAccountId) {
-      const { data: defaultPaymentAccount, error: defaultAccountError } = await supabaseClient
-        .from("payment_accounts")
-        .select("id")
-        .eq("teacher_id", invoice.teacher_id)
-        .eq("is_default", true)
-        .eq("account_type", "stripe")
-        .single();
-
-      if (defaultAccountError || !defaultPaymentAccount) {
-        throw new Error("No default Stripe payment account found for teacher");
-      }
-      
-      selectedPaymentAccountId = defaultPaymentAccount.id;
+    // Validate that invoice has business_profile_id
+    if (!invoice.business_profile_id) {
+      throw new Error("Fatura não possui negócio definido para roteamento de pagamento");
     }
 
-    logStep("Selected payment account", { selectedPaymentAccountId });
-
-    // Get teacher's connect account for the selected payment account
-    const { data: connectAccount, error: accountError } = await supabaseClient
-      .from("stripe_connect_accounts")
-      .select("*")
-      .eq("payment_account_id", selectedPaymentAccountId)
-      .eq("teacher_id", invoice.teacher_id)
-      .single();
-
-    if (accountError || !connectAccount) {
-      throw new Error("Teacher's Stripe Connect account not found");
+    // Get business profile and its Stripe Connect account
+    if (!invoice.business_profile) {
+      throw new Error("Negócio da fatura não encontrado");
     }
 
-    if (!connectAccount.charges_enabled) {
-      throw new Error("Teacher's Stripe account is not ready to accept payments");
+    const stripeConnectAccountId = invoice.business_profile.stripe_connect_id;
+    if (!stripeConnectAccountId) {
+      throw new Error("Conta Stripe Connect não encontrada para o negócio desta fatura");
     }
 
-    logStep("Using Stripe Connect account", { accountId: connectAccount.stripe_account_id });
+    logStep("Using business profile for payment routing", { 
+      businessProfileId: invoice.business_profile_id,
+      businessName: invoice.business_profile.business_name,
+      stripeConnectAccountId 
+    });
 
+    // Verify that the Stripe Connect account is ready to accept payments
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+    
+    try {
+      const stripeAccount = await stripe.accounts.retrieve(stripeConnectAccountId);
+      if (!stripeAccount.charges_enabled) {
+        throw new Error("Conta Stripe do negócio não está habilitada para receber pagamentos");
+      }
+      logStep("Stripe Connect account verified", { 
+        accountId: stripeConnectAccountId,
+        chargesEnabled: stripeAccount.charges_enabled 
+      });
+    } catch (stripeError) {
+      logStep("Error verifying Stripe Connect account", { error: stripeError });
+      throw new Error("Erro ao verificar conta Stripe Connect do negócio");
+    }
 
     // Convert amount from decimal to cents
     const amountInCents = Math.round(parseFloat(invoice.amount) * 100);
@@ -165,7 +158,7 @@ serve(async (req) => {
         cancel_url: `${req.headers.get("origin") || "http://localhost:8080"}/financeiro?payment=cancelled`,
         payment_intent_data: {
           transfer_data: {
-            destination: connectAccount.stripe_account_id,
+            destination: stripeConnectAccountId,
           },
           application_fee_amount: Math.round(amountInCents * 0.03),
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
@@ -173,6 +166,7 @@ serve(async (req) => {
             invoice_id: invoice_id,
             student_id: invoice.student_id,
             teacher_id: invoice.teacher_id,
+            business_profile_id: invoice.business_profile_id,
             platform: "education-platform"
           }
         }
@@ -190,7 +184,7 @@ serve(async (req) => {
         .update({
           stripe_payment_intent_id: session.payment_intent as string,
           gateway_provider: "stripe",
-          payment_account_used_id: selectedPaymentAccountId,
+          payment_account_used_id: invoice.business_profile_id,
         })
         .eq("id", invoice_id);
 
@@ -206,7 +200,7 @@ serve(async (req) => {
         const connectedCustomers = await stripe.customers.list({
           email: customerEmail,
           limit: 1,
-        }, { stripeAccount: connectAccount.stripe_account_id });
+        }, { stripeAccount: stripeConnectAccountId });
 
         let connectedCustomerId: string;
         if (connectedCustomers.data.length > 0) {
@@ -218,11 +212,12 @@ serve(async (req) => {
             metadata: {
               student_id: invoice.student_id,
               teacher_id: invoice.teacher_id,
+              business_profile_id: invoice.business_profile_id,
             },
-          }, { stripeAccount: connectAccount.stripe_account_id });
+          }, { stripeAccount: stripeConnectAccountId });
           connectedCustomerId = connectedCustomer.id;
         }
-        logStep("Connected customer ready", { customerId: connectedCustomerId, account: connectAccount.stripe_account_id });
+        logStep("Connected customer ready", { customerId: connectedCustomerId, account: stripeConnectAccountId });
 
         // Create PI directly on the connected account (Direct charge)
         const paymentIntent = await stripe.paymentIntents.create({
@@ -237,19 +232,20 @@ serve(async (req) => {
             invoice_id: invoice_id,
             student_id: invoice.student_id,
             teacher_id: invoice.teacher_id,
+            business_profile_id: invoice.business_profile_id,
             platform: "education-platform"
           }
-        }, { stripeAccount: connectAccount.stripe_account_id });
+        }, { stripeAccount: stripeConnectAccountId });
 
         // Confirm to get QR code details
         const confirmedPI = await stripe.paymentIntents.confirm(paymentIntent.id, {
           payment_method_data: { type: "pix" },
-        }, { stripeAccount: connectAccount.stripe_account_id });
+        }, { stripeAccount: stripeConnectAccountId });
 
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
-          payment_account_used_id: selectedPaymentAccountId,
+          payment_account_used_id: invoice.business_profile_id,
         };
         if (confirmedPI.next_action?.pix_display_qr_code) {
           const pixDetails: any = confirmedPI.next_action.pix_display_qr_code;
@@ -257,7 +253,7 @@ serve(async (req) => {
           updateData.pix_copy_paste = pixDetails.data;
         } else {
           // Fallback retrieve
-          const refreshedPI = await stripe.paymentIntents.retrieve(paymentIntent.id, { stripeAccount: connectAccount.stripe_account_id });
+          const refreshedPI = await stripe.paymentIntents.retrieve(paymentIntent.id, { stripeAccount: stripeConnectAccountId });
           const pixDetails: any = (refreshedPI.next_action as any)?.pix_display_qr_code;
           if (pixDetails) {
             updateData.pix_qr_code = pixDetails.data;
@@ -298,7 +294,7 @@ serve(async (req) => {
           payment_method_types: paymentMethodTypes,
           payment_method_options: paymentMethodOptions,
           transfer_data: {
-            destination: connectAccount.stripe_account_id,
+            destination: stripeConnectAccountId,
           },
           application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
@@ -306,6 +302,7 @@ serve(async (req) => {
             invoice_id: invoice_id,
             student_id: invoice.student_id,
             teacher_id: invoice.teacher_id,
+            business_profile_id: invoice.business_profile_id,
             platform: "education-platform"
           }
         });
@@ -320,7 +317,7 @@ serve(async (req) => {
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
-          payment_account_used_id: selectedPaymentAccountId,
+          payment_account_used_id: invoice.business_profile_id,
         };
 
         // Handle boleto confirmation and retrieve boleto details

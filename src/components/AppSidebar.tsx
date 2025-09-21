@@ -28,6 +28,7 @@ const getProfessorItems = (t: any) => [
   { title: t('navigation:sidebar.agenda'), url: "/agenda", icon: Calendar },
   { title: t('navigation:sidebar.materials'), url: "/materiais", icon: FileText },
   { title: t('navigation:sidebar.financial'), url: "/financeiro", icon: DollarSign },
+  { title: "Negócios", url: "/painel/negocios", icon: Package },
   { title: t('navigation:sidebar.history'), url: "/historico", icon: Archive },
   { title: t('navigation:sidebar.cancellationPolicies'), url: "/politicas-cancelamento", icon: Settings },
 ];

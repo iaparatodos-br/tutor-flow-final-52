@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useBusinessContext } from "@/contexts/BusinessContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +29,7 @@ interface Student {
 
 export default function Alunos() {
   const { profile } = useProfile();
+  const { selectedBusinessProfile } = useBusinessContext();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { currentPlan, subscription, getStudentOverageInfo } = useSubscription();
@@ -40,33 +42,37 @@ export default function Alunos() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (profile?.id) {
+    if (profile?.id && selectedBusinessProfile?.id) {
       loadStudents();
     }
-  }, [profile]);
+  }, [profile, selectedBusinessProfile]);
 
   const loadStudents = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !selectedBusinessProfile?.id) return;
 
     try {
-      const { data, error } = await supabase.rpc('get_teacher_students', {
-        teacher_user_id: profile.id
+      const { data, error } = await supabase.functions.invoke('list-students-by-business', {
+        body: { business_profile_id: selectedBusinessProfile.id }
       });
 
       if (error) throw error;
       
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao carregar alunos');
+      }
+      
       // Transform the data to match the Student interface
-      const transformedData = data?.map((student: any) => ({
-        id: student.student_id,
-        name: student.student_name,
-        email: student.student_email,
-        created_at: student.created_at,
-        guardian_name: student.guardian_name,
-        guardian_email: student.guardian_email,
-        guardian_phone: student.guardian_phone,
-        billing_day: student.billing_day,
-        relationship_id: student.relationship_id,
-        stripe_customer_id: student.stripe_customer_id
+      const transformedData = data.students?.map((relationship: any) => ({
+        id: relationship.student_id,
+        name: relationship.student_name || relationship.student?.name,
+        email: relationship.student?.email,
+        created_at: relationship.created_at,
+        guardian_name: relationship.student_guardian_name || relationship.student?.guardian_name,
+        guardian_email: relationship.student_guardian_email || relationship.student?.guardian_email,
+        guardian_phone: relationship.student_guardian_phone || relationship.student?.guardian_phone,
+        billing_day: relationship.billing_day,
+        relationship_id: relationship.id,
+        stripe_customer_id: relationship.stripe_customer_id
       })) || [];
 
       setStudents(transformedData);
@@ -83,7 +89,14 @@ export default function Alunos() {
   };
 
   const handleAddStudent = async (formData: any) => {
-    if (!profile?.id) return;
+    if (!profile?.id || !selectedBusinessProfile?.id) {
+      toast({
+        title: 'Erro',
+        description: 'Selecione um negócio antes de adicionar alunos',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setSubmitting(true);
     
@@ -137,6 +150,7 @@ export default function Alunos() {
           name: formData.name,
           email: formData.email,
           teacher_id: profile.id,
+          business_profile_id: selectedBusinessProfile.id,
           redirect_url: redirectUrl,
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
@@ -321,6 +335,22 @@ export default function Alunos() {
 
   return (
     <Layout>
+      {!selectedBusinessProfile ? (
+        <div className="max-w-6xl mx-auto space-y-6">
+          <Card className="text-center py-12">
+            <CardContent>
+              <AlertTriangle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Nenhum negócio selecionado</h3>
+              <p className="text-muted-foreground mb-6">
+                Selecione um negócio no cabeçalho ou conecte seu primeiro negócio para gerenciar alunos
+              </p>
+              <Button onClick={() => navigate('/painel/negocios')}>
+                Gerenciar Negócios
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -519,6 +549,7 @@ export default function Alunos() {
           description="Altere os dados do aluno e configurações de cobrança"
         />
       </div>
+      )}
     </Layout>
   );
 }

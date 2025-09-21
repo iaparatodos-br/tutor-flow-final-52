@@ -5,8 +5,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
-
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
+import { BusinessContextSwitcher } from "@/components/BusinessContextSwitcher";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,7 +14,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, requireAuth = true }: LayoutProps) {
-  const { loading, isAuthenticated, isAluno } = useAuth();
+  const { loading, isAuthenticated, isAluno, isProfessor } = useAuth();
   const { isOpen, toggle } = useSidebarState();
 
   if (loading) {
@@ -54,6 +54,13 @@ export function Layout({ children, requireAuth = true }: LayoutProps) {
           <span className="font-semibold">TutorFlow</span>
           
           <div className="ml-auto flex items-center gap-4">
+            {/* Business context switcher for professors */}
+            {isProfessor && (
+              <div className="max-w-[250px]">
+                <BusinessContextSwitcher />
+              </div>
+            )}
+            
             {/* Teacher context switcher for students */}
             {isAluno && (
               <div className="max-w-[250px]">

@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { ProgressModal } from './ProgressModal';
 
 interface Student {
   id: string;
@@ -44,6 +45,9 @@ export function PlanDowngradeSelectionModal({
   const { t } = useTranslation('subscription');
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
+  const [showProgress, setShowProgress] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<any[]>([]);
+  const [progress, setProgress] = useState(0);
 
   const handleStudentToggle = (studentId: string) => {
     setSelectedStudents(prev => {
@@ -79,7 +83,52 @@ export function PlanDowngradeSelectionModal({
     }
 
     setProcessing(true);
+    setShowProgress(true);
+    
+    // Initialize progress steps
+    const steps = [
+      {
+        id: 'validate',
+        label: 'Validando seleção',
+        status: 'in-progress' as const,
+        description: 'Verificando alunos selecionados'
+      },
+      {
+        id: 'delete',
+        label: 'Removendo alunos',
+        status: 'pending' as const,
+        description: 'Excluindo alunos não selecionados'
+      },
+      {
+        id: 'update',
+        label: 'Atualizando plano',
+        status: 'pending' as const,
+        description: 'Alterando plano de assinatura'
+      },
+      {
+        id: 'complete',
+        label: 'Finalizando alterações',
+        status: 'pending' as const,
+        description: 'Salvando configurações'
+      }
+    ];
+    
+    setProgressSteps(steps);
+    setProgress(10);
+
     try {
+      // Step 1: Validation
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 'validate' 
+          ? { ...step, status: 'completed' as const }
+          : step.id === 'delete'
+          ? { ...step, status: 'in-progress' as const }
+          : step
+      ));
+      setProgress(30);
+
+      // Step 2: Delete students and update plan
       const { data, error } = await supabase.functions.invoke('handle-plan-downgrade-selection', {
         body: {
           selected_student_ids: selectedStudents,
@@ -89,17 +138,56 @@ export function PlanDowngradeSelectionModal({
 
       if (error) throw error;
 
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 'delete' 
+          ? { ...step, status: 'completed' as const }
+          : step.id === 'update'
+          ? { ...step, status: 'in-progress' as const }
+          : step
+      ));
+      setProgress(70);
+
+      // Step 3: Update plan
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 'update' 
+          ? { ...step, status: 'completed' as const }
+          : step.id === 'complete'
+          ? { ...step, status: 'in-progress' as const }
+          : step
+      ));
+      setProgress(90);
+
+      // Step 4: Complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setProgressSteps(prev => prev.map(step => 
+        step.id === 'complete' 
+          ? { ...step, status: 'completed' as const }
+          : step
+      ));
+      setProgress(100);
+
       if (data?.success) {
         toast({
           title: "Downgrade concluído",
           description: data.message,
         });
+        
+        // Wait a bit to show completion
+        await new Promise(resolve => setTimeout(resolve, 1000));
         onClose(true); // Signal completion
       } else {
         throw new Error(data?.message || 'Erro desconhecido');
       }
     } catch (error) {
       console.error('Error processing downgrade selection:', error);
+      
+      setProgressSteps(prev => prev.map(step => 
+        step.status === 'in-progress' 
+          ? { ...step, status: 'error' as const, description: error.message }
+          : step
+      ));
+      
       toast({
         title: "Erro no downgrade",
         description: "Não foi possível processar a seleção. Tente novamente.",
@@ -107,6 +195,10 @@ export function PlanDowngradeSelectionModal({
       });
     } finally {
       setProcessing(false);
+      setTimeout(() => {
+        setShowProgress(false);
+        setProgress(0);
+      }, 2000);
     }
   };
 
@@ -288,6 +380,15 @@ export function PlanDowngradeSelectionModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+      
+      <ProgressModal
+        open={showProgress}
+        title="Processando Downgrade do Plano"
+        steps={progressSteps}
+        progress={progress}
+        allowClose={!processing}
+        onClose={() => setShowProgress(false)}
+      />
     </Dialog>
   );
 }

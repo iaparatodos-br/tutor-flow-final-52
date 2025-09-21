@@ -45,7 +45,10 @@
     "errorOccurred": "Ocorreu um erro",
     "tryAgain": "Tente novamente",
     "accessDenied": "Acesso negado",
-    "notFound": "Não encontrado"
+    "notFound": "Não encontrado",
+    "progress": "Progresso",
+    "processing": "Processando",
+    "currentStep": "Etapa atual"
   },
   "time": {
     "today": "Hoje",

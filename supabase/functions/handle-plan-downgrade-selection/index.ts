@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { logAuditEvent } from "../audit-logger/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +65,16 @@ serve(async (req) => {
     logStep("Request parsed", { 
       selectedCount: selected_student_ids.length, 
       newPlanId: new_plan_id 
+    });
+
+    // Log downgrade initiation
+    await logAuditEvent(supabaseClient, user.id, 'PLAN_DOWNGRADE_INITIATED', {
+      target_plan_id: new_plan_id,
+      selected_students_count: selected_student_ids.length,
+      selected_student_ids,
+    }, {
+      user_email: user.email,
+      timestamp: new Date().toISOString(),
     });
 
     // Get the new plan details
@@ -150,6 +161,14 @@ serve(async (req) => {
             success: true, 
             action: deleteResult?.action 
           });
+
+          // Log student deletion
+          await logAuditEvent(supabaseClient, user.id, 'STUDENT_DELETED_DOWNGRADE', {
+            student_id: studentRel.student_id,
+            relationship_id: studentRel.id,
+            deletion_action: deleteResult?.action,
+            target_plan_id: new_plan_id,
+          });
         }
       } catch (error) {
         logStep("Exception deleting student", { 
@@ -200,6 +219,18 @@ serve(async (req) => {
       studentsKept: selected_student_ids.length,
       studentsDeleted: deletedCount,
       deleteResults: deleteResults
+    });
+
+    // Log downgrade completion
+    await logAuditEvent(supabaseClient, user.id, 'PLAN_DOWNGRADE_COMPLETED', {
+      target_plan_id: new_plan_id,
+      students_kept_count: selected_student_ids.length,
+      students_deleted_count: deletedCount,
+      kept_student_ids: selected_student_ids,
+      delete_results: deleteResults,
+    }, {
+      user_email: user.email,
+      completion_timestamp: new Date().toISOString(),
     });
 
     return new Response(JSON.stringify({

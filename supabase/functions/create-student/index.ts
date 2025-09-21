@@ -27,6 +27,7 @@ interface CreateStudentRequest {
   stripe_customer_id?: string | null;
   notify_professor_email?: string | null;
   professor_name?: string | null;
+  business_profile_id?: string | null;
 }
 
 serve(async (req) => {
@@ -210,6 +211,7 @@ serve(async (req) => {
         student_guardian_name: body.guardian_name ?? null,
         student_guardian_email: body.guardian_email ?? null,
         student_guardian_phone: body.guardian_phone ?? null,
+        business_profile_id: body.business_profile_id ?? null,
       });
 
     if (relationshipError) {

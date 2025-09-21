@@ -1103,6 +1103,7 @@ export type Database = {
       teacher_student_relationships: {
         Row: {
           billing_day: number | null
+          business_profile_id: string | null
           created_at: string
           id: string
           preferred_payment_account_id: string | null
@@ -1117,6 +1118,7 @@ export type Database = {
         }
         Insert: {
           billing_day?: number | null
+          business_profile_id?: string | null
           created_at?: string
           id?: string
           preferred_payment_account_id?: string | null
@@ -1131,6 +1133,7 @@ export type Database = {
         }
         Update: {
           billing_day?: number | null
+          business_profile_id?: string | null
           created_at?: string
           id?: string
           preferred_payment_account_id?: string | null
@@ -1144,6 +1147,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "teacher_student_relationships_business_profile_id_fkey"
+            columns: ["business_profile_id"]
+            isOneToOne: false
+            referencedRelation: "business_profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "teacher_student_relationships_preferred_payment_account_id_fkey"
             columns: ["preferred_payment_account_id"]

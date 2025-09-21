@@ -24,6 +24,7 @@ interface Student {
   billing_day?: number;
   relationship_id?: string;
   stripe_customer_id?: string;
+  business_profile_id?: string;
 }
 
 export default function Alunos() {
@@ -144,6 +145,7 @@ export default function Alunos() {
           billing_day: formData.billing_day,
           notify_professor_email: profile.email,
           professor_name: profile.name,
+          business_profile_id: formData.business_profile_id,
         }
       });
 
@@ -207,29 +209,29 @@ export default function Alunos() {
     setSubmitting(true);
     
     try {
-      // Update teacher-specific student data in relationship table
-      if (editingStudent.relationship_id) {
-        const { error: relationshipError } = await supabase
-          .from('teacher_student_relationships')
-          .update({
-            billing_day: formData.billing_day,
-            stripe_customer_id: formData.stripe_customer_id,
-            student_name: formData.name,
-            student_guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
-            student_guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-            student_guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
-          })
-          .eq('id', editingStudent.relationship_id);
-
-        if (relationshipError) {
-          console.error('Erro ao atualizar relacionamento:', relationshipError);
-          toast({
-            title: "Erro",
-            description: "Erro ao salvar alterações do aluno.",
-            variant: "destructive",
-          });
-          return;
+      // Use the new update-student-details function
+      const { data, error } = await supabase.functions.invoke('update-student-details', {
+        body: {
+          student_id: editingStudent.id,
+          teacher_id: profile.id,
+          relationship_id: editingStudent.relationship_id,
+          student_name: formData.name,
+          guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
+          guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
+          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
+          billing_day: formData.billing_day,
+          business_profile_id: formData.business_profile_id,
         }
+      });
+
+      if (error || (data && !data.success)) {
+        console.error('Erro ao atualizar aluno:', error || data);
+        toast({
+          title: "Erro",
+          description: data?.error || "Erro ao salvar alterações do aluno.",
+          variant: "destructive",
+        });
+        return;
       }
 
       toast({

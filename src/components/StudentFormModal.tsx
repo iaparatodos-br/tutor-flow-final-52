@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard } from "lucide-react";
+import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2 } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
 
@@ -21,6 +23,7 @@ interface StudentFormData {
   guardian_email: string;
   guardian_phone: string;
   billing_day: number;
+  business_profile_id: string | null;
 }
 
 interface StudentFormModalProps {
@@ -37,6 +40,7 @@ interface StudentFormModalProps {
     guardian_email?: string;
     guardian_phone?: string;
     billing_day?: number;
+    business_profile_id?: string;
   };
   title: string;
   description: string;
@@ -57,7 +61,8 @@ const getInitialFormData = (student?: StudentFormModalProps['student'], teacherD
     guardian_name: student?.guardian_name || "",
     guardian_email: student?.guardian_email || "",
     guardian_phone: student?.guardian_phone || "",
-    billing_day: student?.billing_day || teacherDefaultBillingDay || 15
+    billing_day: student?.billing_day || teacherDefaultBillingDay || 15,
+    business_profile_id: student?.business_profile_id || null
   };
 };
 
@@ -83,7 +88,19 @@ export function StudentFormModal({
     phone: false,
     guardian_name: false,
     guardian_email: false,
-    billing_day: false
+    billing_day: false,
+    business_profile_id: false
+  });
+
+  // Query para buscar perfis de negócio do professor
+  const { data: businessProfiles } = useQuery({
+    queryKey: ["business-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("list-business-profiles");
+      if (error) throw error;
+      return data.business_profiles || [];
+    },
+    enabled: profile?.role === 'professor',
   });
 
   // Load teacher's default billing day
@@ -123,7 +140,8 @@ export function StudentFormModal({
       phone: false,
       guardian_name: false,
       guardian_email: false,
-      billing_day: false
+      billing_day: false,
+      business_profile_id: false
     });
   }, [student, teacherDefaultBillingDay]);
 
@@ -204,7 +222,8 @@ export function StudentFormModal({
       phone: false,
       guardian_name: !formData.isOwnResponsible && !formData.guardian_name.trim(),
       guardian_email: !formData.isOwnResponsible && !formData.guardian_email.trim(),
-      billing_day: formData.billing_day < 1 || formData.billing_day > 28
+      billing_day: formData.billing_day < 1 || formData.billing_day > 28,
+      business_profile_id: businessProfiles && businessProfiles.length > 0 && !formData.business_profile_id
     };
     
     setValidationErrors(errors);
@@ -404,10 +423,65 @@ export function StudentFormModal({
                     "Dia do mês em que as mensalidades serão geradas automaticamente (1-28)" :
                     "Dia do mês preferencial para contato e comunicação (1-28)"
                   }
-                </p>
-              </div>
-            </div>
-          </div>
+                 </p>
+               </div>
+
+               {/* Business Profile Selection */}
+               {businessProfiles && businessProfiles.length > 0 && (
+                 <div className="space-y-2">
+                   <Label htmlFor="business-profile">
+                     <Building2 className="h-4 w-4 inline mr-1" />
+                     Receber pagamentos deste aluno via *
+                   </Label>
+                   <Select
+                     value={formData.business_profile_id || ""}
+                     onValueChange={(value) => {
+                       setFormData(prev => ({ ...prev, business_profile_id: value || null }));
+                       setValidationErrors(prev => ({ ...prev, business_profile_id: false }));
+                     }}
+                   >
+                     <SelectTrigger className={validationErrors.business_profile_id ? "border-destructive" : ""}>
+                       <SelectValue placeholder="Selecione o negócio para receber os pagamentos" />
+                     </SelectTrigger>
+                     <SelectContent className="bg-background border z-50">
+                       {businessProfiles.map((profile) => (
+                         <SelectItem key={profile.id} value={profile.id}>
+                           <div className="flex items-center gap-2">
+                             <Building2 className="h-4 w-4" />
+                             <span>{profile.business_name}</span>
+                             {profile.cnpj && (
+                               <span className="text-xs text-muted-foreground">
+                                 ({profile.cnpj})
+                               </span>
+                             )}
+                           </div>
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                   <p className="text-xs text-muted-foreground">
+                     Esta escolha define para qual conta bancária os pagamentos deste aluno serão direcionados.
+                   </p>
+                   {validationErrors.business_profile_id && (
+                     <p className="text-xs text-destructive">
+                       Selecione um negócio para receber os pagamentos
+                     </p>
+                   )}
+                 </div>
+               )}
+
+               {businessProfiles && businessProfiles.length === 0 && (
+                 <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                   <Building2 className="h-4 w-4 text-amber-600" />
+                   <AlertDescription className="text-amber-800 dark:text-amber-200">
+                     <strong>Aviso:</strong> Você precisa conectar pelo menos um negócio antes de cadastrar alunos.
+                     <br />
+                     Acesse <strong>Configurações → Gestão de Negócios</strong> para conectar seu primeiro negócio.
+                   </AlertDescription>
+                 </Alert>
+               )}
+             </div>
+           </div>
 
           <DialogFooter>
             <Button 

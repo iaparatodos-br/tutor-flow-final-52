@@ -21,6 +21,7 @@ const supabaseAdmin = createClient(
 interface StudentBillingInfo {
   student_id: string;
   teacher_id: string;
+  business_profile_id: string;
   billing_day: number;
   stripe_customer_id: string | null;
   teacher_stripe_account_id: string | null;
@@ -45,6 +46,7 @@ serve(async (req) => {
         id,
         student_id,
         teacher_id,
+        business_profile_id,
         billing_day,
         stripe_customer_id,
         teacher:profiles!teacher_id (
@@ -107,6 +109,7 @@ serve(async (req) => {
       const studentInfo: StudentBillingInfo = {
         student_id: relationship.student_id,
         teacher_id: relationship.teacher_id,
+        business_profile_id: relationship.business_profile_id,
         billing_day: relationship.billing_day,
         stripe_customer_id: relationship.stripe_customer_id,
         teacher_stripe_account_id: relationship.payment_accounts?.find(acc => acc.is_default)?.stripe_connect_account_id || null,
@@ -206,6 +209,7 @@ serve(async (req) => {
           .insert({
             student_id: studentInfo.student_id,
             teacher_id: studentInfo.teacher_id,
+            business_profile_id: studentInfo.business_profile_id,
             amount: totalAmount,
             status: 'pendente',
             due_date: dueDate.toISOString().split('T')[0],

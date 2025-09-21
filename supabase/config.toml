@@ -5,3 +5,25 @@ verify_jwt = false
 
 [functions.setup-expired-subscriptions-automation]
 verify_jwt = false
+
+# Multi-entity business profile functions
+[functions.create-business-profile]
+verify_jwt = true
+
+[functions.list-business-profiles]
+verify_jwt = true
+
+[functions.list-students-by-business]
+verify_jwt = true
+
+[functions.list-classes-by-business]
+verify_jwt = true
+
+[functions.list-invoices-by-business]
+verify_jwt = true
+
+[functions.list-materials-by-business]
+verify_jwt = true
+
+[functions.create-class]
+verify_jwt = true

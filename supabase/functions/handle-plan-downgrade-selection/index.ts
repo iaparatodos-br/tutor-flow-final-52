@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { logAuditEvent } from "../audit-logger/index.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,6 +16,33 @@ interface DowngradeSelectionResponse {
   message: string;
   deleted_students_count?: number;
 }
+
+// Audit logging function
+const logAuditEvent = async (
+  supabaseClient: any, 
+  userId: string, 
+  action: string, 
+  details: Record<string, any>, 
+  metadata?: Record<string, any>
+) => {
+  try {
+    const { error } = await supabaseClient
+      .from('audit_logs')
+      .insert({
+        user_id: userId,
+        action,
+        details,
+        metadata,
+        created_at: new Date().toISOString(),
+      });
+    
+    if (error) {
+      console.error('Failed to log audit event:', error);
+    }
+  } catch (err) {
+    console.error('Exception in audit logging:', err);
+  }
+};
 
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';

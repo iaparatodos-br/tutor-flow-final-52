@@ -38,8 +38,8 @@ export default function Planos() {
     if (!targetPlan) return;
 
     // Check if this is a downgrade
-    const isDowngrade = currentPlan && targetPlan.student_limit < currentPlan.student_limit;
-    const hasExcess = studentCount > targetPlan.student_limit;
+    const isDowngrade = currentPlan && targetPlan && targetPlan.student_limit < currentPlan.student_limit;
+    const hasExcess = targetPlan && studentCount > targetPlan.student_limit;
 
     if (isDowngrade && hasExcess) {
       // Show warning modal for downgrade

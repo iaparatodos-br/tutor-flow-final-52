@@ -27,7 +27,8 @@ export function PlanDowngradeWarningModal({
   currentStudentCount,
   subscriptionEndDate
 }: PlanDowngradeWarningModalProps) {
-  const excessStudents = currentStudentCount - targetPlan.student_limit;
+  const limit = targetPlan?.student_limit ?? 0;
+  const excessStudents = currentStudentCount - limit;
   const hasExcess = excessStudents > 0;
 
   return (
@@ -111,13 +112,13 @@ export function PlanDowngradeWarningModal({
               <AlertTitle>⚠️ ATENÇÃO: Limite de Alunos Excedido</AlertTitle>
               <AlertDescription className="space-y-2">
                 <p>
-                  <strong>Você possui {currentStudentCount} alunos, mas o plano {targetPlan.name} 
-                  permite apenas {targetPlan.student_limit} alunos.</strong>
+                  <strong>Você possui {currentStudentCount} alunos, mas o plano {targetPlan?.name} 
+                  permite apenas {targetPlan?.student_limit ?? 0} alunos.</strong>
                 </p>
                 <p>
                   <strong className="text-red-600">
                     {subscriptionEndDate ? 'No fim do período atual' : 'Imediatamente'}, 
-                    você precisará selecionar quais {targetPlan.student_limit} alunos deseja manter.
+                    você precisará selecionar quais {targetPlan?.student_limit ?? 0} alunos deseja manter.
                   </strong>
                 </p>
                 <p>
@@ -171,7 +172,7 @@ export function PlanDowngradeWarningModal({
                       }
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      <strong>Seleção obrigatória de alunos</strong> - você deve escolher quais {targetPlan.student_limit} alunos manter
+                      <strong>Seleção obrigatória de alunos</strong> - você deve escolher quais {targetPlan?.student_limit ?? 0} alunos manter
                     </p>
                   </div>
                 </div>
@@ -180,7 +181,7 @@ export function PlanDowngradeWarningModal({
           </Card>
 
           {/* Alternative Options */}
-          {hasExcess && targetPlan.slug !== 'free' && (
+          {hasExcess && targetPlan?.slug !== 'free' && (
             <Alert>
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Alternativas Disponíveis</AlertTitle>
@@ -188,7 +189,7 @@ export function PlanDowngradeWarningModal({
                 <ul className="space-y-1 mt-2 text-sm">
                   <li>• <strong>Manter plano atual:</strong> Cancele esta alteração</li>
                   <li>• <strong>Plano que comporta todos os alunos:</strong> Escolha um plano com limite maior</li>
-                  {targetPlan.student_limit > 3 && (
+                  {(targetPlan?.student_limit ?? 0) > 3 && (
                     <li>• <strong>Alunos extras:</strong> Pague R$ 5,00/mês por cada aluno adicional</li>
                   )}
                 </ul>

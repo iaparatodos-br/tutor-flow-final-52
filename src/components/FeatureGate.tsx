@@ -58,7 +58,7 @@ export function FeatureGate({
                 Limite de Alunos Atingido
               </CardTitle>
               <CardDescription className="text-amber-700">
-                Você atingiu o limite de {currentPlan.student_limit} alunos do plano gratuito. 
+                Você atingiu o limite de {currentPlan?.student_limit ?? 0} alunos do plano gratuito. 
                 Faça upgrade para adicionar mais alunos.
               </CardDescription>
             </CardHeader>

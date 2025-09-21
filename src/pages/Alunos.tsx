@@ -94,13 +94,13 @@ export default function Alunos() {
         
         if (isOverLimit && subscription) {
           // Setup billing for extra students
-          const extraStudents = students.length - currentPlan.student_limit + 1;
+          const extraStudents = students.length - (currentPlan?.student_limit ?? 0) + 1;
           
           try {
             const { data: billingData, error: billingError } = await supabase.functions.invoke('handle-student-overage', {
               body: {
                 extraStudents,
-                planLimit: currentPlan.student_limit
+                planLimit: currentPlan?.student_limit ?? 0
               }
             });
 
@@ -337,18 +337,18 @@ export default function Alunos() {
                   <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <p className="text-sm text-amber-800 dark:text-amber-200">
-                      {students.length} de {currentPlan.student_limit} alunos incluídos no plano
+                      {students.length} de {currentPlan?.student_limit ?? 0} alunos incluídos no plano
                     </p>
                   </div>
                 );
               }
               
-              if (currentPlan.slug === 'free' && students.length >= currentPlan.student_limit - 1) {
+              if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
                 return (
                   <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <p className="text-sm text-amber-800 dark:text-amber-200">
-                      {students.length} de {currentPlan.student_limit} alunos (plano gratuito)
+                      {students.length} de {currentPlan?.student_limit ?? 0} alunos (plano gratuito)
                     </p>
                   </div>
                 );

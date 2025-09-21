@@ -31,6 +31,7 @@ import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
 import StudentDashboard from "./pages/StudentDashboard";
 import Faturas from "./pages/Faturas";
+import PainelNegocios from "./pages/PainelNegocios";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
@@ -106,6 +107,7 @@ const AppWithProviders = () => {
             <Route path="/contas-recebimento" element={<FinancialRouteGuard><ContasRecebimento /></FinancialRouteGuard>} />
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
+            <Route path="/painel/configuracoes/negocios" element={<FinancialRouteGuard><PainelNegocios /></FinancialRouteGuard>} />
             <Route path="/politicas-cancelamento" element={<Configuracoes />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/planos" element={<Planos />} />

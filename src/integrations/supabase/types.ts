@@ -89,6 +89,44 @@ export type Database = {
         }
         Relationships: []
       }
+      business_profiles: {
+        Row: {
+          business_name: string
+          cnpj: string | null
+          created_at: string
+          id: string
+          stripe_connect_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          business_name: string
+          cnpj?: string | null
+          created_at?: string
+          id?: string
+          stripe_connect_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          business_name?: string
+          cnpj?: string | null
+          created_at?: string
+          id?: string
+          stripe_connect_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_profiles_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cancellation_policies: {
         Row: {
           allow_amnesty: boolean

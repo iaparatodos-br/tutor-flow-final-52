@@ -7,10 +7,17 @@ import { Check, Star, Zap, Users, FileText, DollarSign, HardDrive, X } from 'luc
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
+import { PlanDowngradeWarningModal } from '@/components/PlanDowngradeWarningModal';
+import { useStudentCount } from '@/hooks/useStudentCount';
 
 export default function Planos() {
-  const { plans, currentPlan, createCheckoutSession } = useSubscription();
+  const { plans, currentPlan, createCheckoutSession, subscription } = useSubscription();
+  const { studentCount } = useStudentCount();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [downgradeWarning, setDowngradeWarning] = useState<{
+    open: boolean;
+    targetPlan: any;
+  }>({ open: false, targetPlan: null });
   const navigate = useNavigate();
 
   const handlePlanSelect = async (planSlug: string) => {
@@ -27,6 +34,27 @@ export default function Planos() {
       return;
     }
 
+    const targetPlan = plans.find(p => p.slug === planSlug);
+    if (!targetPlan) return;
+
+    // Check if this is a downgrade
+    const isDowngrade = currentPlan && targetPlan.student_limit < currentPlan.student_limit;
+    const hasExcess = studentCount > targetPlan.student_limit;
+
+    if (isDowngrade && hasExcess) {
+      // Show warning modal for downgrade
+      setDowngradeWarning({
+        open: true,
+        targetPlan
+      });
+      return;
+    }
+
+    // Proceed with normal checkout
+    await proceedWithCheckout(planSlug);
+  };
+
+  const proceedWithCheckout = async (planSlug: string) => {
     setLoadingPlan(planSlug);
     try {
       const checkoutUrl = await createCheckoutSession(planSlug);
@@ -41,6 +69,17 @@ export default function Planos() {
     } finally {
       setLoadingPlan(null);
     }
+  };
+
+  const handleDowngradeConfirm = async () => {
+    if (downgradeWarning.targetPlan) {
+      await proceedWithCheckout(downgradeWarning.targetPlan.slug);
+    }
+    setDowngradeWarning({ open: false, targetPlan: null });
+  };
+
+  const handleDowngradeCancel = () => {
+    setDowngradeWarning({ open: false, targetPlan: null });
   };
 
   const getFeatureIcon = (feature: string) => {
@@ -271,6 +310,16 @@ export default function Planos() {
           </div>
         </div>
       </div>
+
+      <PlanDowngradeWarningModal
+        open={downgradeWarning.open}
+        onClose={handleDowngradeCancel}
+        onConfirm={handleDowngradeConfirm}
+        currentPlan={currentPlan}
+        targetPlan={downgradeWarning.targetPlan}
+        currentStudentCount={studentCount}
+        subscriptionEndDate={subscription?.current_period_end}
+      />
     </Layout>
   );
 }

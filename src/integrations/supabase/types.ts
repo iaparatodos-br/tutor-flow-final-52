@@ -1312,6 +1312,7 @@ export type Database = {
         Args: { teacher_user_id: string }
         Returns: {
           billing_day: number
+          business_profile_id: string
           created_at: string
           guardian_email: string
           guardian_name: string

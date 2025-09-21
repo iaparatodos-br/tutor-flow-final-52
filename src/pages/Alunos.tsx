@@ -67,7 +67,8 @@ export default function Alunos() {
         guardian_phone: student.guardian_phone,
         billing_day: student.billing_day,
         relationship_id: student.relationship_id,
-        stripe_customer_id: student.stripe_customer_id
+        stripe_customer_id: student.stripe_customer_id,
+        business_profile_id: student.business_profile_id
       })) || [];
 
       setStudents(transformedData);

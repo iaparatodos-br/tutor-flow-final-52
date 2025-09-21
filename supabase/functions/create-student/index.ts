@@ -19,7 +19,6 @@ interface CreateStudentRequest {
   name: string;
   email: string;
   teacher_id: string;
-  business_profile_id: string;
   redirect_url?: string;
   guardian_name?: string | null;
   guardian_email?: string | null;
@@ -39,44 +38,10 @@ serve(async (req) => {
     const body: CreateStudentRequest = await req.json();
     console.log('create-student function called with body:', JSON.stringify(body));
 
-    if (!body?.email || !body?.name || !body?.teacher_id || !body?.business_profile_id) {
+    if (!body?.email || !body?.name || !body?.teacher_id) {
       return new Response(
-        JSON.stringify({ success: false, error: "Campos obrigatórios não informados: nome, email, professor e negócio" }),
+        JSON.stringify({ success: false, error: "Campos obrigatórios não informados: nome, email e professor" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Verify that the business_profile_id belongs to the authenticated teacher
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Acesso não autorizado" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: authUserData, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !authUserData.user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Acesso não autorizado" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Verify business profile ownership
-    const { data: businessProfile, error: businessProfileError } = await supabaseAdmin
-      .from('business_profiles')
-      .select('id')
-      .eq('id', body.business_profile_id)
-      .eq('user_id', authUserData.user.id)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (businessProfileError || !businessProfile) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Negócio não encontrado ou não pertence ao usuário" }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -239,7 +204,6 @@ serve(async (req) => {
       .insert({
         teacher_id: body.teacher_id,
         student_id: studentId,
-        business_profile_id: body.business_profile_id,
         billing_day: body.billing_day ?? 15,
         stripe_customer_id: body.stripe_customer_id ?? null,
         student_name: body.name,

@@ -9,7 +9,6 @@ import { ProfileProvider } from "@/contexts/ProfileContext";
 import { SubscriptionProvider } from "@/contexts/SubscriptionContext";
 import { SidebarProvider } from "@/contexts/SidebarContext";
 import { TeacherProvider } from "@/contexts/TeacherContext";
-import { BusinessProvider } from "@/contexts/BusinessContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
 import Index from "./pages/Index";
@@ -32,7 +31,6 @@ import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
 import StudentDashboard from "./pages/StudentDashboard";
 import Faturas from "./pages/Faturas";
-import PainelNegocios from "./pages/PainelNegocios";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
@@ -85,10 +83,9 @@ const AppWithProviders = () => {
   
   return (
     <ProfileProvider profile={profile} isProfessor={isProfessor} isAluno={isAluno}>
-      <BusinessProvider>
-        <TeacherProvider>
-          <SubscriptionProvider>
-            <SidebarProvider>
+      <TeacherProvider>
+        <SubscriptionProvider>
+          <SidebarProvider>
             <TooltipProvider>
               <StudentSelectionBlocker />
               <Toaster />
@@ -114,7 +111,6 @@ const AppWithProviders = () => {
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/portal-do-aluno" element={<StudentDashboard />} />
-            <Route path="/painel/negocios" element={<PainelNegocios />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
@@ -122,7 +118,6 @@ const AppWithProviders = () => {
           </SidebarProvider>
         </SubscriptionProvider>
       </TeacherProvider>
-      </BusinessProvider>
     </ProfileProvider>
   );
 };

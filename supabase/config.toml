@@ -1,7 +1,1 @@
 project_id = "nwgomximjevgczwuyqcx"
-
-[functions.process-expired-subscriptions]
-verify_jwt = false
-
-[functions.setup-expired-subscriptions-automation]
-verify_jwt = false

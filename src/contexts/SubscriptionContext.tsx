@@ -120,7 +120,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (data?.subscription) {
+      // Check for payment failure first
+      if (data?.payment_failed) {
+        console.log('Payment failure detected:', data.payment_failure_data);
+        setPaymentFailureDetected(true);
+        setPaymentFailureData(data.payment_failure_data || {});
+        
+        // Set current plan to plan from response or free plan
+        if (data.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
+        setSubscription(null);
+      } else if (data?.subscription) {
         setSubscription(data.subscription);
         
         // Use plan directly from check-subscription-status response if available
@@ -138,6 +152,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
             setCurrentPlan(planData as unknown as SubscriptionPlan);
           }
         }
+        
+        // Clear payment failure state if subscription is active
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
       } else if (data?.needs_student_selection) {
         // Handle student selection requirement
         setNeedsStudentSelection(true);
@@ -255,22 +273,43 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      if (data?.subscription) {
+      // Check for payment failure first  
+      if (data?.payment_failed) {
+        console.log('Payment failure detected on refresh:', data.payment_failure_data);
+        setPaymentFailureDetected(true);
+        setPaymentFailureData(data.payment_failure_data || {});
+        
+        // Set current plan to plan from response or free plan
+        if (data.plan) {
+          setCurrentPlan(data.plan);
+        } else {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
+        setSubscription(null);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+      } else if (data?.subscription) {
         setSubscription(data.subscription);
         setCurrentPlan(data.plan);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
+        
+        // Clear payment failure state if subscription is active
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
       } else if (data?.needs_student_selection) {
         // Handle student selection requirement
         setNeedsStudentSelection(true);
-        setStudentSelectionData({
-          students: data.current_students,
-          currentPlan: data.previous_plan,
-          newPlan: data.plan,
-          currentCount: data.current_students?.length || 0,
-          targetLimit: data.plan?.student_limit || 0,
-          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0)
-        });
+          setStudentSelectionData({
+            students: data.current_students,
+            currentPlan: data.previous_plan,
+            newPlan: data.plan,
+            currentCount: data.current_students?.length || 0,
+            targetLimit: data.plan?.student_limit || 0,
+            needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0),
+            isPaymentFailure: true
+          });
         setCurrentPlan(data.plan);
         setSubscription(null);
       } else {
@@ -280,6 +319,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setCurrentPlan(freePlan || null);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
+        
+        // Clear payment failure state on free plan fallback
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
@@ -544,6 +587,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           if (error) throw error;
           
           toast.success('Downgrade realizado com sucesso. Suas faturas pendentes foram canceladas.');
+          
+          // Clear payment failure state and refresh
+          setPaymentFailureDetected(false);
+          setPaymentFailureData(null);
           await refreshSubscription();
         }
       }

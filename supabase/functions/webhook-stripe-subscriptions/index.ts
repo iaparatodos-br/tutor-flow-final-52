@@ -379,6 +379,12 @@ serve(async (req) => {
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           const priceId = sub.items.data[0]?.price?.id ?? null;
+          
+          // Check payment attempt count - if 4th attempt failed, Stripe will cancel the subscription
+          const attemptCount = invoice.attempt_count || 0;
+          log("Payment failure attempt count", { invoiceId: invoice.id, attemptCount, subscriptionId });
+          
+          // Update subscription status
           await upsertUserSubscription({
             userId,
             stripeCustomerId: customerId,
@@ -389,6 +395,16 @@ serve(async (req) => {
             currentPeriodEnd: sub.current_period_end ?? null,
             cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
           });
+          
+          // If final attempt failed, subscription will be canceled by Stripe automatically
+          // The subscription.deleted webhook will handle the downgrade
+          if (attemptCount >= 4) {
+            log("Final payment attempt failed, subscription will be canceled by Stripe", { 
+              subscriptionId, 
+              userId, 
+              attemptCount 
+            });
+          }
         }
         break;
       }
@@ -427,10 +443,10 @@ async function handleSubscriptionStatusChange(subscription: Stripe.Subscription,
       userId 
     });
 
-    // Only process if subscription became inactive
-    const inactiveStatuses = ['canceled', 'past_due', 'incomplete_expired'];
-    if (!inactiveStatuses.includes(subscription.status)) {
-      log('Subscription status is active, no cancellation needed');
+    // Only process cancellation and downgrade for fully canceled subscriptions
+    const canceledStatuses = ['canceled', 'incomplete_expired'];
+    if (!canceledStatuses.includes(subscription.status)) {
+      log('Subscription status is not canceled, no downgrade needed', { status: subscription.status });
       return;
     }
 

@@ -12,6 +12,43 @@ const log = (step: string, details?: any) => {
   console.log(`[WEBHOOK-STRIPE-SUBSCRIPTIONS] ${step}${d}`);
 };
 
+// Função para verificar e processar idempotência de eventos
+const processEventIdempotency = async (
+  supabase: any,
+  event: Stripe.Event,
+  webhookFunction: string
+): Promise<{ canProcess: boolean; result?: any }> => {
+  try {
+    const { data, error } = await supabase.rpc('process_stripe_event_atomic', {
+      p_event_id: event.id,
+      p_event_type: event.type,
+      p_webhook_function: webhookFunction,
+      p_event_created: new Date(event.created * 1000).toISOString(),
+      p_event_data: event
+    });
+
+    if (error) {
+      log("Error in idempotency check", { error, eventId: event.id });
+      throw error;
+    }
+
+    const action = data?.action;
+    log("Idempotency check result", { eventId: event.id, action, message: data?.message });
+
+    if (action === 'skipped') {
+      return { 
+        canProcess: false, 
+        result: { received: true, skipped: true, message: data?.message } 
+      };
+    }
+
+    return { canProcess: true };
+  } catch (error) {
+    log("Failed idempotency check", { error: (error as Error).message, eventId: event.id });
+    throw error;
+  }
+};
+
 // Map Stripe subscription status to local status
 const mapStripeStatus = (status: string): string => {
   switch (status) {
@@ -160,6 +197,20 @@ serve(async (req) => {
   };
 
   try {
+    // Verificar idempotência antes de processar o evento
+    const { canProcess, result } = await processEventIdempotency(
+      supabase,
+      event,
+      'webhook-stripe-subscriptions'
+    );
+
+    if (!canProcess) {
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;

@@ -12,6 +12,43 @@ const logStep = (step: string, details?: any) => {
   console.log(`[WEBHOOK-STRIPE-CONNECT] ${step}${detailsStr}`);
 };
 
+// Função para verificar e processar idempotência de eventos
+const processEventIdempotency = async (
+  supabase: any,
+  event: Stripe.Event,
+  webhookFunction: string
+): Promise<{ canProcess: boolean; result?: any }> => {
+  try {
+    const { data, error } = await supabase.rpc('process_stripe_event_atomic', {
+      p_event_id: event.id,
+      p_event_type: event.type,
+      p_webhook_function: webhookFunction,
+      p_event_created: new Date(event.created * 1000).toISOString(),
+      p_event_data: event
+    });
+
+    if (error) {
+      logStep("Error in idempotency check", { error, eventId: event.id });
+      throw error;
+    }
+
+    const action = data?.action;
+    logStep("Idempotency check result", { eventId: event.id, action, message: data?.message });
+
+    if (action === 'skipped') {
+      return { 
+        canProcess: false, 
+        result: { received: true, skipped: true, message: data?.message } 
+      };
+    }
+
+    return { canProcess: true };
+  } catch (error) {
+    logStep("Failed idempotency check", { error: (error as Error).message, eventId: event.id });
+    throw error;
+  }
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -53,6 +90,20 @@ serve(async (req) => {
 
     const eventObject = event.data.object as any;
     logStep("Processing event", { type: event.type, id: event.id });
+
+    // Verificar idempotência antes de processar o evento
+    const { canProcess, result } = await processEventIdempotency(
+      supabaseClient,
+      event,
+      'webhook-stripe-connect'
+    );
+
+    if (!canProcess) {
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
 
     // Handle different event types with focus on invoicing
     switch (event.type) {

@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      archived_stripe_events: {
+        Row: {
+          archived_at: string
+          data_fingerprint: string
+          event_created: string
+          event_data: Json
+          event_id: string
+          event_type: string
+          processed_at: string
+          processing_result: Json
+          webhook_function: string
+        }
+        Insert: {
+          archived_at?: string
+          data_fingerprint: string
+          event_created: string
+          event_data: Json
+          event_id: string
+          event_type: string
+          processed_at: string
+          processing_result: Json
+          webhook_function: string
+        }
+        Update: {
+          archived_at?: string
+          data_fingerprint?: string
+          event_created?: string
+          event_data?: Json
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+          processing_result?: Json
+          webhook_function?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           actor_id: string | null
@@ -919,6 +955,39 @@ export type Database = {
           },
         ]
       }
+      processed_stripe_events: {
+        Row: {
+          data_fingerprint: string
+          event_created: string
+          event_data: Json
+          event_id: string
+          event_type: string
+          processed_at: string
+          processing_result: Json
+          webhook_function: string
+        }
+        Insert: {
+          data_fingerprint: string
+          event_created: string
+          event_data: Json
+          event_id: string
+          event_type: string
+          processed_at?: string
+          processing_result?: Json
+          webhook_function: string
+        }
+        Update: {
+          data_fingerprint?: string
+          event_created?: string
+          event_data?: Json
+          event_id?: string
+          event_type?: string
+          processed_at?: string
+          processing_result?: Json
+          webhook_function?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           address_city: string | null
@@ -1281,6 +1350,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_old_stripe_events: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      generate_stripe_fingerprint: {
+        Args: { event_data: Json }
+        Returns: string
+      }
       get_calendar_events: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
         Returns: {
@@ -1346,6 +1423,16 @@ export type Database = {
       is_professor: {
         Args: { _user_id: string }
         Returns: boolean
+      }
+      process_stripe_event_atomic: {
+        Args: {
+          p_event_created: string
+          p_event_data: Json
+          p_event_id: string
+          p_event_type: string
+          p_webhook_function: string
+        }
+        Returns: Json
       }
       teacher_has_financial_module: {
         Args: { teacher_id: string }

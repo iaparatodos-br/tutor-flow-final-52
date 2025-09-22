@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
+import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle } from "lucide-react";
 
@@ -61,12 +62,14 @@ export default function Financeiro() {
   const [expenseSummary, setExpenseSummary] = useState<ExpenseSummary>({ total: 0, count: 0 });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithStudent | null>(null);
+  const [students, setStudents] = useState<{id: string; name: string; email: string}[]>([]);
 
   useEffect(() => {
     if (profile?.id) {
       loadInvoices();
       if (isProfessor) {
         loadExpenseSummary();
+        loadStudents();
       }
     }
   }, [profile, isProfessor]);
@@ -77,6 +80,28 @@ export default function Financeiro() {
       loadInvoices();
     }
   }, [selectedTeacherId, isAluno]);
+
+  const loadStudents = async () => {
+    if (!profile?.id) return;
+    
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_students', {
+        teacher_user_id: profile.id
+      });
+
+      if (error) throw error;
+      
+      const transformedData = data?.map((student: any) => ({
+        id: student.student_id,
+        name: student.student_name,
+        email: student.student_email,
+      })) || [];
+
+      setStudents(transformedData);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
 
   const loadExpenseSummary = async () => {
     try {
@@ -316,10 +341,18 @@ export default function Financeiro() {
             <TabsContent value="receitas" className="space-y-4">
               <Card className="shadow-card">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Faturas Emitidas ({invoices.length})
-                  </CardTitle>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5" />
+                      Faturas Emitidas ({invoices.length})
+                    </CardTitle>
+                    {students.length > 0 && (
+                      <CreateInvoiceModal 
+                        students={students}
+                        onInvoiceCreated={loadInvoices}
+                      />
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {loading ? (

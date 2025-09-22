@@ -8,7 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle } from "lucide-react";
+import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
@@ -326,7 +327,7 @@ export default function Alunos() {
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
             <p className="text-muted-foreground">
@@ -361,15 +362,22 @@ export default function Alunos() {
             })()}
           </div>
           
-          <FeatureGate studentCount={students.length} showUpgrade={true}>
-            <Button 
-              onClick={() => setIsAddDialogOpen(true)}
-              className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar Aluno
-            </Button>
-          </FeatureGate>
+          <div className="flex gap-2">
+            {students.length > 0 && (
+              <CreateInvoiceModal 
+                students={students.map(s => ({ id: s.id, name: s.name, email: s.email }))}
+              />
+            )}
+            <FeatureGate studentCount={students.length} showUpgrade={true}>
+              <Button 
+                onClick={() => setIsAddDialogOpen(true)}
+                className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Aluno
+              </Button>
+            </FeatureGate>
+          </div>
         </div>
 
         {/* Students List */}

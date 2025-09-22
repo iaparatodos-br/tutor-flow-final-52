@@ -51,6 +51,9 @@ verify_jwt = true
 [functions.validate-payment-routing]
 verify_jwt = true
 
+[functions.validate-business-profile-deletion]
+verify_jwt = true
+
 [functions.process-expired-subscriptions]
 verify_jwt = false
 

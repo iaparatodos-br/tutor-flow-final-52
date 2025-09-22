@@ -77,6 +77,13 @@ export function PaymentAccountsManager() {
   const handleSetDefault = async (accountId: string) => {
     if (!profile?.id) return;
 
+    // CONFIRMAÇÃO PARA AÇÃO CRÍTICA
+    const confirmed = window.confirm(
+      "Tem certeza que deseja alterar a conta padrão? Novos alunos serão vinculados a esta conta."
+    );
+    
+    if (!confirmed) return;
+
     try {
       // Remove default from all accounts
       await supabase
@@ -136,6 +143,13 @@ export function PaymentAccountsManager() {
   const handleDelete = async (accountId: string) => {
     const accountToDelete = accounts.find(a => a.id === accountId);
     const activeAccounts = accounts.filter(a => a.is_active);
+    
+    // VALIDAÇÃO DE SEGURANÇA - Confirmar ação crítica
+    const confirmed = window.confirm(
+      `Tem certeza que deseja excluir a conta "${accountToDelete?.account_name}"? Esta ação não pode ser desfeita.`
+    );
+    
+    if (!confirmed) return;
     
     // Só impedir exclusão se for uma conta ativa e for a única conta ativa
     if (accountToDelete?.is_active && activeAccounts.length <= 1) {

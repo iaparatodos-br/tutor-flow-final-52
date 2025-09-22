@@ -55,18 +55,30 @@ serve(async (req) => {
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
 
-    // Validate that invoice has business_profile_id
+    // VALIDAÇÕES DE INTEGRIDADE - Adicionadas conforme solicitado
+    
+    // 1. Validar que fatura possui business_profile_id
     if (!invoice.business_profile_id) {
+      logStep("VALIDATION ERROR: Invoice missing business_profile_id", { invoiceId: invoice_id });
       throw new Error("Fatura não possui negócio definido para roteamento de pagamento");
     }
 
-    // Get business profile and its Stripe Connect account
+    // 2. Validar que business profile existe e está ativo
     if (!invoice.business_profile) {
+      logStep("VALIDATION ERROR: Business profile not found", { 
+        invoiceId: invoice_id, 
+        businessProfileId: invoice.business_profile_id 
+      });
       throw new Error("Negócio da fatura não encontrado");
     }
 
+    // 3. Validar que business profile possui Stripe Connect ID
     const stripeConnectAccountId = invoice.business_profile.stripe_connect_id;
     if (!stripeConnectAccountId) {
+      logStep("VALIDATION ERROR: No Stripe Connect ID", { 
+        businessProfileId: invoice.business_profile_id,
+        businessName: invoice.business_profile.business_name 
+      });
       throw new Error("Conta Stripe Connect não encontrada para o negócio desta fatura");
     }
 
@@ -76,21 +88,57 @@ serve(async (req) => {
       stripeConnectAccountId 
     });
 
-    // Verify that the Stripe Connect account is ready to accept payments
+    // 4. VALIDAÇÃO DETALHADA DO STATUS DO STRIPE CONNECT - Adicionada conforme solicitado
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     
     try {
       const stripeAccount = await stripe.accounts.retrieve(stripeConnectAccountId);
+      
+      // Verificações detalhadas de integridade
+      const accountIssues = [];
+      
       if (!stripeAccount.charges_enabled) {
-        throw new Error("Conta Stripe do negócio não está habilitada para receber pagamentos");
+        accountIssues.push("Conta não habilitada para receber pagamentos");
       }
-      logStep("Stripe Connect account verified", { 
+      
+      if (!stripeAccount.payouts_enabled) {
+        accountIssues.push("Saques não habilitados");
+      }
+      
+      if (!stripeAccount.details_submitted) {
+        accountIssues.push("Informações da conta incompletas");
+      }
+      
+      if (stripeAccount.requirements?.currently_due?.length > 0) {
+        accountIssues.push(`Documentos pendentes: ${stripeAccount.requirements.currently_due.join(", ")}`);
+      }
+      
+      if (accountIssues.length > 0) {
+        logStep("VALIDATION ERROR: Stripe Connect account issues", { 
+          accountId: stripeConnectAccountId,
+          issues: accountIssues,
+          accountStatus: {
+            charges_enabled: stripeAccount.charges_enabled,
+            payouts_enabled: stripeAccount.payouts_enabled,
+            details_submitted: stripeAccount.details_submitted
+          }
+        });
+        throw new Error(`Problemas na conta Stripe Connect: ${accountIssues.join("; ")}`);
+      }
+      
+      logStep("Stripe Connect account validation passed", { 
         accountId: stripeConnectAccountId,
-        chargesEnabled: stripeAccount.charges_enabled 
+        chargesEnabled: stripeAccount.charges_enabled,
+        payoutsEnabled: stripeAccount.payouts_enabled,
+        detailsSubmitted: stripeAccount.details_submitted
       });
+      
     } catch (stripeError) {
-      logStep("Error verifying Stripe Connect account", { error: stripeError });
-      throw new Error("Erro ao verificar conta Stripe Connect do negócio");
+      logStep("CRITICAL ERROR: Failed to verify Stripe Connect account", { 
+        error: stripeError,
+        accountId: stripeConnectAccountId 
+      });
+      throw new Error("Erro crítico ao verificar conta Stripe Connect do negócio");
     }
 
     // Convert amount from decimal to cents

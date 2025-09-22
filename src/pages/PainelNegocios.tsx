@@ -9,11 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3 } from "lucide-react";
+import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { PaymentAccountsManager } from "@/components/PaymentAccountsManager";
 import { PaymentRoutingTest } from "@/components/PaymentRoutingTest";
+import { ConfirmationDialog } from "@/components/ui/alert-confirmation";
+import { SystemHealthAlert } from "@/components/SystemHealthAlert";
 
 interface BusinessProfile {
   id: string;
@@ -41,6 +43,9 @@ export default function PainelNegocios() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [businessName, setBusinessName] = useState("");
   const [cnpj, setCnpj] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [businessToDelete, setBusinessToDelete] = useState<BusinessProfile | null>(null);
+  const [deleteValidation, setDeleteValidation] = useState<any>(null);
 
   // Query para listar perfis de negócio
   const { data: businessProfiles, isLoading } = useQuery({
@@ -101,6 +106,65 @@ export default function PainelNegocios() {
     },
   });
 
+  // Mutation para validar exclusão de business profile
+  const validateDeletionMutation = useMutation({
+    mutationFn: async (businessProfileId: string) => {
+      const { data, error } = await supabase.functions.invoke("validate-business-profile-deletion", {
+        body: { business_profile_id: businessProfileId },
+      });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Mutation para excluir business profile
+  const deleteBusinessProfileMutation = useMutation({
+    mutationFn: async (businessProfileId: string) => {
+      const { data, error } = await supabase
+        .from("business_profiles")
+        .delete()
+        .eq("id", businessProfileId);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Perfil de negócio excluído com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["business-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["student-business-links"] });
+      setDeleteConfirmOpen(false);
+      setBusinessToDelete(null);
+      setDeleteValidation(null);
+    },
+    onError: (error: any) => {
+      toast.error(`Erro ao excluir perfil de negócio: ${error.message}`);
+    },
+  });
+
+  const handleDeleteBusiness = async (business: BusinessProfile) => {
+    setBusinessToDelete(business);
+    
+    try {
+      const validation = await validateDeletionMutation.mutateAsync(business.id);
+      setDeleteValidation(validation);
+      
+      if (validation.can_delete) {
+        setDeleteConfirmOpen(true);
+      } else {
+        // Mostrar problemas que impedem a exclusão
+        const issuesList = validation.issues.map((issue: any) => issue.title).join(", ");
+        toast.error(`Não é possível excluir: ${issuesList}`);
+      }
+    } catch (error: any) {
+      toast.error(`Erro ao validar exclusão: ${error.message}`);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (businessToDelete) {
+      deleteBusinessProfileMutation.mutate(businessToDelete.id);
+    }
+  };
+
   const handleCreateBusiness = () => {
     if (!businessName.trim()) {
       toast.error("Nome do negócio é obrigatório");
@@ -140,6 +204,9 @@ export default function PainelNegocios() {
             Gerencie suas entidades de negócio, contas de recebimento e vínculos com alunos
           </p>
         </div>
+
+        {/* Sistema de Alertas para Inconsistências */}
+        <SystemHealthAlert />
 
         <Tabs defaultValue="business-profiles" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
@@ -240,9 +307,24 @@ export default function PainelNegocios() {
                           <Calendar className="h-4 w-4" />
                           Conectado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                         </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="text-green-600">✓ Stripe Conectado</span>
-                          <ExternalLink className="h-4 w-4" />
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-green-600">✓ Stripe Conectado</span>
+                            <ExternalLink className="h-4 w-4" />
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteBusiness(profile)}
+                            className="text-destructive hover:text-destructive"
+                            disabled={validateDeletionMutation.isPending}
+                          >
+                            {validateDeletionMutation.isPending ? (
+                              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
                         </div>
                       </div>
                     </CardContent>
@@ -335,6 +417,26 @@ export default function PainelNegocios() {
             <PaymentRoutingTest />
           </TabsContent>
         </Tabs>
+
+        {/* Diálogo de Confirmação de Exclusão */}
+        <ConfirmationDialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title="Excluir Perfil de Negócio"
+          description={
+            businessToDelete && deleteValidation
+              ? `Tem certeza que deseja excluir o negócio "${businessToDelete.business_name}"? ${
+                  deleteValidation.warnings?.length > 0
+                    ? `\n\nAvisos: ${deleteValidation.warnings.map((w: any) => w.description).join("; ")}`
+                    : ""
+                }`
+              : "Tem certeza que deseja excluir este perfil de negócio?"
+          }
+          actionText="Excluir"
+          variant="destructive"
+          onConfirm={confirmDelete}
+          loading={deleteBusinessProfileMutation.isPending}
+        />
       </div>
     </Layout>
   );

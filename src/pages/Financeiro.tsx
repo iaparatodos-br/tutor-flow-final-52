@@ -3,6 +3,7 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
+import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -269,7 +270,8 @@ export default function Financeiro() {
         </div>
 
         <FeatureGate feature="financial_module">
-          <div className="space-y-6">
+          <StripeAccountGuard requireChargesEnabled={true}>
+            <div className="space-y-6">
 
         {/* Summary Cards */}
         {isProfessor && (
@@ -624,7 +626,8 @@ export default function Financeiro() {
             )}
           </DialogContent>
         </Dialog>
-          </div>
+            </div>
+          </StripeAccountGuard>
         </FeatureGate>
       </div>
     </Layout>

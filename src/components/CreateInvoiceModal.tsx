@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +86,8 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <StripeAccountGuard requireChargesEnabled={true}>
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button className="flex items-center gap-2">
           <DollarSign className="h-4 w-4" />
@@ -188,6 +190,7 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </StripeAccountGuard>
   );
 }

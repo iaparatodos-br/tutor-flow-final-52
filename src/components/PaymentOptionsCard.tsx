@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -211,7 +212,8 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const isPaid = invoice.status === 'paga';
 
   return (
-    <Card className="w-full">
+    <StripeAccountGuard requireChargesEnabled={true}>
+      <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -385,6 +387,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           )}
         </CardContent>
       )}
-    </Card>
+      </Card>
+    </StripeAccountGuard>
   );
 }

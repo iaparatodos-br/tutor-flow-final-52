@@ -39,6 +39,8 @@ interface SubscriptionContextType {
   loading: boolean;
   needsStudentSelection: boolean;
   studentSelectionData: any;
+  paymentFailureDetected: boolean;
+  paymentFailureData: any;
   hasFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   hasTeacherFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   canAddStudent: () => boolean;
@@ -51,6 +53,7 @@ interface SubscriptionContextType {
   createCheckoutSession: (planSlug: string) => Promise<string>;
   cancelSubscription: (action: 'cancel' | 'reactivate') => Promise<void>;
   completeStudentSelection: () => Promise<void>;
+  handlePaymentFailure: (action: 'renew' | 'downgrade') => Promise<void>;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -64,6 +67,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsStudentSelection, setNeedsStudentSelection] = useState(false);
   const [studentSelectionData, setStudentSelectionData] = useState<any>(null);
+  const [paymentFailureDetected, setPaymentFailureDetected] = useState(false);
+  const [paymentFailureData, setPaymentFailureData] = useState<any>(null);
 
   // Get teacher context conditionally
   let teacherContext = null;
@@ -491,6 +496,67 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handlePaymentFailure = async (action: 'renew' | 'downgrade'): Promise<void> => {
+    try {
+      if (action === 'renew') {
+        // Create checkout session for current plan
+        if (currentPlan) {
+          const url = await createCheckoutSession(currentPlan.slug);
+          window.location.href = url;
+        }
+      } else if (action === 'downgrade') {
+        // Check if user has excess students
+        const { data: students } = await supabase
+          .rpc('get_teacher_students', { teacher_user_id: user?.id });
+        
+        const freePlan = plans.find(p => p.slug === 'free');
+        if (!freePlan) throw new Error('Free plan not found');
+        
+        const currentStudentCount = students?.length || 0;
+        
+        if (currentStudentCount > freePlan.student_limit) {
+          // Show student selection modal
+          const studentData = students.map((s: any) => ({
+            id: s.student_id,
+            relationship_id: s.relationship_id,
+            name: s.student_name,
+            email: s.student_email,
+            created_at: s.created_at
+          }));
+          
+          setStudentSelectionData({
+            students: studentData,
+            currentPlan,
+            newPlan: freePlan,
+            currentCount: currentStudentCount,
+            targetLimit: freePlan.student_limit,
+            needToRemove: currentStudentCount - freePlan.student_limit,
+            isPaymentFailure: true
+          });
+          setNeedsStudentSelection(true);
+          setPaymentFailureDetected(false);
+        } else {
+          // Direct downgrade without student selection
+          const { error } = await supabase.functions.invoke('process-payment-failure-downgrade', {
+            body: { selectedStudentIds: null, reason: 'payment_failure' }
+          });
+          
+          if (error) throw error;
+          
+          toast.success('Downgrade realizado com sucesso. Suas faturas pendentes foram canceladas.');
+          await refreshSubscription();
+        }
+      }
+      
+      setPaymentFailureDetected(false);
+      setPaymentFailureData(null);
+    } catch (error) {
+      console.error('Error handling payment failure:', error);
+      toast.error('Erro ao processar sua solicitação. Tente novamente.');
+      throw error;
+    }
+  };
+
   useEffect(() => {
     loadPlans();
   }, []);
@@ -596,6 +662,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         loading,
         needsStudentSelection,
         studentSelectionData,
+        paymentFailureDetected,
+        paymentFailureData,
         hasFeature,
         hasTeacherFeature,
         canAddStudent,
@@ -604,6 +672,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         createCheckoutSession,
         cancelSubscription,
         completeStudentSelection,
+        handlePaymentFailure,
       }}
     >
       {children}

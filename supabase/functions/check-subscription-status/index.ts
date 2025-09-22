@@ -148,6 +148,49 @@ serve(async (req) => {
         currentPeriodEnd: subscription.current_period_end 
       });
       
+      let paymentFailure = null;
+
+      // If we have a Stripe subscription ID, check its status for payment failures
+      if (subscription.stripe_subscription_id) {
+        try {
+          const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+          logStep("Retrieved Stripe subscription", { 
+            status: stripeSubscription.status,
+            pastDue: stripeSubscription.status === 'past_due'
+          });
+
+          // Check if subscription is in past_due or other failure states
+          if (stripeSubscription.status === 'past_due' || 
+              stripeSubscription.status === 'canceled' ||
+              stripeSubscription.status === 'incomplete_expired') {
+            
+            // Get latest invoice to check failure details
+            const invoices = await stripe.invoices.list({
+              customer: stripeSubscription.customer as string,
+              limit: 5,
+              status: 'open'
+            });
+
+            const failedInvoice = invoices.data.find(inv => inv.status === 'open' && inv.attempt_count > 0);
+            
+            paymentFailure = {
+              detected: true,
+              status: stripeSubscription.status,
+              lastFailureDate: failedInvoice?.status_transitions?.payment_failed_at ? 
+                new Date(failedInvoice.status_transitions.payment_failed_at * 1000).toISOString() : null,
+              attemptsCount: failedInvoice?.attempt_count || 0,
+              nextAttempt: failedInvoice?.next_payment_attempt ? 
+                new Date(failedInvoice.next_payment_attempt * 1000).toISOString() : null
+            };
+
+            logStep("Payment failure detected", paymentFailure);
+          }
+        } catch (stripeError) {
+          logStep("Error checking Stripe subscription status", { error: stripeError });
+          // Continue without payment failure data
+        }
+      }
+      
       // Check if active subscription is expired
       const now = new Date();
       const periodEnd = new Date(subscription.current_period_end);
@@ -257,6 +300,7 @@ serve(async (req) => {
       }
       
       logStep("Active subscription found in database", { subscriptionId: subscription.id });
+      // Return active subscription with payment failure data if detected
       return new Response(JSON.stringify({
         subscription: {
           id: subscription.id,
@@ -267,7 +311,8 @@ serve(async (req) => {
           extra_students: subscription.extra_students,
           extra_cost_cents: subscription.extra_cost_cents
         },
-        plan: subscription.subscription_plans
+        plan: subscription.subscription_plans,
+        paymentFailure: paymentFailure
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

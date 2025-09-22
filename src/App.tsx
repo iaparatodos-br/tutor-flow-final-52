@@ -11,6 +11,7 @@ import { SidebarProvider } from "@/contexts/SidebarContext";
 import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
+import { PaymentFailureGuard } from "@/components/PaymentFailureGuard";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ResetPassword from "./pages/ResetPassword";
@@ -89,6 +90,7 @@ const AppWithProviders = () => {
           <SidebarProvider>
             <TooltipProvider>
               <StudentSelectionBlocker />
+              <PaymentFailureGuard />
               <Toaster />
               <Sonner />
               <Routes>

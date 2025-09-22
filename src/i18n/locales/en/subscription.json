@@ -43,6 +43,21 @@
     "trialExpiring": "Your trial period expires soon",
     "subscriptionExpired": "Your subscription has expired"
   },
+  "paymentFailure": {
+    "title": "Unable to renew your subscription",
+    "description": "There was a problem with your subscription payment. Choose how you want to proceed:",
+    "explanation": "Your automatic billing attempts have failed. You can renew now or return to the free plan.",
+    "lastFailure": "Last attempt",
+    "attempts": "Attempts made",
+    "whatHappensNext": "Your options:",
+    "optionRenew": "Renew: Keep all features and students from your current plan",
+    "optionDowngrade": "Free plan: Limited features, may need to remove excess students",
+    "renewButton": "Renew Your Subscription",
+    "downgradeButton": "Return to Free Plan",
+    "processing": "Processing downgrade...",
+    "downgradedSuccessfully": "Downgrade completed successfully. Your pending invoices have been cancelled.",
+    "errorDowngrading": "Error during downgrade. Please try again."
+  },
   "downgrade": {
     "warning": {
       "title": "Plan Downgrade Warning",

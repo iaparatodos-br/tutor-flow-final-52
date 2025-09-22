@@ -43,6 +43,21 @@
     "trialExpiring": "Seu período de teste expira em breve",
     "subscriptionExpired": "Sua assinatura expirou"
   },
+  "paymentFailure": {
+    "title": "Não foi possível renovar sua assinatura",
+    "description": "Houve um problema com o pagamento da sua assinatura. Escolha como deseja prosseguir:",
+    "explanation": "Suas tentativas de cobrança automática falharam. Você pode renovar agora ou voltar para o plano gratuito.",
+    "lastFailure": "Última tentativa",
+    "attempts": "Tentativas realizadas",
+    "whatHappensNext": "Suas opções:",
+    "optionRenew": "Renovar: Mantenha todas as funcionalidades e alunos do seu plano atual",
+    "optionDowngrade": "Plano gratuito: Funcionalidades limitadas, pode precisar remover alunos excedentes",
+    "renewButton": "Renovar Sua Assinatura",
+    "downgradeButton": "Voltar para o Plano Gratuito",
+    "processing": "Processando downgrade...",
+    "downgradedSuccessfully": "Downgrade realizado com sucesso. Suas faturas pendentes foram canceladas.",
+    "errorDowngrading": "Erro ao realizar downgrade. Tente novamente."
+  },
   "downgrade": {
     "warning": {
       "title": "Aviso de Downgrade do Plano",

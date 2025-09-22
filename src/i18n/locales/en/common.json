@@ -69,5 +69,9 @@
     "invalidPhone": "Invalid phone",
     "selectOption": "Select an option",
     "enterValue": "Enter a value"
+  },
+  "timezone": {
+    "label": "Brazil Time",
+    "info": "All times are displayed in Brazil timezone (UTC-3)"
   }
 }

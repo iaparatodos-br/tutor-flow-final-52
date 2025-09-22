@@ -322,6 +322,7 @@ export function SimpleCalendar({
                       <Clock className="h-4 w-4 text-muted-foreground" />
                       <span>
                         {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
+                        <span className="text-xs text-muted-foreground ml-2">(Horário de Brasília)</span>
                       </span>
                     </div>
                   </div>
@@ -357,12 +358,13 @@ export function SimpleCalendar({
                       <span>{(selectedEvent as CalendarClass).start.toLocaleDateString('pt-BR')}</span>
                     </div>
                     
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {formatTime((selectedEvent as CalendarClass).start)} - {formatTime((selectedEvent as CalendarClass).end)}
-                      </span>
-                    </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span>
+                          {formatTime((selectedEvent as CalendarClass).start)} - {formatTime((selectedEvent as CalendarClass).end)}
+                          <span className="text-xs text-muted-foreground ml-2">(Horário de Brasília)</span>
+                        </span>
+                      </div>
                   </div>
 
                   {/* Participants */}

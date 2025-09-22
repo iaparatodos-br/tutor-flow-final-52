@@ -69,5 +69,9 @@
     "invalidPhone": "Telefone inválido",
     "selectOption": "Selecione uma opção",
     "enterValue": "Digite um valor"
+  },
+  "timezone": {
+    "label": "Horário de Brasília",
+    "info": "Todos os horários são exibidos no fuso horário de Brasília (UTC-3)"
   }
 }

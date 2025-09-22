@@ -293,7 +293,7 @@ export function ClassReportModal({
                 {new Date(classData.end).toLocaleTimeString('pt-BR', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
-                })}
+                })} <span className="text-xs text-muted-foreground">(Horário de Brasília)</span>
               </div>
             </CardContent>
           </Card>

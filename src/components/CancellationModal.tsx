@@ -175,7 +175,7 @@ export function CancellationModal({
         <DialogHeader>
           <DialogTitle>Cancelar Aula</DialogTitle>
           <DialogDescription>
-            {className} - {new Date(classDate).toLocaleDateString()} às {new Date(classDate).toLocaleTimeString()}
+            {className} - {new Date(classDate).toLocaleDateString()} às {new Date(classDate).toLocaleTimeString()} (Horário de Brasília)
           </DialogDescription>
         </DialogHeader>
         

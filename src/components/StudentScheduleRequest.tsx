@@ -425,17 +425,17 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                           </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
-                          <div>
-                            <Label>Data e Horário</Label>
-                            <p className="text-sm text-muted-foreground">
-                              {new Date(selectedTimeSlot).toLocaleDateString('pt-BR', {
-                                weekday: 'long',
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric'
-                              })} às {formatTime(selectedTimeSlot)}
-                            </p>
-                          </div>
+                           <div>
+                             <Label>Data e Horário</Label>
+                             <p className="text-sm text-muted-foreground">
+                               {new Date(selectedTimeSlot).toLocaleDateString('pt-BR', {
+                                 weekday: 'long',
+                                 day: '2-digit',
+                                 month: '2-digit',
+                                 year: 'numeric'
+                               })} às {formatTime(selectedTimeSlot)} <span className="text-xs">(Horário de Brasília)</span>
+                             </p>
+                           </div>
                           
                           <div>
                             <Label>Tipo de Aula</Label>

@@ -99,7 +99,7 @@ export function ArchivedDataViewer() {
   };
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR');
+    return new Date(dateString).toLocaleString('pt-BR') + ' (Horário de Brasília)';
   };
 
   const formatDate = (dateString: string) => {

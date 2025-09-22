@@ -266,7 +266,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)}</span>
+                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)} <span className="text-xs text-muted-foreground">(Horário de Brasília)</span></span>
                     </div>
                   </div>
                 </div>

@@ -274,6 +274,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
             Horários de Trabalho
+            <span className="text-xs text-muted-foreground font-normal">(Horário de Brasília)</span>
           </CardTitle>
           <Dialog open={isWorkingHoursDialogOpen} onOpenChange={setIsWorkingHoursDialogOpen}>
             <DialogTrigger asChild>
@@ -285,6 +286,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
             <DialogContent className="sm:max-w-[600px]">
               <DialogHeader>
                 <DialogTitle>Configurar Horários de Trabalho</DialogTitle>
+                <p className="text-sm text-muted-foreground">Todos os horários são configurados no fuso horário de Brasília</p>
               </DialogHeader>
               
               <div className="space-y-4">

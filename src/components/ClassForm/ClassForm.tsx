@@ -418,7 +418,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             </div>
 
             <div>
-              <Label htmlFor="time">Horário *</Label>
+              <Label htmlFor="time">Horário * <span className="text-xs text-muted-foreground">(Horário de Brasília)</span></Label>
               <Input
                 id="time"
                 type="time"

@@ -64,5 +64,56 @@
     "paymentProcessed": "Pagamento processado com sucesso!",
     "confirmDelete": "Tem certeza que deseja excluir este item?",
     "noData": "Nenhum dado financeiro encontrado"
+  },
+  "stripe": {
+    "connect": {
+      "title": "Conta Stripe Connect",
+      "description": "Configure sua conta Stripe para receber pagamentos"
+    },
+    "status": {
+      "active": "Ativa",
+      "pending": "Pendente",
+      "incomplete": "Incompleta"
+    },
+    "create": {
+      "button": "Criar conta Stripe",
+      "loading": "Criando conta..."
+    },
+    "onboarding": {
+      "button": "Completar verificação",
+      "loading": "Carregando..."
+    },
+    "sync": {
+      "button": "Sincronizar com Stripe",
+      "loading": "Sincronizando...",
+      "success": "Sincronização realizada",
+      "success_description": "Dados da conta atualizados com sucesso",
+      "error": "Erro na sincronização",
+      "error_description": "Não foi possível sincronizar com o Stripe"
+    },
+    "details": {
+      "payments": "Pagamentos habilitados",
+      "payouts": "Saques habilitados",
+      "verification_pending": "Verificação pendente para receber pagamentos"
+    },
+    "account": {
+      "restricted": {
+        "title": "Conta Restrita - Ação Necessária",
+        "description": "Sua conta Stripe foi restrita e novas cobranças estão desabilitadas. Acesse o painel do Stripe para resolver as pendências."
+      },
+      "charges_disabled": {
+        "description": "As cobranças estão desabilitadas para sua conta. Você precisa completar as informações pendentes."
+      },
+      "payouts_disabled": {
+        "description": "Os saques estão desabilitados para sua conta. Você precisa completar as informações pendentes."
+      },
+      "pending": {
+        "description": "Sua conta está pendente de configuração. Complete as informações necessárias."
+      },
+      "attention_required": "Atenção Necessária",
+      "action_required": "Ação necessária para regularizar a conta"
+    },
+    "open_dashboard": "Abrir Stripe",
+    "function_disabled": "Esta funcionalidade está temporariamente desabilitada até a regularização da conta."
   }
 }

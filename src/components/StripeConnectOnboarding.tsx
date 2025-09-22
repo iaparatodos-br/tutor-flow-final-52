@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { ExternalLink, CheckCircle, AlertCircle, Clock, CreditCard } from "lucide-react";
+import { StripeAccountStatusAlert } from "./StripeAccountStatusAlert";
 
 interface StripeConnectAccount {
   id: string;
@@ -13,6 +14,11 @@ interface StripeConnectAccount {
   charges_enabled: boolean;
   payouts_enabled: boolean;
   details_submitted: boolean;
+  account_status: string;
+  status_reason?: string;
+  charges_disabled_reason?: string;
+  payouts_disabled_reason?: string;
+  restrictions: any;
   requirements: any;
   updated_at: string;
 }
@@ -156,40 +162,38 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   };
 
   const syncWithStripe = async () => {
-    if (!paymentAccountId) {
-      toast({
-        title: "Erro",
-        description: "ID da conta de pagamento é necessário",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    if (!connectAccount) return;
+    
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('refresh-stripe-connect-account', {
-        body: { payment_account_id: paymentAccountId }
+      const { error } = await supabase.functions.invoke('check-stripe-account-status', {
+        body: { account_id: connectAccount.stripe_account_id }
       });
-
+      
       if (error) throw error;
-
+      
+      // Reload account data
+      await loadConnectAccount();
       toast({
         title: "Sincronização concluída",
         description: "Status da conta atualizado com sucesso",
       });
-
-      await loadConnectAccount();
-      onComplete?.();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error syncing with Stripe:', error);
       toast({
         title: "Erro na sincronização",
-        description: error.message || "Tente novamente mais tarde",
+        description: "Tente novamente mais tarde",
         variant: "destructive",
       });
     } finally {
       setSyncing(false);
     }
+  };
+
+  const openStripeExpress = () => {
+    if (!connectAccount) return;
+    const stripeUrl = `https://connect.stripe.com/express/accounts/${connectAccount.stripe_account_id}`;
+    window.open(stripeUrl, '_blank');
   };
 
   const getAccountStatus = () => {
@@ -236,90 +240,102 @@ export function StripeConnectOnboarding({ paymentAccountId, onComplete }: Stripe
   const statusInfo = getAccountStatus();
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" />
-          Configuração Stripe Connect
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {getStatusIcon()}
-            <span className="font-medium">Status da Conta</span>
+    <div className="space-y-4">
+      {/* Status Alert */}
+      {connectAccount && (
+        <StripeAccountStatusAlert 
+          account={connectAccount}
+          onRefresh={syncWithStripe}
+          onOpenStripe={openStripeExpress}
+          loading={syncing}
+        />
+      )}
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Configuração Stripe Connect
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {getStatusIcon()}
+              <span className="font-medium">Status da Conta</span>
+            </div>
+            <Badge variant={statusInfo.color as any}>
+              {statusInfo.label}
+            </Badge>
           </div>
-          <Badge variant={statusInfo.color as any}>
-            {statusInfo.label}
-          </Badge>
-        </div>
 
-        {connectAccount && (
-          <div className="space-y-2 text-sm text-muted-foreground">
-            <div className="flex justify-between">
-              <span>Pagamentos habilitados:</span>
-              <span className={connectAccount.charges_enabled ? "text-green-600" : "text-red-600"}>
-                {connectAccount.charges_enabled ? "Sim" : "Não"}
-              </span>
+          {connectAccount && (
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex justify-between">
+                <span>Pagamentos habilitados:</span>
+                <span className={connectAccount.charges_enabled ? "text-green-600" : "text-red-600"}>
+                  {connectAccount.charges_enabled ? "Sim" : "Não"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Saques habilitados:</span>
+                <span className={connectAccount.payouts_enabled ? "text-green-600" : "text-red-600"}>
+                  {connectAccount.payouts_enabled ? "Sim" : "Não"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Verificação completa:</span>
+                <span className={connectAccount.details_submitted ? "text-green-600" : "text-red-600"}>
+                  {connectAccount.details_submitted ? "Sim" : "Não"}
+                </span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Saques habilitados:</span>
-              <span className={connectAccount.payouts_enabled ? "text-green-600" : "text-red-600"}>
-                {connectAccount.payouts_enabled ? "Sim" : "Não"}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span>Verificação completa:</span>
-              <span className={connectAccount.details_submitted ? "text-green-600" : "text-red-600"}>
-                {connectAccount.details_submitted ? "Sim" : "Não"}
-              </span>
-            </div>
-          </div>
-        )}
+          )}
 
-        <div className="pt-4 space-y-2">
-          {!connectAccount ? (
-            <Button 
-              onClick={createConnectAccount} 
-              disabled={creating}
-              className="w-full"
-            >
-              {creating ? "Criando conta..." : "Criar conta Stripe"}
-            </Button>
-          ) : (
-            <>
-              {!connectAccount.details_submitted && (
-                <Button 
-                  onClick={startOnboarding} 
-                  disabled={loading}
-                  className="w-full"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  {loading ? "Gerando link..." : "Completar verificação"}
-                </Button>
-              )}
-              
+          <div className="pt-4 space-y-2">
+            {!connectAccount ? (
               <Button 
-                variant="outline" 
-                onClick={syncWithStripe}
-                disabled={syncing || loading}
+                onClick={createConnectAccount} 
+                disabled={creating}
                 className="w-full"
               >
-                {syncing ? "Sincronizando..." : "Sincronizar com a Stripe"}
+                {creating ? "Criando conta..." : "Criar conta Stripe"}
               </Button>
-            </>
-          )}
-        </div>
-
-        {connectAccount && !connectAccount.charges_enabled && (
-          <div className="p-3 border border-yellow-200 bg-yellow-50 rounded-lg">
-            <p className="text-sm text-yellow-800">
-              <AlertCircle className="h-4 w-4 inline mr-2" />
-              Complete a verificação no Stripe para começar a receber pagamentos via boleto e PIX.
-            </p>
+            ) : (
+              <>
+                {!connectAccount.details_submitted && (
+                  <Button 
+                    onClick={startOnboarding} 
+                    disabled={loading}
+                    className="w-full"
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    {loading ? "Gerando link..." : "Completar verificação"}
+                  </Button>
+                )}
+                
+                <Button 
+                  variant="outline" 
+                  onClick={syncWithStripe}
+                  disabled={syncing || loading}
+                  className="w-full"
+                >
+                  {syncing ? "Sincronizando..." : "Sincronizar com a Stripe"}
+                </Button>
+              </>
+            )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+
+          {connectAccount && !connectAccount.charges_enabled && (
+            <div className="p-3 border border-yellow-200 bg-yellow-50 rounded-lg">
+              <p className="text-sm text-yellow-800">
+                <AlertCircle className="h-4 w-4 inline mr-2" />
+                Complete a verificação no Stripe para começar a receber pagamentos via boleto e PIX.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

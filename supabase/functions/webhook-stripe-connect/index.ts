@@ -178,6 +178,38 @@ serve(async (req) => {
         const account = eventObject as Stripe.Account;
         logStep("Account updated", { accountId: account.id });
 
+        // Determine account status based on restrictions and capabilities
+        let accountStatus = 'active';
+        let statusReason = null;
+        let chargesDisabledReason = null;
+        let payoutsDisabledReason = null;
+        
+        // Check for account restrictions
+        if (account.requirements?.disabled_reason) {
+          accountStatus = 'restricted';
+          statusReason = account.requirements.disabled_reason;
+        } else if (!account.charges_enabled || !account.payouts_enabled) {
+          accountStatus = 'pending';
+          statusReason = 'Account setup incomplete';
+        }
+        
+        // Check specific reasons for disabled charges/payouts
+        if (!account.charges_enabled) {
+          if (account.requirements?.currently_due?.length > 0) {
+            chargesDisabledReason = 'Missing required information';
+          } else if (account.requirements?.past_due?.length > 0) {
+            chargesDisabledReason = 'Past due requirements';
+          }
+        }
+        
+        if (!account.payouts_enabled) {
+          if (account.requirements?.currently_due?.length > 0) {
+            payoutsDisabledReason = 'Missing required information';
+          } else if (account.requirements?.past_due?.length > 0) {
+            payoutsDisabledReason = 'Past due requirements';
+          }
+        }
+
         const { error } = await supabaseClient
           .from("stripe_connect_accounts")
           .update({
@@ -186,6 +218,12 @@ serve(async (req) => {
             details_submitted: account.details_submitted,
             requirements: account.requirements,
             capabilities: account.capabilities,
+            account_status: accountStatus,
+            status_reason: statusReason,
+            restrictions: account.requirements || {},
+            charges_disabled_reason: chargesDisabledReason,
+            payouts_disabled_reason: payoutsDisabledReason,
+            last_status_check: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
           .eq("stripe_account_id", account.id);
@@ -193,7 +231,11 @@ serve(async (req) => {
         if (error) {
           logStep("Error updating connect account", error);
         } else {
-          logStep("Connect account updated", { accountId: account.id });
+          logStep("Connect account updated", { 
+            accountId: account.id, 
+            account_status: accountStatus,
+            status_reason: statusReason
+          });
         }
 
         // Also update payment_accounts table if linked

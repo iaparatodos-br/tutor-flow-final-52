@@ -64,5 +64,56 @@
     "paymentProcessed": "Payment processed successfully!",
     "confirmDelete": "Are you sure you want to delete this item?",
     "noData": "No financial data found"
+  },
+  "stripe": {
+    "connect": {
+      "title": "Stripe Connect Account",
+      "description": "Configure your Stripe account to receive payments"
+    },
+    "status": {
+      "active": "Active",
+      "pending": "Pending",
+      "incomplete": "Incomplete"
+    },
+    "create": {
+      "button": "Create Stripe account",
+      "loading": "Creating account..."
+    },
+    "onboarding": {
+      "button": "Complete verification",
+      "loading": "Loading..."
+    },
+    "sync": {
+      "button": "Sync with Stripe",
+      "loading": "Syncing...",
+      "success": "Sync completed",
+      "success_description": "Account data updated successfully",
+      "error": "Sync error",
+      "error_description": "Could not sync with Stripe"
+    },
+    "details": {
+      "payments": "Payments enabled",
+      "payouts": "Payouts enabled",
+      "verification_pending": "Verification pending to receive payments"
+    },
+    "account": {
+      "restricted": {
+        "title": "Account Restricted - Action Required",
+        "description": "Your Stripe account has been restricted and new charges are disabled. Access Stripe dashboard to resolve pending issues."
+      },
+      "charges_disabled": {
+        "description": "Charges are disabled for your account. You need to complete pending information."
+      },
+      "payouts_disabled": {
+        "description": "Payouts are disabled for your account. You need to complete pending information."
+      },
+      "pending": {
+        "description": "Your account is pending setup. Complete the required information."
+      },
+      "attention_required": "Attention Required",
+      "action_required": "Action required to regularize account"
+    },
+    "open_dashboard": "Open Stripe",
+    "function_disabled": "This functionality is temporarily disabled until account regularization."
   }
 }

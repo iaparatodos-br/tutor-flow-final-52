@@ -1107,43 +1107,61 @@ export type Database = {
       }
       stripe_connect_accounts: {
         Row: {
+          account_status: string | null
           account_type: string
           capabilities: Json | null
+          charges_disabled_reason: string | null
           charges_enabled: boolean | null
           created_at: string
           details_submitted: boolean | null
           id: string
+          last_status_check: string | null
           payment_account_id: string | null
+          payouts_disabled_reason: string | null
           payouts_enabled: boolean | null
           requirements: Json | null
+          restrictions: Json | null
+          status_reason: string | null
           stripe_account_id: string
           teacher_id: string
           updated_at: string
         }
         Insert: {
+          account_status?: string | null
           account_type?: string
           capabilities?: Json | null
+          charges_disabled_reason?: string | null
           charges_enabled?: boolean | null
           created_at?: string
           details_submitted?: boolean | null
           id?: string
+          last_status_check?: string | null
           payment_account_id?: string | null
+          payouts_disabled_reason?: string | null
           payouts_enabled?: boolean | null
           requirements?: Json | null
+          restrictions?: Json | null
+          status_reason?: string | null
           stripe_account_id: string
           teacher_id: string
           updated_at?: string
         }
         Update: {
+          account_status?: string | null
           account_type?: string
           capabilities?: Json | null
+          charges_disabled_reason?: string | null
           charges_enabled?: boolean | null
           created_at?: string
           details_submitted?: boolean | null
           id?: string
+          last_status_check?: string | null
           payment_account_id?: string | null
+          payouts_disabled_reason?: string | null
           payouts_enabled?: boolean | null
           requirements?: Json | null
+          restrictions?: Json | null
+          status_reason?: string | null
           stripe_account_id?: string
           teacher_id?: string
           updated_at?: string

@@ -12,14 +12,14 @@ const logStep = (step: string, details?: any) => {
   console.log(`[WEBHOOK-STRIPE-CONNECT] ${step}${detailsStr}`);
 };
 
-// Função para verificar e processar idempotência de eventos
+// Função para verificar e processar idempotência de eventos com rollback automático
 const processEventIdempotency = async (
   supabase: any,
   event: Stripe.Event,
   webhookFunction: string
 ): Promise<{ canProcess: boolean; result?: any }> => {
   try {
-    const { data, error } = await supabase.rpc('process_stripe_event_atomic', {
+    const { data, error } = await supabase.rpc('start_stripe_event_processing', {
       p_event_id: event.id,
       p_event_type: event.type,
       p_webhook_function: webhookFunction,
@@ -35,10 +35,10 @@ const processEventIdempotency = async (
     const action = data?.action;
     logStep("Idempotency check result", { eventId: event.id, action, message: data?.message });
 
-    if (action === 'skipped') {
+    if (['skipped', 'rejected', 'max_retries'].includes(action)) {
       return { 
         canProcess: false, 
-        result: { received: true, skipped: true, message: data?.message } 
+        result: { received: true, skipped: true, message: data?.message, action } 
       };
     }
 
@@ -46,6 +46,59 @@ const processEventIdempotency = async (
   } catch (error) {
     logStep("Failed idempotency check", { error: (error as Error).message, eventId: event.id });
     throw error;
+  }
+};
+
+// Função para marcar evento como processado ou com falha
+const completeEventProcessing = async (
+  supabase: any,
+  eventId: string,
+  success: boolean = true,
+  error?: Error
+): Promise<void> => {
+  try {
+    const { error: completeError } = await supabase.rpc('complete_stripe_event_processing', {
+      p_event_id: eventId,
+      p_success: success,
+      p_error_message: error?.message || null
+    });
+
+    if (completeError) {
+      logStep("Error completing event processing", { error: completeError, eventId });
+    } else {
+      logStep("Event processing completed", { eventId, success });
+    }
+  } catch (err) {
+    logStep("Failed to complete event processing", { error: (err as Error).message, eventId });
+  }
+};
+
+// Validação de integridade dos dados do evento
+const validateStripeEvent = (event: Stripe.Event): boolean => {
+  if (!event.id || !event.type || !event.created || !event.data?.object) {
+    return false;
+  }
+
+  // Validar estrutura básica baseada no tipo de evento
+  const eventObject = event.data.object as any;
+  
+  switch (event.type) {
+    case 'account.updated':
+      return !!(eventObject.id && eventObject.type);
+      
+    case 'invoice.paid':
+    case 'invoice.payment_succeeded':
+    case 'invoice.payment_failed':
+    case 'invoice.marked_uncollectible':
+    case 'invoice.voided':
+      return !!(eventObject.id && eventObject.customer);
+      
+    case 'payment_intent.succeeded':
+    case 'payment_intent.payment_failed':
+      return !!(eventObject.id && eventObject.status);
+      
+    default:
+      return true; // Permitir eventos desconhecidos por compatibilidade
   }
 };
 
@@ -90,6 +143,19 @@ serve(async (req) => {
 
     const eventObject = event.data.object as any;
     logStep("Processing event", { type: event.type, id: event.id });
+
+    // Validar integridade dos dados do evento
+    if (!validateStripeEvent(event)) {
+      logStep("Invalid event structure", { eventId: event.id, type: event.type });
+      return new Response(JSON.stringify({ 
+        error: "Invalid event structure",
+        eventId: event.id,
+        type: event.type 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
 
     // Verificar idempotência antes de processar o evento
     const { canProcess, result } = await processEventIdempotency(
@@ -314,6 +380,9 @@ serve(async (req) => {
         logStep("Unhandled event type", { type: event.type });
     }
 
+    // Marcar evento como processado com sucesso
+    await completeEventProcessing(supabaseClient, event.id, true);
+
     return new Response(JSON.stringify({ received: true }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -322,6 +391,12 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
+    
+    // Marcar evento como falhou (se event existe)
+    if (event?.id) {
+      await completeEventProcessing(supabaseClient, event.id, false, error as Error);
+    }
+    
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

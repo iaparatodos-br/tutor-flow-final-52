@@ -962,8 +962,15 @@ export type Database = {
           event_data: Json
           event_id: string
           event_type: string
+          last_error: string | null
           processed_at: string
+          processing_completed_at: string | null
           processing_result: Json
+          processing_started_at: string | null
+          processing_status:
+            | Database["public"]["Enums"]["processing_status_enum"]
+            | null
+          retry_count: number | null
           webhook_function: string
         }
         Insert: {
@@ -972,8 +979,15 @@ export type Database = {
           event_data: Json
           event_id: string
           event_type: string
+          last_error?: string | null
           processed_at?: string
+          processing_completed_at?: string | null
           processing_result?: Json
+          processing_started_at?: string | null
+          processing_status?:
+            | Database["public"]["Enums"]["processing_status_enum"]
+            | null
+          retry_count?: number | null
           webhook_function: string
         }
         Update: {
@@ -982,8 +996,15 @@ export type Database = {
           event_data?: Json
           event_id?: string
           event_type?: string
+          last_error?: string | null
           processed_at?: string
+          processing_completed_at?: string | null
           processing_result?: Json
+          processing_started_at?: string | null
+          processing_status?:
+            | Database["public"]["Enums"]["processing_status_enum"]
+            | null
+          retry_count?: number | null
           webhook_function?: string
         }
         Relationships: []
@@ -1354,6 +1375,18 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      cleanup_orphaned_stripe_events: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      complete_stripe_event_processing: {
+        Args: {
+          p_error_message?: string
+          p_event_id: string
+          p_success?: boolean
+        }
+        Returns: boolean
+      }
       generate_stripe_fingerprint: {
         Args: { event_data: Json }
         Returns: string
@@ -1434,6 +1467,16 @@ export type Database = {
         }
         Returns: Json
       }
+      start_stripe_event_processing: {
+        Args: {
+          p_event_created: string
+          p_event_data: Json
+          p_event_id: string
+          p_event_type: string
+          p_webhook_function: string
+        }
+        Returns: Json
+      }
       teacher_has_financial_module: {
         Args: { teacher_id: string }
         Returns: boolean
@@ -1460,6 +1503,7 @@ export type Database = {
     }
     Enums: {
       exception_status: "canceled" | "rescheduled"
+      processing_status_enum: "processing" | "completed" | "failed" | "timeout"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1588,6 +1632,7 @@ export const Constants = {
   public: {
     Enums: {
       exception_status: ["canceled", "rescheduled"],
+      processing_status_enum: ["processing", "completed", "failed", "timeout"],
     },
   },
 } as const

@@ -12,14 +12,14 @@ const log = (step: string, details?: any) => {
   console.log(`[WEBHOOK-STRIPE-SUBSCRIPTIONS] ${step}${d}`);
 };
 
-// Função para verificar e processar idempotência de eventos
+// Função para verificar e processar idempotência de eventos com rollback automático
 const processEventIdempotency = async (
   supabase: any,
   event: Stripe.Event,
   webhookFunction: string
 ): Promise<{ canProcess: boolean; result?: any }> => {
   try {
-    const { data, error } = await supabase.rpc('process_stripe_event_atomic', {
+    const { data, error } = await supabase.rpc('start_stripe_event_processing', {
       p_event_id: event.id,
       p_event_type: event.type,
       p_webhook_function: webhookFunction,
@@ -35,10 +35,10 @@ const processEventIdempotency = async (
     const action = data?.action;
     log("Idempotency check result", { eventId: event.id, action, message: data?.message });
 
-    if (action === 'skipped') {
+    if (['skipped', 'rejected', 'max_retries'].includes(action)) {
       return { 
         canProcess: false, 
-        result: { received: true, skipped: true, message: data?.message } 
+        result: { received: true, skipped: true, message: data?.message, action } 
       };
     }
 
@@ -46,6 +46,57 @@ const processEventIdempotency = async (
   } catch (error) {
     log("Failed idempotency check", { error: (error as Error).message, eventId: event.id });
     throw error;
+  }
+};
+
+// Função para marcar evento como processado ou com falha
+const completeEventProcessing = async (
+  supabase: any,
+  eventId: string,
+  success: boolean = true,
+  error?: Error
+): Promise<void> => {
+  try {
+    const { error: completeError } = await supabase.rpc('complete_stripe_event_processing', {
+      p_event_id: eventId,
+      p_success: success,
+      p_error_message: error?.message || null
+    });
+
+    if (completeError) {
+      log("Error completing event processing", { error: completeError, eventId });
+    } else {
+      log("Event processing completed", { eventId, success });
+    }
+  } catch (err) {
+    log("Failed to complete event processing", { error: (err as Error).message, eventId });
+  }
+};
+
+// Validação de integridade dos dados do evento
+const validateStripeEvent = (event: Stripe.Event): boolean => {
+  if (!event.id || !event.type || !event.created || !event.data?.object) {
+    return false;
+  }
+
+  // Validar estrutura básica baseada no tipo de evento
+  const eventObject = event.data.object as any;
+  
+  switch (event.type) {
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+    case 'customer.subscription.deleted':
+      return !!(eventObject.id && eventObject.customer && eventObject.status);
+      
+    case 'checkout.session.completed':
+      return !!(eventObject.id && eventObject.customer);
+      
+    case 'invoice.payment_succeeded':
+    case 'invoice.payment_failed':
+      return !!(eventObject.id && eventObject.customer);
+      
+    default:
+      return true; // Permitir eventos desconhecidos por compatibilidade
   }
 };
 
@@ -197,6 +248,19 @@ serve(async (req) => {
   };
 
   try {
+    // Validar integridade dos dados do evento
+    if (!validateStripeEvent(event)) {
+      log("Invalid event structure", { eventId: event.id, type: event.type });
+      return new Response(JSON.stringify({ 
+        error: "Invalid event structure",
+        eventId: event.id,
+        type: event.type 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
     // Verificar idempotência antes de processar o evento
     const { canProcess, result } = await processEventIdempotency(
       supabase,
@@ -334,12 +398,19 @@ serve(async (req) => {
         break;
     }
 
+    // Marcar evento como processado com sucesso
+    await completeEventProcessing(supabase, event.id, true);
+    
     return new Response(JSON.stringify({ received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error) {
     log("Error processing event", { error: (error as Error).message, type: event?.type });
+    
+    // Marcar evento como falhou
+    await completeEventProcessing(supabase, event.id, false, error as Error);
+    
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

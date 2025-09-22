@@ -50,8 +50,15 @@ serve(async (req) => {
       by_type: {} as Record<string, number>,
       by_webhook: {} as Record<string, number>,
       by_action: {} as Record<string, number>,
+      by_processing_status: {} as Record<string, number>,
       recent_events: events?.slice(0, 10) || [],
-      processing_times: [] as number[]
+      processing_times: [] as number[],
+      failed_events: events?.filter(e => e.processing_status === 'failed') || [],
+      timeout_events: events?.filter(e => e.processing_status === 'timeout') || [],
+      retry_stats: {
+        total_retries: events?.reduce((sum, e) => sum + (e.retry_count || 0), 0) || 0,
+        max_retries_reached: events?.filter(e => e.retry_count >= 3).length || 0
+      }
     };
 
     events?.forEach(event => {
@@ -64,13 +71,42 @@ serve(async (req) => {
       // Contar por ação
       const action = event.processing_result?.action || 'unknown';
       stats.by_action[action] = (stats.by_action[action] || 0) + 1;
+      
+      // Contar por status de processamento
+      const status = event.processing_status || 'unknown';
+      stats.by_processing_status[status] = (stats.by_processing_status[status] || 0) + 1;
+      
+      // Calcular tempo de processamento se disponível
+      if (event.processing_started_at && event.processing_completed_at) {
+        const processingTime = new Date(event.processing_completed_at).getTime() - 
+                              new Date(event.processing_started_at).getTime();
+        stats.processing_times.push(processingTime);
+      }
     });
+
+    // Calcular estatísticas de tempo
+    const timeStats = stats.processing_times.length > 0 ? {
+      avg_processing_time_ms: stats.processing_times.reduce((a, b) => a + b, 0) / stats.processing_times.length,
+      min_processing_time_ms: Math.min(...stats.processing_times),
+      max_processing_time_ms: Math.max(...stats.processing_times)
+    } : null;
 
     return new Response(JSON.stringify({
       success: true,
       period_days: days,
       stats,
-      timestamp: new Date().toISOString()
+      time_stats: timeStats,
+      timestamp: new Date().toISOString(),
+      health: {
+        total_events: stats.total_events,
+        success_rate: stats.total_events > 0 ? 
+          ((stats.by_processing_status['completed'] || 0) / stats.total_events * 100).toFixed(2) + '%' : 'N/A',
+        failure_rate: stats.total_events > 0 ? 
+          ((stats.by_processing_status['failed'] || 0) / stats.total_events * 100).toFixed(2) + '%' : 'N/A',
+        timeout_rate: stats.total_events > 0 ? 
+          ((stats.by_processing_status['timeout'] || 0) / stats.total_events * 100).toFixed(2) + '%' : 'N/A',
+        avg_processing_time: timeStats ? `${timeStats.avg_processing_time_ms.toFixed(0)}ms` : 'N/A'
+      }
     }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

@@ -388,7 +388,6 @@ export default function Alunos() {
               </div>
             )}
           </div>
-          </div>
           
           <div className="flex gap-2">
             {students.filter(s => s.business_profile_id).length > 0 && (
@@ -582,16 +581,22 @@ export default function Alunos() {
             isOpen={warningModalOpen}
             onClose={() => setWarningModalOpen(false)}
             onEditStudent={(student) => {
-              setEditingStudent(student);
+              const full = students.find((st) => st.id === student.id);
+              if (full) {
+                setEditingStudent(full);
+              } else {
+                setEditingStudent({
+                  id: student.id,
+                  name: student.name,
+                  email: student.email,
+                  created_at: new Date().toISOString(),
+                } as Student);
+              }
               setIsEditDialogOpen(true);
             }}
             action={warningAction}
           />
         )}
-      </div>
-    </Layout>
-  );
-}
       </div>
     </Layout>
   );

@@ -256,7 +256,7 @@ export default function Dashboard() {
               {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
                 <div 
                   className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
-                  onClick={() => navigate("/contas-recebimento")}
+                  onClick={() => navigate("/painel/configuracoes/negocios")}
                 >
                   <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
                   <p className="font-medium">{t('dashboard:quickActions.paymentAccounts.title')}</p>

@@ -27,7 +27,7 @@ export function SubscriptionCancellationModal({
   onClose,
   onConfirm
 }: SubscriptionCancellationModalProps) {
-  const { t } = useTranslation('subscription');
+  const { t, i18n } = useTranslation('subscription');
   const { currentPlan } = useSubscription();
   const [confirmationText, setConfirmationText] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
@@ -36,7 +36,8 @@ export function SubscriptionCancellationModal({
   const [cancelling, setCancelling] = useState(false);
 
   const hasFinancialModule = currentPlan?.features?.financial_module;
-  const isConfirmationValid = confirmationText === 'CANCELAR';
+  const expectedConfirmationText = i18n.language === 'pt' ? 'CANCELAR' : 'CANCEL';
+  const isConfirmationValid = confirmationText === expectedConfirmationText;
 
   useEffect(() => {
     if (isOpen && hasFinancialModule) {
@@ -193,7 +194,7 @@ export function SubscriptionCancellationModal({
                   type="text"
                   value={confirmationText}
                   onChange={(e) => setConfirmationText(e.target.value)}
-                  placeholder={t('cancellation.typeToConfirm')}
+                  placeholder={expectedConfirmationText}
                   className="font-mono"
                 />
               </div>

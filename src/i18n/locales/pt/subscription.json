@@ -58,6 +58,29 @@
     "downgradedSuccessfully": "Downgrade realizado com sucesso. Suas faturas pendentes foram canceladas.",
     "errorDowngrading": "Erro ao realizar downgrade. Tente novamente."
   },
+  "cancellation": {
+    "title": "Cancelar Assinatura",
+    "warning": "Atenção: Cancelamento de Assinatura",
+    "financialModuleWarning": "Você possui o módulo financeiro ativo. O cancelamento resultará em:",
+    "consequences": {
+      "invoicesWillBeCancelled": "Todas as faturas pendentes serão canceladas",
+      "loseFinancialAccess": "Você perderá acesso ao módulo financeiro",
+      "noRefunds": "Não há reembolsos para períodos já cobrados",
+      "dataWillBePreserved": "Seus dados serão preservados por 90 dias"
+    },
+    "loadingStudents": "Carregando informações dos alunos...",
+    "studentsAffected": "Alunos Afetados",
+    "pendingInvoicesCount": "faturas pendentes",
+    "pendingInvoices": "Faturas Pendentes",
+    "invoicesWillBeCancelledCount": "faturas serão canceladas",
+    "confirmationRequired": "Para confirmar, digite 'CANCELAR' abaixo:",
+    "typeToConfirm": "Digite CANCELAR para confirmar",
+    "simpleConfirmationTitle": "Confirmar Cancelamento",
+    "simpleConfirmationDescription": "Tem certeza que deseja cancelar sua assinatura? Ela será cancelada ao final do período atual.",
+    "backToSafety": "Manter Assinatura",
+    "cancelAction": "Cancelar",
+    "confirmCancel": "Confirmar Cancelamento"
+  },
   "downgrade": {
     "warning": {
       "title": "Aviso de Downgrade do Plano",

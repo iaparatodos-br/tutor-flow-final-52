@@ -58,6 +58,29 @@
     "downgradedSuccessfully": "Downgrade completed successfully. Your pending invoices have been cancelled.",
     "errorDowngrading": "Error during downgrade. Please try again."
   },
+  "cancellation": {
+    "title": "Cancel Subscription",
+    "warning": "Warning: Subscription Cancellation",
+    "financialModuleWarning": "You have the financial module active. Cancellation will result in:",
+    "consequences": {
+      "invoicesWillBeCancelled": "All pending invoices will be cancelled",
+      "loseFinancialAccess": "You will lose access to the financial module",
+      "noRefunds": "No refunds for periods already charged",
+      "dataWillBePreserved": "Your data will be preserved for 90 days"
+    },
+    "loadingStudents": "Loading student information...",
+    "studentsAffected": "Students Affected",
+    "pendingInvoicesCount": "pending invoices",
+    "pendingInvoices": "Pending Invoices",
+    "invoicesWillBeCancelledCount": "invoices will be cancelled",
+    "confirmationRequired": "To confirm, type 'CANCEL' below:",
+    "typeToConfirm": "Type CANCEL to confirm",
+    "simpleConfirmationTitle": "Confirm Cancellation",
+    "simpleConfirmationDescription": "Are you sure you want to cancel your subscription? It will be cancelled at the end of the current period.",
+    "backToSafety": "Keep Subscription",
+    "cancelAction": "Cancel",
+    "confirmCancel": "Confirm Cancellation"
+  },
   "downgrade": {
     "warning": {
       "title": "Plan Downgrade Warning",

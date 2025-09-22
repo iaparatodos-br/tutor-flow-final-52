@@ -377,7 +377,7 @@ export default function Alunos() {
               
               return null;
             })()}
-          </div>
+            
             {studentsWithoutBusinessProfile.length > 0 && (
               <div className="flex items-center gap-2 mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -387,6 +387,7 @@ export default function Alunos() {
                 </p>
               </div>
             )}
+          </div>
           </div>
           
           <div className="flex gap-2">
@@ -587,6 +588,10 @@ export default function Alunos() {
             action={warningAction}
           />
         )}
+      </div>
+    </Layout>
+  );
+}
       </div>
     </Layout>
   );

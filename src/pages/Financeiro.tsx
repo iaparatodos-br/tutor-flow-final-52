@@ -346,12 +346,19 @@ export default function Financeiro() {
                       <CreditCard className="h-5 w-5" />
                       Faturas Emitidas ({invoices.length})
                     </CardTitle>
-                    {students.length > 0 && (
-                      <CreateInvoiceModal 
-                        students={students}
-                        onInvoiceCreated={loadInvoices}
-                      />
-                    )}
+            {students.filter(s => {
+              // Find the full student data to check business_profile_id
+              const fullStudent = invoices
+                .find(inv => inv.student?.email === s.email)
+                ?.student;
+              // For now, allow all students - we'll validate in the modal/function
+              return true;
+            }).length > 0 && (
+              <CreateInvoiceModal 
+                students={students}
+                onInvoiceCreated={loadInvoices}
+              />
+            )}
                   </div>
                 </CardHeader>
                 <CardContent>

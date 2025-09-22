@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
+import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
 import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -40,6 +41,9 @@ export default function Alunos() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [warningStudent, setWarningStudent] = useState<Student | null>(null);
+  const [warningAction, setWarningAction] = useState("");
 
   useEffect(() => {
     if (profile?.id) {
@@ -323,6 +327,19 @@ export default function Alunos() {
     await handleSmartDelete(student);
   };
 
+  const checkBusinessProfileOrWarn = (student: Student, action: string, callback: () => void) => {
+    if (!student.business_profile_id) {
+      setWarningStudent(student);
+      setWarningAction(action);
+      setWarningModalOpen(true);
+      return false;
+    }
+    callback();
+    return true;
+  };
+
+  const studentsWithoutBusinessProfile = students.filter(s => !s.business_profile_id);
+
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
@@ -361,11 +378,23 @@ export default function Alunos() {
               return null;
             })()}
           </div>
+            {studentsWithoutBusinessProfile.length > 0 && (
+              <div className="flex items-center gap-2 mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado.
+                  Configure para permitir faturamento.
+                </p>
+              </div>
+            )}
+          </div>
           
           <div className="flex gap-2">
-            {students.length > 0 && (
+            {students.filter(s => s.business_profile_id).length > 0 && (
               <CreateInvoiceModal 
-                students={students.map(s => ({ id: s.id, name: s.name, email: s.email }))}
+                students={students
+                  .filter(s => s.business_profile_id)
+                  .map(s => ({ id: s.id, name: s.name, email: s.email }))}
               />
             )}
             <FeatureGate studentCount={students.length} showUpgrade={true}>
@@ -412,12 +441,13 @@ export default function Alunos() {
                 </FeatureGate>
               </div>
             ) : (
-              <Table>
+                <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Responsável</TableHead>
+                    <TableHead>Negócio Recebimento</TableHead>
                     <TableHead>Dia Cobrança</TableHead>
                     <TableHead>Data de Cadastro</TableHead>
                     <TableHead className="w-[120px]">Ações</TableHead>
@@ -458,6 +488,20 @@ export default function Alunos() {
                             </>
                           ) : (
                             <Badge variant="secondary" className="text-xs">
+                              Não configurado
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {student.business_profile_id ? (
+                            <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                              Configurado
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive" className="text-xs">
+                              <AlertTriangle className="h-3 w-3 mr-1" />
                               Não configurado
                             </Badge>
                           )}
@@ -529,6 +573,20 @@ export default function Alunos() {
           title="Editar Aluno"
           description="Altere os dados do aluno e configurações de cobrança"
         />
+
+        {/* Business Profile Warning Modal */}
+        {warningStudent && (
+          <BusinessProfileWarningModal
+            student={warningStudent}
+            isOpen={warningModalOpen}
+            onClose={() => setWarningModalOpen(false)}
+            onEditStudent={(student) => {
+              setEditingStudent(student);
+              setIsEditDialogOpen(true);
+            }}
+            action={warningAction}
+          />
+        )}
       </div>
     </Layout>
   );

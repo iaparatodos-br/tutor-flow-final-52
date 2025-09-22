@@ -34,7 +34,7 @@ const checkNeedsStudentSelection = async (
         student_id,
         student_name,
         created_at,
-        profiles!inner(name, email)
+        profiles!teacher_student_relationships_student_id_fkey(name, email)
       `)
       .eq('teacher_id', userId);
 
@@ -127,7 +127,7 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's current subscription from database (only active ones for validation)
+    // Get user's current subscription from database (active or expired for student selection check)
     const { data: subscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select(`
@@ -135,7 +135,7 @@ serve(async (req) => {
         subscription_plans (*)
       `)
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'expired'])
       .order('updated_at', { ascending: false })
       .maybeSingle();
 
@@ -195,21 +195,23 @@ serve(async (req) => {
       const now = new Date();
       const periodEnd = new Date(subscription.current_period_end);
       
-      if (subscription.status === 'active' && now > periodEnd) {
-        logStep("Subscription is expired, updating status and processing cancellation");
+      if ((subscription.status === 'active' && now > periodEnd) || subscription.status === 'expired') {
+        logStep("Subscription is expired or expired status detected, checking for student selection need");
         
-        // Update subscription status to expired
-        const { error: updateError } = await supabaseClient
-          .from('user_subscriptions')
-          .update({
-            status: 'expired',
-            updated_at: now.toISOString()
-          })
-          .eq('id', subscription.id);
+        // Update subscription status to expired (only if it's still active)
+        if (subscription.status === 'active') {
+          const { error: updateError } = await supabaseClient
+            .from('user_subscriptions')
+            .update({
+              status: 'expired',
+              updated_at: now.toISOString()
+            })
+            .eq('id', subscription.id);
 
-        if (updateError) {
-          logStep("Error updating subscription status", { error: updateError });
-          throw updateError;
+          if (updateError) {
+            logStep("Error updating subscription status", { error: updateError });
+            throw updateError;
+          }
         }
 
         // Get free plan

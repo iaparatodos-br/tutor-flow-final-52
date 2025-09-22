@@ -13,6 +13,7 @@ import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3 }
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { PaymentAccountsManager } from "@/components/PaymentAccountsManager";
+import { PaymentRoutingTest } from "@/components/PaymentRoutingTest";
 
 interface BusinessProfile {
   id: string;
@@ -329,6 +330,9 @@ export default function PainelNegocios() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Testes de Integridade do Sistema */}
+            <PaymentRoutingTest />
           </TabsContent>
         </Tabs>
       </div>

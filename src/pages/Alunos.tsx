@@ -344,8 +344,6 @@ export default function Alunos() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
-        <UpgradeBanner />
-        
         {/* Header */}
         <div className="space-y-4">
           <div className="flex justify-between items-start">
@@ -376,8 +374,10 @@ export default function Alunos() {
             </div>
           </div>
 
-          {/* Alerts stacked vertically */}
+          {/* Alerts stacked vertically below title */}
           <div className="space-y-3">
+            <UpgradeBanner />
+            
             {currentPlan && (() => {
               const { isOverLimit, additionalCost, message } = getStudentOverageInfo(students.length);
               

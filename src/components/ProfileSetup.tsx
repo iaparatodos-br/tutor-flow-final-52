@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { validateCPF, formatCPF, formatCEP } from '@/utils/validation';
 export function ProfileSetup() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     cpf: '',
@@ -79,8 +81,8 @@ export function ProfileSetup() {
         description: "Suas informações foram salvas com sucesso."
       });
 
-      // Força atualização da página para recarregar o contexto
-      window.location.reload();
+      // Redireciona para o dashboard após completar o perfil
+      navigate('/dashboard');
     } catch (error) {
       console.error('Erro ao atualizar perfil:', error);
       toast({

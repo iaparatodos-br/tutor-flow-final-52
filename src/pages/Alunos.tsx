@@ -12,6 +12,7 @@ import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
 import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
 
@@ -343,19 +344,46 @@ export default function Alunos() {
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
+        <UpgradeBanner />
+        
         {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
-            <p className="text-muted-foreground">
-              Gerencie seus alunos cadastrados
-            </p>
+        <div className="space-y-4">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
+              <p className="text-muted-foreground">
+                Gerencie seus alunos cadastrados
+              </p>
+            </div>
+            
+            <div className="flex gap-2">
+              {students.filter(s => s.business_profile_id).length > 0 && (
+                <CreateInvoiceModal 
+                  students={students
+                    .filter(s => s.business_profile_id)
+                    .map(s => ({ id: s.id, name: s.name, email: s.email }))}
+                />
+              )}
+              <FeatureGate studentCount={students.length} showUpgrade={true}>
+                <Button 
+                  onClick={() => setIsAddDialogOpen(true)}
+                  className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Aluno
+                </Button>
+              </FeatureGate>
+            </div>
+          </div>
+
+          {/* Alerts stacked vertically */}
+          <div className="space-y-3">
             {currentPlan && (() => {
               const { isOverLimit, additionalCost, message } = getStudentOverageInfo(students.length);
               
               if (isOverLimit && currentPlan.slug !== 'free') {
                 return (
-                  <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <p className="text-sm text-amber-800 dark:text-amber-200">
                       {students.length} de {currentPlan?.student_limit ?? 0} alunos incluídos no plano
@@ -366,7 +394,7 @@ export default function Alunos() {
               
               if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
                 return (
-                  <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                     <AlertTriangle className="h-4 w-4 text-amber-600" />
                     <p className="text-sm text-amber-800 dark:text-amber-200">
                       {students.length} de {currentPlan?.student_limit ?? 0} alunos (plano gratuito)
@@ -379,7 +407,7 @@ export default function Alunos() {
             })()}
             
             {studentsWithoutBusinessProfile.length > 0 && (
-              <div className="flex items-center gap-2 mt-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
+              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-md border border-amber-200 dark:border-amber-800">
                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                 <p className="text-sm text-amber-800 dark:text-amber-200">
                   <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado.
@@ -387,25 +415,6 @@ export default function Alunos() {
                 </p>
               </div>
             )}
-          </div>
-          
-          <div className="flex gap-2">
-            {students.filter(s => s.business_profile_id).length > 0 && (
-              <CreateInvoiceModal 
-                students={students
-                  .filter(s => s.business_profile_id)
-                  .map(s => ({ id: s.id, name: s.name, email: s.email }))}
-              />
-            )}
-            <FeatureGate studentCount={students.length} showUpgrade={true}>
-              <Button 
-                onClick={() => setIsAddDialogOpen(true)}
-                className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar Aluno
-              </Button>
-            </FeatureGate>
           </div>
         </div>
 

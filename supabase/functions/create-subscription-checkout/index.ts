@@ -222,8 +222,8 @@ serve(async (req) => {
         },
       ],
       mode: 'subscription',
-      success_url: `${req.headers.get("origin") || "http://localhost:3000"}/subscription?success=true`,
-      cancel_url: `${req.headers.get("origin") || "http://localhost:3000"}/planos?canceled=true`,
+      success_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/subscription?success=true`,
+      cancel_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/planos?canceled=true`,
       metadata: {
         user_id: user.id,
         plan_id: plan.id

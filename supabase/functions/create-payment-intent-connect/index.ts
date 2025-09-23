@@ -202,8 +202,8 @@ serve(async (req) => {
           quantity: 1
         }],
         mode: "payment",
-        success_url: `${req.headers.get("origin") || "http://localhost:8080"}/financeiro?payment=success`,
-        cancel_url: `${req.headers.get("origin") || "http://localhost:8080"}/financeiro?payment=cancelled`,
+        success_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/financeiro?payment=success`,
+        cancel_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/financeiro?payment=cancelled`,
         payment_intent_data: {
           transfer_data: {
             destination: stripeConnectAccountId,

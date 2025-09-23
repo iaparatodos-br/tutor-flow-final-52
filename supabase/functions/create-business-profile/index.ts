@@ -49,7 +49,7 @@ serve(async (req) => {
     logStep("Request data", { business_name, cnpj });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-    const origin = req.headers.get("origin") || "http://localhost:3000";
+    const origin = req.headers.get("origin") || "https://www.tutor-flow.app";
 
     // Create Stripe Connect account
     const stripeAccount = await stripe.accounts.create({

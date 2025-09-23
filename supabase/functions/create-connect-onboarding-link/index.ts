@@ -61,7 +61,7 @@ serve(async (req) => {
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-    const origin = req.headers.get("origin") || "http://localhost:3000";
+    const origin = req.headers.get("origin") || "https://www.tutor-flow.app";
 
     // Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({

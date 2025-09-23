@@ -48,7 +48,7 @@ serve(async (req) => {
 
     // Force production URL for email verification links, ignoring localhost URLs
     const siteUrlFromEnv = Deno.env.get("SITE_URL");
-    const productionUrl = siteUrlFromEnv || "https://nwgomximjevgczwuyqcx.supabase.co";
+    const productionUrl = siteUrlFromEnv || "https://www.tutor-flow.app";
     const redirectTo = body.redirect_url && !body.redirect_url.includes('localhost') 
       ? body.redirect_url 
       : `${productionUrl}/auth/callback`;

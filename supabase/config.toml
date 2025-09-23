@@ -27,8 +27,8 @@ port = 54327
 [auth]
 enabled = true
 port = 54328
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://lovable.dev"]
+site_url = "https://www.tutor-flow.app"
+additional_redirect_urls = ["https://www.tutor-flow.app"]
 jwt_expiry = 3600
 refresh_token_rotation_enabled = true
 security_captcha_enabled = false

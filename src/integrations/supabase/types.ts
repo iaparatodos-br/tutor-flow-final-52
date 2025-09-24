@@ -715,6 +715,33 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          attempted_at: string | null
+          id: string
+          ip_address: unknown | null
+          success: boolean | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          attempted_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          success?: boolean | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          attempted_at?: string | null
+          id?: string
+          ip_address?: unknown | null
+          success?: boolean | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       material_access: {
         Row: {
           granted_at: string
@@ -1105,6 +1132,30 @@ export type Database = {
           },
         ]
       }
+      security_settings: {
+        Row: {
+          id: string
+          setting_name: string
+          setting_value: string
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          setting_name: string
+          setting_value: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          setting_name?: string
+          setting_value?: string
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       stripe_connect_accounts: {
         Row: {
           account_status: string | null
@@ -1393,6 +1444,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: number
       }
+      cleanup_old_login_attempts: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_orphaned_stripe_events: {
         Args: Record<PropertyKey, never>
         Returns: number
@@ -1467,6 +1522,10 @@ export type Database = {
         Args: { p_student_id: string }
         Returns: boolean
       }
+      is_ip_blocked: {
+        Args: { p_ip_address: unknown }
+        Returns: boolean
+      }
       is_material_shared_with_user: {
         Args: { p_material_id: string }
         Returns: boolean
@@ -1474,6 +1533,15 @@ export type Database = {
       is_professor: {
         Args: { _user_id: string }
         Returns: boolean
+      }
+      log_login_attempt: {
+        Args: {
+          p_ip_address?: unknown
+          p_success?: boolean
+          p_user_agent?: string
+          p_user_id?: string
+        }
+        Returns: undefined
       }
       process_stripe_event_atomic: {
         Args: {
@@ -1505,6 +1573,10 @@ export type Database = {
       }
       validate_cpf: {
         Args: { cpf_input: string }
+        Returns: boolean
+      }
+      validate_password_strength: {
+        Args: { password: string }
         Returns: boolean
       }
       write_audit_log: {

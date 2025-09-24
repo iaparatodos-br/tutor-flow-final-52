@@ -393,7 +393,7 @@ export default function Alunos() {
                   <h4 className="font-medium text-orange-800 dark:text-orange-200 mb-1">
                     Configuração de Pagamento Pendente
                   </h4>
-                  <p className="text-sm text-orange-700 dark:text-orange-300 mb-3">
+                  <p className="text-sm text-orange-700 dark:text-orange-300 mb-0">
                     <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado. 
                     Configure para permitir faturamento e cobrança.
                   </p>

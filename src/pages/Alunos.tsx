@@ -15,7 +15,6 @@ import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
-
 interface Student {
   id: string;
   name: string;
@@ -29,13 +28,19 @@ interface Student {
   stripe_customer_id?: string;
   business_profile_id?: string;
 }
-
 export default function Alunos() {
-  const { profile } = useProfile();
-  const { toast } = useToast();
+  const {
+    profile
+  } = useProfile();
+  const {
+    toast
+  } = useToast();
   const navigate = useNavigate();
-  const { currentPlan, subscription, getStudentOverageInfo } = useSubscription();
-  
+  const {
+    currentPlan,
+    subscription,
+    getStudentOverageInfo
+  } = useSubscription();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -45,23 +50,22 @@ export default function Alunos() {
   const [warningModalOpen, setWarningModalOpen] = useState(false);
   const [warningStudent, setWarningStudent] = useState<Student | null>(null);
   const [warningAction, setWarningAction] = useState("");
-
   useEffect(() => {
     if (profile?.id) {
       loadStudents();
     }
   }, [profile]);
-
   const loadStudents = async () => {
     if (!profile?.id) return;
-
     try {
-      const { data, error } = await supabase.rpc('get_teacher_students', {
+      const {
+        data,
+        error
+      } = await supabase.rpc('get_teacher_students', {
         teacher_user_id: profile.id
       });
-
       if (error) throw error;
-      
+
       // Transform the data to match the Student interface
       const transformedData = data?.map((student: any) => ({
         id: student.student_id,
@@ -76,54 +80,53 @@ export default function Alunos() {
         stripe_customer_id: student.stripe_customer_id,
         business_profile_id: student.business_profile_id
       })) || [];
-
       setStudents(transformedData);
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
       toast({
         title: "Erro ao carregar alunos",
         description: "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
   };
-
   const handleAddStudent = async (formData: any) => {
     if (!profile?.id) return;
-
     setSubmitting(true);
-    
     try {
       // Check if adding this student would exceed limits and trigger billing
       if (currentPlan && currentPlan.slug !== 'free') {
-        const { isOverLimit, additionalCost } = getStudentOverageInfo(students.length);
-        
+        const {
+          isOverLimit,
+          additionalCost
+        } = getStudentOverageInfo(students.length);
         if (isOverLimit && subscription) {
           // Setup billing for extra students
           const extraStudents = students.length - (currentPlan?.student_limit ?? 0) + 1;
-          
           try {
-            const { data: billingData, error: billingError } = await supabase.functions.invoke('handle-student-overage', {
+            const {
+              data: billingData,
+              error: billingError
+            } = await supabase.functions.invoke('handle-student-overage', {
               body: {
                 extraStudents,
                 planLimit: currentPlan?.student_limit ?? 0
               }
             });
-
             if (billingError) {
               console.error('Error setting up billing:', billingError);
               toast({
                 title: 'Aviso de Cobrança',
                 description: `O aluno será adicionado, mas pode haver cobrança adicional de R$ ${(additionalCost / 100).toFixed(2)}.`,
-                variant: "default",
+                variant: "default"
               });
             } else if (billingData?.success) {
               toast({
                 title: 'Cobrança Configurada',
                 description: billingData.message,
-                variant: "default",
+                variant: "default"
               });
             }
           } catch (err) {
@@ -132,15 +135,15 @@ export default function Alunos() {
           }
         }
       }
-      
+
       // Create student via Edge Function with admin privileges
       // Don't send localhost URLs - let the function handle the redirect URL
-      const redirectUrl = window.location.hostname === 'localhost' 
-        ? undefined 
-        : `${window.location.origin}/auth/callback`;
-
+      const redirectUrl = window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`;
       console.log('Calling create-student function...');
-      const { data, error } = await supabase.functions.invoke('create-student', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('create-student', {
         body: {
           name: formData.name,
           email: formData.email,
@@ -148,38 +151,38 @@ export default function Alunos() {
           redirect_url: redirectUrl,
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
+          guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
           billing_day: formData.billing_day,
           notify_professor_email: profile.email,
           professor_name: profile.name,
-          business_profile_id: formData.business_profile_id,
+          business_profile_id: formData.business_profile_id
         }
       });
+      console.log('Supabase function response:', {
+        data,
+        error
+      });
 
-      console.log('Supabase function response:', { data, error });
-      
       // Check for errors in the response
       if (error) {
         console.error('Supabase function error object:', error);
         console.log('Error type:', typeof error);
         console.log('Error JSON:', JSON.stringify(error));
-        
         toast({
           title: 'Erro',
           description: 'Este e-mail já está sendo utilizado por outro aluno ou professor',
-          variant: 'destructive',
+          variant: 'destructive'
         });
         return;
       }
-      
+
       // Check if the function returned success: false
       if (data && !data.success) {
         console.log('Function returned success: false, error:', data.error);
-        
         toast({
           title: 'Erro ao cadastrar aluno',
           description: data.error || 'Este e-mail já está sendo utilizado por outro aluno ou professor',
-          variant: 'destructive',
+          variant: 'destructive'
         });
         return;
       }
@@ -187,37 +190,34 @@ export default function Alunos() {
       // Success case
       toast({
         title: 'Aluno convidado com sucesso!',
-        description: `${formData.name} receberá um e-mail para concluir o cadastro.`,
+        description: `${formData.name} receberá um e-mail para concluir o cadastro.`
       });
-      
       setIsAddDialogOpen(false);
       loadStudents();
-        
     } catch (error: any) {
       console.error('Erro ao adicionar aluno:', error);
       toast({
         title: 'Erro ao adicionar aluno',
         description: error.message || 'Tente novamente mais tarde',
-        variant: 'destructive',
+        variant: 'destructive'
       });
     } finally {
       setSubmitting(false);
     }
   };
-
   const handleEditStudent = (student: Student) => {
     setEditingStudent(student);
     setIsEditDialogOpen(true);
   };
-
   const handleUpdateStudent = async (formData: any) => {
     if (!profile?.id || !editingStudent) return;
-
     setSubmitting(true);
-    
     try {
       // Use the new update-student-details function
-      const { data, error } = await supabase.functions.invoke('update-student-details', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('update-student-details', {
         body: {
           student_id: editingStudent.id,
           teacher_id: profile.id,
@@ -225,79 +225,73 @@ export default function Alunos() {
           student_name: formData.name,
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: formData.isOwnResponsible ? formData.phone : (formData.guardian_phone || null),
+          guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
           billing_day: formData.billing_day,
-          business_profile_id: formData.business_profile_id,
+          business_profile_id: formData.business_profile_id
         }
       });
-
-      if (error || (data && !data.success)) {
+      if (error || data && !data.success) {
         console.error('Erro ao atualizar aluno:', error || data);
         toast({
           title: "Erro",
           description: data?.error || "Erro ao salvar alterações do aluno.",
-          variant: "destructive",
+          variant: "destructive"
         });
         return;
       }
-
       toast({
         title: "Aluno atualizado com sucesso!",
-        description: `As informações de ${formData.name} foram atualizadas.`,
+        description: `As informações de ${formData.name} foram atualizadas.`
       });
-      
       setIsEditDialogOpen(false);
       setEditingStudent(null);
       loadStudents();
-      
     } catch (error: any) {
       console.error('Erro ao atualizar aluno:', error);
       toast({
         title: "Erro ao atualizar aluno",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setSubmitting(false);
     }
   };
-
-
   const handleSmartDelete = async (student: Student) => {
     if (!student.relationship_id) {
       toast({
         title: "Erro",
         description: "Não foi possível encontrar o relacionamento do aluno",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     try {
       // Call the smart delete function to determine the action
-      const { data, error } = await supabase.functions.invoke('smart-delete-student', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('smart-delete-student', {
         body: {
           student_id: student.id,
           teacher_id: profile?.id,
           relationship_id: student.relationship_id
         }
       });
-
       if (error) {
         console.error('Smart delete error:', error);
         toast({
           title: "Erro",
           description: "Erro ao processar a remoção do aluno",
-          variant: "destructive",
+          variant: "destructive"
         });
         return;
       }
-
       if (data && !data.success) {
         toast({
           title: "Erro",
           description: data.error || "Erro ao processar a remoção do aluno",
-          variant: "destructive",
+          variant: "destructive"
         });
         return;
       }
@@ -305,29 +299,23 @@ export default function Alunos() {
       // Show generic success message
       toast({
         title: "Aluno removido com sucesso",
-        description: `${student.name} perdeu acesso à sua área da plataforma`,
+        description: `${student.name} perdeu acesso à sua área da plataforma`
       });
-      
       loadStudents();
     } catch (error: any) {
       console.error('Erro ao remover aluno:', error);
       toast({
         title: "Erro ao remover aluno",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const handleConfirmSmartDelete = async (student: Student) => {
-    const confirmMessage = `Tem certeza que deseja remover o aluno ${student.name}?\n\n` +
-      `O aluno perderá acesso à sua área da plataforma.`;
-    
+    const confirmMessage = `Tem certeza que deseja remover o aluno ${student.name}?\n\n` + `O aluno perderá acesso à sua área da plataforma.`;
     if (!confirm(confirmMessage)) return;
-    
     await handleSmartDelete(student);
   };
-
   const checkBusinessProfileOrWarn = (student: Student, action: string, callback: () => void) => {
     if (!student.business_profile_id) {
       setWarningStudent(student);
@@ -338,11 +326,8 @@ export default function Alunos() {
     callback();
     return true;
   };
-
   const studentsWithoutBusinessProfile = students.filter(s => !s.business_profile_id);
-
-  return (
-    <Layout>
+  return <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
         <UpgradeBanner />
         
@@ -357,11 +342,13 @@ export default function Alunos() {
         {/* Alerts stacked vertically below title */}
         <div className="space-y-4">
           {currentPlan && (() => {
-            const { isOverLimit, additionalCost, message } = getStudentOverageInfo(students.length);
-            
-            if (isOverLimit && currentPlan.slug !== 'free') {
-              return (
-                <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 shadow-sm">
+          const {
+            isOverLimit,
+            additionalCost,
+            message
+          } = getStudentOverageInfo(students.length);
+          if (isOverLimit && currentPlan.slug !== 'free') {
+            return <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 shadow-sm">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
                       <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -375,13 +362,10 @@ export default function Alunos() {
                       </p>
                     </div>
                   </div>
-                </div>
-              );
-            }
-            
-            if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
-              return (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
+                </div>;
+          }
+          if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
+            return <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
                       <AlertTriangle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
@@ -395,15 +379,12 @@ export default function Alunos() {
                       </p>
                     </div>
                   </div>
-                </div>
-              );
-            }
-            
-            return null;
-          })()}
+                </div>;
+          }
+          return null;
+        })()}
           
-          {studentsWithoutBusinessProfile.length > 0 && (
-            <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
+          {studentsWithoutBusinessProfile.length > 0 && <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
                   <DollarSign className="h-4 w-4 text-orange-600 dark:text-orange-400" />
@@ -416,34 +397,21 @@ export default function Alunos() {
                     <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado. 
                     Configure para permitir faturamento e cobrança.
                   </p>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => navigate('/painel-negocios')}
-                    className="bg-white/50 hover:bg-white/70 border-orange-300 text-orange-700 hover:text-orange-800"
-                  >
-                    Configurar Pagamentos
-                  </Button>
+                  
                 </div>
               </div>
-            </div>
-          )}
+            </div>}
         </div>
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-2">
-          {students.filter(s => s.business_profile_id).length > 0 && (
-            <CreateInvoiceModal 
-              students={students
-                .filter(s => s.business_profile_id)
-                .map(s => ({ id: s.id, name: s.name, email: s.email }))}
-            />
-          )}
+          {students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
+          id: s.id,
+          name: s.name,
+          email: s.email
+        }))} />}
           <FeatureGate studentCount={students.length} showUpgrade={true}>
-            <Button 
-              onClick={() => setIsAddDialogOpen(true)}
-              className="bg-gradient-primary shadow-primary hover:bg-primary-hover"
-            >
+            <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
               <Plus className="h-4 w-4 mr-2" />
               Adicionar Aluno
             </Button>
@@ -459,30 +427,22 @@ export default function Alunos() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="text-center py-8">
+            {loading ? <div className="text-center py-8">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
                 <p className="text-muted-foreground">Carregando alunos...</p>
-              </div>
-            ) : students.length === 0 ? (
-              <div className="text-center py-8">
+              </div> : students.length === 0 ? <div className="text-center py-8">
                 <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">Nenhum aluno cadastrado</h3>
                 <p className="text-muted-foreground mb-4">
                   Comece adicionando seu primeiro aluno
                 </p>
                 <FeatureGate studentCount={students.length} showUpgrade={true}>
-                  <Button 
-                    onClick={() => setIsAddDialogOpen(true)}
-                    className="bg-gradient-primary shadow-primary"
-                  >
+                  <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary">
                     <Plus className="h-4 w-4 mr-2" />
                     Adicionar Primeiro Aluno
                   </Button>
                 </FeatureGate>
-              </div>
-            ) : (
-                <Table>
+              </div> : <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nome</TableHead>
@@ -495,8 +455,7 @@ export default function Alunos() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {students.map((student) => (
-                    <TableRow key={student.id}>
+                  {students.map(student => <TableRow key={student.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
@@ -513,39 +472,27 @@ export default function Alunos() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {student.guardian_name ? (
-                            <>
-                              {student.guardian_name === student.name ? (
-                                <Badge variant="outline" className="text-xs">
+                          {student.guardian_name ? <>
+                              {student.guardian_name === student.name ? <Badge variant="outline" className="text-xs">
                                   <UserCheck className="h-3 w-3 mr-1" />
                                   Próprio aluno
-                                </Badge>
-                              ) : (
-                                <div>
+                                </Badge> : <div>
                                   <p className="text-sm font-medium">{student.guardian_name}</p>
                                   <p className="text-xs text-muted-foreground">{student.guardian_email}</p>
-                                </div>
-                              )}
-                            </>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">
+                                </div>}
+                            </> : <Badge variant="secondary" className="text-xs">
                               Não configurado
-                            </Badge>
-                          )}
+                            </Badge>}
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {student.business_profile_id ? (
-                            <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                               Configurado
-                            </Badge>
-                          ) : (
-                            <Badge variant="destructive" className="text-xs">
+                            </Badge> : <Badge variant="destructive" className="text-xs">
                               <AlertTriangle className="h-3 w-3 mr-1" />
                               Não configurado
-                            </Badge>
-                          )}
+                            </Badge>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -559,86 +506,43 @@ export default function Alunos() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => navigate(`/alunos/${student.id}`)}
-                            title="Ver perfil completo"
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title="Ver perfil completo">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditStudent(student)}
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => handleConfirmSmartDelete(student)}
-                            title="Remover aluno"
-                          >
+                          <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
-                    </TableRow>
-                  ))}
+                    </TableRow>)}
                 </TableBody>
-              </Table>
-            )}
+              </Table>}
           </CardContent>
         </Card>
 
         {/* Student Form Modals */}
-        <StudentFormModal
-          isOpen={isAddDialogOpen}
-          onOpenChange={setIsAddDialogOpen}
-          onSubmit={handleAddStudent}
-          isSubmitting={submitting}
-          currentStudentCount={students.length}
-          title="Adicionar Novo Aluno"
-          description="Insira os dados do aluno e configurações de cobrança"
-        />
+        <StudentFormModal isOpen={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} onSubmit={handleAddStudent} isSubmitting={submitting} currentStudentCount={students.length} title="Adicionar Novo Aluno" description="Insira os dados do aluno e configurações de cobrança" />
 
-        <StudentFormModal
-          isOpen={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
-          onSubmit={handleUpdateStudent}
-          isSubmitting={submitting}
-          currentStudentCount={students.length}
-          student={editingStudent || undefined}
-          title="Editar Aluno"
-          description="Altere os dados do aluno e configurações de cobrança"
-        />
+        <StudentFormModal isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSubmit={handleUpdateStudent} isSubmitting={submitting} currentStudentCount={students.length} student={editingStudent || undefined} title="Editar Aluno" description="Altere os dados do aluno e configurações de cobrança" />
 
         {/* Business Profile Warning Modal */}
-        {warningStudent && (
-          <BusinessProfileWarningModal
-            student={warningStudent}
-            isOpen={warningModalOpen}
-            onClose={() => setWarningModalOpen(false)}
-            onEditStudent={(student) => {
-              const full = students.find((st) => st.id === student.id);
-              if (full) {
-                setEditingStudent(full);
-              } else {
-                setEditingStudent({
-                  id: student.id,
-                  name: student.name,
-                  email: student.email,
-                  created_at: new Date().toISOString(),
-                } as Student);
-              }
-              setIsEditDialogOpen(true);
-            }}
-            action={warningAction}
-          />
-        )}
+        {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={student => {
+        const full = students.find(st => st.id === student.id);
+        if (full) {
+          setEditingStudent(full);
+        } else {
+          setEditingStudent({
+            id: student.id,
+            name: student.name,
+            email: student.email,
+            created_at: new Date().toISOString()
+          } as Student);
+        }
+        setIsEditDialogOpen(true);
+      }} action={warningAction} />}
       </div>
-    </Layout>
-  );
+    </Layout>;
 }

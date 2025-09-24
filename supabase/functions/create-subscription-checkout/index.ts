@@ -206,21 +206,34 @@ serve(async (req) => {
       logStep("Using existing Stripe price", { priceId: stripePriceId });
     }
 
+    // Get price details to check usage type
+    const priceDetails = await stripe.prices.retrieve(stripePriceId);
+    logStep("Price details retrieved", { 
+      priceId: stripePriceId, 
+      usageType: priceDetails.recurring?.usage_type 
+    });
+
     // Create checkout session
     logStep("Creating Stripe checkout session", { 
       customerId, 
       priceId: stripePriceId,
-      origin: req.headers.get("origin")
+      origin: req.headers.get("origin"),
+      usageType: priceDetails.recurring?.usage_type
     });
+    
+    // Build line item - don't include quantity for metered pricing
+    const lineItem: any = {
+      price: stripePriceId,
+    };
+    
+    // Only add quantity for non-metered pricing
+    if (priceDetails.recurring?.usage_type !== 'metered') {
+      lineItem.quantity = 1;
+    }
     
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      line_items: [
-        {
-          price: stripePriceId,
-          quantity: 1,
-        },
-      ],
+      line_items: [lineItem],
       mode: 'subscription',
       success_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/subscription?success=true`,
       cancel_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/planos?canceled=true`,

@@ -120,7 +120,8 @@ serve(async (req) => {
     if (errorMessage.includes("review the responsibilities of managing losses")) {
       return new Response(JSON.stringify({ 
         error: "Configuração do Stripe Connect necessária",
-        details: "É necessário configurar o perfil da plataforma no Stripe Dashboard. Acesse: https://dashboard.stripe.com/settings/connect/platform-profile",
+        details: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
+        action_required: "Acesse https://dashboard.stripe.com/settings/connect/platform-profile e complete a configuração.",
         technical_error: errorMessage
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

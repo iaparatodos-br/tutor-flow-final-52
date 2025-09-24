@@ -101,7 +101,25 @@ export default function PainelNegocios() {
       }
     },
     onError: (error: any) => {
-      toast.error(`Erro ao criar perfil de negócio: ${error.message}`);
+      console.error('Error creating business profile:', error);
+      
+      // Tratar erro específico do Stripe Connect
+      if (error.message?.includes("Configuração do Stripe Connect necessária")) {
+        toast.error("Configuração pendente no Stripe", {
+          description: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
+          duration: 10000
+        });
+        
+        // Abrir link automaticamente após 2 segundos
+        setTimeout(() => {
+          const openStripe = confirm("Deseja abrir o Stripe Dashboard para completar a configuração?");
+          if (openStripe) {
+            window.open("https://dashboard.stripe.com/settings/connect/platform-profile", "_blank");
+          }
+        }, 2000);
+      } else {
+        toast.error(`Erro ao criar perfil de negócio: ${error.message}`);
+      }
     },
   });
 

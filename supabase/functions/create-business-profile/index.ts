@@ -115,6 +115,19 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in create-business-profile", { message: errorMessage });
+    
+    // Handle specific Stripe Connect configuration error
+    if (errorMessage.includes("review the responsibilities of managing losses")) {
+      return new Response(JSON.stringify({ 
+        error: "Configuração do Stripe Connect necessária",
+        details: "É necessário configurar o perfil da plataforma no Stripe Dashboard. Acesse: https://dashboard.stripe.com/settings/connect/platform-profile",
+        technical_error: errorMessage
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+    
     return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

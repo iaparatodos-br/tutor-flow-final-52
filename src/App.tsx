@@ -14,6 +14,7 @@ import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
 import { PaymentFailureGuard } from "@/components/PaymentFailureGuard";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
+import AuthCallback from "./pages/AuthCallback";
 import ResetPassword from "./pages/ResetPassword";
 import ForcePasswordChange from "./pages/ForcePasswordChange";
 import ProfileSetupPage from "./pages/ProfileSetupPage";
@@ -96,6 +97,7 @@ const AppWithProviders = () => {
               <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/alunos" element={<Alunos />} />

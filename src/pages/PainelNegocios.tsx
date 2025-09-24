@@ -12,7 +12,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { PaymentAccountsManager } from "@/components/PaymentAccountsManager";
 import { PaymentRoutingTest } from "@/components/PaymentRoutingTest";
 import { ConfirmationDialog } from "@/components/ui/alert-confirmation";
 import { SystemHealthAlert } from "@/components/SystemHealthAlert";
@@ -209,14 +208,10 @@ export default function PainelNegocios() {
         <SystemHealthAlert />
 
         <Tabs defaultValue="business-profiles" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="business-profiles" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
               Perfis de Negócio
-            </TabsTrigger>
-            <TabsTrigger value="payment-accounts" className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              Contas de Recebimento
             </TabsTrigger>
             <TabsTrigger value="student-links" className="flex items-center gap-2">
               <Users className="h-4 w-4" />
@@ -352,12 +347,7 @@ export default function PainelNegocios() {
             )}
           </TabsContent>
 
-          {/* Aba 2: Contas de Recebimento */}
-          <TabsContent value="payment-accounts" className="space-y-6">
-            <PaymentAccountsManager />
-          </TabsContent>
-
-          {/* Aba 3: Vínculos Aluno-Negócio */}
+          {/* Aba 2: Vínculos Aluno-Negócio */}
           <TabsContent value="student-links" className="space-y-6">
             <Card>
               <CardHeader>
@@ -393,7 +383,7 @@ export default function PainelNegocios() {
             </Card>
           </TabsContent>
 
-          {/* Aba 4: Relatórios Financeiros */}
+          {/* Aba 3: Relatórios Financeiros */}
           <TabsContent value="reports" className="space-y-6">
             <Card>
               <CardHeader>

@@ -20,7 +20,6 @@ const defaultFeatures = {
   group_classes: 'Aulas em Grupo', 
   expenses: 'Cadastro de Despesas',
   storage_mb: 'Armazenamento',
-  payment_accounts: 'Contas de Recebimento',
   class_reports: 'Relatórios de Aula',
   material_sharing: 'Compartilhamento de Materiais'
 };
@@ -117,9 +116,6 @@ export function FeatureGate({
             }
             {feature === 'expenses' && 
               'Cadastre e organize suas despesas por categoria, anexe comprovantes e tenha controle total dos seus gastos.'
-            }
-            {feature === 'payment_accounts' && 
-              'Configure múltiplas contas bancárias para recebimento, incluindo PIX e integração com Stripe.'
             }
             {feature === 'class_reports' && 
               'Crie relatórios detalhados das aulas, acompanhe o progresso dos alunos e compartilhe feedback.'

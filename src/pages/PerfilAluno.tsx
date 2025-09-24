@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClassReportView } from "@/components/ClassReportView";
-import { PaymentAccountSelector } from "@/components/PaymentAccountSelector";
+
 import { 
   ArrowLeft, 
   User, 
@@ -423,10 +423,6 @@ export default function PerfilAluno() {
               </CardContent>
             </Card>
 
-            {/* Payment Account Selection */}
-            {hasFeature('financial_module') && (
-              <PaymentAccountSelector studentId={id!} onUpdate={loadStudentData} />
-            )}
           </div>
 
           {/* History Sections */}

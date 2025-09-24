@@ -16,7 +16,6 @@ interface SubscriptionPlan {
     group_classes: boolean;
     expenses: boolean;
     storage_mb: number;
-    payment_accounts?: boolean;
     class_reports?: boolean;
     material_sharing?: boolean;
   };

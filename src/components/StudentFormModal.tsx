@@ -427,7 +427,7 @@ export function StudentFormModal({
                </div>
 
                {/* Business Profile Selection */}
-               {businessProfiles && businessProfiles.length > 0 && (
+               {hasFinancialModule && businessProfiles && businessProfiles.length > 0 && (
                  <div className="space-y-2">
                    <Label htmlFor="business-profile">
                      <Building2 className="h-4 w-4 inline mr-1" />
@@ -470,7 +470,7 @@ export function StudentFormModal({
                  </div>
                )}
 
-               {businessProfiles && businessProfiles.length === 0 && (
+               {hasFinancialModule && businessProfiles && businessProfiles.length === 0 && (
                  <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
                    <Building2 className="h-4 w-4 text-amber-600" />
                    <AlertDescription className="text-amber-800 dark:text-amber-200">

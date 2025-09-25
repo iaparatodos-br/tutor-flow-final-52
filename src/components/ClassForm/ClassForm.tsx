@@ -148,8 +148,17 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
         errors.pastDateTime = true;
       }
 
+      // Get duration from selected service or use default for experimental classes
+      let duration = 60; // Default for experimental classes
+      if (!formData.is_experimental && formData.service_id) {
+        const selectedService = services.find(s => s.id === formData.service_id);
+        if (selectedService) {
+          duration = selectedService.duration_minutes;
+        }
+      }
+
       // Check for time conflicts with existing classes
-      const classEnd = new Date(classDateTime.getTime() + (formData.duration_minutes * 60 * 1000));
+      const classEnd = new Date(classDateTime.getTime() + (duration * 60 * 1000));
       
       const hasConflict = existingClasses.some(existingClass => {
         // Skip cancelled or completed classes
@@ -175,8 +184,18 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
       return;
     }
 
+    // Get duration from selected service or use default for experimental classes
+    let finalDuration = 60; // Default for experimental classes
+    if (!formData.is_experimental && formData.service_id) {
+      const selectedService = services.find(s => s.id === formData.service_id);
+      if (selectedService) {
+        finalDuration = selectedService.duration_minutes;
+      }
+    }
+
     const submitData: ClassFormData = {
       ...formData,
+      duration_minutes: finalDuration,
       recurrence: showRecurrence ? {
         frequency: formData.recurrence?.frequency || 'weekly', // Ensure frequency is always set
         end_date: formData.recurrence?.end_date,
@@ -289,9 +308,13 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 <Checkbox
                   id="experimental"
                   checked={formData.is_experimental}
-                  onCheckedChange={(checked) =>
-                    setFormData(prev => ({ ...prev, is_experimental: checked as boolean }))
-                  }
+                  onCheckedChange={(checked) => {
+                    setFormData(prev => ({ 
+                      ...prev, 
+                      is_experimental: checked as boolean,
+                      service_id: checked ? '' : prev.service_id // Clear service if experimental
+                    }));
+                  }}
                 />
                 <Label htmlFor="experimental" className="flex items-center gap-2 cursor-pointer">
                   <Star className="h-4 w-4 text-warning" />
@@ -445,26 +468,6 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             </p>
           )}
 
-          {/* Duration */}
-          <div>
-            <Label htmlFor="duration">Duração</Label>
-            <Select
-              value={formData.duration_minutes.toString()}
-              onValueChange={(value) =>
-                setFormData(prev => ({ ...prev, duration_minutes: parseInt(value) }))
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="30">30 minutos</SelectItem>
-                <SelectItem value="60">1 hora</SelectItem>
-                <SelectItem value="90">1h 30min</SelectItem>
-                <SelectItem value="120">2 horas</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
           {/* Recurrence */}
           <Card>

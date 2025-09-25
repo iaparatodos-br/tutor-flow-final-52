@@ -1563,10 +1563,6 @@ export type Database = {
           updated_at: string | null
         }[]
       }
-      get_current_user_role: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {

@@ -71,9 +71,9 @@ serve(async (req) => {
       businessName: business_name 
     });
 
-    // Save business profile to database
-    const { data: businessProfile, error: dbError } = await supabaseClient
-      .from("business_profiles")
+    // Save to pending business profiles (temporary storage until onboarding complete)
+    const { data: pendingProfile, error: dbError } = await supabaseClient
+      .from("pending_business_profiles")
       .insert({
         user_id: user.id,
         business_name,
@@ -88,7 +88,10 @@ serve(async (req) => {
       throw new Error(`Database error: ${dbError.message}`);
     }
 
-    logStep("Business profile saved to database", { profileId: businessProfile.id });
+    logStep("Pending business profile saved temporarily", { 
+      pendingId: pendingProfile.id,
+      stripeAccountId: stripeAccount.id 
+    });
 
     // Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({
@@ -105,8 +108,9 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       onboarding_url: accountLink.url,
-      business_profile: businessProfile,
-      expires_at: accountLink.expires_at
+      pending_profile: pendingProfile,
+      expires_at: accountLink.expires_at,
+      message: "Complete o onboarding no Stripe para ativar seu perfil de negócio"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

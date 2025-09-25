@@ -929,6 +929,36 @@ export type Database = {
         }
         Relationships: []
       }
+      pending_business_profiles: {
+        Row: {
+          business_name: string
+          cnpj: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          stripe_connect_id: string
+          user_id: string
+        }
+        Insert: {
+          business_name: string
+          cnpj?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          stripe_connect_id: string
+          user_id: string
+        }
+        Update: {
+          business_name?: string
+          cnpj?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          stripe_connect_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       pending_refunds: {
         Row: {
           amount: number
@@ -1441,6 +1471,10 @@ export type Database = {
     }
     Functions: {
       archive_old_stripe_events: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      cleanup_expired_pending_profiles: {
         Args: Record<PropertyKey, never>
         Returns: number
       }

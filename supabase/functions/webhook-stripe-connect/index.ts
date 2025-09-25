@@ -178,6 +178,47 @@ serve(async (req) => {
         const account = eventObject as Stripe.Account;
         logStep("Account updated", { accountId: account.id });
 
+        // NOVA LÓGICA: Se o onboarding foi completado, mover da tabela temporária para definitiva
+        if (account.details_submitted && account.charges_enabled) {
+          logStep("Onboarding completed, moving to permanent storage", { accountId: account.id });
+          
+          // Buscar na tabela temporária
+          const { data: pendingProfile, error: pendingError } = await supabaseClient
+            .from("pending_business_profiles")
+            .select("*")
+            .eq("stripe_connect_id", account.id)
+            .single();
+
+          if (!pendingError && pendingProfile) {
+            // Criar na tabela definitiva
+            const { data: businessProfile, error: businessError } = await supabaseClient
+              .from("business_profiles")
+              .insert({
+                user_id: pendingProfile.user_id,
+                business_name: pendingProfile.business_name,
+                cnpj: pendingProfile.cnpj,
+                stripe_connect_id: pendingProfile.stripe_connect_id,
+              })
+              .select()
+              .single();
+
+            if (!businessError) {
+              // Remover da tabela temporária
+              await supabaseClient
+                .from("pending_business_profiles")
+                .delete()
+                .eq("id", pendingProfile.id);
+
+              logStep("Business profile moved to permanent storage", { 
+                businessProfileId: businessProfile.id,
+                accountId: account.id 
+              });
+            } else {
+              logStep("Error creating permanent business profile", businessError);
+            }
+          }
+        }
+
         // Determine account status based on restrictions and capabilities
         let accountStatus = 'active';
         let statusReason = null;

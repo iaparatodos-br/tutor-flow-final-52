@@ -26,6 +26,16 @@ interface BusinessProfile {
   updated_at: string;
 }
 
+interface PendingBusinessProfile {
+  id: string;
+  user_id: string;
+  business_name: string;
+  cnpj: string | null;
+  stripe_connect_id: string;
+  created_at: string;
+  expires_at: string;
+}
+
 interface StudentBusinessLink {
   id: string;
   student_name: string;
@@ -53,6 +63,17 @@ export default function PainelNegocios() {
       const { data, error } = await supabase.functions.invoke("list-business-profiles");
       if (error) throw error;
       return data.business_profiles as BusinessProfile[];
+    },
+    enabled: isProfessor,
+  });
+
+  // Query para listar perfis de negócio pendentes
+  const { data: pendingProfiles, isLoading: isLoadingPending } = useQuery({
+    queryKey: ["pending-business-profiles"],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("list-pending-business-profiles");
+      if (error) throw error;
+      return data.pending_profiles as PendingBusinessProfile[];
     },
     enabled: isProfessor,
   });
@@ -89,14 +110,15 @@ export default function PainelNegocios() {
       return data;
     },
     onSuccess: (data) => {
-      toast.success("Perfil de negócio criado! Redirecionando para o Stripe...");
+      toast.success("Perfil criado! Complete o cadastro no Stripe para ativar.");
       queryClient.invalidateQueries({ queryKey: ["business-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["pending-business-profiles"] });
       setIsDialogOpen(false);
       setBusinessName("");
       setCnpj("");
       
       // Redirecionar para o onboarding do Stripe
-      if (data.onboarding_url) {
+      if (data?.onboarding_url) {
         window.location.href = data.onboarding_url;
       }
     },
@@ -104,7 +126,7 @@ export default function PainelNegocios() {
       console.error('Error creating business profile:', error);
       
       // Tratar erro específico do Stripe Connect
-      if (error.message?.includes("Configuração do Stripe Connect necessária")) {
+      if (error?.message?.includes("Configuração do Stripe Connect necessária")) {
         toast.error("Configuração pendente no Stripe", {
           description: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
           duration: 10000
@@ -118,7 +140,7 @@ export default function PainelNegocios() {
           }
         }, 2000);
       } else {
-        toast.error(`Erro ao criar perfil de negócio: ${error.message}`);
+        toast.error(`Erro ao criar perfil de negócio: ${error?.message || 'Erro desconhecido'}`);
       }
     },
   });
@@ -153,7 +175,7 @@ export default function PainelNegocios() {
       setDeleteValidation(null);
     },
     onError: (error: any) => {
-      toast.error(`Erro ao excluir perfil de negócio: ${error.message}`);
+      toast.error(`Erro ao excluir perfil de negócio: ${error?.message || 'Erro desconhecido'}`);
     },
   });
 
@@ -172,7 +194,7 @@ export default function PainelNegocios() {
         toast.error(`Não é possível excluir: ${issuesList}`);
       }
     } catch (error: any) {
-      toast.error(`Erro ao validar exclusão: ${error.message}`);
+      toast.error(`Erro ao validar exclusão: ${error?.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -212,15 +234,15 @@ export default function PainelNegocios() {
   return (
     <Layout>
       <div className="container mx-auto py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <Building2 className="h-8 w-8" />
-            Gestão de Negócios
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Gerencie suas entidades de negócio, contas de recebimento e vínculos com alunos
-          </p>
-        </div>
+            <div className="mb-8">
+              <h1 className="text-3xl font-bold flex items-center gap-2">
+                <Building2 className="h-8 w-8" />
+                Gestão de Negócios
+              </h1>
+              <p className="text-muted-foreground mt-2">
+                Gerencie suas entidades de negócio. Apenas negócios com onboarding completo no Stripe aparecerão como ativos.
+              </p>
+            </div>
 
         {/* Sistema de Alertas para Inconsistências */}
         <SystemHealthAlert />
@@ -296,8 +318,50 @@ export default function PainelNegocios() {
               </Dialog>
             </div>
 
+            {/* Lista de negócios pendentes */}
+            {pendingProfiles && pendingProfiles.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold mb-4 text-yellow-600">
+                  Negócios Pendentes de Configuração
+                </h3>
+                <div className="grid gap-4">
+                  {pendingProfiles.map((profile) => (
+                    <Card key={profile.id} className="border-yellow-200">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Building2 className="h-5 w-5 text-yellow-600" />
+                          {profile.business_name}
+                          <span className="text-sm bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                            Pendente
+                          </span>
+                        </CardTitle>
+                        <CardDescription>
+                          {profile.cnpj && `CNPJ: ${formatCNPJ(profile.cnpj)}`}
+                          <br />
+                          Complete o cadastro no Stripe para ativar este negócio
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Calendar className="h-4 w-4" />
+                            Criado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-yellow-600">
+                              ⚠️ Configuração incompleta
+                            </span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Lista de negócios conectados */}
-            {isLoading ? (
+            {isLoading || isLoadingPending ? (
               <div className="flex justify-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               </div>
@@ -344,7 +408,7 @@ export default function PainelNegocios() {
                   </Card>
                 ))}
               </div>
-            ) : (
+            ) : !pendingProfiles || pendingProfiles.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -360,6 +424,16 @@ export default function PainelNegocios() {
                       </Button>
                     </DialogTrigger>
                   </Dialog>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="text-center py-12">
+                  <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">Aguardando configurações</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Complete o cadastro dos negócios pendentes no Stripe para começar a usar.
+                  </p>
                 </CardContent>
               </Card>
             )}

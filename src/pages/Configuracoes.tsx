@@ -14,15 +14,9 @@ export default function Configuracoes() {
   const { isProfessor } = useProfile();
   const { t } = useTranslation('settings');
 
-  if (!isProfessor) {
-    return (
-      <Layout>
-        <div className="text-center py-8">
-          <p>{t('accessDenied')}</p>
-        </div>
-      </Layout>
-    );
-  }
+  // Determine which tabs to show based on user type
+  const showProfessorTabs = isProfessor;
+  const tabCount = showProfessorTabs ? 5 : 3;
 
   return (
     <Layout>
@@ -38,7 +32,7 @@ export default function Configuracoes() {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className={`grid w-full grid-cols-${tabCount}`}>
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               {t('tabs.profile')}
@@ -47,14 +41,18 @@ export default function Configuracoes() {
               <Palette className="h-4 w-4" />
               {t('tabs.preferences')}
             </TabsTrigger>
-            <TabsTrigger value="billing" className="flex items-center gap-2">
-              <Settings className="h-4 w-4" />
-              Cobrança
-            </TabsTrigger>
-            <TabsTrigger value="cancellation" className="flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              {t('tabs.cancellation')}
-            </TabsTrigger>
+            {showProfessorTabs && (
+              <TabsTrigger value="billing" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Cobrança
+              </TabsTrigger>
+            )}
+            {showProfessorTabs && (
+              <TabsTrigger value="cancellation" className="flex items-center gap-2">
+                <Clock className="h-4 w-4" />
+                {t('tabs.cancellation')}
+              </TabsTrigger>
+            )}
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="h-4 w-4" />
               {t('tabs.notifications')}
@@ -66,21 +64,25 @@ export default function Configuracoes() {
               <ProfileSettings />
             </TabsContent>
 
-            <TabsContent value="cancellation" className="space-y-6">
-              <CancellationPolicySettings />
-            </TabsContent>
-
             <TabsContent value="preferences" className="space-y-6">
               <PreferencesSettings />
-            </TabsContent>
-
-            <TabsContent value="billing" className="space-y-6">
-              <BillingSettings />
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-6">
               <NotificationSettings />
             </TabsContent>
+
+            {showProfessorTabs && (
+              <TabsContent value="billing" className="space-y-6">
+                <BillingSettings />
+              </TabsContent>
+            )}
+
+            {showProfessorTabs && (
+              <TabsContent value="cancellation" className="space-y-6">
+                <CancellationPolicySettings />
+              </TabsContent>
+            )}
           </div>
         </Tabs>
       </div>

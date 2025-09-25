@@ -8,6 +8,9 @@ import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTeacherContext } from '@/contexts/TeacherContext';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 interface Invoice {
   id: string;
@@ -19,12 +22,11 @@ interface Invoice {
   description: string | null;
 }
 
-const fetchStudentInvoices = async () => {
-  // A política de RLS no Supabase garantirá que um aluno logado
-  // veja apenas as suas próprias faturas.
+const fetchStudentInvoices = async (teacherId: string) => {
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description')
+    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id')
+    .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
@@ -32,9 +34,12 @@ const fetchStudentInvoices = async () => {
 };
 
 export default function Faturas() {
+  const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
+
   const { data: invoices, isLoading, error } = useQuery({
-    queryKey: ['studentInvoices'],
-    queryFn: fetchStudentInvoices,
+    queryKey: ['studentInvoices', selectedTeacherId],
+    queryFn: () => fetchStudentInvoices(selectedTeacherId!),
+    enabled: !!selectedTeacherId,
   });
 
   const handlePayNow = (url: string) => {
@@ -47,6 +52,47 @@ export default function Faturas() {
       currency: 'BRL',
     }).format(amount);
   };
+
+  // Loading state while teacher context is loading
+  if (teacherLoading) {
+    return (
+      <Layout>
+        <div className="container mx-auto p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+          </div>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  // No teacher selected
+  if (!selectedTeacherId) {
+    return (
+      <Layout>
+        <div className="container mx-auto p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+          </div>
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Selecione um professor para visualizar suas faturas.
+            </AlertDescription>
+          </Alert>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

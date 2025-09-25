@@ -119,9 +119,16 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center">
             <h1 className="text-3xl font-bold mb-4">{t('dashboard:studentPortal.title')}</h1>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mb-6">
               {t('dashboard:studentPortal.description', { name: profile?.name })}
             </p>
+            <div 
+              className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg cursor-pointer transition-colors"
+              onClick={() => navigate("/portal-do-aluno")}
+            >
+              <Calendar className="h-5 w-5 mr-2" />
+              Acessar Portal do Aluno
+            </div>
           </div>
         </div>
       </Layout>

@@ -62,7 +62,14 @@ export function TeacherProvider({ children }: TeacherProviderProps) {
   };
 
   const refreshTeachers = async () => {
+    console.log('TeacherContext: refreshTeachers called', { 
+      user: user?.id, 
+      isAluno, 
+      hasUser: !!user 
+    });
+    
     if (!user || !isAluno) {
+      console.log('TeacherContext: No user or not student, clearing data');
       setTeachers([]);
       handleSetSelectedTeacherId(null);
       setLoading(false);
@@ -72,24 +79,29 @@ export function TeacherProvider({ children }: TeacherProviderProps) {
     try {
       setLoading(true);
       
+      console.log('TeacherContext: Calling get_student_teachers RPC with user ID:', user.id);
+      
       const { data, error } = await supabase.rpc('get_student_teachers', {
         student_user_id: user.id
       });
 
+      console.log('TeacherContext: RPC response', { data, error });
+
       if (error) {
-        console.error('Error fetching student teachers:', error);
+        console.error('TeacherContext: Error fetching student teachers:', error);
         setTeachers([]);
         handleSetSelectedTeacherId(null);
         return;
       }
 
+      console.log('TeacherContext: Teachers loaded:', data?.length || 0);
       setTeachers(data || []);
       
       const persistedTeacherId = selectedTeacherId;
       
       // Check if persisted teacher is still valid
       if (persistedTeacherId && data && data.find(t => t.teacher_id === persistedTeacherId)) {
-        console.log('Using persisted teacher selection:', persistedTeacherId);
+        console.log('TeacherContext: Using persisted teacher selection:', persistedTeacherId);
         // Selection is already set from localStorage, no need to change
         return;
       }
@@ -97,18 +109,18 @@ export function TeacherProvider({ children }: TeacherProviderProps) {
       // Clear invalid selection or auto-select first teacher if no valid selection
       if (data && data.length > 0) {
         if (!persistedTeacherId) {
-          console.log('No teacher selected, auto-selecting first teacher:', data[0].teacher_id);
+          console.log('TeacherContext: No teacher selected, auto-selecting first teacher:', data[0].teacher_id);
           handleSetSelectedTeacherId(data[0].teacher_id);
         } else {
-          console.log('Previously selected teacher no longer available, selecting first teacher:', data[0].teacher_id);
+          console.log('TeacherContext: Previously selected teacher no longer available, selecting first teacher:', data[0].teacher_id);
           handleSetSelectedTeacherId(data[0].teacher_id);
         }
       } else {
-        console.log('No teachers available, clearing selection');
+        console.log('TeacherContext: No teachers available, clearing selection');
         handleSetSelectedTeacherId(null);
       }
     } catch (error) {
-      console.error('Error in refreshTeachers:', error);
+      console.error('TeacherContext: Error in refreshTeachers:', error);
       setTeachers([]);
       handleSetSelectedTeacherId(null);
     } finally {

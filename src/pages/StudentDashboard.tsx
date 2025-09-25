@@ -48,7 +48,7 @@ interface SharedMaterial {
 
 export default function StudentDashboard() {
   const { profile, isAluno } = useProfile();
-  const { selectedTeacherId } = useTeacherContext();
+  const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [teacherData, setTeacherData] = useState<TeacherPolicyData | null>(null);
@@ -61,11 +61,26 @@ export default function StudentDashboard() {
   const [sharedMaterials, setSharedMaterials] = useState<SharedMaterial[]>([]);
   const [loading, setLoading] = useState(true);
 
+  console.log('StudentDashboard: Component render', {
+    profile: profile?.id,
+    isAluno,
+    selectedTeacherId,
+    teacherLoading,
+    loading
+  });
+
   useEffect(() => {
-    if (selectedTeacherId) {
+    console.log('StudentDashboard: useEffect triggered', { 
+      selectedTeacherId, 
+      hasSelectedTeacherId: !!selectedTeacherId,
+      teacherLoading
+    });
+    
+    // Aguardar o TeacherContext terminar de carregar antes de tentar buscar dados
+    if (!teacherLoading && selectedTeacherId) {
       loadTeacherData();
     }
-  }, [selectedTeacherId]);
+  }, [selectedTeacherId, teacherLoading]);
 
   const loadTeacherData = async () => {
     if (!selectedTeacherId) return;
@@ -276,24 +291,30 @@ export default function StudentDashboard() {
     );
   }
 
-  if (loading) {
+  if (loading || teacherLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <p className="ml-3 text-muted-foreground">
+            {teacherLoading ? 'Carregando professores...' : 'Carregando dados...'}
+          </p>
         </div>
       </Layout>
     );
   }
 
-  if (!teacherData) {
+  if (!teacherLoading && !selectedTeacherId) {
     return (
       <Layout>
         <div className="flex flex-col items-center justify-center min-h-[60vh] text-center">
           <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Nenhum Professor Selecionado</h1>
-          <p className="text-muted-foreground">
-            Por favor, selecione um professor no menu lateral.
+          <h1 className="text-2xl font-bold mb-2">Nenhum Professor Encontrado</h1>
+          <p className="text-muted-foreground mb-4">
+            Você não possui nenhuma relação com professores ou ainda não foi adicionado como aluno por um professor.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Entre em contato com seu professor para ser adicionado como aluno.
           </p>
         </div>
       </Layout>

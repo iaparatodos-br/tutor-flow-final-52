@@ -199,12 +199,12 @@ serve(async (req) => {
       } catch (error) {
         logStep("Exception deleting student", { 
           studentId: studentRel.student_id, 
-          error: error.message 
+          error: error instanceof Error ? error.message : 'Erro desconhecido'
         });
         deleteResults.push({ 
           student_id: studentRel.student_id, 
           success: false, 
-          error: error.message 
+          error: error instanceof Error ? error.message : 'Erro desconhecido' 
         });
       }
     }

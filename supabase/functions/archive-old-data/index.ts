@@ -241,7 +241,7 @@ serve(async (req) => {
     console.error("Erro no processo de arquivamento:", error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
         success: false 
       }),
       {

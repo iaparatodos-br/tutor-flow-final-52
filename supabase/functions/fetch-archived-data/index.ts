@@ -109,7 +109,7 @@ serve(async (req) => {
     console.error("Erro ao buscar dados arquivados:", error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Erro desconhecido',
         success: false,
         found: false
       }),

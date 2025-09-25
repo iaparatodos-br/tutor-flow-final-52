@@ -66,7 +66,7 @@ const checkNeedsStudentSelection = async (
       need_to_remove: students.length - newPlan.student_limit
     };
   } catch (error) {
-    logStep("Exception in checkNeedsStudentSelection", { error: error.message });
+    logStep("Exception in checkNeedsStudentSelection", { error: error instanceof Error ? error.message : 'Unknown error' });
     return null;
   }
 };

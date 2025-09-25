@@ -47,6 +47,7 @@ serve(async (req) => {
         teacher_id,
         billing_day,
         stripe_customer_id,
+        business_profile_id,
         teacher:profiles!teacher_id (
           id,
           name,
@@ -92,15 +93,15 @@ serve(async (req) => {
 
     // Processar cada relacionamento
     for (const relationship of relationshipsToBill) {
-      const teacher = relationship.teacher;
-      const student = relationship.student;
+      const teacher = Array.isArray(relationship.teacher) ? relationship.teacher[0] : relationship.teacher;
+      const student = Array.isArray(relationship.student) ? relationship.student[0] : relationship.student;
 
-      console.log(`Processing billing for: ${teacher.name} -> ${student.name}`);
+      console.log(`Processing billing for: ${teacher?.name} -> ${student?.name}`);
 
       // Validar se o professor pode cobrar (tem assinatura ativa com módulo financeiro)
       const canBill = await validateTeacherCanBill(teacher);
       if (!canBill) {
-        console.log(`Skipping ${teacher.name} -> ${student.name} - no financial module access`);
+        console.log(`Skipping ${teacher?.name} -> ${student?.name} - no financial module access`);
         continue;
       }
 
@@ -110,9 +111,9 @@ serve(async (req) => {
         billing_day: relationship.billing_day,
         stripe_customer_id: relationship.stripe_customer_id,
         teacher_stripe_account_id: relationship.payment_accounts?.find(acc => acc.is_default)?.stripe_connect_account_id || null,
-        payment_due_days: teacher.payment_due_days || 15,
-        student_name: student.name,
-        teacher_name: teacher.name,
+        payment_due_days: teacher?.payment_due_days || 15,
+        student_name: student?.name || '',
+        teacher_name: teacher?.name || '',
       };
 
       if (!studentInfo.stripe_customer_id) {
@@ -168,7 +169,7 @@ serve(async (req) => {
         // 3. Criar Itens da Fatura (Invoice Items) no Stripe
         let totalAmount = 0;
         for (const classItem of classesToInvoice) {
-          const service = classItem.class_services;
+          const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
           const amount = service?.price || 100; // Valor padrão se não houver serviço
           const description = service?.name || `Aula - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`;
           
@@ -260,7 +261,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Erro geral na função de faturamento:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error instanceof Error ? error.message : 'Erro desconhecido',
       success: false 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

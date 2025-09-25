@@ -320,7 +320,7 @@ serve(async (req) => {
         
         // Handle teacher subscription cancellation for updated/deleted subscriptions
         if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
-          await handleSubscriptionStatusChange(sub, userId);
+          await handleSubscriptionStatusChange(supabase, sub, userId, getPlanIdByPriceId);
         }
         
         const priceId = sub.items.data[0]?.price?.id ?? null;
@@ -435,7 +435,7 @@ serve(async (req) => {
 });
 
 // Handle subscription status changes for teacher cancellation
-async function handleSubscriptionStatusChange(subscription: Stripe.Subscription, userId: string) {
+async function handleSubscriptionStatusChange(supabase: any, subscription: Stripe.Subscription, userId: string, getPlanIdByPriceId: any) {
   try {
     log('Checking subscription status change', { 
       status: subscription.status, 

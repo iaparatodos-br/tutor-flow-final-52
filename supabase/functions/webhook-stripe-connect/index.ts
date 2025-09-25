@@ -475,11 +475,6 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
     
-    // Marcar evento como falhou (se event existe)
-    if (event?.id) {
-      await completeEventProcessing(supabaseClient, event.id, false, error as Error);
-    }
-    
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

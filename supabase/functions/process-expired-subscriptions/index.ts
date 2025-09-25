@@ -151,7 +151,7 @@ serve(async (req) => {
         if (isTeacherWithFinancialModule) {
           logStep(`Processing teacher subscription cancellation`, {
             teacherId: subscription.user_id,
-            teacherEmail: Array.isArray(subscription.profiles) ? subscription.profiles[0]?.email : subscription.profiles?.email
+            teacherEmail: profile?.email
           });
 
           try {
@@ -161,7 +161,7 @@ serve(async (req) => {
                 body: {
                   teacher_id: subscription.user_id,
                   cancellation_reason: 'subscription_expired',
-                  previous_plan_features: Array.isArray(subscription.subscription_plans) ? subscription.subscription_plans[0]?.features : subscription.subscription_plans?.features
+                  previous_plan_features: plan?.features
                 }
               }
             );

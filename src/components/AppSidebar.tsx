@@ -116,6 +116,14 @@ export function AppSidebar({
     }
     return true;
   });
+
+  console.log('AppSidebar Debug:', {
+    isProfessor,
+    isAluno,
+    profile: profile?.id,
+    itemsCount: items.length,
+    items: items.map(i => i.title)
+  });
   const isActive = (path: string) => currentPath === path;
   const handleSignOut = async () => {
     await signOut();

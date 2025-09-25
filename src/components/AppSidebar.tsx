@@ -143,10 +143,9 @@ export function AppSidebar({
 
           {/* Navigation */}
           <div className={`flex-1 ${!isOpen ? 'px-2' : 'px-4'} py-4`}>
-        {isAluno && !isProfessor}
             {isAluno && teacherContext && teacherContext.teachers.length > 1 && isOpen && <div className="mb-6">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  {t('navigation:sidebar.teacher')}
+                  {t('navigation:roles.professor')}
                 </h3>
                 <TeacherContextSwitcher />
               </div>}

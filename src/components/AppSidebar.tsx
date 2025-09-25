@@ -54,6 +54,10 @@ const getAlunoItems = (t: any) => [{
   title: t('navigation:sidebar.invoices'),
   url: "/faturas",
   icon: DollarSign
+}, {
+  title: t('navigation:sidebar.settings'),
+  url: "/configuracoes",
+  icon: Settings
 }];
 interface AppSidebarProps {
   isOpen: boolean;

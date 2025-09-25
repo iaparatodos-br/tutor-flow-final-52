@@ -243,8 +243,21 @@ export default function PainelNegocios() {
   // Função para abrir o painel do Stripe Express
   const handleOpenStripeExpress = async (stripeConnectId: string) => {
     try {
+      // Buscar o payment_account_id correspondente ao stripe_connect_id
+      const { data: stripeAccount, error: accountError } = await supabase
+        .from('stripe_connect_accounts')
+        .select('payment_account_id')
+        .eq('stripe_account_id', stripeConnectId)
+        .eq('teacher_id', profile?.id)
+        .single();
+
+      if (accountError || !stripeAccount) {
+        toast.error("Conta do Stripe não encontrada");
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('create-connect-onboarding-link', {
-        body: { payment_account_id: stripeConnectId }
+        body: { payment_account_id: stripeAccount.payment_account_id }
       });
 
       if (error) throw error;

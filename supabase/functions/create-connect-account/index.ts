@@ -93,7 +93,8 @@ serve(async (req) => {
       email: user.email,
       capabilities: {
         card_payments: { requested: true },
-        transfers: { requested: true }
+        transfers: { requested: true },
+        pix_payments: { requested: true }
       },
       business_type: "individual",
       metadata: {

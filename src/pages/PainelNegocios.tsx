@@ -240,6 +240,24 @@ export default function PainelNegocios() {
     return numbers.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
   };
 
+  // Função para abrir o painel do Stripe Express
+  const handleOpenStripeExpress = async (stripeConnectId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('create-connect-onboarding-link', {
+        body: { payment_account_id: stripeConnectId }
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, '_blank');
+      }
+    } catch (error) {
+      console.error('Error creating onboarding link:', error);
+      toast.error("Erro ao abrir painel do Stripe");
+    }
+  };
+
   if (!isProfessor) {
     return (
       <Layout>
@@ -366,25 +384,29 @@ export default function PainelNegocios() {
                             <Calendar className="h-4 w-4" />
                             Criado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                           </div>
-                           <div className="flex items-center gap-2">
-                             <span className="text-sm text-yellow-600">
-                               ⚠️ Configuração incompleta
-                             </span>
-                             <Button
-                               variant="ghost"
-                               size="sm"
-                               onClick={() => deletePendingProfileMutation.mutate(profile.id)}
-                               className="text-destructive hover:text-destructive ml-2"
-                               disabled={deletePendingProfileMutation.isPending}
-                               title="Excluir perfil pendente"
-                             >
-                               {deletePendingProfileMutation.isPending ? (
-                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                               ) : (
-                                 <Trash2 className="h-4 w-4" />
-                               )}
-                             </Button>
-                           </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm text-yellow-600">
+                                ⚠️ Configuração incompleta
+                              </span>
+                              <ExternalLink 
+                                className="h-4 w-4 cursor-pointer text-yellow-600 hover:text-yellow-800" 
+                                onClick={() => handleOpenStripeExpress(profile.stripe_connect_id)}
+                              />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deletePendingProfileMutation.mutate(profile.id)}
+                                className="text-destructive hover:text-destructive ml-2"
+                                disabled={deletePendingProfileMutation.isPending}
+                                title="Excluir perfil pendente"
+                              >
+                                {deletePendingProfileMutation.isPending ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -418,9 +440,12 @@ export default function PainelNegocios() {
                           Conectado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-2">
                             <span className="text-green-600">✓ Stripe Conectado</span>
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink 
+                              className="h-4 w-4 cursor-pointer text-green-600 hover:text-green-800" 
+                              onClick={() => handleOpenStripeExpress(profile.stripe_connect_id)}
+                            />
                           </div>
                           <Button
                             variant="ghost"

@@ -449,8 +449,12 @@ export default function Alunos() {
                     <TableHead>Nome</TableHead>
                     <TableHead>E-mail</TableHead>
                     <TableHead>Responsável</TableHead>
-                    <TableHead>Negócio Recebimento</TableHead>
-                    <TableHead>Dia Cobrança</TableHead>
+                    {hasFeature('financial_module') && (
+                      <>
+                        <TableHead>Negócio Recebimento</TableHead>
+                        <TableHead>Dia Cobrança</TableHead>
+                      </>
+                    )}
                     <TableHead>Data de Cadastro</TableHead>
                     <TableHead className="w-[120px]">Ações</TableHead>
                   </TableRow>
@@ -486,22 +490,26 @@ export default function Alunos() {
                             </Badge>}
                         </div>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                              Configurado
-                            </Badge> : <Badge variant="destructive" className="text-xs">
-                              <AlertTriangle className="h-3 w-3 mr-1" />
-                              Não configurado
-                            </Badge>}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">{student.billing_day || 15}</span>
-                        </div>
-                      </TableCell>
+                      {hasFeature('financial_module') && (
+                        <>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                  Configurado
+                                </Badge> : <Badge variant="destructive" className="text-xs">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Não configurado
+                                </Badge>}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">{student.billing_day || 15}</span>
+                            </div>
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell>
                         {new Date(student.created_at).toLocaleDateString('pt-BR')}
                       </TableCell>

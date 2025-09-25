@@ -18,7 +18,12 @@ export default function Configuracoes() {
   // Determine which tabs to show based on user type and features
   const showBillingTab = isProfessor && hasFeature('financial_module');
   const showCancellationTab = isProfessor;
-  const tabCount = isProfessor ? (showBillingTab ? 5 : 4) : 3;
+  
+  // Use explicit grid classes that Tailwind can detect
+  const getGridClass = () => {
+    if (!isProfessor) return 'grid-cols-3';
+    return showBillingTab ? 'grid-cols-5' : 'grid-cols-4';
+  };
 
   return (
     <Layout>
@@ -34,7 +39,7 @@ export default function Configuracoes() {
         </div>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className={`grid w-full grid-cols-${tabCount}`}>
+          <TabsList className={`grid w-full ${getGridClass()}`}>
             <TabsTrigger value="profile" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               {t('tabs.profile')}

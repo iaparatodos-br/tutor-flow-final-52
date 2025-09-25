@@ -1162,45 +1162,6 @@ export type Database = {
           },
         ]
       }
-      security_audit_logs: {
-        Row: {
-          action: string
-          created_at: string | null
-          details: Json | null
-          id: string
-          ip_address: unknown | null
-          resource_id: string | null
-          resource_type: string
-          security_level: string
-          user_agent: string | null
-          user_id: string | null
-        }
-        Insert: {
-          action: string
-          created_at?: string | null
-          details?: Json | null
-          id?: string
-          ip_address?: unknown | null
-          resource_id?: string | null
-          resource_type: string
-          security_level?: string
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          action?: string
-          created_at?: string | null
-          details?: Json | null
-          id?: string
-          ip_address?: unknown | null
-          resource_id?: string | null
-          resource_type?: string
-          security_level?: string
-          user_agent?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
       security_settings: {
         Row: {
           id: string
@@ -1616,16 +1577,6 @@ export type Database = {
         }
         Returns: undefined
       }
-      log_security_event: {
-        Args: {
-          p_action: string
-          p_details?: Json
-          p_resource_id?: string
-          p_resource_type: string
-          p_security_level?: string
-        }
-        Returns: undefined
-      }
       process_stripe_event_atomic: {
         Args: {
           p_event_created: string
@@ -1660,22 +1611,6 @@ export type Database = {
       }
       validate_password_strength: {
         Args: { password: string }
-        Returns: boolean
-      }
-      validate_rls_policies: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          has_delete_policy: boolean
-          has_insert_policy: boolean
-          has_select_policy: boolean
-          has_update_policy: boolean
-          policy_count: number
-          security_status: string
-          table_name: string
-        }[]
-      }
-      validate_security_context: {
-        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       write_audit_log: {

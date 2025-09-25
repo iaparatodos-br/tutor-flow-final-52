@@ -345,7 +345,7 @@ export default function Agenda() {
               .from('profiles')
               .select('id, name, email')
               .eq('id', cls.student_id)
-              .single() : Promise.resolve({ data: null }),
+              .maybeSingle() : Promise.resolve({ data: null }),
             
             // Get participants for group classes
             cls.is_group_class ? supabase

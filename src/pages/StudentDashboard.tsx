@@ -87,6 +87,8 @@ export default function StudentDashboard() {
 
     setLoading(true);
     try {
+      console.log('StudentDashboard: Loading teacher data for ID:', selectedTeacherId);
+      
       // Load teacher profile data
       const { data: teacherProfile, error: profileError } = await supabase
         .from('profiles')
@@ -94,12 +96,18 @@ export default function StudentDashboard() {
         .eq('id', selectedTeacherId)
         .maybeSingle();
 
+      console.log('StudentDashboard: Teacher profile query result:', {
+        data: teacherProfile,
+        error: profileError
+      });
+
       if (profileError) {
         console.error('Erro ao buscar perfil do professor:', profileError);
         throw profileError;
       }
 
       if (!teacherProfile) {
+        console.error('StudentDashboard: Teacher profile not found for ID:', selectedTeacherId);
         throw new Error('Professor não encontrado');
       }
 
@@ -112,11 +120,11 @@ export default function StudentDashboard() {
         .maybeSingle();
 
       if (policyError && policyError.code !== 'PGRST116') {
+        console.error('StudentDashboard: Policy query error:', policyError);
         throw policyError;
       }
 
-      console.log('Policy loaded in StudentDashboard:', policy);
-      console.log('Teacher ID:', selectedTeacherId);
+      console.log('StudentDashboard: Policy loaded:', policy);
 
       setTeacherData({
         ...teacherProfile,
@@ -257,7 +265,7 @@ export default function StudentDashboard() {
       const url = window.URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `politica-${teacherData.name.replace(/\s+/g, '-').toLowerCase()}.pdf`;
+      a.download = `politica-${teacherData?.name?.replace(/\s+/g, '-').toLowerCase() || 'professor'}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -328,7 +336,7 @@ export default function StudentDashboard() {
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Portal do Aluno</h1>
           <p className="text-muted-foreground text-lg">
-            Bem-vindo, {profile?.name}! Aqui estão suas informações de aulas com {teacherData.name}
+            Bem-vindo, {profile?.name}! {teacherData ? `Aqui estão suas informações de aulas com ${teacherData.name}` : 'Carregando informações...'}
           </p>
         </div>
 
@@ -384,7 +392,7 @@ export default function StudentDashboard() {
                 Próximas Aulas
               </CardTitle>
               <CardDescription>
-                Suas aulas agendadas com {teacherData.name}
+                Suas aulas agendadas com {teacherData?.name || 'seu professor'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -432,16 +440,16 @@ export default function StudentDashboard() {
                 <div className="h-12 w-12 rounded-full bg-primary-light flex items-center justify-center">
                   <User className="h-6 w-6 text-primary" />
                 </div>
-                <div>
-                  <p className="font-semibold">{teacherData.name}</p>
-                  <p className="text-sm text-muted-foreground">Professor</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <p className="text-sm">{teacherData.email}</p>
-              </div>
+                 <div>
+                   <p className="font-semibold">{teacherData?.name || 'Professor'}</p>
+                   <p className="text-sm text-muted-foreground">Professor</p>
+                 </div>
+               </div>
+               
+               <div className="flex items-center gap-2">
+                 <Mail className="h-4 w-4 text-muted-foreground" />
+                 <p className="text-sm">{teacherData?.email || 'Email não disponível'}</p>
+               </div>
             </CardContent>
           </Card>
 

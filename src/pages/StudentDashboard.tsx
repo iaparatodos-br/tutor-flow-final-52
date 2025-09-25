@@ -184,7 +184,7 @@ export default function StudentDashboard() {
         .eq('student_id', profile.id)
         .eq('teacher_id', selectedTeacherId)
         .lt('class_date', new Date().toISOString())
-        .eq('status', 'confirmada');
+        .eq('status', 'concluida');
         
       console.log('StudentDashboard: About to execute completed classes query');
       const { count: completedCount, error: completedError } = await completedQuery;

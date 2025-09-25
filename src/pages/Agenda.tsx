@@ -770,7 +770,7 @@ export default function Agenda() {
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
-        status: 'pendente',
+        status: 'confirmada', // Professor-created classes are confirmed by default
         is_experimental: shouldMarkExperimental,
         is_group_class: formData.is_group_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null

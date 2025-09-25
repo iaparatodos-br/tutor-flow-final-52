@@ -199,11 +199,12 @@ serve(async (req) => {
               description: `Pagamento para ${invoice.student?.name}`
             }
           },
-          quantity: 1
+          quantity:1
         }],
         mode: "payment",
         success_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/financeiro?payment=success`,
         cancel_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/financeiro?payment=cancelled`,
+        allow_promotion_codes: true,
         payment_intent_data: {
           transfer_data: {
             destination: stripeConnectAccountId,

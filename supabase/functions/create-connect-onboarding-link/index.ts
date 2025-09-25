@@ -40,24 +40,33 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
-    const { payment_account_id } = await req.json();
+    const { payment_account_id, stripe_account_id } = await req.json();
     
-    if (!payment_account_id) {
-      throw new Error("payment_account_id is required");
+    if (!payment_account_id && !stripe_account_id) {
+      throw new Error("payment_account_id or stripe_account_id is required");
     }
     
-    logStep("Request data", { payment_account_id });
+    logStep("Request data", { payment_account_id, stripe_account_id });
 
-    // Get user's connect account for this specific payment account
-    const { data: connectAccount, error: accountError } = await supabaseClient
-      .from("stripe_connect_accounts")
-      .select("*")
-      .eq("payment_account_id", payment_account_id)
-      .eq("teacher_id", user.id)
-      .single();
+    let connectAccount;
 
-    if (accountError || !connectAccount) {
-      throw new Error("No Stripe Connect account found. Create one first.");
+    if (stripe_account_id) {
+      // Se recebemos stripe_account_id diretamente, usar ele
+      connectAccount = { stripe_account_id };
+      logStep("Using provided stripe_account_id", { stripe_account_id });
+    } else {
+      // Buscar na tabela stripe_connect_accounts usando payment_account_id
+      const { data: account, error: accountError } = await supabaseClient
+        .from("stripe_connect_accounts")
+        .select("*")
+        .eq("payment_account_id", payment_account_id)
+        .eq("teacher_id", user.id)
+        .single();
+
+      if (accountError || !account) {
+        throw new Error("No Stripe Connect account found. Create one first.");
+      }
+      connectAccount = account;
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });

@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Layout } from "@/components/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CancellationPolicySettings } from "@/components/Settings/CancellationPolicySettings";
@@ -12,11 +12,13 @@ import { useTranslation } from "react-i18next";
 
 export default function Configuracoes() {
   const { isProfessor } = useProfile();
+  const { hasFeature } = useSubscription();
   const { t } = useTranslation('settings');
 
-  // Determine which tabs to show based on user type
-  const showProfessorTabs = isProfessor;
-  const tabCount = showProfessorTabs ? 5 : 3;
+  // Determine which tabs to show based on user type and features
+  const showBillingTab = isProfessor && hasFeature('financial_module');
+  const showCancellationTab = isProfessor;
+  const tabCount = isProfessor ? (showBillingTab ? 5 : 4) : 3;
 
   return (
     <Layout>
@@ -41,13 +43,13 @@ export default function Configuracoes() {
               <Palette className="h-4 w-4" />
               {t('tabs.preferences')}
             </TabsTrigger>
-            {showProfessorTabs && (
+            {showBillingTab && (
               <TabsTrigger value="billing" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Cobrança
               </TabsTrigger>
             )}
-            {showProfessorTabs && (
+            {showCancellationTab && (
               <TabsTrigger value="cancellation" className="flex items-center gap-2">
                 <Clock className="h-4 w-4" />
                 {t('tabs.cancellation')}
@@ -72,13 +74,13 @@ export default function Configuracoes() {
               <NotificationSettings />
             </TabsContent>
 
-            {showProfessorTabs && (
+            {showBillingTab && (
               <TabsContent value="billing" className="space-y-6">
                 <BillingSettings />
               </TabsContent>
             )}
 
-            {showProfessorTabs && (
+            {showCancellationTab && (
               <TabsContent value="cancellation" className="space-y-6">
                 <CancellationPolicySettings />
               </TabsContent>

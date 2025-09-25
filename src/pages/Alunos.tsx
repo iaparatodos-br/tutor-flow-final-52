@@ -39,7 +39,8 @@ export default function Alunos() {
   const {
     currentPlan,
     subscription,
-    getStudentOverageInfo
+    getStudentOverageInfo,
+    hasFeature
   } = useSubscription();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -384,7 +385,7 @@ export default function Alunos() {
           return null;
         })()}
           
-          {studentsWithoutBusinessProfile.length > 0 && <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
+          {hasFeature('financial_module') && studentsWithoutBusinessProfile.length > 0 && <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
                   <DollarSign className="h-4 w-4 text-orange-600 dark:text-orange-400" />
@@ -405,7 +406,7 @@ export default function Alunos() {
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-2">
-          {students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
+          {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
           id: s.id,
           name: s.name,
           email: s.email

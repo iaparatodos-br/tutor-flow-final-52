@@ -76,9 +76,9 @@ export function StudentFormModal({
   title,
   description
 }: StudentFormModalProps) {
-  const { currentPlan, getStudentOverageInfo } = useSubscription();
+  const { currentPlan, getStudentOverageInfo, hasFeature } = useSubscription();
   const { profile } = useProfile();
-  const hasFinancialModule = profile?.role === 'professor' && profile.id;
+  const hasFinancialModule = hasFeature('financial_module');
   const [teacherDefaultBillingDay, setTeacherDefaultBillingDay] = useState<number | undefined>();
   const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student, teacherDefaultBillingDay));
 
@@ -222,8 +222,8 @@ export function StudentFormModal({
       phone: false,
       guardian_name: !formData.isOwnResponsible && !formData.guardian_name.trim(),
       guardian_email: !formData.isOwnResponsible && !formData.guardian_email.trim(),
-      billing_day: formData.billing_day < 1 || formData.billing_day > 28,
-      business_profile_id: businessProfiles && businessProfiles.length > 0 && !formData.business_profile_id
+      billing_day: hasFinancialModule && (formData.billing_day < 1 || formData.billing_day > 28),
+      business_profile_id: hasFinancialModule && businessProfiles && businessProfiles.length > 0 && !formData.business_profile_id
     };
     
     setValidationErrors(errors);

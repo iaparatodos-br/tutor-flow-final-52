@@ -183,7 +183,6 @@ export default function StudentDashboard() {
         .select('*', { count: 'exact', head: true })
         .eq('student_id', profile.id)
         .eq('teacher_id', selectedTeacherId)
-        .lt('class_date', new Date().toISOString())
         .eq('status', 'concluida');
         
       console.log('StudentDashboard: About to execute completed classes query');

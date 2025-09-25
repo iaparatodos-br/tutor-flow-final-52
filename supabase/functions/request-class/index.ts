@@ -33,23 +33,46 @@ serve(async (req) => {
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
     const user = userData.user;
 
-    const { teacherId, datetime, serviceId, notes } = await req.json();
+    const body = await req.json();
+    console.log("Request body:", JSON.stringify(body, null, 2));
+    
+    const { teacherId, datetime, serviceId, notes } = body;
+    console.log("Parsed values:", { teacherId, datetime, serviceId, notes });
+    
     if (!teacherId || !datetime || !serviceId) {
-      throw new Error("Missing required fields");
+      console.error("Missing required fields:", { teacherId, datetime, serviceId });
+      throw new Error(`Missing required fields: teacherId=${teacherId}, datetime=${datetime}, serviceId=${serviceId}`);
     }
 
     // Student derived from auth user; ignoring any provided studentId
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, role, teacher_id')
+      .select('id, role')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profileError) throw profileError;
     if (!profile) throw new Error("Profile not found");
     if (profile.role !== 'aluno') throw new Error("Only students can request classes");
-    if (profile.teacher_id !== teacherId) throw new Error("Student is not assigned to this teacher");
+    
+    // Check if student is associated with this teacher
+    const { data: relationship, error: relationshipError } = await supabase
+      .from('teacher_student_relationships')
+      .select('id')
+      .eq('student_id', user.id)
+      .eq('teacher_id', teacherId)
+      .eq('is_active', true)
+      .maybeSingle();
+      
+    if (relationshipError) {
+      console.error("Error checking teacher-student relationship:", relationshipError);
+      throw relationshipError;
+    }
+    if (!relationship) {
+      console.error("No active relationship found between student and teacher:", { studentId: user.id, teacherId });
+      throw new Error("Student is not assigned to this teacher");
+    }
 
     // Load service to get duration
     const { data: service, error: serviceError } = await supabase

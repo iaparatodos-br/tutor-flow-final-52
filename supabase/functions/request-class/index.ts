@@ -62,7 +62,6 @@ serve(async (req) => {
       .select('id')
       .eq('student_id', user.id)
       .eq('teacher_id', teacherId)
-      .eq('is_active', true)
       .maybeSingle();
       
     if (relationshipError) {

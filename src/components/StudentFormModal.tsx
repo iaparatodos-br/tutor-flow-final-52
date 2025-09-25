@@ -399,32 +399,31 @@ export function StudentFormModal({
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="billing-day">
-                  <Calendar className="h-4 w-4 inline mr-1" />
-                  {hasFinancialModule ? "Dia da Cobrança Mensal *" : "Dia Preferencial de Contato *"}
-                </Label>
-                <Input
-                  id="billing-day"
-                  type="number"
-                  min="1"
-                  max="28"
-                  placeholder="15"
-                  value={formData.billing_day}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
-                    setValidationErrors(prev => ({ ...prev, billing_day: false }));
-                  }}
-                  className={validationErrors.billing_day ? "border-destructive" : ""}
-                  required
-                />
-                <p className="text-xs text-muted-foreground">
-                  {hasFinancialModule ? 
-                    "Dia do mês em que as mensalidades serão geradas automaticamente (1-28)" :
-                    "Dia do mês preferencial para contato e comunicação (1-28)"
-                  }
-                 </p>
-               </div>
+              {hasFinancialModule && (
+                <div className="space-y-2">
+                  <Label htmlFor="billing-day">
+                    <Calendar className="h-4 w-4 inline mr-1" />
+                    Dia da Cobrança Mensal *
+                  </Label>
+                  <Input
+                    id="billing-day"
+                    type="number"
+                    min="1"
+                    max="28"
+                    placeholder="15"
+                    value={formData.billing_day}
+                    onChange={(e) => {
+                      setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
+                      setValidationErrors(prev => ({ ...prev, billing_day: false }));
+                    }}
+                    className={validationErrors.billing_day ? "border-destructive" : ""}
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Dia do mês em que as mensalidades serão geradas automaticamente (1-28)
+                  </p>
+                </div>
+              )}
 
                {/* Business Profile Selection */}
                {hasFinancialModule && businessProfiles && businessProfiles.length > 0 && (

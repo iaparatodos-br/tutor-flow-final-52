@@ -153,38 +153,77 @@ export default function StudentDashboard() {
 
   const loadStudentStats = async () => {
     if (!selectedTeacherId || !profile?.id) return;
+    
+    console.log('StudentDashboard: loadStudentStats started', {
+      selectedTeacherId,
+      profileId: profile.id
+    });
 
     try {
       // Count upcoming classes
-      const { count: upcomingCount } = await supabase
+      const upcomingQuery = supabase
         .from('classes')
         .select('*', { count: 'exact', head: true })
         .eq('student_id', profile.id)
         .eq('teacher_id', selectedTeacherId)
         .gte('class_date', new Date().toISOString())
         .eq('status', 'confirmada');
+      
+      console.log('StudentDashboard: About to execute upcoming classes query');
+      const { count: upcomingCount, error: upcomingError } = await upcomingQuery;
+      
+      console.log('StudentDashboard: Upcoming classes result', {
+        count: upcomingCount,
+        error: upcomingError
+      });
 
       // Count completed classes
-      const { count: completedCount } = await supabase
+      const completedQuery = supabase
         .from('classes')
         .select('*', { count: 'exact', head: true })
         .eq('student_id', profile.id)
         .eq('teacher_id', selectedTeacherId)
         .lt('class_date', new Date().toISOString())
         .eq('status', 'confirmada');
+        
+      console.log('StudentDashboard: About to execute completed classes query');
+      const { count: completedCount, error: completedError } = await completedQuery;
+      
+      console.log('StudentDashboard: Completed classes result', {
+        count: completedCount,
+        error: completedError
+      });
 
-      // Count shared materials
-      const { count: materialsCount } = await supabase
+      // Count shared materials - Fix the query to use proper join
+      const materialsQuery = supabase
         .from('material_access')
-        .select('*', { count: 'exact', head: true })
+        .select(`
+          id,
+          materials!inner(
+            id,
+            teacher_id
+          )
+        `, { count: 'exact', head: true })
         .eq('student_id', profile.id)
-        .filter('materials.teacher_id', 'eq', selectedTeacherId);
+        .eq('materials.teacher_id', selectedTeacherId);
+        
+      console.log('StudentDashboard: About to execute shared materials query');
+      const { count: materialsCount, error: materialsError } = await materialsQuery;
+      
+      console.log('StudentDashboard: Shared materials result', {
+        count: materialsCount,
+        error: materialsError
+      });
 
-      setStats({
+      const finalStats = {
         upcomingClasses: upcomingCount || 0,
         completedClasses: completedCount || 0,
         sharedMaterials: materialsCount || 0
-      });
+      };
+      
+      console.log('StudentDashboard: Final stats being set', finalStats);
+      
+      setStats(finalStats);
     } catch (error) {
       console.error('Erro ao carregar estatísticas do aluno:', error);
     }
@@ -224,27 +263,47 @@ export default function StudentDashboard() {
   const loadSharedMaterials = async () => {
     if (!selectedTeacherId || !profile?.id) return;
 
+    console.log('StudentDashboard: loadSharedMaterials started', {
+      selectedTeacherId,
+      profileId: profile.id
+    });
+
     try {
-      const { data: materials } = await supabase
+      const { data: materials, error } = await supabase
         .from('material_access')
         .select(`
-          materials(
+          id,
+          materials!inner(
             id,
             title,
             description,
             file_type,
-            file_name
+            file_name,
+            teacher_id
           )
         `)
         .eq('student_id', profile.id)
-        .filter('materials.teacher_id', 'eq', selectedTeacherId)
+        .eq('materials.teacher_id', selectedTeacherId)
         .limit(5);
 
+      console.log('StudentDashboard: Shared materials query result', {
+        data: materials,
+        error,
+        count: materials?.length || 0
+      });
+
+      if (error) {
+        console.error('Error loading shared materials:', error);
+        return;
+      }
+
       if (materials) {
-        setSharedMaterials(materials
+        const extractedMaterials = materials
           .map(access => access.materials)
-          .filter(Boolean)
-        );
+          .filter(Boolean);
+          
+        console.log('StudentDashboard: Extracted materials', extractedMaterials);
+        setSharedMaterials(extractedMaterials);
       }
     } catch (error) {
       console.error('Erro ao carregar materiais compartilhados:', error);

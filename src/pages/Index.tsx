@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { GraduationCap, Users, Calendar, DollarSign, ArrowRight } from "lucide-react";
 
 const Index = () => {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, isProfessor, isAluno } = useAuth();
 
   if (loading) {
     return (
@@ -19,6 +19,13 @@ const Index = () => {
   }
 
   if (isAuthenticated) {
+    // Redirecionar baseado no papel do usuário
+    if (isProfessor) {
+      return <Navigate to="/dashboard" replace />;
+    } else if (isAluno) {
+      return <Navigate to="/portal-do-aluno" replace />;
+    }
+    // Fallback para dashboard se o papel não for identificado
     return <Navigate to="/dashboard" replace />;
   }
 

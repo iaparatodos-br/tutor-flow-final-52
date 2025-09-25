@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 
 export default function Auth() {
-  const { isAuthenticated, signIn, signUp, resetPassword } = useAuth();
+  const { isAuthenticated, isProfessor, isAluno, signIn, signUp, resetPassword } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation('auth');
   
@@ -28,6 +28,13 @@ export default function Auth() {
   const [showResetForm, setShowResetForm] = useState(false);
 
   if (isAuthenticated) {
+    // Redirecionar baseado no papel do usuário
+    if (isProfessor) {
+      return <Navigate to="/dashboard" replace />;
+    } else if (isAluno) {
+      return <Navigate to="/portal-do-aluno" replace />;
+    }
+    // Fallback para dashboard se o papel não for identificado
     return <Navigate to="/dashboard" replace />;
   }
 

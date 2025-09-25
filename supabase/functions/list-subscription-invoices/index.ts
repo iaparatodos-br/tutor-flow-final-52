@@ -92,7 +92,7 @@ serve(async (req) => {
     logStep("Retrieved invoices", { count: invoices.data.length });
 
     // Format invoices for frontend consumption
-    const formattedInvoices = invoices.data.map(invoice => ({
+    const formattedInvoices = invoices.data.map((invoice: any) => ({
       id: invoice.id,
       number: invoice.number,
       status: invoice.status,

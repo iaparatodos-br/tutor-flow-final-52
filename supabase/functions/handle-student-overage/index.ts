@@ -70,7 +70,7 @@ serve(async (req) => {
 
     // Check if we already have an overage line item
     const subscription = await stripe.subscriptions.retrieve(subscriptionData.stripe_subscription_id);
-    const overageItem = subscription.items.data.find(item => 
+    const overageItem = subscription.items.data.find((item: any) => 
       item.price.metadata?.type === 'student_overage'
     );
 

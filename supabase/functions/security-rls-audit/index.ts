@@ -67,8 +67,8 @@ serve(async (req) => {
 
       if (error) throw error;
 
-      const criticalTables = rlsValidation.filter(t => t.security_status.includes('CRITICAL'));
-      const warningTables = rlsValidation.filter(t => t.security_status.includes('WARNING'));
+      const criticalTables = rlsValidation.filter((t: any) => t.security_status.includes('CRITICAL'));
+      const warningTables = rlsValidation.filter((t: any) => t.security_status.includes('WARNING'));
 
       if (criticalTables.length > 0) {
         tests.push({
@@ -100,7 +100,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'RLS_POLICIES_VALIDATION',
         status: 'FAIL',
-        message: `Error validating RLS policies: ${error.message}`
+        message: `Error validating RLS policies: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -151,7 +151,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'TEACHER_DATA_ISOLATION',
         status: 'WARNING',
-        message: `Could not complete isolation test: ${error.message}`
+        message: `Could not complete isolation test: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -210,7 +210,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'FINANCIAL_DATA_ACCESS',
         status: 'WARNING',
-        message: `Could not complete financial access test: ${error.message}`
+        message: `Could not complete financial access test: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -254,7 +254,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'PII_DATA_PROTECTION',
         status: 'WARNING',
-        message: `Could not complete PII protection test: ${error.message}`
+        message: `Could not complete PII protection test: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -293,7 +293,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'AUDIT_LOGGING',
         status: 'WARNING',
-        message: `Could not test audit logging: ${error.message}`
+        message: `Could not test audit logging: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -318,7 +318,7 @@ serve(async (req) => {
       tests.push({
         test_name: 'SECURITY_LOGGING',
         status: 'WARNING',
-        message: `Security logging test failed: ${error.message}`
+        message: `Security logging test failed: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -361,7 +361,7 @@ serve(async (req) => {
     console.error('Security audit error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         overall_status: 'CRITICAL',
         timestamp: new Date().toISOString(),
         tests: [],

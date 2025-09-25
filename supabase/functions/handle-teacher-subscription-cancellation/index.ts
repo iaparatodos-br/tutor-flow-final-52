@@ -303,6 +303,6 @@ async function sendNotifications(
 
     logStep("Notifications sent successfully");
   } catch (error) {
-    logStep("Failed to send notifications", { error: error.message });
+    logStep("Failed to send notifications", { error: error instanceof Error ? error.message : 'Unknown error' });
   }
 }

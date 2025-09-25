@@ -141,7 +141,7 @@ serve(async (req) => {
           } catch (error) {
             logStep("Exception deleting student", { 
               studentId: student.student_id, 
-              error: error.message 
+              error: error instanceof Error ? error.message : 'Unknown error' 
             });
           }
         }

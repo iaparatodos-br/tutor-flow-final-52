@@ -58,7 +58,7 @@ serve(async (req) => {
     console.error("Error setting up expired subscriptions automation:", error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         success: false 
       }),
       {

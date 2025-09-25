@@ -76,10 +76,12 @@ serve(async (req) => {
       });
     }
 
+    const profile = Array.isArray(studentRelation.profiles) ? studentRelation.profiles[0] : studentRelation.profiles;
+    
     results.push({
       test_name: "Student Relationship Validation",
       status: "success",
-      message: `Aluno ${studentRelation.student_name || studentRelation.profiles?.name} validado`,
+      message: `Aluno ${studentRelation.student_name || profile?.name} validado`,
       details: {
         student_id: studentRelation.student_id,
         teacher_id: studentRelation.teacher_id,
@@ -217,7 +219,7 @@ serve(async (req) => {
       results.push({
         test_name: "Invoice Creation Simulation",
         status: "error",
-        message: `Erro na simulação: ${error.message}`
+        message: `Erro na simulação: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 
@@ -254,7 +256,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Validation error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

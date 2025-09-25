@@ -210,7 +210,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error processing cancellation:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
     });

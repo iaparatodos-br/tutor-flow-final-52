@@ -131,8 +131,8 @@ serve(async (req) => {
       event = await stripe.webhooks.constructEventAsync(body, signature, endpointSecret);
       logStep("Webhook signature verified successfully", { type: event.type, id: event.id });
     } catch (err) {
-      logStep("Webhook signature verification failed", { error: err.message });
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      logStep("Webhook signature verification failed", { error: err instanceof Error ? err.message : 'Unknown error' });
+      return new Response(`Webhook Error: ${err instanceof Error ? err.message : 'Unknown error'}`, { status: 400 });
     }
 
     const supabaseClient = createClient(

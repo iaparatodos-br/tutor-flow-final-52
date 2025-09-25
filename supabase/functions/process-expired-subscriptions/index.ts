@@ -83,16 +83,19 @@ serve(async (req) => {
     // 2. Process each expired subscription
     for (const subscription of expiredSubscriptions) {
       try {
-        logStep(`Processing expired subscription for user`, {
-          userId: subscription.user_id,
-          userEmail: subscription.profiles?.email,
-          subscriptionId: subscription.id,
-          expiredAt: subscription.current_period_end
-        });
+          const profile = Array.isArray(subscription.profiles) ? subscription.profiles[0] : subscription.profiles;
+          const plan = Array.isArray(subscription.subscription_plans) ? subscription.subscription_plans[0] : subscription.subscription_plans;
+          
+          logStep(`Processing expired subscription for user`, {
+            userId: subscription.user_id,
+            userEmail: profile?.email,
+            subscriptionId: subscription.id,
+            expiredAt: subscription.current_period_end
+          });
 
-        // Check if user is a professor with financial module
-        const isTeacherWithFinancialModule = subscription.profiles?.role === 'professor' && 
-          subscription.subscription_plans?.features?.financial_module === true;
+          // Check if user is a professor with financial module
+          const isTeacherWithFinancialModule = profile?.role === 'professor' && 
+            plan?.features?.financial_module === true;
 
         // 3. Update subscription status to expired
         const { error: updateError } = await supabaseAdmin
@@ -148,7 +151,7 @@ serve(async (req) => {
         if (isTeacherWithFinancialModule) {
           logStep(`Processing teacher subscription cancellation`, {
             teacherId: subscription.user_id,
-            teacherEmail: subscription.profiles?.email
+            teacherEmail: Array.isArray(subscription.profiles) ? subscription.profiles[0]?.email : subscription.profiles?.email
           });
 
           try {
@@ -158,7 +161,7 @@ serve(async (req) => {
                 body: {
                   teacher_id: subscription.user_id,
                   cancellation_reason: 'subscription_expired',
-                  previous_plan_features: subscription.subscription_plans?.features
+                  previous_plan_features: Array.isArray(subscription.subscription_plans) ? subscription.subscription_plans[0]?.features : subscription.subscription_plans?.features
                 }
               }
             );
@@ -218,10 +221,10 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    logStep("Error in expired subscriptions processing", { error: error.message });
-    return new Response(JSON.stringify({
-      error: error.message,
-      success: false
+    logStep("Error in expired subscriptions processing", { error: error instanceof Error ? error.message : 'Unknown error' });
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      success: false 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

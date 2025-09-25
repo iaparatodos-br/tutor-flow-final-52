@@ -54,7 +54,7 @@ const checkNeedsStudentSelection = async (
     });
 
     return {
-      students: students.map(s => ({
+      students: students.map((s: any) => ({
         id: s.student_id,
         relationship_id: s.id,
         name: s.student_name || s.profiles.name,
@@ -152,6 +152,20 @@ serve(async (req) => {
 
       // If we have a Stripe subscription ID, check its status for payment failures
       if (subscription.stripe_subscription_id) {
+        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+        if (!stripeKey) {
+          logStep("Stripe secret key not found");
+          return new Response(
+            JSON.stringify({ error: "Stripe configuration missing" }),
+            { 
+              status: 500, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          );
+        }
+
+        const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+        
         try {
           const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
           logStep("Retrieved Stripe subscription", { 
@@ -171,7 +185,7 @@ serve(async (req) => {
               status: 'open'
             });
 
-            const failedInvoice = invoices.data.find(inv => inv.status === 'open' && inv.attempt_count > 0);
+            const failedInvoice = invoices.data.find((inv: any) => inv.status === 'open' && inv.attempt_count > 0);
             
             paymentFailure = {
               detected: true,

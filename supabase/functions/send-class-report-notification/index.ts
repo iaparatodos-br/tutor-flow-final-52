@@ -71,12 +71,14 @@ serve(async (req) => {
     }
 
     // Get teacher information
-    const teacher = classData.profiles;
-    if (!teacher) {
+    const teacherProfile = classData.profiles;
+    if (!teacherProfile) {
       throw new Error('Teacher information not found');
     }
 
-    console.log(`Found teacher: ${teacher.name}`);
+    const teacher = Array.isArray(teacherProfile) ? teacherProfile[0] : teacherProfile;
+    
+    console.log(`Found teacher: ${teacher?.name}`);
 
     // Get individual feedbacks for this report
     const { data: feedbacks, error: feedbackError } = await supabaseAdmin
@@ -136,12 +138,12 @@ serve(async (req) => {
         });
 
         // Prepare email content
-        const emailSubject = `Novo relato de aula - ${teacher.name}`;
+        const emailSubject = `Novo relato de aula - ${teacher?.name}`;
         const emailContent = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
               <h1 style="margin: 0; font-size: 24px;">Novo Relato de Aula</h1>
-              <p style="margin: 10px 0 0 0; opacity: 0.9;">Professor ${teacher.name}</p>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Professor ${teacher?.name}</p>
             </div>
             
             <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
@@ -192,8 +194,8 @@ serve(async (req) => {
               <div style="text-align: center; color: #666; font-size: 14px;">
                 <p>Este é um email automático do sistema de gerenciamento de aulas.</p>
                 <p style="margin: 10px 0 0 0;">
-                  <strong>Professor ${teacher.name}</strong><br>
-                  ${teacher.email}
+                  <strong>Professor ${teacher?.name}</strong><br>
+                  ${teacher?.email}
                 </p>
               </div>
             </div>
@@ -203,7 +205,7 @@ serve(async (req) => {
         // Send to student
         if (student.email) {
           await resend.emails.send({
-            from: `${teacher.name} <noreply@resend.dev>`,
+            from: `${teacher?.name} <noreply@resend.dev>`,
             to: [student.email],
             subject: emailSubject,
             html: emailContent
@@ -221,7 +223,7 @@ serve(async (req) => {
           );
 
           await resend.emails.send({
-            from: `${teacher.name} <noreply@resend.dev>`,
+            from: `${teacher?.name} <noreply@resend.dev>`,
             to: [student.guardian_email],
             subject: emailSubject,
             html: guardianEmailContent
@@ -262,7 +264,7 @@ serve(async (req) => {
     console.error("Error in send-class-report-notification:", error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         success: false 
       }),
       {

@@ -156,6 +156,25 @@ export default function PainelNegocios() {
     },
   });
 
+  // Mutation para excluir business profile pendente
+  const deletePendingProfileMutation = useMutation({
+    mutationFn: async (pendingProfileId: string) => {
+      const { data, error } = await supabase
+        .from("pending_business_profiles")
+        .delete()
+        .eq("id", pendingProfileId);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("Perfil pendente excluído com sucesso!");
+      queryClient.invalidateQueries({ queryKey: ["pending-business-profiles"] });
+    },
+    onError: (error: any) => {
+      toast.error(`Erro ao excluir perfil pendente: ${error?.message || 'Erro desconhecido'}`);
+    },
+  });
+
   // Mutation para excluir business profile
   const deleteBusinessProfileMutation = useMutation({
     mutationFn: async (businessProfileId: string) => {
@@ -347,11 +366,25 @@ export default function PainelNegocios() {
                             <Calendar className="h-4 w-4" />
                             Criado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-yellow-600">
-                              ⚠️ Configuração incompleta
-                            </span>
-                          </div>
+                           <div className="flex items-center gap-2">
+                             <span className="text-sm text-yellow-600">
+                               ⚠️ Configuração incompleta
+                             </span>
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => deletePendingProfileMutation.mutate(profile.id)}
+                               className="text-destructive hover:text-destructive ml-2"
+                               disabled={deletePendingProfileMutation.isPending}
+                               title="Excluir perfil pendente"
+                             >
+                               {deletePendingProfileMutation.isPending ? (
+                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                               ) : (
+                                 <Trash2 className="h-4 w-4" />
+                               )}
+                             </Button>
+                           </div>
                         </div>
                       </CardContent>
                     </Card>

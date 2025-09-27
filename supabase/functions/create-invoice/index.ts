@@ -134,6 +134,56 @@ serve(async (req) => {
       }
     }
 
+    // Generate payment URL automatically
+    logStep("Generating payment URL", { invoiceId: newInvoice.id });
+    try {
+      const { data: paymentResult, error: paymentError } = await supabaseClient.functions.invoke(
+        'create-payment-intent-connect',
+        {
+          body: {
+            invoice_id: newInvoice.id,
+            payment_method: 'boleto' // Default to boleto for automatic generation
+          },
+          headers: {
+            Authorization: authHeader
+          }
+        }
+      );
+
+      if (!paymentError && paymentResult?.boleto_url) {
+        // Update invoice with the generated payment URL
+        const { error: updateError } = await supabaseClient
+          .from('invoices')
+          .update({ 
+            stripe_hosted_invoice_url: paymentResult.boleto_url,
+            boleto_url: paymentResult.boleto_url,
+            linha_digitavel: paymentResult.linha_digitavel,
+            stripe_payment_intent_id: paymentResult.payment_intent_id
+          })
+          .eq('id', newInvoice.id);
+
+        if (!updateError) {
+          logStep("Payment URL generated and saved", { 
+            invoiceId: newInvoice.id,
+            paymentUrl: paymentResult.boleto_url 
+          });
+          
+          // Update the invoice object to return the complete data
+          newInvoice.stripe_hosted_invoice_url = paymentResult.boleto_url;
+          newInvoice.boleto_url = paymentResult.boleto_url;
+          newInvoice.linha_digitavel = paymentResult.linha_digitavel;
+          newInvoice.stripe_payment_intent_id = paymentResult.payment_intent_id;
+        } else {
+          logStep("Warning: Could not update invoice with payment URL", { error: updateError });
+        }
+      } else {
+        logStep("Warning: Could not generate payment URL", { error: paymentError });
+      }
+    } catch (paymentGenerationError) {
+      logStep("Warning: Failed to generate payment URL", { error: paymentGenerationError });
+      // Continue without failing the invoice creation
+    }
+
     return new Response(JSON.stringify({
       success: true,
       invoice: newInvoice,

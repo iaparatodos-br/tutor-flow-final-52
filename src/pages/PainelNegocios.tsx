@@ -430,7 +430,6 @@ export default function PainelNegocios() {
                               <ExternalLink 
                                 className="h-4 w-4 cursor-pointer text-yellow-600 hover:text-yellow-800" 
                                 onClick={() => handleOpenStripeExpress(profile.stripe_connect_id)}
-                                title="Abrir painel do Stripe"
                               />
                               <Button
                                 variant="ghost"

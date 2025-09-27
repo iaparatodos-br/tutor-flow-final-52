@@ -247,14 +247,13 @@ serve(async (req) => {
       };
 
       // Update invoice with session details
-      const { error: updateError } = await supabaseClient
-        .from("invoices")
-        .update({
-          stripe_payment_intent_id: session.payment_intent as string,
-          gateway_provider: "stripe",
-          payment_account_used_id: invoice.business_profile_id,
-        })
-        .eq("id", invoice_id);
+        const { error: updateError } = await supabaseClient
+          .from("invoices")
+          .update({
+            stripe_payment_intent_id: session.payment_intent as string,
+            gateway_provider: "stripe",
+          })
+          .eq("id", invoice_id);
 
       if (updateError) {
         logStep("Error updating invoice", updateError);
@@ -313,7 +312,6 @@ serve(async (req) => {
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
-          payment_account_used_id: invoice.business_profile_id,
         };
         if (confirmedPI.next_action?.pix_display_qr_code) {
           const pixDetails: any = confirmedPI.next_action.pix_display_qr_code;
@@ -385,7 +383,6 @@ serve(async (req) => {
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
-          payment_account_used_id: invoice.business_profile_id,
         };
 
         // Handle boleto confirmation and retrieve boleto details

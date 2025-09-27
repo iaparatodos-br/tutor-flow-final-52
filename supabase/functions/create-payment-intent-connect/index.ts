@@ -96,25 +96,44 @@ serve(async (req) => {
       
       // Verificações detalhadas de integridade
       const accountIssues = [];
+      const accountWarnings = [];
       
+      // CRITICAL: Conta deve poder receber pagamentos
       if (!stripeAccount.charges_enabled) {
         accountIssues.push("Conta não habilitada para receber pagamentos");
       }
       
+      // WARNING: Saques podem não estar habilitados ainda (não bloqueia pagamentos)
       if (!stripeAccount.payouts_enabled) {
-        accountIssues.push("Saques não habilitados");
+        accountWarnings.push("Saques não habilitados - configure posteriormente para receber transferências");
       }
       
+      // CRITICAL: Informações básicas devem estar completas
       if (!stripeAccount.details_submitted) {
         accountIssues.push("Informações da conta incompletas");
       }
       
+      // WARNING: Documentos pendentes (pode não bloquear pagamentos dependendo do tipo)
       if (stripeAccount.requirements?.currently_due?.length > 0) {
-        accountIssues.push(`Documentos pendentes: ${stripeAccount.requirements.currently_due.join(", ")}`);
+        accountWarnings.push(`Documentos pendentes: ${stripeAccount.requirements.currently_due.join(", ")}`);
       }
       
+      // Log warnings but don't fail
+      if (accountWarnings.length > 0) {
+        logStep("Stripe Connect account warnings", { 
+          accountId: stripeConnectAccountId,
+          warnings: accountWarnings,
+          accountStatus: {
+            charges_enabled: stripeAccount.charges_enabled,
+            payouts_enabled: stripeAccount.payouts_enabled,
+            details_submitted: stripeAccount.details_submitted
+          }
+        });
+      }
+      
+      // Only fail on critical issues
       if (accountIssues.length > 0) {
-        logStep("VALIDATION ERROR: Stripe Connect account issues", { 
+        logStep("VALIDATION ERROR: Stripe Connect account critical issues", { 
           accountId: stripeConnectAccountId,
           issues: accountIssues,
           accountStatus: {
@@ -123,7 +142,7 @@ serve(async (req) => {
             details_submitted: stripeAccount.details_submitted
           }
         });
-        throw new Error(`Problemas na conta Stripe Connect: ${accountIssues.join("; ")}`);
+        throw new Error(`Problemas críticos na conta Stripe Connect: ${accountIssues.join("; ")}`);
       }
       
       logStep("Stripe Connect account validation passed", { 

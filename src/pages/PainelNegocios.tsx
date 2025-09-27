@@ -175,6 +175,30 @@ export default function PainelNegocios() {
     },
   });
 
+  // Mutation para verificar status de business profile pendente
+  const checkBusinessStatusMutation = useMutation({
+    mutationFn: async (stripeConnectId: string) => {
+      const { data, error } = await supabase.functions.invoke("check-business-profile-status", {
+        body: { stripe_connect_id: stripeConnectId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success(data.message);
+        queryClient.invalidateQueries({ queryKey: ["business-profiles"] });
+        queryClient.invalidateQueries({ queryKey: ["pending-business-profiles"] });
+        queryClient.invalidateQueries({ queryKey: ["student-business-links"] });
+      } else {
+        toast.info(data.message);
+      }
+    },
+    onError: (error: any) => {
+      toast.error(`Erro ao verificar status: ${error?.message || 'Erro desconhecido'}`);
+    },
+  });
+
   // Mutation para excluir business profile
   const deleteBusinessProfileMutation = useMutation({
     mutationFn: async (businessProfileId: string) => {
@@ -389,9 +413,24 @@ export default function PainelNegocios() {
                               <span className="text-sm text-yellow-600">
                                 ⚠️ Configuração incompleta
                               </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => checkBusinessStatusMutation.mutate(profile.stripe_connect_id)}
+                                disabled={checkBusinessStatusMutation.isPending}
+                                className="text-blue-600 hover:text-blue-800"
+                                title="Verificar status atual"
+                              >
+                                {checkBusinessStatusMutation.isPending ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                ) : (
+                                  "Verificar Status"
+                                )}
+                              </Button>
                               <ExternalLink 
                                 className="h-4 w-4 cursor-pointer text-yellow-600 hover:text-yellow-800" 
                                 onClick={() => handleOpenStripeExpress(profile.stripe_connect_id)}
+                                title="Abrir painel do Stripe"
                               />
                               <Button
                                 variant="ghost"

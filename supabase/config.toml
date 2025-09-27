@@ -1,1 +1,7 @@
 project_id = "nwgomximjevgczwuyqcx"
+
+[functions.webhook-stripe-connect]
+verify_jwt = false
+
+[functions.webhook-stripe-subscriptions]
+verify_jwt = false

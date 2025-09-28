@@ -212,36 +212,27 @@ serve(async (req) => {
           businessProfileId: studentInfo.business_profile_id 
         });
 
-        // 4. Atualizar as faturas com referência às aulas (uma fatura por aula)
+        // 4. Marcar todas as aulas como faturadas
         for (const classItem of unbilledClasses) {
-          const { error: updateInvoiceError } = await supabaseAdmin
-            .from('invoices')
-            .update({ class_id: classItem.id })
-            .eq('id', newInvoice.id);
+          const { error: updateClassError } = await supabaseAdmin
+            .from('classes')
+            .update({ 
+              status: 'faturada',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', classItem.id);
 
-          if (updateInvoiceError) {
-            logStep(`Warning: Could not link class ${classItem.id} to invoice`, updateInvoiceError);
-          }
-          
-          // Para múltiplas aulas, criar uma fatura separada para cada uma após a primeira
-          if (classItem !== unbilledClasses[0]) {
-            const { data: additionalInvoice, error: additionalInvoiceError } = await supabaseAdmin
-              .from('invoices')
-              .insert({
-                ...invoiceData,
-                class_id: classItem.id,
-                description: `${invoiceData.description} - Aula ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`
-              })
-              .select()
-              .single();
-
-            if (additionalInvoiceError) {
-              logStep(`Warning: Could not create additional invoice for class ${classItem.id}`, additionalInvoiceError);
-            } else {
-              logStep(`Additional invoice created`, { invoiceId: additionalInvoice.id, classId: classItem.id });
-            }
+          if (updateClassError) {
+            logStep(`Warning: Could not update class ${classItem.id} status`, updateClassError);
           }
         }
+
+        logStep(`Consolidated invoice created successfully`, { 
+          invoiceId: newInvoice.id,
+          amount: totalAmount,
+          classCount: unbilledClasses.length,
+          studentId: studentInfo.student_id
+        });
 
         // 5. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
         logStep(`Generating payment URL for invoice ${newInvoice.id}`);

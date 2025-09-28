@@ -138,8 +138,7 @@ serve(async (req) => {
           `)
           .eq('student_id', studentInfo.student_id)
           .eq('teacher_id', studentInfo.teacher_id)
-          .eq('status', 'concluida')
-          .is('invoice_id', null);
+          .eq('status', 'concluida');
 
         logStep(`Query result - Classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
@@ -154,11 +153,34 @@ serve(async (req) => {
           continue;
         }
 
-        logStep(`Found ${classesToInvoice.length} classes to invoice for ${studentInfo.student_name}`);
+        // Filtrar aulas que ainda não foram faturadas
+        const classIds = classesToInvoice.map(c => c.id);
+        const { data: existingInvoices, error: invoicesError } = await supabaseAdmin
+          .from('invoices')
+          .select('class_id')
+          .eq('student_id', studentInfo.student_id)
+          .eq('teacher_id', studentInfo.teacher_id)
+          .in('class_id', classIds);
+
+        if (invoicesError) {
+          logStep(`Error checking existing invoices for ${studentInfo.student_name}`, invoicesError);
+          errorCount++;
+          continue;
+        }
+
+        const invoicedClassIds = (existingInvoices || []).map(inv => inv.class_id);
+        const unbilledClasses = classesToInvoice.filter(c => !invoicedClassIds.includes(c.id));
+
+        if (unbilledClasses.length === 0) {
+          logStep(`All classes already invoiced for ${studentInfo.student_name}`);
+          continue;
+        }
+
+        logStep(`Found ${unbilledClasses.length} unbilled classes to invoice for ${studentInfo.student_name}`);
 
         // 3. Calcular valor total e criar fatura no banco
         let totalAmount = 0;
-        for (const classItem of classesToInvoice) {
+        for (const classItem of unbilledClasses) {
           const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
           const amount = service?.price || 100; // Valor padrão se não houver serviço
           totalAmount += amount;
@@ -198,17 +220,35 @@ serve(async (req) => {
           businessProfileId: studentInfo.business_profile_id 
         });
 
-        // 4. Atualizar as aulas com o ID da nova fatura
-        const classIds = classesToInvoice.map(c => c.id);
-        const { error: updateClassesError } = await supabaseAdmin
-          .from('classes')
-          .update({ invoice_id: newInvoice.id })
-          .in('id', classIds);
+        // 4. Atualizar as faturas com referência às aulas (uma fatura por aula)
+        for (const classItem of unbilledClasses) {
+          const { error: updateInvoiceError } = await supabaseAdmin
+            .from('invoices')
+            .update({ class_id: classItem.id })
+            .eq('id', newInvoice.id);
 
-        if (updateClassesError) {
-          logStep(`Warning: Could not update classes with invoice_id for ${studentInfo.student_name}`, updateClassesError);
-        } else {
-          logStep(`Classes updated with invoice_id`, { classIds });
+          if (updateInvoiceError) {
+            logStep(`Warning: Could not link class ${classItem.id} to invoice`, updateInvoiceError);
+          }
+          
+          // Para múltiplas aulas, criar uma fatura separada para cada uma após a primeira
+          if (classItem !== unbilledClasses[0]) {
+            const { data: additionalInvoice, error: additionalInvoiceError } = await supabaseAdmin
+              .from('invoices')
+              .insert({
+                ...invoiceData,
+                class_id: classItem.id,
+                description: `${invoiceData.description} - Aula ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`
+              })
+              .select()
+              .single();
+
+            if (additionalInvoiceError) {
+              logStep(`Warning: Could not create additional invoice for class ${classItem.id}`, additionalInvoiceError);
+            } else {
+              logStep(`Additional invoice created`, { invoiceId: additionalInvoice.id, classId: classItem.id });
+            }
+          }
         }
 
         // 5. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)

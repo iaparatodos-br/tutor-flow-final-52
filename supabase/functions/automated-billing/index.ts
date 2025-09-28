@@ -212,20 +212,8 @@ serve(async (req) => {
           businessProfileId: studentInfo.business_profile_id 
         });
 
-        // 4. Marcar todas as aulas como faturadas
-        for (const classItem of unbilledClasses) {
-          const { error: updateClassError } = await supabaseAdmin
-            .from('classes')
-            .update({ 
-              status: 'faturada',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', classItem.id);
-
-          if (updateClassError) {
-            logStep(`Warning: Could not update class ${classItem.id} status`, updateClassError);
-          }
-        }
+        // 4. Aulas concluídas mantêm seu status - o faturamento é rastreado pela existência da fatura
+        logStep(`${unbilledClasses.length} classes billed successfully - invoice tracks billing status`);
 
         logStep(`Consolidated invoice created successfully`, { 
           invoiceId: newInvoice.id,

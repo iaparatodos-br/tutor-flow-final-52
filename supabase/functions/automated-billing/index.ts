@@ -133,6 +133,8 @@ serve(async (req) => {
       }
 
       // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
+      console.log(`Looking for completed classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
+      
       const { data: classesToInvoice, error: classesError } = await supabaseAdmin
         .from('classes')
         .select(`
@@ -140,6 +142,7 @@ serve(async (req) => {
           notes,
           service_id,
           class_date,
+          status,
           class_services (
             id,
             name,
@@ -149,8 +152,10 @@ serve(async (req) => {
         `)
         .eq('student_id', studentInfo.student_id)
         .eq('teacher_id', studentInfo.teacher_id)
-        .eq('status', 'realizada')
+        .eq('status', 'concluida')
         .is('invoice_id', null);
+
+      console.log(`Query result - Classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
       if (classesError) {
         console.error(`Error fetching classes for ${studentInfo.student_name}:`, classesError);

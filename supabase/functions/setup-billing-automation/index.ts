@@ -20,10 +20,10 @@ serve(async (req) => {
   try {
     console.log("Setting up billing automation cron job...");
     
-    // Set up cron job to run automated billing daily at 9:00 AM
+    // Set up cron job to run automated billing daily at 12:00 PM UTC (9:00 AM Brasília time)
     const { data, error } = await supabaseAdmin.rpc('cron_schedule', {
       job_name: 'automated-billing-daily',
-      schedule: '0 9 * * *', // Daily at 9:00 AM
+      schedule: '0 12 * * *', // Daily at 12:00 PM UTC (9:00 AM Brasília time)
       command: `
         select
           net.http_post(

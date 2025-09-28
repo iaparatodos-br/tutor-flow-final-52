@@ -111,7 +111,7 @@ serve(async (req) => {
         };
 
         // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
-        logStep(`Looking for completed classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
+        logStep(`Looking for completed and unbilled classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
         
         const { data: classesToInvoice, error: classesError } = await supabaseAdmin
           .from('classes')
@@ -130,44 +130,23 @@ serve(async (req) => {
           `)
           .eq('student_id', studentInfo.student_id)
           .eq('teacher_id', studentInfo.teacher_id)
-          .eq('status', 'concluida');
+          .eq('status', 'concluida')
+          .eq('billed', false);
 
-        logStep(`Query result - Classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
+        logStep(`Query result - Unbilled classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
         if (classesError) {
-          logStep(`Error fetching classes for ${studentInfo.student_name}`, classesError);
+          logStep(`Error fetching unbilled classes for ${studentInfo.student_name}`, classesError);
           errorCount++;
           continue;
         }
 
         if (!classesToInvoice || classesToInvoice.length === 0) {
-          logStep(`No classes to invoice for ${studentInfo.student_name}`);
+          logStep(`No unbilled classes found for ${studentInfo.student_name}`);
           continue;
         }
 
-        // Filtrar aulas que ainda não foram faturadas
-        const classIds = classesToInvoice.map(c => c.id);
-        const { data: existingInvoices, error: invoicesError } = await supabaseAdmin
-          .from('invoices')
-          .select('class_id')
-          .eq('student_id', studentInfo.student_id)
-          .eq('teacher_id', studentInfo.teacher_id)
-          .in('class_id', classIds);
-
-        if (invoicesError) {
-          logStep(`Error checking existing invoices for ${studentInfo.student_name}`, invoicesError);
-          errorCount++;
-          continue;
-        }
-
-        const invoicedClassIds = (existingInvoices || []).map(inv => inv.class_id);
-        const unbilledClasses = classesToInvoice.filter(c => !invoicedClassIds.includes(c.id));
-
-        if (unbilledClasses.length === 0) {
-          logStep(`All classes already invoiced for ${studentInfo.student_name}`);
-          continue;
-        }
-
+        const unbilledClasses = classesToInvoice;
         logStep(`Found ${unbilledClasses.length} unbilled classes to invoice for ${studentInfo.student_name}`);
 
         // 3. Calcular valor total e criar fatura no banco
@@ -212,8 +191,21 @@ serve(async (req) => {
           businessProfileId: studentInfo.business_profile_id 
         });
 
-        // 4. Aulas concluídas mantêm seu status - o faturamento é rastreado pela existência da fatura
-        logStep(`${unbilledClasses.length} classes billed successfully - invoice tracks billing status`);
+        // 4. Marcar todas as aulas como faturadas
+        const classIds = unbilledClasses.map(c => c.id);
+        const { error: updateClassError } = await supabaseAdmin
+          .from('classes')
+          .update({ 
+            billed: true,
+            updated_at: new Date().toISOString()
+          })
+          .in('id', classIds);
+
+        if (updateClassError) {
+          logStep(`Warning: Could not mark classes as billed`, { error: updateClassError, classIds });
+        } else {
+          logStep(`Successfully marked ${classIds.length} classes as billed`);
+        }
 
         logStep(`Consolidated invoice created successfully`, { 
           invoiceId: newInvoice.id,

@@ -431,6 +431,7 @@ export type Database = {
           amnesty_granted: boolean | null
           amnesty_granted_at: string | null
           amnesty_granted_by: string | null
+          billed: boolean | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -454,6 +455,7 @@ export type Database = {
           amnesty_granted?: boolean | null
           amnesty_granted_at?: string | null
           amnesty_granted_by?: string | null
+          billed?: boolean | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -477,6 +479,7 @@ export type Database = {
           amnesty_granted?: boolean | null
           amnesty_granted_at?: string | null
           amnesty_granted_by?: string | null
+          billed?: boolean | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -1543,6 +1546,7 @@ export type Database = {
           amnesty_granted: boolean | null
           amnesty_granted_at: string | null
           amnesty_granted_by: string | null
+          billed: boolean | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null

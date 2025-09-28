@@ -50,15 +50,7 @@ serve(async (req) => {
           id,
           name,
           email,
-          payment_due_days,
-          user_subscriptions!user_id!inner (
-            id,
-            status,
-            subscription_plans!inner (
-              id,
-              features
-            )
-          )
+          payment_due_days
         ),
         student:profiles!student_id (
           id,
@@ -330,20 +322,28 @@ serve(async (req) => {
 // Validation function to check if teacher can bill
 async function validateTeacherCanBill(teacher: any): Promise<boolean> {
   try {
-    // Check if teacher has active subscription
-    if (!teacher.user_subscriptions || teacher.user_subscriptions.length === 0) {
+    // Get teacher's subscription separately
+    const { data: subscription, error: subError } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select(`
+        status,
+        subscription_plans!inner (
+          features
+        )
+      `)
+      .eq('user_id', teacher.id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (subError || !subscription) {
       return false;
     }
 
-    const subscription = teacher.user_subscriptions[0];
-    
-    // Check if subscription is active
-    if (subscription.status !== 'active') {
-      return false;
-    }
-
-    // Check if plan has financial module
-    const hasFinancialModule = subscription.subscription_plans?.features?.financial_module === true;
+    // Check if plan has financial module - subscription_plans é um array
+    const plan = Array.isArray(subscription.subscription_plans) 
+      ? subscription.subscription_plans[0] 
+      : subscription.subscription_plans;
+    const hasFinancialModule = plan?.features?.financial_module === true;
     
     return hasFinancialModule;
   } catch (error) {

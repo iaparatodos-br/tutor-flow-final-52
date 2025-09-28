@@ -162,7 +162,7 @@ serve(async (req) => {
         const unbilledClasses = classesToInvoice;
         logStep(`Found ${unbilledClasses.length} unbilled classes to invoice for ${studentInfo.student_name}`);
 
-        // 3. Calcular valor total e criar fatura no banco
+        // 3. Calcular valor total e criar fatura e marcar classes como faturadas atomicamente
         let totalAmount = 0;
         for (const classItem of unbilledClasses) {
           const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
@@ -174,7 +174,7 @@ serve(async (req) => {
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        // Criar fatura no banco de dados usando o mesmo padrão da função manual
+        const classIds = unbilledClasses.map(c => c.id);
         const invoiceData = {
           student_id: studentInfo.student_id,
           teacher_id: studentInfo.teacher_id,
@@ -186,55 +186,38 @@ serve(async (req) => {
           business_profile_id: studentInfo.business_profile_id,
         };
 
-        const { data: newInvoice, error: invoiceError } = await supabaseAdmin
-          .from('invoices')
-          .insert(invoiceData)
-          .select()
-          .single();
+        // Usar função atômica para criar fatura e marcar classes
+        const { data: transactionResult, error: transactionError } = await supabaseAdmin
+          .rpc('create_invoice_and_mark_classes_billed', {
+            p_invoice_data: invoiceData,
+            p_class_ids: classIds
+          });
 
-        if (invoiceError) {
-          logStep(`Error creating invoice for ${studentInfo.student_name}`, invoiceError);
+        if (transactionError || !transactionResult?.success) {
+          logStep(`Error in atomic transaction for ${studentInfo.student_name}`, {
+            error: transactionError,
+            result: transactionResult
+          });
           errorCount++;
           continue;
         }
 
-        logStep(`Invoice created in database`, { 
-          invoiceId: newInvoice.id,
+        const invoiceId = transactionResult.invoice_id;
+        logStep(`Invoice created atomically`, { 
+          invoiceId,
           amount: totalAmount,
-          businessProfileId: studentInfo.business_profile_id 
+          businessProfileId: studentInfo.business_profile_id,
+          classesMarked: transactionResult.classes_updated
         });
 
-        // 4. Marcar todas as aulas como faturadas
-        const classIds = unbilledClasses.map(c => c.id);
-        const { error: updateClassError } = await supabaseAdmin
-          .from('classes')
-          .update({ 
-            billed: true,
-            updated_at: new Date().toISOString()
-          })
-          .in('id', classIds);
-
-        if (updateClassError) {
-          logStep(`Warning: Could not mark classes as billed`, { error: updateClassError, classIds });
-        } else {
-          logStep(`Successfully marked ${classIds.length} classes as billed`);
-        }
-
-        logStep(`Consolidated invoice created successfully`, { 
-          invoiceId: newInvoice.id,
-          amount: totalAmount,
-          classCount: unbilledClasses.length,
-          studentId: studentInfo.student_id
-        });
-
-        // 5. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
-        logStep(`Generating payment URL for invoice ${newInvoice.id}`);
+        // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
+        logStep(`Generating payment URL for invoice ${invoiceId}`);
         try {
           const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
             'create-payment-intent-connect',
             {
               body: {
-                invoice_id: newInvoice.id,
+                invoice_id: invoiceId,
                 payment_method: 'boleto' // Default to boleto for automated billing
               }
             }
@@ -250,11 +233,11 @@ serve(async (req) => {
                 linha_digitavel: paymentResult.linha_digitavel,
                 stripe_payment_intent_id: paymentResult.payment_intent_id
               })
-              .eq('id', newInvoice.id);
+              .eq('id', invoiceId);
 
             if (!updateError) {
               logStep(`Payment URL generated and saved`, { 
-                invoiceId: newInvoice.id,
+                invoiceId,
                 paymentUrl: paymentResult.boleto_url 
               });
             } else {
@@ -268,7 +251,7 @@ serve(async (req) => {
           // Continue without failing the invoice creation
         }
 
-        logStep(`Invoice ${newInvoice.id} created successfully for ${studentInfo.student_name}`);
+        logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`);
         processedCount++;
 
       } catch (relationshipError) {

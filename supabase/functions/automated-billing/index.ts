@@ -51,7 +51,7 @@ serve(async (req) => {
           name,
           email,
           payment_due_days,
-          user_subscriptions!inner (
+          user_subscriptions!user_id!inner (
             id,
             status,
             subscription_plans!inner (

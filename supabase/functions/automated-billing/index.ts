@@ -99,6 +99,19 @@ serve(async (req) => {
           continue;
         }
 
+        // Validar se o business_profile está ativo
+        const { data: businessProfile, error: businessError } = await supabaseAdmin
+          .from('business_profiles')
+          .select('id, business_name')
+          .eq('id', relationship.business_profile_id)
+          .eq('user_id', relationship.teacher_id)
+          .maybeSingle();
+
+        if (businessError || !businessProfile) {
+          logStep(`Skipping student ${student?.name}: business profile not found or not active`, businessError);
+          continue;
+        }
+
         const studentInfo: StudentBillingInfo = {
           student_id: relationship.student_id,
           teacher_id: relationship.teacher_id,

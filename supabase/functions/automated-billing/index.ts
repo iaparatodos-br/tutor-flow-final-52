@@ -1,16 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import Stripe from "https://esm.sh/stripe@14.24.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
-  httpClient: Stripe.createFetchHttpClient(),
-});
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -18,15 +12,20 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
+const logStep = (step: string, details?: any) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+  console.log(`[AUTOMATED-BILLING] ${step}${detailsStr}`);
+};
+
 interface StudentBillingInfo {
   student_id: string;
   teacher_id: string;
   billing_day: number;
-  stripe_customer_id: string | null;
-  teacher_stripe_account_id: string | null;
   payment_due_days: number;
   student_name: string;
   teacher_name: string;
+  business_profile_id: string;
+  relationship_id: string;
 }
 
 serve(async (req) => {
@@ -35,7 +34,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log("Starting automated billing process with Stripe Invoicing...");
+    logStep("Starting automated billing process");
     const today = new Date().getDate();
 
     // 1. Encontrar todos os relacionamentos professor-aluno que devem ser cobrados hoje
@@ -46,7 +45,6 @@ serve(async (req) => {
         student_id,
         teacher_id,
         billing_day,
-        stripe_customer_id,
         business_profile_id,
         teacher:profiles!teacher_id (
           id,
@@ -66,176 +64,141 @@ serve(async (req) => {
           id,
           name,
           email
-        ),
-        payment_accounts (
-          id,
-          stripe_connect_account_id,
-          stripe_charges_enabled,
-          is_default
         )
       `)
       .eq('billing_day', today);
 
     if (relationshipsError) {
-      console.error("Error fetching relationships:", relationshipsError);
+      logStep("Error fetching relationships", relationshipsError);
       throw relationshipsError;
     }
 
     if (!relationshipsToBill || relationshipsToBill.length === 0) {
-      console.log('Nenhum relacionamento para cobrar hoje.');
+      logStep('No relationships to bill today');
       return new Response(JSON.stringify({ message: 'Nenhum relacionamento para cobrar hoje.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       });
     }
 
-    console.log(`Found ${relationshipsToBill.length} relationships to bill today`);
+    logStep(`Found ${relationshipsToBill.length} relationships to bill today`);
+
+    let processedCount = 0;
+    let errorCount = 0;
 
     // Processar cada relacionamento
     for (const relationship of relationshipsToBill) {
-      const teacher = Array.isArray(relationship.teacher) ? relationship.teacher[0] : relationship.teacher;
-      const student = Array.isArray(relationship.student) ? relationship.student[0] : relationship.student;
-
-      console.log(`Processing billing for: ${teacher?.name} -> ${student?.name}`);
-
-      // Validar se o professor pode cobrar (tem assinatura ativa com módulo financeiro)
-      const canBill = await validateTeacherCanBill(teacher);
-      if (!canBill) {
-        console.log(`Skipping ${teacher?.name} -> ${student?.name} - no financial module access`);
-        continue;
-      }
-
-      const studentInfo: StudentBillingInfo = {
-        student_id: relationship.student_id,
-        teacher_id: relationship.teacher_id,
-        billing_day: relationship.billing_day,
-        stripe_customer_id: relationship.stripe_customer_id,
-        teacher_stripe_account_id: relationship.payment_accounts?.find(acc => acc.is_default)?.stripe_connect_account_id || null,
-        payment_due_days: teacher?.payment_due_days || 15,
-        student_name: student?.name || '',
-        teacher_name: teacher?.name || '',
-      };
-
-      if (!studentInfo.stripe_customer_id) {
-        console.warn(`Skipping student ${studentInfo.student_name}: missing stripe_customer_id`);
-        continue;
-      }
-
-      // Validar se há business_profile_id definido
-      if (!relationship.business_profile_id) {
-        console.warn(`Skipping student ${studentInfo.student_name}: no business profile defined for payment routing`);
-        continue;
-      }
-
-      if (!studentInfo.teacher_stripe_account_id) {
-        console.warn(`Skipping student ${studentInfo.student_name}: teacher missing stripe_connect_account_id`);
-        continue;
-      }
-
-      // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
-      console.log(`Looking for completed classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
-      
-      const { data: classesToInvoice, error: classesError } = await supabaseAdmin
-        .from('classes')
-        .select(`
-          id, 
-          notes,
-          service_id,
-          class_date,
-          status,
-          class_services (
-            id,
-            name,
-            price,
-            description
-          )
-        `)
-        .eq('student_id', studentInfo.student_id)
-        .eq('teacher_id', studentInfo.teacher_id)
-        .eq('status', 'concluida')
-        .is('invoice_id', null);
-
-      console.log(`Query result - Classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
-
-      if (classesError) {
-        console.error(`Error fetching classes for ${studentInfo.student_name}:`, classesError);
-        continue;
-      }
-
-      if (!classesToInvoice || classesToInvoice.length === 0) {
-        console.log(`Nenhuma aula para faturar para ${studentInfo.student_name}`);
-        continue;
-      }
-
-      console.log(`Found ${classesToInvoice.length} classes to invoice for ${studentInfo.student_name}`);
-
-      // Processar com Stripe
       try {
-        // 3. Criar Itens da Fatura (Invoice Items) no Stripe
+        const teacher = Array.isArray(relationship.teacher) ? relationship.teacher[0] : relationship.teacher;
+        const student = Array.isArray(relationship.student) ? relationship.student[0] : relationship.student;
+
+        logStep(`Processing billing for: ${teacher?.name} -> ${student?.name}`);
+
+        // Validar se o professor pode cobrar (tem assinatura ativa com módulo financeiro)
+        const canBill = await validateTeacherCanBill(teacher);
+        if (!canBill) {
+          logStep(`Skipping ${teacher?.name} -> ${student?.name} - no financial module access`);
+          continue;
+        }
+
+        // Validar se há business_profile_id definido
+        if (!relationship.business_profile_id) {
+          logStep(`Skipping student ${student?.name}: no business profile defined for payment routing`);
+          continue;
+        }
+
+        const studentInfo: StudentBillingInfo = {
+          student_id: relationship.student_id,
+          teacher_id: relationship.teacher_id,
+          billing_day: relationship.billing_day,
+          payment_due_days: teacher?.payment_due_days || 15,
+          student_name: student?.name || '',
+          teacher_name: teacher?.name || '',
+          business_profile_id: relationship.business_profile_id,
+          relationship_id: relationship.id,
+        };
+
+        // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
+        logStep(`Looking for completed classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
+        
+        const { data: classesToInvoice, error: classesError } = await supabaseAdmin
+          .from('classes')
+          .select(`
+            id, 
+            notes,
+            service_id,
+            class_date,
+            status,
+            class_services (
+              id,
+              name,
+              price,
+              description
+            )
+          `)
+          .eq('student_id', studentInfo.student_id)
+          .eq('teacher_id', studentInfo.teacher_id)
+          .eq('status', 'concluida')
+          .is('invoice_id', null);
+
+        logStep(`Query result - Classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
+
+        if (classesError) {
+          logStep(`Error fetching classes for ${studentInfo.student_name}`, classesError);
+          errorCount++;
+          continue;
+        }
+
+        if (!classesToInvoice || classesToInvoice.length === 0) {
+          logStep(`No classes to invoice for ${studentInfo.student_name}`);
+          continue;
+        }
+
+        logStep(`Found ${classesToInvoice.length} classes to invoice for ${studentInfo.student_name}`);
+
+        // 3. Calcular valor total e criar fatura no banco
         let totalAmount = 0;
         for (const classItem of classesToInvoice) {
           const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
           const amount = service?.price || 100; // Valor padrão se não houver serviço
-          const description = service?.name || `Aula - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`;
-          
-          await stripe.invoiceItems.create({
-            customer: studentInfo.stripe_customer_id,
-            amount: Math.round(amount * 100), // Stripe usa centavos
-            currency: 'brl',
-            description: description,
-          }, {
-            stripeAccount: studentInfo.teacher_stripe_account_id,
-          });
-
           totalAmount += amount;
         }
 
-        // 4. Criar a Fatura (Invoice) no Stripe
         const now = new Date();
-        const invoice = await stripe.invoices.create({
-          customer: studentInfo.stripe_customer_id,
-          collection_method: 'send_invoice',
-          days_until_due: studentInfo.payment_due_days,
-          auto_advance: true,
-          description: `Fatura - ${studentInfo.teacher_name} - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
-          metadata: {
-            teacher_id: studentInfo.teacher_id,
-            student_id: studentInfo.student_id,
-            relationship_id: relationship.id,
-          }
-        }, {
-          stripeAccount: studentInfo.teacher_stripe_account_id,
-        });
-
-        console.log(`Stripe invoice ${invoice.id} created for ${studentInfo.student_name}`);
-
-        // 5. Inserir a fatura em nosso banco de dados
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        const { data: newInvoice, error: newInvoiceError } = await supabaseAdmin
+        // Criar fatura no banco de dados usando o mesmo padrão da função manual
+        const invoiceData = {
+          student_id: studentInfo.student_id,
+          teacher_id: studentInfo.teacher_id,
+          amount: totalAmount,
+          description: `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
+          due_date: dueDate.toISOString().split('T')[0],
+          status: 'pendente' as const,
+          invoice_type: 'automated',
+          business_profile_id: studentInfo.business_profile_id,
+        };
+
+        const { data: newInvoice, error: invoiceError } = await supabaseAdmin
           .from('invoices')
-          .insert({
-            student_id: studentInfo.student_id,
-            teacher_id: studentInfo.teacher_id,
-            amount: totalAmount,
-            status: 'pendente',
-            due_date: dueDate.toISOString().split('T')[0],
-            stripe_invoice_id: invoice.id,
-            stripe_hosted_invoice_url: invoice.hosted_invoice_url,
-            description: `Fatura - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
-            invoice_type: 'regular',
-            business_profile_id: relationship.business_profile_id,
-          })
+          .insert(invoiceData)
           .select()
           .single();
 
-        if (newInvoiceError) {
-          console.error(`Error creating invoice in database for ${studentInfo.student_name}:`, newInvoiceError);
+        if (invoiceError) {
+          logStep(`Error creating invoice for ${studentInfo.student_name}`, invoiceError);
+          errorCount++;
           continue;
         }
 
-        // 6. Atualizar as aulas com o ID da nova fatura
+        logStep(`Invoice created in database`, { 
+          invoiceId: newInvoice.id,
+          amount: totalAmount,
+          businessProfileId: studentInfo.business_profile_id 
+        });
+
+        // 4. Atualizar as aulas com o ID da nova fatura
         const classIds = classesToInvoice.map(c => c.id);
         const { error: updateClassesError } = await supabaseAdmin
           .from('classes')
@@ -243,28 +206,77 @@ serve(async (req) => {
           .in('id', classIds);
 
         if (updateClassesError) {
-          console.error(`Error updating classes with invoice_id for ${studentInfo.student_name}:`, updateClassesError);
+          logStep(`Warning: Could not update classes with invoice_id for ${studentInfo.student_name}`, updateClassesError);
+        } else {
+          logStep(`Classes updated with invoice_id`, { classIds });
         }
 
-        console.log(`Fatura ${invoice.id} criada com sucesso para ${studentInfo.student_name}`);
+        // 5. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
+        logStep(`Generating payment URL for invoice ${newInvoice.id}`);
+        try {
+          const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
+            'create-payment-intent-connect',
+            {
+              body: {
+                invoice_id: newInvoice.id,
+                payment_method: 'boleto' // Default to boleto for automated billing
+              }
+            }
+          );
 
-      } catch (stripeError) {
-        console.error(`Erro no processamento do Stripe para ${studentInfo.student_name}:`, stripeError);
+          if (!paymentError && paymentResult?.boleto_url) {
+            // Atualizar fatura com URL de pagamento gerada
+            const { error: updateError } = await supabaseAdmin
+              .from('invoices')
+              .update({ 
+                stripe_hosted_invoice_url: paymentResult.boleto_url,
+                boleto_url: paymentResult.boleto_url,
+                linha_digitavel: paymentResult.linha_digitavel,
+                stripe_payment_intent_id: paymentResult.payment_intent_id
+              })
+              .eq('id', newInvoice.id);
+
+            if (!updateError) {
+              logStep(`Payment URL generated and saved`, { 
+                invoiceId: newInvoice.id,
+                paymentUrl: paymentResult.boleto_url 
+              });
+            } else {
+              logStep(`Warning: Could not update invoice with payment URL`, updateError);
+            }
+          } else {
+            logStep(`Warning: Could not generate payment URL`, paymentError);
+          }
+        } catch (paymentGenerationError) {
+          logStep(`Warning: Failed to generate payment URL`, paymentGenerationError);
+          // Continue without failing the invoice creation
+        }
+
+        logStep(`Invoice ${newInvoice.id} created successfully for ${studentInfo.student_name}`);
+        processedCount++;
+
+      } catch (relationshipError) {
+        logStep(`Error processing relationship:`, relationshipError);
+        errorCount++;
         continue;
       }
     }
 
+    const message = `Automated billing completed. Processed: ${processedCount}, Errors: ${errorCount}`;
+    logStep("Billing process completed", { processedCount, errorCount });
+
     return new Response(JSON.stringify({ 
       success: true,
-      message: 'Processamento de faturamento com Stripe Invoicing concluído.',
-      processed_relationships: relationshipsToBill.length
+      message,
+      processed_relationships: processedCount,
+      error_count: errorCount
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
 
   } catch (error) {
-    console.error('Erro geral na função de faturamento:', error);
+    logStep('General error in billing function', error);
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : 'Erro desconhecido',
       success: false 

@@ -193,6 +193,44 @@ serve(async (req) => {
           } else {
             logStep("Database subscription status updated to cancelled");
           }
+
+          // Cancelar faturas pendentes se o novo plano não tiver módulo financeiro
+          if (!plan.features?.financial_module) {
+            logStep("New plan does not have financial module, cancelling pending invoices");
+            
+            const { data: pendingInvoices, error: invoicesError } = await supabaseClient
+              .from('invoices')
+              .select('id')
+              .eq('teacher_id', user.id)
+              .eq('status', 'pendente');
+
+            if (invoicesError) {
+              logStep("WARNING: Failed to fetch pending invoices", { 
+                error: invoicesError.message 
+              });
+            } else if (pendingInvoices && pendingInvoices.length > 0) {
+              const { error: cancelInvoicesError } = await supabaseClient
+                .from('invoices')
+                .update({ 
+                  status: 'cancelada_por_mudanca_plano',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('teacher_id', user.id)
+                .eq('status', 'pendente');
+
+              if (cancelInvoicesError) {
+                logStep("WARNING: Failed to cancel pending invoices", { 
+                  error: cancelInvoicesError.message 
+                });
+              } else {
+                logStep("Pending invoices cancelled successfully", { 
+                  count: pendingInvoices.length 
+                });
+              }
+            } else {
+              logStep("No pending invoices to cancel");
+            }
+          }
         } catch (cancelError) {
           logStep("ERROR: Failed to cancel Stripe subscription", { 
             error: cancelError instanceof Error ? cancelError.message : String(cancelError) 

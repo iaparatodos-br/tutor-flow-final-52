@@ -127,7 +127,7 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's current subscription from database (active or expired for student selection check)
+    // Get user's current subscription from database (active, expired, or cancelled for student selection check)
     const { data: subscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select(`
@@ -135,7 +135,7 @@ serve(async (req) => {
         subscription_plans (*)
       `)
       .eq('user_id', user.id)
-      .in('status', ['active', 'expired'])
+      .in('status', ['active', 'expired', 'cancelled'])
       .order('updated_at', { ascending: false })
       .maybeSingle();
 
@@ -205,12 +205,12 @@ serve(async (req) => {
         }
       }
       
-      // Check if active subscription is expired
+      // Check if active subscription is expired or if subscription was cancelled
       const now = new Date();
       const periodEnd = new Date(subscription.current_period_end);
       
-      if ((subscription.status === 'active' && now > periodEnd) || subscription.status === 'expired') {
-        logStep("Subscription is expired or expired status detected, checking for student selection need");
+      if ((subscription.status === 'active' && now > periodEnd) || subscription.status === 'expired' || subscription.status === 'cancelled') {
+        logStep("Subscription is expired, cancelled, or expired status detected, checking for student selection need");
         
         // Update subscription status to expired (only if it's still active)
         if (subscription.status === 'active') {

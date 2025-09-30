@@ -15,11 +15,26 @@ export default function ForcePasswordChange() {
   const { profile } = useAuth();
   const { toast } = useToast();
 
+  console.log('ForcePasswordChange: Profile loaded', {
+    profileId: profile?.id,
+    passwordChanged: profile?.password_changed,
+    email: profile?.email
+  });
+
   // Check if user was invited (doesn't have a current password)
   const isInvitedUser = profile?.password_changed === false;
+  
+  console.log('ForcePasswordChange: isInvitedUser =', isInvitedUser);
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('ForcePasswordChange: handlePasswordChange called', {
+      isInvitedUser,
+      newPasswordLength: newPassword.length,
+      hasConfirmPassword: !!confirmPassword,
+      hasCurrentPassword: !!currentPassword
+    });
     
     if (newPassword.length < 8) {
       toast({
@@ -51,24 +66,33 @@ export default function ForcePasswordChange() {
     setIsLoading(true);
 
     try {
+      console.log('ForcePasswordChange: Updating password in Supabase...');
+      
       // Update password in Supabase Auth
       const { error: authError } = await supabase.auth.updateUser({
         password: newPassword
       });
 
       if (authError) {
+        console.error('ForcePasswordChange: Auth error', authError);
         throw authError;
       }
+      
+      console.log('ForcePasswordChange: Password updated successfully');
 
       // Update password_changed flag in profiles
+      console.log('ForcePasswordChange: Updating password_changed flag...');
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ password_changed: true })
         .eq("id", profile?.id);
 
       if (profileError) {
+        console.error('ForcePasswordChange: Profile update error', profileError);
         throw profileError;
       }
+      
+      console.log('ForcePasswordChange: Profile updated successfully');
 
       toast({
         title: "Sucesso",
@@ -77,9 +101,16 @@ export default function ForcePasswordChange() {
           : "Senha alterada com sucesso! Redirecionando...",
       });
 
+      console.log('ForcePasswordChange: Senha atualizada, redirecionando...', {
+        userId: profile?.id,
+        role: profile?.role
+      });
+
       // Small delay before redirect to show success message
       setTimeout(() => {
-        window.location.href = "/dashboard";
+        const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
+        console.log('ForcePasswordChange: Redirecionando para', redirectPath);
+        window.location.href = redirectPath;
       }, 2000);
 
     } catch (error: any) {

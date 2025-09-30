@@ -81,6 +81,32 @@
     "cancelAction": "Cancel",
     "confirmCancel": "Confirm Cancellation"
   },
+  "planChange": {
+    "title": "Plan Change Confirmation",
+    "description": "Review the information below before proceeding",
+    "currentPlan": "Current Plan",
+    "newPlan": "New Plan",
+    "immediateCancellation": "Immediate Cancellation",
+    "cancellationWarning": "By confirming, your {currentPlan} subscription will be cancelled immediately. You will no longer have access to the exclusive features of this plan after cancellation.",
+    "excessStudentsWarning": "Warning: Excess Students",
+    "excessStudentsDescription": "You currently have {current} students, but the {plan} plan only allows {limit} students.",
+    "excessStudentsAction": "After the plan change, you will need to select which {limit} students to keep. The {excess} unselected students will be permanently removed from the system.",
+    "billingDetails": "Billing Details",
+    "planValue": "Plan value",
+    "frequency": "Frequency",
+    "firstCharge": "First charge",
+    "immediate": "Immediate",
+    "monthly": "Monthly",
+    "whatHappensNow": "What will happen now?",
+    "step1": "Your {currentPlan} plan will be cancelled immediately",
+    "step2": "You will be redirected to the {newPlan} plan checkout",
+    "step3": "After payment, the new plan will be activated",
+    "step4": "You will need to select which students to keep in the system",
+    "cancel": "Cancel",
+    "confirm": "Confirm Plan Change",
+    "processing": "Processing...",
+    "upTo": "Up to {limit} students"
+  },
   "downgrade": {
     "warning": {
       "title": "Plan Downgrade Warning",

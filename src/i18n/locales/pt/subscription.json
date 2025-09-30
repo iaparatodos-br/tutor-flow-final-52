@@ -81,6 +81,32 @@
     "cancelAction": "Cancelar",
     "confirmCancel": "Confirmar Cancelamento"
   },
+  "planChange": {
+    "title": "Confirmação de Mudança de Plano",
+    "description": "Revise as informações abaixo antes de prosseguir",
+    "currentPlan": "Plano Atual",
+    "newPlan": "Novo Plano",
+    "immediateCancellation": "Cancelamento Imediato",
+    "cancellationWarning": "Ao confirmar, sua assinatura do plano {currentPlan} será cancelada imediatamente. Você não terá mais acesso às funcionalidades exclusivas deste plano após o cancelamento.",
+    "excessStudentsWarning": "Atenção: Alunos Excedentes",
+    "excessStudentsDescription": "Você possui atualmente {current} alunos, mas o plano {plan} permite apenas {limit} alunos.",
+    "excessStudentsAction": "Após a mudança de plano, você precisará selecionar quais {limit} alunos deseja manter. Os {excess} alunos não selecionados serão permanentemente removidos do sistema.",
+    "billingDetails": "Detalhes da Cobrança",
+    "planValue": "Valor do plano",
+    "frequency": "Frequência",
+    "firstCharge": "Primeira cobrança",
+    "immediate": "Imediata",
+    "monthly": "Mensal",
+    "whatHappensNow": "O que acontecerá agora?",
+    "step1": "Seu plano {currentPlan} será cancelado imediatamente",
+    "step2": "Você será redirecionado para o checkout do plano {newPlan}",
+    "step3": "Após o pagamento, o novo plano será ativado",
+    "step4": "Você deverá selecionar quais alunos manter no sistema",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar Mudança de Plano",
+    "processing": "Processando...",
+    "upTo": "Até {limit} alunos"
+  },
   "downgrade": {
     "warning": {
       "title": "Aviso de Downgrade do Plano",

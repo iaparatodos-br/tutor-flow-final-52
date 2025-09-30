@@ -150,6 +150,60 @@ serve(async (req) => {
     
     logStep("Stripe client initialized");
 
+    // Check for active subscription and cancel it before creating new checkout
+    const { data: existingSubscription, error: subError } = await supabaseClient
+      .from('user_subscriptions')
+      .select('*, subscription_plans(*)')
+      .eq('user_id', user.id)
+      .in('status', ['active', 'trialing'])
+      .single();
+
+    if (existingSubscription && !subError) {
+      logStep("Active subscription found, will be cancelled", { 
+        subscriptionId: existingSubscription.stripe_subscription_id,
+        currentPlan: existingSubscription.subscription_plans?.name
+      });
+
+      // Cancel the existing Stripe subscription immediately
+      if (existingSubscription.stripe_subscription_id) {
+        try {
+          const cancelledSubscription = await stripe.subscriptions.cancel(
+            existingSubscription.stripe_subscription_id
+          );
+          
+          logStep("Stripe subscription cancelled successfully", { 
+            subscriptionId: cancelledSubscription.id,
+            status: cancelledSubscription.status 
+          });
+
+          // Update subscription status in database
+          const { error: updateError } = await supabaseClient
+            .from('user_subscriptions')
+            .update({ 
+              status: 'cancelled',
+              cancel_at_period_end: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingSubscription.id);
+
+          if (updateError) {
+            logStep("WARNING: Failed to update subscription status in DB", { 
+              error: updateError.message 
+            });
+          } else {
+            logStep("Database subscription status updated to cancelled");
+          }
+        } catch (cancelError) {
+          logStep("ERROR: Failed to cancel Stripe subscription", { 
+            error: cancelError instanceof Error ? cancelError.message : String(cancelError) 
+          });
+          // Continue with checkout creation even if cancellation fails
+          // The user was warned about the immediate cancellation
+        }
+      }
+    } else {
+      logStep("No active subscription found, proceeding with new subscription");
+    }
     // Check if customer exists
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     let customerId;

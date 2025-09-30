@@ -71,12 +71,18 @@ export default function AuthCallback() {
   // Quando o usuário for autenticado e carregado, redirecionar
   useEffect(() => {
     if (!processing && user && profile) {
-      console.log('AuthCallback: Usuário autenticado, redirecionando para dashboard');
+      console.log('AuthCallback: Usuário autenticado, redirecionando...', {
+        userId: user.id,
+        role: profile.role,
+        addressComplete: profile.address_complete
+      });
       
       // Redirecionar baseado no tipo de usuário
       if (profile.role === 'aluno') {
+        console.log('AuthCallback: Redirecionando para portal do aluno');
         navigate('/portal-do-aluno');
       } else {
+        console.log('AuthCallback: Redirecionando para dashboard');
         navigate('/dashboard');
       }
     }

@@ -81,8 +81,14 @@ export function ProfileSetup() {
         description: "Suas informações foram salvas com sucesso."
       });
 
-      // Redireciona para o dashboard após completar o perfil
-      navigate('/dashboard');
+      console.log('ProfileSetup: Perfil atualizado, redirecionando...', {
+        userId: profile?.id,
+        role: profile?.role
+      });
+
+      // Redireciona para a página apropriada baseado no role
+      const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
+      navigate(redirectPath);
     } catch (error) {
       console.error('Erro ao atualizar perfil:', error);
       toast({

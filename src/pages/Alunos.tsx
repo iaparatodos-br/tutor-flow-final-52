@@ -27,6 +27,7 @@ interface Student {
   relationship_id?: string;
   stripe_customer_id?: string;
   business_profile_id?: string;
+  email_confirmed?: boolean;
 }
 export default function Alunos() {
   const {
@@ -81,6 +82,22 @@ export default function Alunos() {
         stripe_customer_id: student.stripe_customer_id,
         business_profile_id: student.business_profile_id
       })) || [];
+
+      // Check email confirmation status for all students
+      if (transformedData.length > 0) {
+        const studentIds = transformedData.map((s: Student) => s.id);
+        const { data: confirmationData, error: confirmError } = await supabase.functions.invoke('check-email-confirmation', {
+          body: { student_ids: studentIds }
+        });
+
+        if (!confirmError && confirmationData?.success) {
+          // Add confirmation status to each student
+          transformedData.forEach((student: Student) => {
+            student.email_confirmed = confirmationData.confirmationStatus[student.id] || false;
+          });
+        }
+      }
+
       setStudents(transformedData);
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
@@ -361,6 +378,9 @@ export default function Alunos() {
         title: "Convite reenviado!",
         description: `${student.name} receberá um novo e-mail de confirmação.`
       });
+      
+      // Reload students to update confirmation status
+      loadStudents();
     } catch (error: any) {
       console.error('Erro ao reenviar convite:', error);
       toast({
@@ -564,15 +584,17 @@ export default function Alunos() {
                           <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title="Editar aluno">
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleResendInvitation(student)} 
-                            title="Reenviar convite de confirmação"
-                            className="hover:bg-blue-50 dark:hover:bg-blue-950"
-                          >
-                            <RefreshCcw className="h-4 w-4" />
-                          </Button>
+                          {!student.email_confirmed && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleResendInvitation(student)} 
+                              title="Reenviar convite de confirmação"
+                              className="hover:bg-blue-50 dark:hover:bg-blue-950"
+                            >
+                              <RefreshCcw className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
                             <Trash2 className="h-4 w-4" />
                           </Button>

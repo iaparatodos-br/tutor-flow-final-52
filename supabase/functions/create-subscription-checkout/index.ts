@@ -193,30 +193,6 @@ serve(async (req) => {
           } else {
             logStep("Database subscription status updated to cancelled");
           }
-
-          // Check if new plan has financial module - if not, cancel pending invoices
-          const hasFinancialModule = plan.features?.financial_module === true;
-          logStep("Checking if new plan has financial module", { hasFinancialModule });
-
-          if (!hasFinancialModule) {
-            logStep("New plan does not have financial module, canceling pending invoices");
-            
-            const { error: invoiceError } = await supabaseClient
-              .from('invoices')
-              .update({ 
-                status: 'cancelada_por_mudanca_plano',
-                updated_at: new Date().toISOString()
-              })
-              .eq('teacher_id', user.id)
-              .eq('status', 'pendente');
-
-            if (invoiceError) {
-              logStep("WARNING: Error canceling pending invoices", { error: invoiceError.message });
-              // Don't throw - continue with subscription change even if invoice cancellation fails
-            } else {
-              logStep("Successfully cancelled pending invoices");
-            }
-          }
         } catch (cancelError) {
           logStep("ERROR: Failed to cancel Stripe subscription", { 
             error: cancelError instanceof Error ? cancelError.message : String(cancelError) 

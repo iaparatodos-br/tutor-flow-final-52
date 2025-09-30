@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -328,6 +328,49 @@ export default function Alunos() {
     return true;
   };
   const studentsWithoutBusinessProfile = students.filter(s => !s.business_profile_id);
+
+  const handleResendInvitation = async (student: Student) => {
+    if (!student.relationship_id) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível encontrar o relacionamento do aluno",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase.functions.invoke('resend-student-invitation', {
+        body: {
+          student_id: student.id,
+          relationship_id: student.relationship_id
+        }
+      });
+
+      if (error || (data && !data.success)) {
+        console.error('Resend invitation error:', error || data);
+        toast({
+          title: "Erro",
+          description: data?.error || "Erro ao reenviar convite",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      toast({
+        title: "Convite reenviado!",
+        description: `${student.name} receberá um novo e-mail de confirmação.`
+      });
+    } catch (error: any) {
+      console.error('Erro ao reenviar convite:', error);
+      toast({
+        title: "Erro ao reenviar convite",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive"
+      });
+    }
+  };
+
   return <Layout>
       <div className="max-w-6xl mx-auto space-y-6">
         <UpgradeBanner />
@@ -518,8 +561,17 @@ export default function Alunos() {
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title="Ver perfil completo">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)}>
+                          <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title="Editar aluno">
                             <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleResendInvitation(student)} 
+                            title="Reenviar convite de confirmação"
+                            className="hover:bg-blue-50 dark:hover:bg-blue-950"
+                          >
+                            <RefreshCcw className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
                             <Trash2 className="h-4 w-4" />

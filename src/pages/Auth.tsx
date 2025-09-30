@@ -6,12 +6,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export default function Auth() {
-  const { isAuthenticated, isProfessor, isAluno, signIn, signUp, resetPassword } = useAuth();
+  const { isAuthenticated, isProfessor, isAluno, signIn, signUp, resetPassword, resendConfirmation } = useAuth();
   const { toast } = useToast();
   const { t } = useTranslation('auth');
   
@@ -26,6 +27,8 @@ export default function Auth() {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [currentTab, setCurrentTab] = useState("login");
   const [showResetForm, setShowResetForm] = useState(false);
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState<string | null>(null);
+  const [resendingConfirmation, setResendingConfirmation] = useState(false);
 
   if (isAuthenticated) {
     // Redirecionar baseado no papel do usuário
@@ -57,14 +60,26 @@ export default function Auth() {
     const { error } = await signIn(loginForm.email, loginForm.password);
     
     if (error) {
-      toast({
-        title: "Erro ao fazer login",
-        description: error.message === "Invalid login credentials" 
-          ? "E-mail ou senha incorretos" 
-          : error.message,
-        variant: "destructive",
-      });
+      // Check if error is related to email not confirmed
+      if (error.message?.includes('Email not confirmed') || error.message?.includes('email_not_confirmed')) {
+        setEmailNotConfirmed(loginForm.email);
+        toast({
+          title: "E-mail não confirmado",
+          description: "Por favor, confirme seu e-mail antes de fazer login.",
+          variant: "destructive",
+        });
+      } else {
+        setEmailNotConfirmed(null);
+        toast({
+          title: "Erro ao fazer login",
+          description: error.message === "Invalid login credentials" 
+            ? "E-mail ou senha incorretos" 
+            : error.message,
+          variant: "destructive",
+        });
+      }
     } else {
+      setEmailNotConfirmed(null);
       toast({
         title: "Login realizado com sucesso!",
         description: "Bem-vindo ao TutorFlow",
@@ -72,6 +87,30 @@ export default function Auth() {
     }
     
     setLoading(false);
+  };
+
+  const handleResendConfirmation = async () => {
+    if (!emailNotConfirmed) return;
+    
+    setResendingConfirmation(true);
+    
+    const { error } = await resendConfirmation(emailNotConfirmed);
+    
+    if (error) {
+      toast({
+        title: "Erro ao reenviar confirmação",
+        description: error.message || "Tente novamente mais tarde",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "E-mail reenviado!",
+        description: "Verifique sua caixa de entrada. O link é válido por 1 hora.",
+      });
+      setEmailNotConfirmed(null);
+    }
+    
+    setResendingConfirmation(false);
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -244,10 +283,31 @@ export default function Auth() {
                           {t('forgotPassword')}
                         </Button>
                       </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter>
-                    <Button 
+                     </div>
+                   </CardContent>
+                   <CardFooter className="flex-col gap-3">
+                     {emailNotConfirmed && (
+                       <Alert className="w-full mb-3">
+                         <Mail className="h-4 w-4" />
+                         <AlertDescription className="flex flex-col gap-2">
+                           <span className="text-sm">
+                             Seu e-mail ainda não foi confirmado. Clique abaixo para receber um novo link de confirmação.
+                           </span>
+                           <Button
+                             type="button"
+                             variant="outline"
+                             size="sm"
+                             onClick={handleResendConfirmation}
+                             disabled={resendingConfirmation}
+                             className="w-full"
+                           >
+                             {resendingConfirmation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                             Reenviar E-mail de Confirmação
+                           </Button>
+                         </AlertDescription>
+                       </Alert>
+                     )}
+                     <Button 
                       type="submit" 
                       className="w-full bg-gradient-primary hover:bg-primary-hover shadow-primary"
                       disabled={loading}
@@ -255,8 +315,8 @@ export default function Auth() {
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       Entrar
                     </Button>
-                  </CardFooter>
-                </form>
+                   </CardFooter>
+                 </form>
               ) : (
                 <form onSubmit={handleResetPassword}>
                   <CardHeader>

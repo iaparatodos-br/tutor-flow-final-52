@@ -32,6 +32,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
   updatePassword: (password: string) => Promise<{ error: any }>;
+  resendConfirmation: (email: string) => Promise<{ error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -447,6 +448,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const resendConfirmation = async (email: string) => {
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
+
+      return { error: error?.message };
+    } catch (error: any) {
+      console.error('Resend confirmation error:', error);
+      return { error: 'Erro inesperado ao reenviar confirmação' };
+    }
+  };
+
   const value: AuthContextType = {
     user,
     session,
@@ -461,7 +479,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signIn,
     signOut,
     resetPassword,
-    updatePassword
+    updatePassword,
+    resendConfirmation
   };
 
   return (

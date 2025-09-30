@@ -145,8 +145,8 @@ export default function Planos() {
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          {plans.map((plan) => {
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {plans.filter(plan => plan.slug !== 'free').map((plan) => {
             const isCurrentPlan = currentPlan?.id === plan.id;
             const isPremium = plan.slug === 'premium';
             const isPopular = plan.slug === 'professional';
@@ -250,7 +250,7 @@ export default function Planos() {
               <thead>
                 <tr className="border-b">
                   <th className="text-left py-2">Funcionalidade</th>
-                  {plans.map((plan) => (
+                  {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <th key={plan.id} className="text-center py-2 px-4">
                       {plan.name}
                     </th>
@@ -260,7 +260,7 @@ export default function Planos() {
               <tbody>
                 <tr className="border-b">
                   <td className="py-2">Limite de Alunos</td>
-                  {plans.map((plan) => (
+                  {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.student_limit}
                       {plan.slug !== 'free' && (
@@ -273,7 +273,7 @@ export default function Planos() {
                 </tr>
                 <tr className="border-b">
                   <td className="py-2">Módulo Financeiro</td>
-                  {plans.map((plan) => (
+                  {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.financial_module ? (
                         <Check className="h-4 w-4 text-green-500 mx-auto" />
@@ -285,7 +285,7 @@ export default function Planos() {
                 </tr>
                 <tr className="border-b">
                   <td className="py-2">Aulas em Grupo</td>
-                  {plans.map((plan) => (
+                  {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.group_classes ? (
                         <Check className="h-4 w-4 text-green-500 mx-auto" />
@@ -297,7 +297,7 @@ export default function Planos() {
                 </tr>
                 <tr className="border-b">
                   <td className="py-2">Cadastro de Despesas</td>
-                  {plans.map((plan) => (
+                  {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.expenses ? (
                         <Check className="h-4 w-4 text-green-500 mx-auto" />
@@ -309,7 +309,7 @@ export default function Planos() {
                 </tr>
                 <tr className="border-b">
                    <td className="py-2">Upload e Compartilhamento de Materiais</td>
-                   {plans.map((plan) => (
+                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                      <td key={plan.id} className="text-center py-2 px-4">
                        <Check className="h-4 w-4 text-green-500 mx-auto" />
                      </td>
@@ -317,7 +317,7 @@ export default function Planos() {
                  </tr>
                  <tr>
                    <td className="py-2">Armazenamento de Materiais</td>
-                   {plans.map((plan) => (
+                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                      <td key={plan.id} className="text-center py-2 px-4">
                        <div className="font-medium">{formatStorage(plan.features.storage_mb)}</div>
                      </td>

@@ -33,7 +33,7 @@ Funcionalidade:
 - Verifica o status real no Stripe via API
 - Atualiza automaticamente o status se mudou
 - Processa até 50 faturas por execução (para evitar timeout)
-- Roda a cada 15 minutos via cron job
+- Roda a cada 3 horas via cron job
 
 ### 3. Configuração do Cron Job
 **Arquivo:** `supabase/functions/setup-invoice-auto-verification/index.ts`
@@ -167,7 +167,7 @@ sequenceDiagram
         W->>TF: Atualiza fatura = "paga"
         TF-->>U: Notificação (email/app)
     else Webhook falha
-        Note over C: A cada 15 minutos
+        Note over C: A cada 3 horas
         C->>S: Verifica status
         S-->>C: succeeded
         C->>TF: Atualiza fatura = "paga"
@@ -239,6 +239,6 @@ curl -X POST https://nwgomximjevgczwuyqcx.supabase.co/functions/v1/setup-invoice
 
 Com este sistema implementado, os pagamentos de boleto são verificados de duas formas:
 1. **Tempo real** via webhooks (< 1 minuto)
-2. **Backup automático** via cron job (max 15 minutos)
+2. **Backup automático** via cron job (max 3 horas)
 
 Isso garante que nenhum pagamento passe despercebido, mesmo se o webhook falhar.

@@ -41,10 +41,10 @@ serve(async (req) => {
       logStep("Note: No existing cron job to remove (this is normal on first setup)");
     }
 
-    // Criar novo cron job para rodar a cada 15 minutos
+    // Criar novo cron job para rodar a cada 3 horas
     const { data, error } = await supabaseClient.rpc('cron_schedule', {
       p_jobname: 'auto-verify-pending-invoices',
-      p_schedule: '*/15 * * * *', // A cada 15 minutos
+      p_schedule: '0 */3 * * *', // A cada 3 horas
       p_command: `
         SELECT
           net.http_post(
@@ -62,13 +62,13 @@ serve(async (req) => {
 
     logStep("Cron job scheduled successfully", { 
       jobname: 'auto-verify-pending-invoices',
-      schedule: 'Every 15 minutes'
+      schedule: 'Every 3 hours'
     });
 
     return new Response(JSON.stringify({
       success: true,
       message: "Automatic invoice verification cron job scheduled successfully",
-      schedule: "Every 15 minutes",
+      schedule: "Every 3 hours",
       jobname: "auto-verify-pending-invoices"
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

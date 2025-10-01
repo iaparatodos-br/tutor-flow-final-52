@@ -177,7 +177,27 @@ serve(async (req) => {
       throw updateError;
     }
 
-    logStep('Invoice updated successfully', { invoice_id });
+    // Register audit log
+    const { error: auditError } = await supabase.from('audit_logs').insert({
+      actor_id: user.id,
+      target_teacher_id: invoice.teacher_id,
+      table_name: 'invoices',
+      record_id: invoice_id,
+      operation: 'UPDATE',
+      old_data: { status: invoice.status, payment_origin: invoice.payment_origin },
+      new_data: { 
+        status: 'paid', 
+        payment_origin: 'manual',
+        payment_intent_cancelled: paymentIntentCancelled,
+        manual_payment_notes: notes 
+      },
+    });
+
+    if (auditError) {
+      logStep('Audit log failed (non-critical)', { error: auditError });
+    }
+
+    logStep('Invoice updated successfully and audited', { invoice_id });
 
     return new Response(
       JSON.stringify({ 

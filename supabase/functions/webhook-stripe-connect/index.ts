@@ -317,7 +317,7 @@ serve(async (req) => {
         const { error: paidError } = await supabaseClient
           .from('invoices')
           .update({ 
-            status: 'paga',
+            status: 'paid',
             payment_origin: 'automatic',
             updated_at: new Date().toISOString()
           })
@@ -354,7 +354,7 @@ serve(async (req) => {
         const { error: succeededError } = await supabaseClient
           .from('invoices')
           .update({ 
-            status: 'paga',
+            status: 'paid',
             payment_origin: 'automatic',
             payment_method: 'stripe_invoice',
             updated_at: new Date().toISOString()
@@ -465,7 +465,7 @@ serve(async (req) => {
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
-            status: "paga",
+            status: "paid",
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
             updated_at: new Date().toISOString()

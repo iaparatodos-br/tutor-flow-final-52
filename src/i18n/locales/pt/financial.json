@@ -58,6 +58,21 @@
     "boleto": "Boleto",
     "check": "Cheque"
   },
+  "paymentOrigin": {
+    "automatic": "Automático",
+    "manual": "Manual",
+    "system": "Sistema"
+  },
+  "markAsPaid": {
+    "title": "Confirmar Pagamento Manual",
+    "description": "Ao confirmar, esta fatura será marcada como paga e o Payment Intent do Stripe será cancelado (se aplicável). Esta ação é irreversível.",
+    "notesLabel": "Observações (opcional)",
+    "notesPlaceholder": "Ex: Pagamento recebido em dinheiro, transferência bancária, etc.",
+    "confirmButton": "Confirmar Pagamento",
+    "cancelButton": "Cancelar",
+    "success": "Fatura marcada como paga com sucesso!",
+    "error": "Erro ao marcar fatura como paga"
+  },
   "messages": {
     "invoiceCreated": "Fatura criada com sucesso!",
     "expenseAdded": "Despesa adicionada com sucesso!",

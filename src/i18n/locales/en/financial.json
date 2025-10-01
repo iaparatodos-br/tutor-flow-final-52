@@ -58,6 +58,21 @@
     "boleto": "Bank Slip",
     "check": "Check"
   },
+  "paymentOrigin": {
+    "automatic": "Automatic",
+    "manual": "Manual",
+    "system": "System"
+  },
+  "markAsPaid": {
+    "title": "Confirm Manual Payment",
+    "description": "By confirming, this invoice will be marked as paid and the Stripe Payment Intent will be cancelled (if applicable). This action is irreversible.",
+    "notesLabel": "Notes (optional)",
+    "notesPlaceholder": "E.g., Payment received in cash, bank transfer, etc.",
+    "confirmButton": "Confirm Payment",
+    "cancelButton": "Cancel",
+    "success": "Invoice marked as paid successfully!",
+    "error": "Error marking invoice as paid"
+  },
   "messages": {
     "invoiceCreated": "Invoice created successfully!",
     "expenseAdded": "Expense added successfully!",

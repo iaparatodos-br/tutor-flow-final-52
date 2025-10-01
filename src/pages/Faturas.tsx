@@ -20,12 +20,16 @@ interface Invoice {
   status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
   stripe_hosted_invoice_url: string | null;
   description: string | null;
+  payment_origin: string | null;
+  manual_payment_notes: string | null;
+  payment_intent_cancelled_at: string | null;
+  payment_intent_cancelled_by: string | null;
 }
 
 const fetchStudentInvoices = async (teacherId: string) => {
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id')
+    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id, payment_origin, manual_payment_notes, payment_intent_cancelled_at, payment_intent_cancelled_by')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false });
 
@@ -149,7 +153,7 @@ export default function Faturas() {
                       </TableCell>
                       <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                       <TableCell>
-                        <InvoiceStatusBadge status={invoice.status} />
+                        <InvoiceStatusBadge status={invoice.status} paymentOrigin={invoice.payment_origin} />
                       </TableCell>
                       <TableCell className="text-right">
                         {(invoice.status === 'open' || 

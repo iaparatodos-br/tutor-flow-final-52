@@ -1,11 +1,13 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { CheckCircle, Zap } from 'lucide-react';
 
 interface InvoiceStatusBadgeProps {
   status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
+  paymentOrigin?: string | null;
 }
 
-export function InvoiceStatusBadge({ status }: InvoiceStatusBadgeProps) {
+export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadgeProps) {
   const statusMap = {
     paid: { label: 'Paga', className: 'bg-success text-success-foreground hover:bg-success/80' },
     paga: { label: 'Paga', className: 'bg-success text-success-foreground hover:bg-success/80' },
@@ -19,6 +21,18 @@ export function InvoiceStatusBadge({ status }: InvoiceStatusBadgeProps) {
   };
 
   const { label, className } = statusMap[status] || statusMap.void;
+  
+  const isPaid = status === 'paid' || status === 'paga';
+  const isManual = paymentOrigin === 'manual';
+  const isAutomatic = paymentOrigin === 'automatic';
 
-  return <Badge className={cn('text-white', className)}>{label}</Badge>;
+  return (
+    <Badge className={cn('text-white gap-1', className)}>
+      {isPaid && isManual && <CheckCircle className="h-3 w-3" />}
+      {isPaid && isAutomatic && <Zap className="h-3 w-3" />}
+      {label}
+      {isPaid && isManual && <span className="text-xs opacity-80">(Manual)</span>}
+      {isPaid && isAutomatic && <span className="text-xs opacity-80">(Auto)</span>}
+    </Badge>
+  );
 }

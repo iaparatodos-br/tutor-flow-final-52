@@ -154,32 +154,111 @@ serve(async (req) => {
           continue;
         }
 
-        if (!classesToInvoice || classesToInvoice.length === 0) {
-          logStep(`No unbilled classes found for ${studentInfo.student_name}`);
+        // 2.1. Encontrar aulas canceladas com cobrança pendente (não faturadas)
+        const { data: cancelledClassesWithCharge, error: cancelledError } = await supabaseAdmin
+          .from('classes')
+          .select(`
+            id, 
+            notes,
+            service_id,
+            class_date,
+            status,
+            cancellation_reason,
+            cancelled_at,
+            class_services (
+              id,
+              name,
+              price,
+              description
+            )
+          `)
+          .eq('student_id', studentInfo.student_id)
+          .eq('teacher_id', studentInfo.teacher_id)
+          .eq('status', 'cancelada')
+          .eq('charge_applied', true)
+          .eq('billed', false);
+
+        logStep(`Query result - Cancelled classes with charge: ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
+
+        if (cancelledError) {
+          logStep(`Error fetching cancelled classes with charge for ${studentInfo.student_name}`, cancelledError);
+          // Continue without cancellation charges
+        }
+
+        // Consolidar aulas concluídas e canceladas com cobrança
+        const unbilledClasses = classesToInvoice || [];
+        const cancelledChargeable = cancelledClassesWithCharge || [];
+        
+        if (unbilledClasses.length === 0 && cancelledChargeable.length === 0) {
+          logStep(`No unbilled classes or cancellation charges found for ${studentInfo.student_name}`);
           continue;
         }
 
-        const unbilledClasses = classesToInvoice;
-        logStep(`Found ${unbilledClasses.length} unbilled classes to invoice for ${studentInfo.student_name}`);
+        logStep(`Found ${unbilledClasses.length} unbilled classes and ${cancelledChargeable.length} cancellation charges to invoice for ${studentInfo.student_name}`);
 
         // 3. Calcular valor total e criar fatura e marcar classes como faturadas atomicamente
         let totalAmount = 0;
+        let completedClassesCount = 0;
+        let cancellationChargesCount = 0;
+        
+        // Somar aulas concluídas
         for (const classItem of unbilledClasses) {
           const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
           const amount = service?.price || 100; // Valor padrão se não houver serviço
           totalAmount += amount;
+          completedClassesCount++;
         }
+        
+        // Somar cobranças de cancelamento
+        for (const cancelledClass of cancelledChargeable) {
+          const service = Array.isArray(cancelledClass.class_services) ? cancelledClass.class_services[0] : cancelledClass.class_services;
+          const baseAmount = service?.price || 100;
+          
+          // Buscar política de cancelamento para calcular porcentagem
+          const { data: policy } = await supabaseAdmin
+            .from('cancellation_policies')
+            .select('charge_percentage')
+            .eq('teacher_id', studentInfo.teacher_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          const chargePercentage = policy?.charge_percentage || 50;
+          const chargeAmount = (baseAmount * chargePercentage) / 100;
+          totalAmount += chargeAmount;
+          cancellationChargesCount++;
+        }
+
+        logStep(`Total amount calculated`, { 
+          totalAmount, 
+          completedClassesCount, 
+          cancellationChargesCount 
+        });
 
         const now = new Date();
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        const classIds = unbilledClasses.map(c => c.id);
+        // Consolidar IDs de todas as classes (concluídas + canceladas com cobrança)
+        const classIds = [
+          ...unbilledClasses.map(c => c.id),
+          ...cancelledChargeable.map(c => c.id)
+        ];
+        
+        // Criar descrição detalhada
+        let descriptionParts = [];
+        if (completedClassesCount > 0) {
+          descriptionParts.push(`${completedClassesCount} aula${completedClassesCount > 1 ? 's' : ''}`);
+        }
+        if (cancellationChargesCount > 0) {
+          descriptionParts.push(`${cancellationChargesCount} cancelamento${cancellationChargesCount > 1 ? 's' : ''}`);
+        }
+        const description = `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} (${descriptionParts.join(' + ')})`;
+
         const invoiceData = {
           student_id: studentInfo.student_id,
           teacher_id: studentInfo.teacher_id,
           amount: totalAmount,
-          description: `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
+          description: description,
           due_date: dueDate.toISOString().split('T')[0],
           status: 'pendente' as const,
           invoice_type: 'automated',

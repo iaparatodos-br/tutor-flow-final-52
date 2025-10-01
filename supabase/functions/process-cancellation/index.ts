@@ -83,7 +83,8 @@ serve(async (req) => {
         cancellation_reason: reason,
         cancelled_at: now.toISOString(),
         cancelled_by: cancelled_by,
-        charge_applied: shouldCharge
+        charge_applied: shouldCharge,
+        billed: false // Ensure it's marked as not billed yet
       })
       .eq('id', class_id);
 
@@ -92,20 +93,18 @@ serve(async (req) => {
       throw new Error('Erro ao atualizar aula');
     }
 
-    // Create cancellation invoice if needed
+    // Check if teacher has financial module access (only if charging)
     if (shouldCharge) {
-      // Check if teacher has financial module access
       const { data: hasFinancialModule, error: featureError } = await supabaseClient
         .rpc('teacher_has_financial_module', { teacher_id: classData.teacher_id });
 
       if (featureError) {
         console.error('Error checking financial module access:', featureError);
-        // Default to false if we can't check
       }
 
       if (!hasFinancialModule) {
-        console.log('Teacher does not have financial module access, skipping invoice creation');
-        // Update class but don't create invoice
+        console.log('Teacher does not have financial module access, removing charge');
+        // Update class to remove charge if no financial module
         const { error: updateError } = await supabaseClient
           .from('classes')
           .update({ charge_applied: false })
@@ -124,85 +123,14 @@ serve(async (req) => {
           status: 200,
         });
       }
-
-      // Get service price if available, otherwise default
-      let baseAmount = 100; // Default fallback
-      
-      if (classData.service_id) {
-        const { data: serviceData, error: serviceError } = await supabaseClient
-          .from('class_services')
-          .select('price')
-          .eq('id', classData.service_id)
-          .maybeSingle();
-        
-        if (serviceError && serviceError.code !== 'PGRST116') {
-          console.error('Error fetching service data:', serviceError);
-        }
-        
-        if (serviceData?.price) {
-          baseAmount = Number(serviceData.price);
-        }
-      }
-      
-      const chargeAmount = (baseAmount * chargePercentage) / 100;
-
-      // Get business_profile_id from teacher_student_relationships
-      const { data: relationship, error: relationshipError } = await supabaseClient
-        .from('teacher_student_relationships')
-        .select('business_profile_id')
-        .eq('student_id', classData.student_id)
-        .eq('teacher_id', classData.teacher_id)
-        .single();
-
-      if (relationshipError || !relationship?.business_profile_id) {
-        console.error('Error getting business profile for cancellation invoice:', relationshipError);
-        // Continue without business_profile_id for backward compatibility
-      }
-
-      const { data: cancellationInvoice, error: invoiceError } = await supabaseClient
-        .from('invoices')
-        .insert({
-          student_id: classData.student_id,
-          teacher_id: classData.teacher_id,
-          class_id: class_id,
-          amount: chargeAmount,
-          original_amount: baseAmount,
-          description: `Cancelamento fora do prazo - ${classData.profiles?.name || 'Aula'} - ${new Date(classData.class_date).toLocaleDateString()}`,
-          due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days from now
-          status: 'pendente',
-          invoice_type: 'cancellation',
-          cancellation_policy_id: policy?.id,
-          business_profile_id: relationship?.business_profile_id || null,
-        })
-        .select()
-        .single();
-
-      if (invoiceError) {
-        console.error('Error creating cancellation invoice:', invoiceError);
-      } else {
-        // Generate boleto for cancellation invoice
-        try {
-          console.log('Generating boleto for cancellation invoice');
-          
-          const boletoResponse = await supabaseClient.functions.invoke('generate-boleto-for-invoice', {
-            body: { invoice_id: cancellationInvoice.id }
-          });
-
-          if (boletoResponse.error) {
-            console.error('Error generating boleto for cancellation:', boletoResponse.error);
-          } else {
-            console.log('Boleto generated successfully for cancellation invoice');
-          }
-        } catch (boletoError) {
-          console.error('Error generating boleto for cancellation:', boletoError);
-        }
-      }
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
       charged: shouldCharge,
-      message: shouldCharge ? 'Aula cancelada com cobrança aplicada' : 'Aula cancelada sem cobrança'
+      message: shouldCharge 
+        ? 'Aula cancelada. A cobrança será incluída na próxima fatura mensal.' 
+        : 'Aula cancelada sem cobrança'
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

@@ -50,7 +50,20 @@ export function ProfileSetup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log('ProfileSetup: handleSubmit called', {
+      profileId: profile?.id,
+      role: profile?.role,
+      formData: {
+        cpf: formData.cpf,
+        address_street: formData.address_street,
+        address_city: formData.address_city,
+        address_state: formData.address_state,
+        address_postal_code: formData.address_postal_code
+      }
+    });
+    
     if (!isFormValid()) {
+      console.log('ProfileSetup: Form validation failed');
       toast({
         title: "Dados incompletos",
         description: "Por favor, preencha todos os campos corretamente.",
@@ -59,22 +72,35 @@ export function ProfileSetup() {
       return;
     }
 
+    console.log('ProfileSetup: Form is valid, starting update...');
     setLoading(true);
 
     try {
-      const { error } = await supabase
+      const updateData = {
+        cpf: formData.cpf.replace(/\D/g, ''),
+        address_street: formData.address_street,
+        address_city: formData.address_city,
+        address_state: formData.address_state,
+        address_postal_code: formData.address_postal_code.replace(/\D/g, ''),
+        address_complete: true
+      };
+      
+      console.log('ProfileSetup: Updating profile with data:', updateData);
+      
+      const { data, error } = await supabase
         .from('profiles')
-        .update({
-          cpf: formData.cpf.replace(/\D/g, ''),
-          address_street: formData.address_street,
-          address_city: formData.address_city,
-          address_state: formData.address_state,
-          address_postal_code: formData.address_postal_code.replace(/\D/g, ''),
-          address_complete: true
-        })
-        .eq('id', profile?.id);
+        .update(updateData)
+        .eq('id', profile?.id)
+        .select();
 
-      if (error) throw error;
+      console.log('ProfileSetup: Update response:', { data, error });
+
+      if (error) {
+        console.error('ProfileSetup: Update error:', error);
+        throw error;
+      }
+
+      console.log('ProfileSetup: Profile updated successfully');
 
       toast({
         title: "Perfil atualizado!",
@@ -88,15 +114,19 @@ export function ProfileSetup() {
 
       // Redireciona para a página apropriada baseado no role
       const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
-      navigate(redirectPath);
+      console.log('ProfileSetup: Navigating to:', redirectPath);
+      
+      // Use window.location.href for more reliable redirect
+      window.location.href = redirectPath;
     } catch (error) {
-      console.error('Erro ao atualizar perfil:', error);
+      console.error('ProfileSetup: Catch block - Erro ao atualizar perfil:', error);
       toast({
         title: "Erro",
         description: "Não foi possível salvar suas informações. Tente novamente.",
         variant: "destructive"
       });
     } finally {
+      console.log('ProfileSetup: Finally block - setLoading(false)');
       setLoading(false);
     }
   };

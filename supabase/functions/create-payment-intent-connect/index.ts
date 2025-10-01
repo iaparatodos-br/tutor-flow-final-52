@@ -41,7 +41,7 @@ serve(async (req) => {
           name, email, cpf, guardian_name, guardian_email,
           address_street, address_city, address_state, address_postal_code, address_complete
         ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email),
+        teacher:profiles!invoices_teacher_id_fkey(name, email, payment_due_days),
         business_profile:business_profiles!invoices_business_profile_id_fkey(
           id, business_name, stripe_connect_id
         )
@@ -345,11 +345,27 @@ serve(async (req) => {
           pix_copy_paste: updateData.pix_copy_paste,
         };
       } else {
-        // Default: boleto on platform using destination charges (kept as-is)
+        // Default: boleto on platform using destination charges
+        // Calculate days until due date, using teacher's payment_due_days as reference
+        const dueDate = new Date(invoice.due_date);
+        const today = new Date();
+        const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        
+        // Stripe boleto expires_after_days must be between 1 and 60
+        // Use calculated days, but ensure it's within Stripe's limits
+        const boletoExpireDays = Math.max(1, Math.min(60, daysUntilDue > 0 ? daysUntilDue : (invoice.teacher?.payment_due_days || 15)));
+        
+        logStep("Calculated boleto expiry", { 
+          dueDate: invoice.due_date, 
+          daysUntilDue, 
+          boletoExpireDays,
+          teacherPaymentDueDays: invoice.teacher?.payment_due_days
+        });
+        
         let paymentMethodTypes: string[] = ["boleto"];
         let paymentMethodOptions: any = {
           boleto: {
-            expires_after_days: 7
+            expires_after_days: boletoExpireDays
           }
         };
 

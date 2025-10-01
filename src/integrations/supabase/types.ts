@@ -611,10 +611,14 @@ export type Database = {
           id: string
           invoice_type: string | null
           linha_digitavel: string | null
+          manual_payment_notes: string | null
           original_amount: number | null
           payment_account_used_id: string | null
           payment_due_date: string | null
+          payment_intent_cancelled_at: string | null
+          payment_intent_cancelled_by: string | null
           payment_method: string | null
+          payment_origin: string | null
           pix_copy_paste: string | null
           pix_qr_code: string | null
           sent_to_guardian: boolean | null
@@ -641,10 +645,14 @@ export type Database = {
           id?: string
           invoice_type?: string | null
           linha_digitavel?: string | null
+          manual_payment_notes?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
+          payment_intent_cancelled_at?: string | null
+          payment_intent_cancelled_by?: string | null
           payment_method?: string | null
+          payment_origin?: string | null
           pix_copy_paste?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
@@ -671,10 +679,14 @@ export type Database = {
           id?: string
           invoice_type?: string | null
           linha_digitavel?: string | null
+          manual_payment_notes?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
+          payment_intent_cancelled_at?: string | null
+          payment_intent_cancelled_by?: string | null
           payment_method?: string | null
+          payment_origin?: string | null
           pix_copy_paste?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null

@@ -32,11 +32,13 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
     // Buscar todas as faturas pendentes com payment_intent_id
+    // Excluir faturas marcadas como pagamento manual
     const { data: pendingInvoices, error: fetchError } = await supabaseClient
       .from("invoices")
       .select("*")
       .in("status", ["pendente", "falha_pagamento"])
       .not("stripe_payment_intent_id", "is", null)
+      .or("payment_origin.is.null,payment_origin.neq.manual") // Skip manual payments
       .limit(50); // Limitar para evitar timeout
 
     if (fetchError) {
@@ -90,6 +92,7 @@ serve(async (req) => {
             .from("invoices")
             .update({ 
               status: newStatus,
+              payment_origin: paymentIntent.status === 'succeeded' ? 'automatic' : undefined,
               updated_at: new Date().toISOString()
             })
             .eq("id", invoice.id);

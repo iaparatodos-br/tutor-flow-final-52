@@ -302,10 +302,23 @@ serve(async (req) => {
         const paidInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice paid", { invoiceId: paidInvoice.id });
 
+        // Check if invoice was manually marked as paid (skip webhook processing)
+        const { data: existingInvoice } = await supabaseClient
+          .from('invoices')
+          .select('payment_origin')
+          .eq('stripe_invoice_id', paidInvoice.id)
+          .single();
+
+        if (existingInvoice?.payment_origin === 'manual') {
+          logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: paidInvoice.id });
+          break;
+        }
+
         const { error: paidError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'paga',
+            payment_origin: 'automatic',
             updated_at: new Date().toISOString()
           })
           .eq('stripe_invoice_id', paidInvoice.id);
@@ -326,10 +339,23 @@ serve(async (req) => {
         const succeededInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice payment succeeded", { invoiceId: succeededInvoice.id });
 
+        // Check if invoice was manually marked as paid (skip webhook processing)
+        const { data: existingSucceeded } = await supabaseClient
+          .from('invoices')
+          .select('payment_origin')
+          .eq('stripe_invoice_id', succeededInvoice.id)
+          .single();
+
+        if (existingSucceeded?.payment_origin === 'manual') {
+          logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: succeededInvoice.id });
+          break;
+        }
+
         const { error: succeededError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'paga',
+            payment_origin: 'automatic',
             payment_method: 'stripe_invoice',
             updated_at: new Date().toISOString()
           })
@@ -423,11 +449,24 @@ serve(async (req) => {
           metadata: paymentIntent.metadata
         });
 
+        // Check if invoice was manually marked as paid (skip webhook processing)
+        const { data: existingPI } = await supabaseClient
+          .from('invoices')
+          .select('payment_origin')
+          .eq('stripe_payment_intent_id', paymentIntent.id)
+          .single();
+
+        if (existingPI?.payment_origin === 'manual') {
+          logStep("Invoice already marked as manual payment, skipping webhook", { paymentIntentId: paymentIntent.id });
+          break;
+        }
+
         // Atualizar fatura usando stripe_payment_intent_id
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
             status: "paga",
+            payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
             updated_at: new Date().toISOString()
           })

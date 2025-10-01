@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { AmnestyButton } from "@/components/AmnestyButton";
 import { ExpenseList } from "@/components/ExpenseList";
@@ -64,6 +65,10 @@ export default function Financeiro() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithStudent | null>(null);
   const [students, setStudents] = useState<{id: string; name: string; email: string}[]>([]);
+  const [markAsPaidDialogOpen, setMarkAsPaidDialogOpen] = useState(false);
+  const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<string | null>(null);
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false);
 
   useEffect(() => {
     if (profile?.id) {
@@ -183,28 +188,57 @@ export default function Financeiro() {
     setPaymentDialogOpen(true);
   };
 
-  const handleMarkAsPaid = async (invoiceId: string) => {
-    try {
-      const { error } = await supabase
-        .from('invoices')
-        .update({ status: 'paid' })
-        .eq('id', invoiceId);
+  const openMarkAsPaidDialog = (invoiceId: string) => {
+    setInvoiceToMarkPaid(invoiceId);
+    setPaymentNotes('');
+    setMarkAsPaidDialogOpen(true);
+  };
 
-      if (error) throw error;
+  const handleMarkAsPaid = async () => {
+    if (!invoiceToMarkPaid) return;
+
+    setIsMarkingPaid(true);
+    try {
+      // Call edge function to cancel payment intent on Stripe
+      const { data, error: functionError } = await supabase.functions.invoke(
+        'cancel-payment-intent',
+        {
+          body: {
+            invoice_id: invoiceToMarkPaid,
+            notes: paymentNotes || undefined
+          }
+        }
+      );
+
+      if (functionError) {
+        console.error('Edge function error:', functionError);
+        throw new Error(functionError.message || 'Failed to cancel payment intent');
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.details || 'Failed to process payment cancellation');
+      }
 
       toast({
         title: "Fatura marcada como paga",
-        description: "A fatura foi marcada como paga com sucesso.",
+        description: data.payment_intent_cancelled 
+          ? "O boleto foi cancelado no Stripe e a fatura marcada como paga."
+          : "A fatura foi marcada como paga com sucesso.",
       });
 
+      setMarkAsPaidDialogOpen(false);
+      setInvoiceToMarkPaid(null);
+      setPaymentNotes('');
       loadInvoices();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao marcar fatura como paga:', error);
       toast({
         title: "Erro ao marcar fatura como paga",
-        description: "Tente novamente mais tarde",
+        description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
+    } finally {
+      setIsMarkingPaid(false);
     }
   };
 
@@ -471,7 +505,7 @@ export default function Financeiro() {
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
                                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handleMarkAsPaid(invoice.id)}>
+                                            <AlertDialogAction onClick={() => openMarkAsPaidDialog(invoice.id)}>
                                               Confirmar
                                             </AlertDialogAction>
                                           </AlertDialogFooter>
@@ -624,6 +658,59 @@ export default function Financeiro() {
                 }}
               />
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Mark as Paid Dialog with Notes */}
+        <Dialog open={markAsPaidDialogOpen} onOpenChange={setMarkAsPaidDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirmar Pagamento Manual</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Ao confirmar, o boleto será <strong>cancelado no Stripe</strong> e ficará inválido para pagamento. 
+                A fatura será marcada como paga manualmente.
+              </p>
+              <div className="space-y-2">
+                <label htmlFor="payment-notes" className="text-sm font-medium">
+                  Observações (opcional)
+                </label>
+                <Textarea
+                  id="payment-notes"
+                  placeholder="Ex: Pagamento recebido via PIX, Transferência bancária confirmada, etc."
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  rows={3}
+                  disabled={isMarkingPaid}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setMarkAsPaidDialogOpen(false)}
+                  disabled={isMarkingPaid}
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleMarkAsPaid}
+                  disabled={isMarkingPaid}
+                >
+                  {isMarkingPaid ? (
+                    <>
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2"></div>
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Confirmar Pagamento
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
             </div>

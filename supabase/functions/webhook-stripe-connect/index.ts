@@ -415,23 +415,38 @@ serve(async (req) => {
       case "payment_intent.succeeded": {
         // Manter compatibilidade com payment intents existentes
         const paymentIntent = eventObject as Stripe.PaymentIntent;
-        logStep("Payment intent succeeded", { paymentIntentId: paymentIntent.id });
+        logStep("Payment intent succeeded", { 
+          paymentIntentId: paymentIntent.id,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          payment_method_types: paymentIntent.payment_method_types,
+          metadata: paymentIntent.metadata
+        });
 
-        if (paymentIntent.metadata?.invoice_id) {
-          const { error } = await supabaseClient
-            .from("invoices")
-            .update({
-              status: "paga",
-              payment_method: paymentIntent.payment_method_types[0],
-              updated_at: new Date().toISOString()
-            })
-            .eq("stripe_payment_intent_id", paymentIntent.id);
+        // Atualizar fatura usando stripe_payment_intent_id
+        const { data: updatedInvoices, error } = await supabaseClient
+          .from("invoices")
+          .update({
+            status: "paga",
+            payment_method: paymentIntent.payment_method_types[0],
+            updated_at: new Date().toISOString()
+          })
+          .eq("stripe_payment_intent_id", paymentIntent.id)
+          .select();
 
-          if (error) {
-            logStep("Error updating invoice from payment intent", error);
-          } else {
-            logStep("Invoice updated from payment intent", { invoiceId: paymentIntent.metadata.invoice_id });
-          }
+        if (error) {
+          logStep("Error updating invoice from payment intent", error);
+        } else if (updatedInvoices && updatedInvoices.length > 0) {
+          logStep("Invoice updated from payment intent", { 
+            invoiceId: updatedInvoices[0].id,
+            paymentIntentId: paymentIntent.id,
+            paymentMethod: paymentIntent.payment_method_types[0]
+          });
+        } else {
+          logStep("No invoice found for payment intent", { 
+            paymentIntentId: paymentIntent.id,
+            metadata: paymentIntent.metadata
+          });
         }
         break;
       }
@@ -439,22 +454,34 @@ serve(async (req) => {
       case "payment_intent.payment_failed": {
         // Manter compatibilidade com payment intents existentes
         const paymentIntent = eventObject as Stripe.PaymentIntent;
-        logStep("Payment intent failed", { paymentIntentId: paymentIntent.id });
+        logStep("Payment intent failed", { 
+          paymentIntentId: paymentIntent.id,
+          last_payment_error: paymentIntent.last_payment_error,
+          payment_method_types: paymentIntent.payment_method_types,
+          metadata: paymentIntent.metadata
+        });
 
-        if (paymentIntent.metadata?.invoice_id) {
-          const { error } = await supabaseClient
-            .from("invoices")
-            .update({
-              status: "falha_pagamento",
-              updated_at: new Date().toISOString()
-            })
-            .eq("stripe_payment_intent_id", paymentIntent.id);
+        const { data: updatedInvoices, error } = await supabaseClient
+          .from("invoices")
+          .update({
+            status: "falha_pagamento",
+            updated_at: new Date().toISOString()
+          })
+          .eq("stripe_payment_intent_id", paymentIntent.id)
+          .select();
 
-          if (error) {
-            logStep("Error updating invoice payment intent failed", error);
-          } else {
-            logStep("Invoice marked as failed from payment intent", { invoiceId: paymentIntent.metadata.invoice_id });
-          }
+        if (error) {
+          logStep("Error updating invoice payment intent failed", error);
+        } else if (updatedInvoices && updatedInvoices.length > 0) {
+          logStep("Invoice marked as failed from payment intent", { 
+            invoiceId: updatedInvoices[0].id,
+            paymentIntentId: paymentIntent.id
+          });
+        } else {
+          logStep("No invoice found for failed payment intent", { 
+            paymentIntentId: paymentIntent.id,
+            metadata: paymentIntent.metadata
+          });
         }
         break;
       }

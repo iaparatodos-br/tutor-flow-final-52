@@ -5,3 +5,9 @@ verify_jwt = false
 
 [functions.webhook-stripe-subscriptions]
 verify_jwt = false
+
+[functions.auto-verify-pending-invoices]
+verify_jwt = false
+
+[functions.setup-invoice-auto-verification]
+verify_jwt = false

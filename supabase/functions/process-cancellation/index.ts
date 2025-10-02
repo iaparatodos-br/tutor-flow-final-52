@@ -111,7 +111,10 @@ serve(async (req) => {
       shouldCharge
     });
 
-    // Update class - always use 'cancelada' status, differentiate with charge_applied boolean
+    // PROTEÇÃO: Bloquear processamento concorrente - usar timestamp de processamento
+    const processingLock = `cancellation_${class_id}_${now.getTime()}`;
+    
+    // Update class - sempre usar status 'cancelada', diferenciar com charge_applied boolean
     const { error: updateError } = await supabaseClient
       .from('classes')
       .update({
@@ -120,13 +123,56 @@ serve(async (req) => {
         cancelled_at: now.toISOString(),
         cancelled_by: cancelled_by,
         charge_applied: shouldCharge,
-        billed: false // Ensure it's marked as not billed yet
+        billed: false // Garantir que está marcada como não faturada ainda
       })
-      .eq('id', class_id);
+      .eq('id', class_id)
+      .eq('status', classData.status); // Garantir que só atualiza se o status ainda for o original
 
     if (updateError) {
       console.error('Error updating class:', updateError);
+      
+      // Se erro for de concorrência (nenhuma linha afetada), significa que houve cancelamento duplicado
+      if (updateError.code === 'PGRST116' || updateError.message?.includes('0 rows')) {
+        throw new Error('Esta aula já está sendo cancelada ou foi cancelada recentemente');
+      }
+      
       throw new Error('Erro ao atualizar aula');
+    }
+
+    // NOTIFICAÇÃO: Criar registro de notificação e enviar email
+    try {
+      const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
+      
+      await supabaseClient
+        .from('class_notifications')
+        .insert({
+          class_id: class_id,
+          student_id: cancelled_by_type === 'student' ? cancelled_by : classData.student_id,
+          notification_type: notificationType,
+          status: 'sent'
+        });
+      
+      console.log('Cancellation notification record created');
+
+      // Enviar email de notificação de forma assíncrona (não bloquear resposta)
+      supabaseClient.functions.invoke('send-cancellation-notification', {
+        body: {
+          class_id: class_id,
+          cancelled_by_type: cancelled_by_type,
+          charge_applied: shouldCharge,
+          cancellation_reason: reason
+        }
+      }).then(({ error: emailError }) => {
+        if (emailError) {
+          console.error('Error sending notification email (non-critical):', emailError);
+        } else {
+          console.log('Notification email sent successfully');
+        }
+      });
+
+    } catch (notificationError) {
+      console.error('Error creating notification (non-critical):', notificationError);
+      // Não falhar o cancelamento por causa de erro na notificação
     }
 
     // Check if teacher has financial module access (only if charging)

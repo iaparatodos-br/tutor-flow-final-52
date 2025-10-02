@@ -11,3 +11,13 @@ verify_jwt = false
 
 [functions.setup-invoice-auto-verification]
 verify_jwt = false
+
+[functions.process-orphan-cancellation-charges]
+verify_jwt = false
+
+[functions.send-cancellation-notification]
+verify_jwt = false
+
+[functions.setup-orphan-charges-automation]
+verify_jwt = false
+

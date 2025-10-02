@@ -23,7 +23,6 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-
 interface ClassWithParticipants {
   id: string;
   class_date: string;
@@ -46,34 +45,48 @@ interface ClassWithParticipants {
     };
   }>;
 }
-
 interface Student {
   id: string;
   name: string;
 }
-
 interface ClassService {
   id: string;
   name: string;
   price: number;
   duration_minutes: number;
 }
-
 export default function Agenda() {
-  const { profile, isProfessor, isAluno } = useProfile();
-  const { loading: authLoading } = useAuth();
-  const { hasFeature, hasTeacherFeature } = useSubscription();
-  const { toast } = useToast();
-  const { selectedTeacherId } = useTeacherContext();
-  const { t } = useTranslation('classes');
-  
+  const {
+    profile,
+    isProfessor,
+    isAluno
+  } = useProfile();
+  const {
+    loading: authLoading
+  } = useAuth();
+  const {
+    hasFeature,
+    hasTeacherFeature
+  } = useSubscription();
+  const {
+    toast
+  } = useToast();
+  const {
+    selectedTeacherId
+  } = useTeacherContext();
+  const {
+    t
+  } = useTranslation('classes');
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
-  const [visibleRange, setVisibleRange] = useState<{start: Date, end: Date} | null>(null);
+  const [visibleRange, setVisibleRange] = useState<{
+    start: Date;
+    end: Date;
+  } | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [cancellationModal, setCancellationModal] = useState<{
@@ -81,13 +94,20 @@ export default function Agenda() {
     classId: string;
     className: string;
     classDate: string;
-  }>({ isOpen: false, classId: "", className: "", classDate: "" });
-  
+  }>({
+    isOpen: false,
+    classId: "",
+    className: "",
+    classDate: ""
+  });
   const [reportModal, setReportModal] = useState<{
     isOpen: boolean;
     classData: CalendarClass | null;
-  }>({ isOpen: false, classData: null });
-  
+  }>({
+    isOpen: false,
+    classData: null
+  });
+
   // Exception handling states
   const [showRecurringActionModal, setShowRecurringActionModal] = useState(false);
   const [recurringActionMode, setRecurringActionMode] = useState<ActionMode>('edit');
@@ -95,7 +115,6 @@ export default function Agenda() {
   const [showExceptionForm, setShowExceptionForm] = useState(false);
   const [showFutureExceptionForm, setShowFutureExceptionForm] = useState(false);
   const [showBillingAlert, setShowBillingAlert] = useState(true);
-
   useEffect(() => {
     if (!authLoading && profile) {
       // Initial load with default range (current month)
@@ -107,11 +126,12 @@ export default function Agenda() {
         startGrid.setDate(startGrid.getDate() - firstDay.getDay());
         const endGrid = new Date(startGrid);
         endGrid.setDate(endGrid.getDate() + 41);
-        
-        setVisibleRange({ start: startGrid, end: endGrid });
+        setVisibleRange({
+          start: startGrid,
+          end: endGrid
+        });
         loadClasses(startGrid, endGrid);
       }
-      
       if (isProfessor) {
         loadStudents();
         loadAvailabilityBlocks();
@@ -133,38 +153,32 @@ export default function Agenda() {
       loadClasses(visibleRange.start, visibleRange.end);
     }
   }, [visibleRange]);
-
   const handleVisibleRangeChange = (start: Date, end: Date) => {
-    setVisibleRange({ start, end });
+    setVisibleRange({
+      start,
+      end
+    });
   };
 
   // Helper function to generate virtual recurring instances for visible range
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
     if (!templateClass.recurrence_pattern?.is_infinite) return [];
-    
     const pattern = templateClass.recurrence_pattern;
-    const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY :
-                pattern.frequency === 'biweekly' ? Frequency.WEEKLY :
-                pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
-    
+    const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY : pattern.frequency === 'biweekly' ? Frequency.WEEKLY : pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
     const interval = pattern.frequency === 'biweekly' ? 2 : 1;
-    
     const rule = new RRule({
       freq,
       interval,
       dtstart: new Date(templateClass.class_date)
     });
-    
+
     // Generate occurrences only within the visible range
     const occurrences = rule.between(startDate, endDate, true);
-    
+
     // Filter out the original template date if it's in range
     const templateDate = new Date(templateClass.class_date);
-    const filteredOccurrences = occurrences.filter(date => 
-      date.getTime() !== templateDate.getTime()
-    );
-    
-    return filteredOccurrences.map((date) => ({
+    const filteredOccurrences = occurrences.filter(date => date.getTime() !== templateDate.getTime());
+    return filteredOccurrences.map(date => ({
       ...templateClass,
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
@@ -172,10 +186,8 @@ export default function Agenda() {
       status: 'pendente' as const
     }));
   };
-
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
     if (!profile?.id) return;
-
     try {
       // Use provided range or fallback to default range
       const startDate = rangeStart || new Date();
@@ -184,22 +196,22 @@ export default function Agenda() {
         end.setMonth(end.getMonth() + 1);
         return end;
       })();
-      
+
       // Use RPC to get optimized data for professors
       let data;
       let error;
-      
       if (isProfessor) {
-        ({ data, error } = await supabase.rpc('get_calendar_events', {
+        ({
+          data,
+          error
+        } = await supabase.rpc('get_calendar_events', {
           p_teacher_id: profile.id,
           p_start_date: startDate.toISOString(),
           p_end_date: endDate.toISOString()
         }));
       } else {
         // For students, get classes normally and filter by selected teacher
-        let query = supabase
-          .from('classes')
-          .select(`
+        let query = supabase.from('classes').select(`
             id,
             class_date,
             duration_minutes,
@@ -223,17 +235,13 @@ export default function Agenda() {
                 email
               )
             )
-          `)
-          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('class_date');
-        
+          `).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
+
         // Execute two separate queries to avoid PostgREST or() limitations with joins
         const [individualClassesResult, groupClassesResult] = await Promise.all([
-          // Query 1: Individual classes where student_id matches
-          (() => {
-            let individualQuery = supabase
-              .from('classes')
-              .select(`
+        // Query 1: Individual classes where student_id matches
+        (() => {
+          let individualQuery = supabase.from('classes').select(`
                 id,
                 class_date,
                 duration_minutes,
@@ -257,23 +265,15 @@ export default function Agenda() {
                     email
                   )
                 )
-              `)
-              .eq('student_id', profile.id)
-              .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-              .order('class_date');
-            
-            if (selectedTeacherId) {
-              individualQuery = individualQuery.eq('teacher_id', selectedTeacherId);
-            }
-            
-            return individualQuery;
-          })(),
-          
-          // Query 2: Group classes where user is a participant
-          (() => {
-            let groupQuery = supabase
-              .from('classes')
-              .select(`
+              `).eq('student_id', profile.id).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
+          if (selectedTeacherId) {
+            individualQuery = individualQuery.eq('teacher_id', selectedTeacherId);
+          }
+          return individualQuery;
+        })(),
+        // Query 2: Group classes where user is a participant
+        (() => {
+          let groupQuery = supabase.from('classes').select(`
                 id,
                 class_date,
                 duration_minutes,
@@ -297,18 +297,12 @@ export default function Agenda() {
                     email
                   )
                 )
-              `)
-              .eq('class_participants.student_id', profile.id)
-              .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-              .order('class_date');
-            
-            if (selectedTeacherId) {
-              groupQuery = groupQuery.eq('teacher_id', selectedTeacherId);
-            }
-            
-            return groupQuery;
-          })()
-        ]);
+              `).eq('class_participants.student_id', profile.id).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
+          if (selectedTeacherId) {
+            groupQuery = groupQuery.eq('teacher_id', selectedTeacherId);
+          }
+          return groupQuery;
+        })()]);
 
         // Handle errors from either query
         if (individualClassesResult.error) {
@@ -321,20 +315,13 @@ export default function Agenda() {
         }
 
         // Combine results and remove duplicates
-        const allClasses = [
-          ...(individualClassesResult.data || []),
-          ...(groupClassesResult.data || [])
-        ];
-        
+        const allClasses = [...(individualClassesResult.data || []), ...(groupClassesResult.data || [])];
+
         // Remove duplicates based on class id
-        const uniqueClasses = allClasses.filter((cls, index, arr) => 
-          arr.findIndex(c => c.id === cls.id) === index
-        );
-        
+        const uniqueClasses = allClasses.filter((cls, index, arr) => arr.findIndex(c => c.id === cls.id) === index);
         data = uniqueClasses;
         error = null;
       }
-
       if (error) {
         console.error('Error loading classes:', error);
         throw error;
@@ -345,34 +332,26 @@ export default function Agenda() {
       if (isProfessor) {
         classesWithDetails = await Promise.all((data || []).map(async (cls: any) => {
           const [studentsData, participantsData] = await Promise.all([
-            // Get student data for individual classes
-            cls.student_id ? supabase
-              .from('profiles')
-              .select('id, name, email')
-              .eq('id', cls.student_id)
-              .maybeSingle() : Promise.resolve({ data: null }),
-            
-            // Get participants for group classes
-            cls.is_group_class ? supabase
-              .from('class_participants')
-              .select(`
+          // Get student data for individual classes
+          cls.student_id ? supabase.from('profiles').select('id, name, email').eq('id', cls.student_id).maybeSingle() : Promise.resolve({
+            data: null
+          }),
+          // Get participants for group classes
+          cls.is_group_class ? supabase.from('class_participants').select(`
                 student_id,
                 profiles!class_participants_student_id_fkey (
                   id, name, email
                 )
-              `)
-              .eq('class_id', cls.id) : Promise.resolve({ data: [] })
-          ]);
-
-          const participants = cls.is_group_class 
-            ? (participantsData.data || []).map((p: any) => ({
-                student_id: p.student_id,
-                student: p.profiles
-              }))
-            : studentsData.data 
-              ? [{ student_id: studentsData.data.id, student: studentsData.data }]
-              : [];
-
+              `).eq('class_id', cls.id) : Promise.resolve({
+            data: []
+          })]);
+          const participants = cls.is_group_class ? (participantsData.data || []).map((p: any) => ({
+            student_id: p.student_id,
+            student: p.profiles
+          })) : studentsData.data ? [{
+            student_id: studentsData.data.id,
+            student: studentsData.data
+          }] : [];
           return {
             ...cls,
             participants
@@ -381,18 +360,13 @@ export default function Agenda() {
       } else {
         // For students, data already comes with relations
         classesWithDetails = (data || []).map((item: any) => {
-          const participants = item.is_group_class 
-            ? item.class_participants.map((p: any) => ({
-                student_id: p.student_id,
-                student: p.profiles
-              }))
-            : item.student_id && item.profiles
-              ? [{
-                  student_id: item.student_id,
-                  student: item.profiles
-                }]
-              : [];
-
+          const participants = item.is_group_class ? item.class_participants.map((p: any) => ({
+            student_id: p.student_id,
+            student: p.profiles
+          })) : item.student_id && item.profiles ? [{
+            student_id: item.student_id,
+            student: item.profiles
+          }] : [];
           return {
             ...item,
             participants
@@ -403,18 +377,12 @@ export default function Agenda() {
       // Fetch class exceptions if professor
       let exceptions: any[] = [];
       if (isProfessor) {
-        const recurringClassIds = classesWithDetails
-          .filter(cls => cls.recurrence_pattern && !cls.parent_class_id)
-          .map(cls => cls.id);
-        
+        const recurringClassIds = classesWithDetails.filter(cls => cls.recurrence_pattern && !cls.parent_class_id).map(cls => cls.id);
         if (recurringClassIds.length > 0) {
-          const { data: exceptionsData, error: exceptionsError } = await supabase
-            .from('class_exceptions')
-            .select('*')
-            .in('original_class_id', recurringClassIds)
-            .gte('exception_date', startDate.toISOString())
-            .lte('exception_date', endDate.toISOString());
-          
+          const {
+            data: exceptionsData,
+            error: exceptionsError
+          } = await supabase.from('class_exceptions').select('*').in('original_class_id', recurringClassIds).gte('exception_date', startDate.toISOString()).lte('exception_date', endDate.toISOString());
           if (exceptionsError) {
             console.error('Error loading exceptions:', exceptionsError);
           } else {
@@ -432,70 +400,59 @@ export default function Agenda() {
 
       // Generate virtual instances for infinite recurrences (only for professors)
       const allClasses: ClassWithParticipants[] = [...classesWithDetails];
-      
       if (isProfessor) {
         for (const cls of classesWithDetails) {
           if (cls.recurrence_pattern?.is_infinite && !cls.parent_class_id) {
             // This is a template class for infinite recurrence
             const virtualInstances = generateVirtualInstances(cls, startDate, endDate);
-            
+
             // Filter out virtual instances that conflict with real classes or are cancelled
-            const realClassDates = new Set(
-              classesWithDetails
-                .filter(c => c.parent_class_id === cls.id)
-                .map(c => new Date(c.class_date).toDateString())
-            );
-            
-            const processedVirtual = virtualInstances
-              .filter(virtual => !realClassDates.has(new Date(virtual.class_date).toDateString()))
-              .map(virtual => {
-                const exceptionKey = `${cls.id}_${new Date(virtual.class_date).getTime()}`;
-                const exception = exceptionsMap.get(exceptionKey);
-                
-                if (exception) {
-                  if (exception.status === 'canceled') {
-                    return null; // Skip cancelled occurrences
-                  } else if (exception.status === 'rescheduled') {
-                    // Apply exception modifications
-                    return {
-                      ...virtual,
-                      id: exception.id,
-                      class_date: exception.new_start_time,
-                      duration_minutes: exception.new_duration_minutes || virtual.duration_minutes,
-                      notes: exception.new_description || virtual.notes,
-                      isException: true
-                    };
-                  }
+            const realClassDates = new Set(classesWithDetails.filter(c => c.parent_class_id === cls.id).map(c => new Date(c.class_date).toDateString()));
+            const processedVirtual = virtualInstances.filter(virtual => !realClassDates.has(new Date(virtual.class_date).toDateString())).map(virtual => {
+              const exceptionKey = `${cls.id}_${new Date(virtual.class_date).getTime()}`;
+              const exception = exceptionsMap.get(exceptionKey);
+              if (exception) {
+                if (exception.status === 'canceled') {
+                  return null; // Skip cancelled occurrences
+                } else if (exception.status === 'rescheduled') {
+                  // Apply exception modifications
+                  return {
+                    ...virtual,
+                    id: exception.id,
+                    class_date: exception.new_start_time,
+                    duration_minutes: exception.new_duration_minutes || virtual.duration_minutes,
+                    notes: exception.new_description || virtual.notes,
+                    isException: true
+                  };
                 }
-                
-                return virtual;
-              })
-              .filter(Boolean); // Remove null entries (cancelled classes)
-            
+              }
+              return virtual;
+            }).filter(Boolean); // Remove null entries (cancelled classes)
+
             allClasses.push(...processedVirtual);
           }
         }
       }
-      
       setClasses(allClasses);
 
       // Transform for calendar view
       const calendarEvents: CalendarClass[] = allClasses.map(cls => {
         const startDate = new Date(cls.class_date);
-        const endDate = new Date(startDate.getTime() + (cls.duration_minutes * 60 * 1000));
-        
+        const endDate = new Date(startDate.getTime() + cls.duration_minutes * 60 * 1000);
         const participantNames = cls.participants.map(p => p.student.name).join(', ');
         const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
         const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
         const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
-        
         return {
           id: cls.id,
           title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
           start: startDate,
           end: endDate,
           status: cls.status,
-          student: cls.participants[0]?.student || { name: 'Sem aluno', email: '' },
+          student: cls.participants[0]?.student || {
+            name: 'Sem aluno',
+            email: ''
+          },
           participants: cls.participants,
           notes: cls.notes || undefined,
           is_experimental: cls.is_experimental,
@@ -503,36 +460,29 @@ export default function Agenda() {
           isVirtual: cls.isVirtual
         };
       });
-      
       setCalendarClasses(calendarEvents);
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);
       toast({
         title: "Erro ao carregar agenda",
         description: "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setLoading(false);
     }
   };
-
   const loadAvailabilityBlocks = async () => {
     if (!profile?.id || !isProfessor) return;
-    
     try {
-      const { data, error } = await supabase
-        .from('availability_blocks')
-        .select('*')
-        .eq('teacher_id', profile.id)
-        .gte('end_datetime', new Date().toISOString())
-        .order('start_datetime');
-
+      const {
+        data,
+        error
+      } = await supabase.from('availability_blocks').select('*').eq('teacher_id', profile.id).gte('end_datetime', new Date().toISOString()).order('start_datetime');
       if (error) {
         console.error('Erro ao carregar bloqueios:', error);
         return;
       }
-
       const blocks: AvailabilityBlock[] = (data || []).map(block => ({
         id: block.id,
         title: block.title,
@@ -540,56 +490,51 @@ export default function Agenda() {
         end: new Date(block.end_datetime),
         type: 'block' as const
       }));
-
       setAvailabilityBlocks(blocks);
     } catch (error) {
       console.error('Erro ao carregar bloqueios:', error);
     }
   };
-
   const loadStudents = async () => {
     if (!profile?.id) return;
-    
     try {
-      const { data, error } = await supabase.rpc('get_teacher_students', {
+      const {
+        data,
+        error
+      } = await supabase.rpc('get_teacher_students', {
         teacher_user_id: profile.id
       });
-
       if (error) {
         console.error('Erro ao carregar alunos:', error);
         return;
       }
-
-      const mapped = (data || []).map((s: any) => ({ id: s.student_id, name: s.student_name }));
+      const mapped = (data || []).map((s: any) => ({
+        id: s.student_id,
+        name: s.student_name
+      }));
       setStudents(mapped);
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
     }
   };
-
   const loadServices = async () => {
     if (!profile?.id) return;
-    
     try {
-      const { data, error } = await supabase
-        .from('class_services')
-        .select('id, name, price, duration_minutes')
-        .eq('teacher_id', profile.id)
-        .eq('is_active', true)
-        .order('is_default', { ascending: false })
-        .order('name');
-
+      const {
+        data,
+        error
+      } = await supabase.from('class_services').select('id, name, price, duration_minutes').eq('teacher_id', profile.id).eq('is_active', true).order('is_default', {
+        ascending: false
+      }).order('name');
       if (error) {
         console.error('Erro ao carregar serviços:', error);
         return;
       }
-
       setServices(data || []);
     } catch (error) {
       console.error('Erro ao carregar serviços:', error);
     }
   };
-
   const handleConfirmClass = async (classId: string) => {
     try {
       // Check if it's a virtual instance (needs materialization)
@@ -597,19 +542,16 @@ export default function Agenda() {
         await materializeVirtualClass(classId);
         return;
       }
-
-      const { error } = await supabase
-        .from('classes')
-        .update({ status: 'confirmada' })
-        .eq('id', classId);
-
+      const {
+        error
+      } = await supabase.from('classes').update({
+        status: 'confirmada'
+      }).eq('id', classId);
       if (error) throw error;
-
       toast({
         title: "Aula confirmada!",
-        description: "A aula foi confirmada com sucesso",
+        description: "A aula foi confirmada com sucesso"
       });
-      
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -618,11 +560,10 @@ export default function Agenda() {
       toast({
         title: "Erro ao confirmar aula",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const materializeVirtualClass = async (virtualId: string) => {
     try {
       // Find the virtual class in our current state
@@ -651,13 +592,10 @@ export default function Agenda() {
         is_group_class: virtualClass.is_group_class,
         parent_class_id: templateId
       };
-
-      const { data: newClass, error } = await supabase
-        .from('classes')
-        .insert([realClassData])
-        .select()
-        .single();
-
+      const {
+        data: newClass,
+        error
+      } = await supabase.from('classes').insert([realClassData]).select().single();
       if (error) throw error;
 
       // Insert participants if it's a group class
@@ -666,19 +604,15 @@ export default function Agenda() {
           class_id: newClass.id,
           student_id: p.student_id
         }));
-
-        const { error: participantError } = await supabase
-          .from('class_participants')
-          .insert(participantInserts);
-
+        const {
+          error: participantError
+        } = await supabase.from('class_participants').insert(participantInserts);
         if (participantError) throw participantError;
       }
-
       toast({
         title: "Aula confirmada!",
-        description: "A aula recorrente foi confirmada e agendada",
+        description: "A aula recorrente foi confirmada e agendada"
       });
-
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -687,21 +621,19 @@ export default function Agenda() {
       toast({
         title: "Erro ao confirmar aula",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const generateRecurringClasses = (baseClass: any, recurrence: any) => {
     const classes = [baseClass];
-    
+
     // Normalize frequency to handle undefined values
     const normalizedFrequency = recurrence.frequency || 'weekly';
-    
+
     // For finite recurrence, generate all instances
     const startDate = new Date(baseClass.class_date);
     let currentDate = new Date(startDate);
-
     const getNextDate = (current: Date, frequency: string) => {
       const next = new Date(current);
       switch (frequency) {
@@ -721,52 +653,44 @@ export default function Agenda() {
       }
       return next;
     };
-
     const endDate = recurrence.end_date ? new Date(recurrence.end_date) : null;
     const maxOccurrences = recurrence.occurrences || 50;
-
     for (let i = 1; i < maxOccurrences; i++) {
       const nextDate = getNextDate(currentDate, normalizedFrequency);
-      
+
       // Safety check: ensure date is advancing
       if (nextDate.getTime() <= currentDate.getTime()) {
         console.error(`Date not advancing for frequency ${normalizedFrequency}. Breaking loop.`);
         break;
       }
-      
+
       // Check if we've reached the end date
       if (endDate && nextDate > endDate) {
         break;
       }
-      
       currentDate = nextDate;
       classes.push({
         ...baseClass,
         class_date: currentDate.toISOString()
       });
     }
-
     return classes;
   };
-
   const handleClassSubmit = async (formData: any) => {
     if (!profile?.id) return;
-
     setSubmitting(true);
-    
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
-      
+
       // Check if professor has access to financial module
       const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
-      
+
       // If no financial access, mark class as experimental to prevent billing
       const shouldMarkExperimental = !hasFinancialAccess || formData.is_experimental;
-      
       if (!hasFinancialAccess && !formData.is_experimental) {
         console.log('Professor without financial module - marking class as experimental to prevent billing');
       }
-      
+
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
@@ -775,44 +699,38 @@ export default function Agenda() {
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
-        status: 'confirmada', // Professor-created classes are confirmed by default
+        status: 'confirmada',
+        // Professor-created classes are confirmed by default
         is_experimental: shouldMarkExperimental,
         is_group_class: formData.is_group_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };
-
       let insertedClasses;
-      
       if (formData.recurrence) {
         if (formData.recurrence.is_infinite) {
           // For infinite recurrence, only create the template class (anchor event)
-          const { data: templateClass, error: templateError } = await supabase
-            .from('classes')
-            .insert([baseClassData])
-            .select()
-            .single();
-
+          const {
+            data: templateClass,
+            error: templateError
+          } = await supabase.from('classes').insert([baseClassData]).select().single();
           if (templateError) throw templateError;
-
           insertedClasses = [templateClass];
         } else {
           // Regular finite recurrence - still create all instances
           const classesToCreate = generateRecurringClasses(baseClassData, formData.recurrence);
-          const { data: classes, error: classError } = await supabase
-            .from('classes')
-            .insert(classesToCreate)
-            .select();
-
+          const {
+            data: classes,
+            error: classError
+          } = await supabase.from('classes').insert(classesToCreate).select();
           if (classError) throw classError;
           insertedClasses = classes;
         }
       } else {
         // Single class
-        const { data: classes, error: classError } = await supabase
-          .from('classes')
-          .insert([baseClassData])
-          .select();
-
+        const {
+          data: classes,
+          error: classError
+        } = await supabase.from('classes').insert([baseClassData]).select();
         if (classError) throw classError;
         insertedClasses = classes;
       }
@@ -824,35 +742,31 @@ export default function Agenda() {
             class_id: classInstance.id,
             student_id: studentId
           }));
-
-          const { error: participantError } = await supabase
-            .from('class_participants')
-            .insert(participantInserts);
-
+          const {
+            error: participantError
+          } = await supabase.from('class_participants').insert(participantInserts);
           if (participantError) {
             console.error('Error inserting participants:', participantError);
             throw participantError;
           }
         }
       }
-
       if (formData.recurrence?.is_infinite) {
         toast({
           title: "Série recorrente criada!",
-          description: "A aula se repetirá automaticamente conforme a programação",
+          description: "A aula se repetirá automaticamente conforme a programação"
         });
       } else if (insertedClasses.length > 1) {
         toast({
           title: "Aulas agendadas!",
-          description: `${insertedClasses.length} aulas foram criadas com sucesso`,
+          description: `${insertedClasses.length} aulas foram criadas com sucesso`
         });
       } else {
         toast({
           title: "Aula agendada!",
-          description: "A aula foi criada com sucesso",
+          description: "A aula foi criada com sucesso"
         });
       }
-
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -861,27 +775,24 @@ export default function Agenda() {
       toast({
         title: "Erro ao agendar aula",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     } finally {
       setSubmitting(false);
     }
   };
-
   const handleCompleteClass = async (classId: string) => {
     try {
-      const { error } = await supabase
-        .from('classes')
-        .update({ status: 'concluida' })
-        .eq('id', classId);
-
+      const {
+        error
+      } = await supabase.from('classes').update({
+        status: 'concluida'
+      }).eq('id', classId);
       if (error) throw error;
-
       toast({
         title: "Aula concluída!",
-        description: "A aula foi marcada como concluída",
+        description: "A aula foi marcada como concluída"
       });
-      
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -890,7 +801,7 @@ export default function Agenda() {
       toast({
         title: "Erro ao concluir aula",
         description: error.message || "Tente novamente mais tarde",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
@@ -915,7 +826,6 @@ export default function Agenda() {
       console.log('Edit normal class:', classData);
     }
   };
-
   const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
     const classData = calendarClasses.find(c => c.id === classId);
     if (classData?.isVirtual) {
@@ -932,10 +842,8 @@ export default function Agenda() {
       });
     }
   };
-
   const handleRecurringActionSelected = (action: RecurringActionType) => {
     if (!pendingClassForAction) return;
-
     if (action === 'this_only') {
       if (recurringActionMode === 'edit') {
         setShowExceptionForm(true);
@@ -953,7 +861,6 @@ export default function Agenda() {
     }
     // Future: handle 'all_series'
   };
-
   const handleCancelSingleOccurrence = async (classData: CalendarClass) => {
     try {
       // For virtual instances, extract the original class ID from the composite ID
@@ -961,22 +868,21 @@ export default function Agenda() {
       if (classData.isVirtual && classData.id.includes('_virtual_')) {
         originalClassId = classData.id.split('_virtual_')[0];
       }
-
-      const { data, error } = await supabase.functions.invoke('manage-class-exception', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('manage-class-exception', {
         body: {
           original_class_id: originalClassId,
           exception_date: classData.start.toISOString(),
           action: 'cancel'
         }
       });
-
       if (error) throw error;
-
       toast({
         title: "Aula cancelada",
-        description: "Esta ocorrência da aula foi cancelada com sucesso",
+        description: "Esta ocorrência da aula foi cancelada com sucesso"
       });
-
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -985,18 +891,16 @@ export default function Agenda() {
       toast({
         title: "Erro ao cancelar",
         description: error instanceof Error ? error.message : "Tente novamente",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   const handleExceptionSuccess = () => {
     if (visibleRange) {
       loadClasses(visibleRange.start, visibleRange.end);
     }
     setPendingClassForAction(null);
   };
-
   const handleCancelFutureOccurrences = async (classData: CalendarClass) => {
     try {
       // For virtual instances, extract the original class ID
@@ -1004,22 +908,21 @@ export default function Agenda() {
       if (classData.isVirtual && classData.id.includes('_virtual_')) {
         originalClassId = classData.id.split('_virtual_')[0];
       }
-
-      const { data, error } = await supabase.functions.invoke('manage-future-class-exceptions', {
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('manage-future-class-exceptions', {
         body: {
           original_class_id: originalClassId,
           from_date: classData.start.toISOString(),
           action: 'cancel'
         }
       });
-
       if (error) throw error;
-
       toast({
         title: "Aulas canceladas",
-        description: data.message || "Esta e as futuras aulas foram canceladas com sucesso",
+        description: data.message || "Esta e as futuras aulas foram canceladas com sucesso"
       });
-
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
@@ -1029,14 +932,12 @@ export default function Agenda() {
       toast({
         title: "Erro ao cancelar",
         description: error instanceof Error ? error.message : "Tente novamente",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
-
   if (loading) {
-    return (
-      <Layout>
+    return <Layout>
         <div className="container mx-auto p-6 space-y-6">
           <Card>
             <CardContent className="flex items-center justify-center h-64">
@@ -1047,141 +948,88 @@ export default function Agenda() {
         </CardContent>
       </Card>
         </div>
-      </Layout>
-    );
+      </Layout>;
   }
-
-  return (
-    <Layout>
+  return <Layout>
       <div className="container mx-auto p-6 space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Agenda</h1>
-          {isProfessor && (
-            <Button onClick={() => setIsDialogOpen(true)}>
+          {isProfessor && <Button onClick={() => setIsDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Nova Aula
-            </Button>
-          )}
+            </Button>}
         </div>
 
         {/* Schedule Request Component for Students */}
         {isAluno && <StudentScheduleRequest teacherId={selectedTeacherId || undefined} />}
 
         {/* Billing Info Alert for Professors with Financial Module */}
-        {isProfessor && hasFeature('financial_module') && showBillingAlert && (
-          <Alert className="bg-primary/5 border-primary/20 relative pr-12">
+        {isProfessor && hasFeature('financial_module') && showBillingAlert && <Alert className="bg-primary/5 border-primary/20 relative pr-12">
             <Info className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm text-muted-foreground">
               {t('messages.billingInfo')}
             </AlertDescription>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-primary/10"
-              onClick={() => setShowBillingAlert(false)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setShowBillingAlert(false)} className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-primary/10 mx-[2px]">
               <X className="h-4 w-4 text-muted-foreground" />
             </Button>
-          </Alert>
-        )}
+          </Alert>}
 
-        <SimpleCalendar
-          classes={calendarClasses}
-          availabilityBlocks={availabilityBlocks}
-          onConfirmClass={handleConfirmClass}
-          onCancelClass={handleRecurringClassCancel}
-          onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)}
-          onManageReport={handleManageReport}
-          isProfessor={isProfessor}
-          loading={loading}
-          onScheduleClass={() => setIsDialogOpen(true)}
-          onVisibleRangeChange={handleVisibleRangeChange}
-        />
+        <SimpleCalendar classes={calendarClasses} availabilityBlocks={availabilityBlocks} onConfirmClass={handleConfirmClass} onCancelClass={handleRecurringClassCancel} onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)} onManageReport={handleManageReport} isProfessor={isProfessor} loading={loading} onScheduleClass={() => setIsDialogOpen(true)} onVisibleRangeChange={handleVisibleRangeChange} />
 
         {/* Availability Manager for Professors */}
         {isProfessor && <AvailabilityManager />}
 
         {/* Class Form Dialog */}
-        <ClassForm
-          open={isDialogOpen}
-          onOpenChange={setIsDialogOpen}
-          onSubmit={handleClassSubmit}
-          students={students}
-          services={services}
-          existingClasses={classes}
-        />
+        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} services={services} existingClasses={classes} />
 
         {/* Cancellation Modal */}
-        <CancellationModal
-          isOpen={cancellationModal.isOpen}
-          onClose={() => setCancellationModal(prev => ({ ...prev, isOpen: false }))}
-          classId={cancellationModal.classId}
-          className={cancellationModal.className}
-          classDate={cancellationModal.classDate}
-          onCancellationComplete={loadClasses}
-        />
+        <CancellationModal isOpen={cancellationModal.isOpen} onClose={() => setCancellationModal(prev => ({
+        ...prev,
+        isOpen: false
+      }))} classId={cancellationModal.classId} className={cancellationModal.className} classDate={cancellationModal.classDate} onCancellationComplete={loadClasses} />
 
         {/* Class Report Modal */}
-        <ClassReportModal
-          isOpen={reportModal.isOpen}
-          onOpenChange={(open) => setReportModal({ isOpen: open, classData: open ? reportModal.classData : null })}
-          classData={reportModal.classData}
-          onReportCreated={loadClasses}
-        />
+        <ClassReportModal isOpen={reportModal.isOpen} onOpenChange={open => setReportModal({
+        isOpen: open,
+        classData: open ? reportModal.classData : null
+      })} classData={reportModal.classData} onReportCreated={loadClasses} />
 
         {/* Recurring Class Action Modal */}
-        <RecurringClassActionModal
-          open={showRecurringActionModal}
-          onOpenChange={setShowRecurringActionModal}
-          onActionSelected={handleRecurringActionSelected}
-          mode={recurringActionMode}
-          classDate={pendingClassForAction?.start || new Date()}
-        />
+        <RecurringClassActionModal open={showRecurringActionModal} onOpenChange={setShowRecurringActionModal} onActionSelected={handleRecurringActionSelected} mode={recurringActionMode} classDate={pendingClassForAction?.start || new Date()} />
 
         {/* Class Exception Form */}
-        <ClassExceptionForm
-          open={showExceptionForm}
-          onOpenChange={setShowExceptionForm}
-          originalClass={pendingClassForAction ? {
-            id: pendingClassForAction.id,
-            title: pendingClassForAction.title,
-            start: pendingClassForAction.start,
-            end: pendingClassForAction.end,
-            duration_minutes: 60, // Default, could be extracted from title or stored separately
-            notes: pendingClassForAction.notes
-          } : {
-            id: '',
-            title: '',
-            start: new Date(),
-            end: new Date(),
-            duration_minutes: 60
-          }}
-          services={services}
-          onSuccess={handleExceptionSuccess}
-        />
+        <ClassExceptionForm open={showExceptionForm} onOpenChange={setShowExceptionForm} originalClass={pendingClassForAction ? {
+        id: pendingClassForAction.id,
+        title: pendingClassForAction.title,
+        start: pendingClassForAction.start,
+        end: pendingClassForAction.end,
+        duration_minutes: 60,
+        // Default, could be extracted from title or stored separately
+        notes: pendingClassForAction.notes
+      } : {
+        id: '',
+        title: '',
+        start: new Date(),
+        end: new Date(),
+        duration_minutes: 60
+      }} services={services} onSuccess={handleExceptionSuccess} />
 
         {/* Future Class Exception Form */}
-        <FutureClassExceptionForm
-          open={showFutureExceptionForm}
-          onOpenChange={setShowFutureExceptionForm}
-          originalClass={pendingClassForAction ? {
-            id: pendingClassForAction.id,
-            title: pendingClassForAction.title,
-            start: pendingClassForAction.start,
-            end: pendingClassForAction.end,
-            duration_minutes: 60, // Default, could be extracted from title or stored separately
-            notes: pendingClassForAction.notes
-          } : {
-            id: '',
-            title: '',
-            start: new Date(),
-            end: new Date(),
-            duration_minutes: 60
-          }}
-          services={services}
-          onSuccess={handleExceptionSuccess}
-        />
+        <FutureClassExceptionForm open={showFutureExceptionForm} onOpenChange={setShowFutureExceptionForm} originalClass={pendingClassForAction ? {
+        id: pendingClassForAction.id,
+        title: pendingClassForAction.title,
+        start: pendingClassForAction.start,
+        end: pendingClassForAction.end,
+        duration_minutes: 60,
+        // Default, could be extracted from title or stored separately
+        notes: pendingClassForAction.notes
+      } : {
+        id: '',
+        title: '',
+        start: new Date(),
+        end: new Date(),
+        duration_minutes: 60
+      }} services={services} onSuccess={handleExceptionSuccess} />
       </div>
-    </Layout>
-  );
+    </Layout>;
 }

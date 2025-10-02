@@ -71,6 +71,7 @@
     "classUpdated": "Class updated successfully!",
     "classCancelled": "Class cancelled successfully!",
     "confirmCancel": "Are you sure you want to cancel this class?",
-    "noClasses": "No classes found"
+    "noClasses": "No classes found",
+    "billingInfo": "Only classes marked as completed are included in automatic billing"
   }
 }

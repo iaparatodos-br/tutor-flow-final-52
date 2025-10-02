@@ -20,6 +20,9 @@ import { ClassExceptionForm } from "@/components/ClassExceptionForm";
 import { FutureClassExceptionForm } from "@/components/FutureClassExceptionForm";
 import { RRule, Frequency } from 'rrule';
 import { useTeacherContext } from "@/contexts/TeacherContext";
+import { useTranslation } from "react-i18next";
+import { Info } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ClassWithParticipants {
   id: string;
@@ -62,6 +65,7 @@ export default function Agenda() {
   const { hasFeature, hasTeacherFeature } = useSubscription();
   const { toast } = useToast();
   const { selectedTeacherId } = useTeacherContext();
+  const { t } = useTranslation();
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
@@ -1039,8 +1043,8 @@ export default function Agenda() {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
                 <p>Carregando agenda...</p>
               </div>
-            </CardContent>
-          </Card>
+        </CardContent>
+      </Card>
         </div>
       </Layout>
     );
@@ -1062,7 +1066,17 @@ export default function Agenda() {
         {/* Schedule Request Component for Students */}
         {isAluno && <StudentScheduleRequest teacherId={selectedTeacherId || undefined} />}
 
-        <SimpleCalendar 
+        {/* Billing Info Alert for Professors with Financial Module */}
+        {isProfessor && hasFeature('financial_module') && (
+          <Alert className="bg-primary/5 border-primary/20">
+            <Info className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-sm text-muted-foreground">
+              {t('classes.messages.billingInfo')}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <SimpleCalendar
           classes={calendarClasses}
           availabilityBlocks={availabilityBlocks}
           onConfirmClass={handleConfirmClass}

@@ -126,6 +126,27 @@ serve(async (req) => {
         // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
         logStep(`Looking for completed and unbilled classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
         
+        // 2.0. ALERTA: Verificar aulas confirmadas antigas que não foram marcadas como concluídas
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const { data: oldConfirmedClasses, error: oldClassesError } = await supabaseAdmin
+          .from('classes')
+          .select('id, class_date, status')
+          .eq('student_id', studentInfo.student_id)
+          .eq('teacher_id', studentInfo.teacher_id)
+          .eq('status', 'confirmada')
+          .lt('class_date', thirtyDaysAgo.toISOString());
+        
+        if (!oldClassesError && oldConfirmedClasses && oldConfirmedClasses.length > 0) {
+          logStep(`⚠️ ALERTA: ${oldConfirmedClasses.length} aulas confirmadas com mais de 30 dias não foram marcadas como concluídas`, {
+            student: studentInfo.student_name,
+            teacher: studentInfo.teacher_name,
+            oldClassCount: oldConfirmedClasses.length,
+            oldestClass: oldConfirmedClasses[0]?.class_date
+          });
+        }
+        
         const { data: classesToInvoice, error: classesError } = await supabaseAdmin
           .from('classes')
           .select(`

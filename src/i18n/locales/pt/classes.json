@@ -71,6 +71,7 @@
     "classUpdated": "Aula atualizada com sucesso!",
     "classCancelled": "Aula cancelada com sucesso!",
     "confirmCancel": "Tem certeza que deseja cancelar esta aula?",
-    "noClasses": "Nenhuma aula encontrada"
+    "noClasses": "Nenhuma aula encontrada",
+    "billingInfo": "Apenas aulas marcadas como concluídas são incluídas na fatura automática"
   }
 }

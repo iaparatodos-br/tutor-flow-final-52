@@ -65,7 +65,7 @@ export default function Agenda() {
   const { hasFeature, hasTeacherFeature } = useSubscription();
   const { toast } = useToast();
   const { selectedTeacherId } = useTeacherContext();
-  const { t } = useTranslation();
+  const { t } = useTranslation('classes');
   
   const [classes, setClasses] = useState<ClassWithParticipants[]>([]);
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
@@ -1071,7 +1071,7 @@ export default function Agenda() {
           <Alert className="bg-primary/5 border-primary/20">
             <Info className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm text-muted-foreground">
-              {t('classes.messages.billingInfo')}
+              {t('messages.billingInfo')}
             </AlertDescription>
           </Alert>
         )}

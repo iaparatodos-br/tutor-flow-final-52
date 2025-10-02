@@ -969,7 +969,7 @@ export default function Agenda() {
             <AlertDescription className="text-sm text-muted-foreground">
               {t('messages.billingInfo')}
             </AlertDescription>
-            <Button variant="ghost" size="sm" onClick={() => setShowBillingAlert(false)} className="absolute right-8 top-5 h-7 w-7 p-0 hover:bg-primary/10 mx-[4px]">
+            <Button variant="ghost" size="sm" onClick={() => setShowBillingAlert(false)} className="absolute right-3 top-3 h-7 w-7 p-0 hover:bg-primary/10 mx-[4px]">
               <X className="h-4 w-4 text-muted-foreground" />
             </Button>
           </Alert>}

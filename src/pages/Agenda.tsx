@@ -21,7 +21,7 @@ import { FutureClassExceptionForm } from "@/components/FutureClassExceptionForm"
 import { RRule, Frequency } from 'rrule';
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
-import { Info } from "lucide-react";
+import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ClassWithParticipants {
@@ -94,6 +94,7 @@ export default function Agenda() {
   const [pendingClassForAction, setPendingClassForAction] = useState<CalendarClass | null>(null);
   const [showExceptionForm, setShowExceptionForm] = useState(false);
   const [showFutureExceptionForm, setShowFutureExceptionForm] = useState(false);
+  const [showBillingAlert, setShowBillingAlert] = useState(true);
 
   useEffect(() => {
     if (!authLoading && profile) {
@@ -1067,12 +1068,20 @@ export default function Agenda() {
         {isAluno && <StudentScheduleRequest teacherId={selectedTeacherId || undefined} />}
 
         {/* Billing Info Alert for Professors with Financial Module */}
-        {isProfessor && hasFeature('financial_module') && (
-          <Alert className="bg-primary/5 border-primary/20">
+        {isProfessor && hasFeature('financial_module') && showBillingAlert && (
+          <Alert className="bg-primary/5 border-primary/20 relative pr-12">
             <Info className="h-4 w-4 text-primary" />
             <AlertDescription className="text-sm text-muted-foreground">
               {t('messages.billingInfo')}
             </AlertDescription>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-primary/10"
+              onClick={() => setShowBillingAlert(false)}
+            >
+              <X className="h-4 w-4 text-muted-foreground" />
+            </Button>
           </Alert>
         )}
 

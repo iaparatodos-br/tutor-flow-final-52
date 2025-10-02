@@ -153,7 +153,13 @@ serve(async (req) => {
       if (stripeError.code === 'payment_intent_unexpected_state') {
         logStep('Payment intent already in final state', { payment_intent_id: invoice.stripe_payment_intent_id });
         cancellationError = 'Payment intent is already in a final state (succeeded, canceled, or failed)';
-      } else {
+      } 
+      // Check if it's a boleto that cannot be canceled while active
+      else if (stripeError.message?.includes('Boleto PaymentIntent cannot be updated or canceled')) {
+        logStep('Boleto payment intent cannot be canceled while active', { payment_intent_id: invoice.stripe_payment_intent_id });
+        cancellationError = 'Boleto payment cannot be canceled while active. It will expire automatically or customer can complete payment.';
+      } 
+      else {
         // For other errors, throw to be caught by outer try-catch
         throw stripeError;
       }

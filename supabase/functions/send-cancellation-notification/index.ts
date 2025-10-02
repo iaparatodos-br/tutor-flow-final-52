@@ -11,6 +11,15 @@ interface NotificationRequest {
   cancelled_by_type: 'student' | 'teacher';
   charge_applied: boolean;
   cancellation_reason: string;
+  is_group_class?: boolean;
+  participants?: Array<{
+    student_id: string;
+    profile: {
+      name: string;
+      email: string;
+      guardian_email?: string;
+    };
+  }>;
 }
 
 serve(async (req) => {
@@ -24,7 +33,14 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { class_id, cancelled_by_type, charge_applied, cancellation_reason }: NotificationRequest = await req.json();
+    const { 
+      class_id, 
+      cancelled_by_type, 
+      charge_applied, 
+      cancellation_reason,
+      is_group_class = false,
+      participants = []
+    }: NotificationRequest = await req.json();
 
     // Buscar detalhes da aula
     const { data: classData, error: classError } = await supabaseClient
@@ -57,26 +73,28 @@ serve(async (req) => {
       class_id,
       cancelled_by_type,
       charge_applied,
+      is_group_class,
+      participants_count: participants.length,
       teacher: teacher?.email,
       student: student?.email
     });
 
     // Preparar conteúdo do email
-    let subject: string;
-    let htmlContent: string;
-    let recipientEmail: string;
+    const classTypeLabel = is_group_class ? 'aula em grupo' : 'aula';
+    const emailsToSend: Array<{ to: string; subject: string; html: string }> = [];
 
     if (cancelled_by_type === 'student') {
       // Notificar professor que aluno cancelou
-      recipientEmail = teacher?.email || '';
-      subject = `Aula Cancelada - ${student?.name || 'Aluno'}`;
+      const recipientEmail = teacher?.email || '';
+      const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${student?.name || 'Aluno'}`;
       
-      htmlContent = `
+      const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc2626;">Aula Cancelada pelo Aluno</h2>
+          <h2 style="color: #dc2626;">${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada pelo Aluno</h2>
           
           <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <p><strong>Aluno:</strong> ${student?.name}</p>
+            ${is_group_class ? `<p><strong>Tipo:</strong> Aula em Grupo (${participants.length} participantes)</p>` : ''}
             <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
             ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
             <p><strong>Motivo:</strong> ${cancellation_reason}</p>
@@ -98,76 +116,135 @@ serve(async (req) => {
             </div>
           `}
 
+          ${is_group_class ? `
+            <div style="background: #fef9c3; border-left: 4px solid #facc15; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #713f12;">
+                <strong>ℹ️ Aula em Grupo:</strong><br>
+                Os demais participantes foram notificados sobre o cancelamento.
+              </p>
+            </div>
+          ` : ''}
+
           <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
             Esta é uma notificação automática do Tutor Flow.
           </p>
         </div>
       `;
-    } else {
-      // Notificar aluno que professor cancelou
-      recipientEmail = student?.guardian_email || student?.email || '';
-      subject = `Aula Cancelada - ${teacher?.name || 'Professor'}`;
-      
-      htmlContent = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc2626;">Aula Cancelada pelo Professor</h2>
-          
-          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Professor:</strong> ${teacher?.name}</p>
-            <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
-            ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
-            <p><strong>Motivo:</strong> ${cancellation_reason}</p>
-          </div>
 
-          <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0;">
-            <p style="margin: 0; color: #166534;">
-              <strong>✓ Sem Cobrança:</strong><br>
-              Cancelamentos realizados pelo professor não geram cobrança.
+      if (recipientEmail) {
+        emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
+      }
+    } else {
+      // Notificar aluno(s) que professor cancelou
+      const studentsToNotify = is_group_class ? participants : [{ student_id: student?.id, profile: student }];
+
+      for (const participantData of studentsToNotify) {
+        const studentProfile = participantData.profile;
+        if (!studentProfile) continue;
+
+        const recipientEmail = studentProfile.guardian_email || studentProfile.email || '';
+        if (!recipientEmail) continue;
+
+        const subject = `${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada - ${teacher?.name || 'Professor'}`;
+        
+        const htmlContent = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #dc2626;">${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada pelo Professor</h2>
+            
+            <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <p><strong>Professor:</strong> ${teacher?.name}</p>
+              ${is_group_class ? `<p><strong>Tipo:</strong> Aula em Grupo (${participants.length} participantes)</p>` : ''}
+              <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
+              ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
+              <p><strong>Motivo:</strong> ${cancellation_reason}</p>
+            </div>
+
+            <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #166534;">
+                <strong>✓ Sem Cobrança:</strong><br>
+                Cancelamentos realizados pelo professor não geram cobrança.
+              </p>
+            </div>
+
+            <p>Entre em contato com ${teacher?.name} se tiver dúvidas sobre o cancelamento.</p>
+
+            <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+              Esta é uma notificação automática do Tutor Flow.
             </p>
           </div>
+        `;
 
-          <p>Entre em contato com ${teacher?.name} se tiver dúvidas sobre o cancelamento.</p>
-
-          <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-            Esta é uma notificação automática do Tutor Flow.
-          </p>
-        </div>
-      `;
+        emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
+      }
     }
 
-    // Enviar email via Resend
-    if (recipientEmail && Deno.env.get("RESEND_API_KEY")) {
+    // Enviar emails via Resend
+    if (emailsToSend.length === 0) {
+      console.warn('No valid email addresses to send notifications');
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: 'No valid email addresses found'
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    if (!resendApiKey) {
+      console.warn('RESEND_API_KEY not configured');
+      return new Response(JSON.stringify({ 
+        success: true,
+        message: 'Email notifications skipped (RESEND_API_KEY not configured)'
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    const emailResults: Array<{ email: string; success: boolean; error?: string }> = [];
+
+    for (const emailData of emailsToSend) {
       try {
         const resendResponse = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${Deno.env.get("RESEND_API_KEY")}`,
+            'Authorization': `Bearer ${resendApiKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             from: 'Tutor Flow <noreply@tutorflow.app>',
-            to: recipientEmail,
-            subject: subject,
-            html: htmlContent,
+            to: emailData.to,
+            subject: emailData.subject,
+            html: emailData.html,
           }),
         });
 
         if (!resendResponse.ok) {
           const errorText = await resendResponse.text();
-          console.error('Resend API error:', errorText);
-          throw new Error('Falha ao enviar email');
+          console.error(`Resend API error for ${emailData.to}:`, errorText);
+          emailResults.push({ email: emailData.to, success: false, error: errorText });
+        } else {
+          console.log(`Email sent successfully to ${emailData.to}`);
+          emailResults.push({ email: emailData.to, success: true });
         }
-
-        console.log('Cancellation notification email sent successfully');
       } catch (emailError) {
-        console.error('Error sending email:', emailError);
-        // Não falhar a operação se o email falhar
+        console.error(`Error sending email to ${emailData.to}:`, emailError);
+        emailResults.push({ 
+          email: emailData.to, 
+          success: false, 
+          error: emailError instanceof Error ? emailError.message : 'Unknown error' 
+        });
       }
     }
 
+    const successCount = emailResults.filter(r => r.success).length;
+    const failedCount = emailResults.length - successCount;
+
     return new Response(JSON.stringify({ 
-      success: true,
-      message: 'Notificação de cancelamento enviada'
+      success: successCount > 0,
+      message: `Sent ${successCount}/${emailResults.length} notifications${failedCount > 0 ? ` (${failedCount} failed)` : ''}`,
+      results: emailResults
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

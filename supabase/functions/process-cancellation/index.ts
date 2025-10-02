@@ -26,15 +26,32 @@ serve(async (req) => {
 
     const { class_id, cancelled_by, reason, cancelled_by_type }: CancellationRequest = await req.json();
 
-    // Get class details
+    // Get class details (including is_group_class)
     const { data: classData, error: classError } = await supabaseClient
       .from('classes')
-      .select('*, profiles!classes_teacher_id_fkey(name)')
+      .select('*, is_group_class, profiles!classes_teacher_id_fkey(name)')
       .eq('id', class_id)
       .maybeSingle();
 
     if (classError || !classData) {
       throw new Error('Aula não encontrada');
+    }
+
+    // Fetch participants if it's a group class
+    let participants: any[] = [];
+    if (classData.is_group_class) {
+      const { data: participantsData, error: participantsError } = await supabaseClient
+        .from('class_participants')
+        .select('student_id, profiles!class_participants_student_id_fkey(name, email, guardian_email)')
+        .eq('class_id', class_id);
+
+      if (participantsError) {
+        console.error('Error fetching participants:', participantsError);
+      } else {
+        participants = participantsData || [];
+      }
+      
+      console.log(`Group class with ${participants.length} participants`);
     }
 
     // VALIDAÇÃO 1: Verificar se a aula já foi cancelada
@@ -143,16 +160,23 @@ serve(async (req) => {
     try {
       const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
       
-      await supabaseClient
-        .from('class_notifications')
-        .insert({
-          class_id: class_id,
-          student_id: cancelled_by_type === 'student' ? cancelled_by : classData.student_id,
-          notification_type: notificationType,
-          status: 'sent'
-        });
+      // Create notification records for all affected students
+      const studentsToNotify = classData.is_group_class 
+        ? participants.map(p => p.student_id)
+        : [classData.student_id];
+
+      for (const studentId of studentsToNotify) {
+        await supabaseClient
+          .from('class_notifications')
+          .insert({
+            class_id: class_id,
+            student_id: studentId,
+            notification_type: notificationType,
+            status: 'sent'
+          });
+      }
       
-      console.log('Cancellation notification record created');
+      console.log(`Created ${studentsToNotify.length} notification record(s)`);
 
       // Enviar email de notificação de forma assíncrona (não bloquear resposta)
       supabaseClient.functions.invoke('send-cancellation-notification', {
@@ -160,7 +184,12 @@ serve(async (req) => {
           class_id: class_id,
           cancelled_by_type: cancelled_by_type,
           charge_applied: shouldCharge,
-          cancellation_reason: reason
+          cancellation_reason: reason,
+          is_group_class: classData.is_group_class,
+          participants: participants.map(p => ({
+            student_id: p.student_id,
+            profile: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles
+          }))
         }
       }).then(({ error: emailError }) => {
         if (emailError) {

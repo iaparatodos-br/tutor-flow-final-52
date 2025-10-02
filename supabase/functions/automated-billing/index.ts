@@ -201,10 +201,24 @@ serve(async (req) => {
         let completedClassesCount = 0;
         let cancellationChargesCount = 0;
         
+        // Buscar serviço padrão do professor caso alguma aula não tenha serviço associado
+        let defaultServicePrice: number | null = null;
+        const { data: defaultService } = await supabaseAdmin
+          .from('class_services')
+          .select('price')
+          .eq('teacher_id', studentInfo.teacher_id)
+          .eq('is_default', true)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (defaultService) {
+          defaultServicePrice = defaultService.price;
+        }
+        
         // Somar aulas concluídas
         for (const classItem of unbilledClasses) {
           const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
-          const amount = service?.price || 100; // Valor padrão se não houver serviço
+          const amount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
           totalAmount += amount;
           completedClassesCount++;
         }
@@ -212,7 +226,7 @@ serve(async (req) => {
         // Somar cobranças de cancelamento
         for (const cancelledClass of cancelledChargeable) {
           const service = Array.isArray(cancelledClass.class_services) ? cancelledClass.class_services[0] : cancelledClass.class_services;
-          const baseAmount = service?.price || 100;
+          const baseAmount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
           
           // Buscar política de cancelamento para calcular porcentagem
           const { data: policy } = await supabaseAdmin

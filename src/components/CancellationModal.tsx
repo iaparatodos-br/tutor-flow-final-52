@@ -210,7 +210,7 @@ export function CancellationModal({
                     <strong>⚠️ Cancelamento com Cobrança</strong><br />
                     O prazo limite de {policy.hours_before_class}h já passou.<br />
                     <strong>Valor da cobrança: R$ {chargeAmount.toFixed(2)}</strong><br />
-                    <small>Uma fatura será gerada e enviada por email.</small>
+                    <small>A cobrança será incluída na próxima fatura mensal.</small>
                   </AlertDescription>
                 </Alert>
               ) : (

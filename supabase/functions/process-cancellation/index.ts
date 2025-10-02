@@ -37,6 +37,44 @@ serve(async (req) => {
       throw new Error('Aula não encontrada');
     }
 
+    // VALIDAÇÃO 1: Verificar se a aula já foi cancelada
+    if (classData.status === 'cancelada') {
+      throw new Error('Esta aula já foi cancelada anteriormente');
+    }
+
+    // VALIDAÇÃO 2: Verificar se a aula já ocorreu (está no passado)
+    const classDate = new Date(classData.class_date);
+    const now = new Date();
+    if (classDate < now && classData.status === 'concluida') {
+      throw new Error('Não é possível cancelar uma aula que já foi concluída');
+    }
+
+    // VALIDAÇÃO 3: Verificar permissão do usuário
+    // Professor pode cancelar suas próprias aulas
+    // Aluno pode cancelar se for o aluno da aula (individual) ou participante (grupo)
+    if (cancelled_by_type === 'teacher') {
+      if (classData.teacher_id !== cancelled_by) {
+        throw new Error('Você não tem permissão para cancelar esta aula');
+      }
+    } else if (cancelled_by_type === 'student') {
+      // Para aulas individuais
+      if (classData.student_id === cancelled_by) {
+        // OK, aluno pode cancelar sua própria aula
+      } else {
+        // Para aulas em grupo, verificar se é participante
+        const { data: participation, error: participationError } = await supabaseClient
+          .from('class_participants')
+          .select('id')
+          .eq('class_id', class_id)
+          .eq('student_id', cancelled_by)
+          .maybeSingle();
+
+        if (participationError || !participation) {
+          throw new Error('Você não tem permissão para cancelar esta aula');
+        }
+      }
+    }
+
     // Get teacher's cancellation policy
     const { data: policy, error: policyError } = await supabaseClient
       .from('cancellation_policies')
@@ -54,9 +92,7 @@ serve(async (req) => {
     const hoursBeforeClass = policy?.hours_before_class || 24;
     const chargePercentage = policy?.charge_percentage || 0;
     
-    // Calculate time difference
-    const classDate = new Date(classData.class_date);
-    const now = new Date();
+    // Calculate time difference (reutilizar now e classDate das validações)
     const hoursUntilClass = (classDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let shouldCharge = false;

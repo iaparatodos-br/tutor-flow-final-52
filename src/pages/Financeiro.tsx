@@ -499,9 +499,24 @@ export default function Financeiro() {
                                         <AlertDialogContent>
                                           <AlertDialogHeader>
                                             <AlertDialogTitle>Confirmar Pagamento</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                              Tem certeza que deseja marcar esta fatura como paga manualmente? 
-                                              Esta ação registrará o pagamento como recebido fora da plataforma.
+                                            <AlertDialogDescription asChild>
+                                              <div className="space-y-4">
+                                                <Alert variant="destructive">
+                                                  <AlertTriangle className="h-4 w-4" />
+                                                  <AlertTitle>Atenção: Boleto continuará ativo</AlertTitle>
+                                                  <AlertDescription>
+                                                    <strong>Importante:</strong> Se esta fatura foi gerada com boleto, ele continuará ativo e poderá ser pago pelo aluno.
+                                                    O sistema não consegue cancelar boletos já emitidos na Stripe.
+                                                    <br /><br />
+                                                    <strong>Recomendação:</strong> Notifique o aluno imediatamente para NÃO efetuar o pagamento do boleto, 
+                                                    evitando assim pagamento duplicado.
+                                                  </AlertDescription>
+                                                </Alert>
+                                                <p className="text-sm text-muted-foreground">
+                                                  Tem certeza que deseja marcar esta fatura como paga manualmente? 
+                                                  Esta ação registrará o pagamento como recebido fora da plataforma.
+                                                </p>
+                                              </div>
                                             </AlertDialogDescription>
                                           </AlertDialogHeader>
                                           <AlertDialogFooter>
@@ -669,17 +684,6 @@ export default function Financeiro() {
               <DialogTitle>Confirmar Pagamento Manual</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Atenção: Boleto continuará ativo</AlertTitle>
-                <AlertDescription>
-                  <strong>Importante:</strong> Se esta fatura foi gerada com boleto, ele continuará ativo e poderá ser pago pelo aluno.
-                  O sistema não consegue cancelar boletos já emitidos na Stripe.
-                  <br /><br />
-                  <strong>Recomendação:</strong> Notifique o aluno imediatamente para NÃO efetuar o pagamento do boleto, 
-                  evitando assim pagamento duplicado.
-                </AlertDescription>
-              </Alert>
               <p className="text-sm text-muted-foreground">
                 Ao confirmar, esta fatura será marcada como paga manualmente em nosso sistema.
               </p>

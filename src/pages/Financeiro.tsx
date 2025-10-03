@@ -21,7 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface InvoiceWithStudent {
   id: string;
@@ -668,9 +669,19 @@ export default function Financeiro() {
               <DialogTitle>Confirmar Pagamento Manual</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Atenção: Boleto continuará ativo</AlertTitle>
+                <AlertDescription>
+                  <strong>Importante:</strong> Se esta fatura foi gerada com boleto, ele continuará ativo e poderá ser pago pelo aluno.
+                  O sistema não consegue cancelar boletos já emitidos na Stripe.
+                  <br /><br />
+                  <strong>Recomendação:</strong> Notifique o aluno imediatamente para NÃO efetuar o pagamento do boleto, 
+                  evitando assim pagamento duplicado.
+                </AlertDescription>
+              </Alert>
               <p className="text-sm text-muted-foreground">
-                Ao confirmar, o boleto será <strong>cancelado no Stripe</strong> e ficará inválido para pagamento. 
-                A fatura será marcada como paga manualmente.
+                Ao confirmar, esta fatura será marcada como paga manualmente em nosso sistema.
               </p>
               <div className="space-y-2">
                 <label htmlFor="payment-notes" className="text-sm font-medium">

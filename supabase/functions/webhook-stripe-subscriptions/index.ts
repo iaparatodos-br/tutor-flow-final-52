@@ -409,6 +409,57 @@ serve(async (req) => {
         break;
       }
 
+      case "payment_intent.succeeded": {
+        const paymentIntent = event.data.object as any;
+        
+        // Check if this is a student overage immediate charge
+        if (paymentIntent.metadata?.type === 'student_overage_immediate') {
+          log("Student overage immediate charge succeeded", {
+            paymentIntentId: paymentIntent.id,
+            userId: paymentIntent.metadata.user_id,
+            extraStudents: paymentIntent.metadata.extra_students,
+          });
+          
+          // Update charge status in database
+          const { error: updateError } = await supabase
+            .from('student_overage_charges')
+            .update({ status: 'succeeded' })
+            .eq('stripe_payment_intent_id', paymentIntent.id);
+            
+          if (updateError) {
+            log("Error updating overage charge status", { error: updateError });
+          }
+        }
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        const paymentIntent = event.data.object as any;
+        
+        // Check if this is a student overage immediate charge
+        if (paymentIntent.metadata?.type === 'student_overage_immediate') {
+          log("Student overage immediate charge FAILED", {
+            paymentIntentId: paymentIntent.id,
+            userId: paymentIntent.metadata.user_id,
+            errorMessage: paymentIntent.last_payment_error?.message,
+          });
+          
+          // Update charge status in database
+          const { error: updateError } = await supabase
+            .from('student_overage_charges')
+            .update({ status: 'failed' })
+            .eq('stripe_payment_intent_id', paymentIntent.id);
+            
+          if (updateError) {
+            log("Error updating overage charge status", { error: updateError });
+          }
+          
+          // TODO: Implement notification to teacher about failed immediate charge
+          // The recurring charge will still be added to the subscription
+        }
+        break;
+      }
+
       default:
         log("Unhandled event type", { type: event.type });
         break;

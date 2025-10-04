@@ -265,7 +265,14 @@ export function StudentFormModal({
                   <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
                     <CreditCard className="h-4 w-4 text-amber-600" />
                     <AlertDescription className="text-amber-800 dark:text-amber-200">
-                      <strong>Custo Adicional:</strong> {message}
+                      <div className="space-y-2">
+                        <p><strong>Este aluno gerará custos adicionais:</strong></p>
+                        <ul className="list-disc list-inside space-y-1 text-sm">
+                          <li>Cobrança <strong>imediata</strong> de R$ 5,00 no seu cartão</li>
+                          <li>Cobrança <strong>recorrente</strong> de R$ 5,00/mês na sua próxima fatura</li>
+                        </ul>
+                        <p className="text-xs mt-2">Total estimado: {message}</p>
+                      </div>
                     </AlertDescription>
                   </Alert>
                 );

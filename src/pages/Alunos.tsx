@@ -141,11 +141,21 @@ export default function Alunos() {
                 variant: "default"
               });
             } else if (billingData?.success) {
-              toast({
-                title: 'Cobrança Configurada',
-                description: billingData.message,
-                variant: "default"
-              });
+              if (billingData.immediateChargeSuccess) {
+                toast({
+                  title: '✅ Cobrança Processada',
+                  description: billingData.message,
+                  variant: "default",
+                  duration: 5000,
+                });
+              } else if (billingData.immediateChargeFailed) {
+                toast({
+                  title: '⚠️ Atenção',
+                  description: billingData.message || 'Não foi possível cobrar imediatamente. O valor será incluído na próxima fatura.',
+                  variant: "default",
+                  duration: 5000,
+                });
+              }
             }
           } catch (err) {
             console.error('Billing automation error:', err);
@@ -205,10 +215,15 @@ export default function Alunos() {
         return;
       }
 
-      // Success case
+      // Success case - check if there's billing info in the response
+      const successMessage = data?.billing?.message 
+        ? `${formData.name} receberá um e-mail para concluir o cadastro. ${data.billing.message}`
+        : `${formData.name} receberá um e-mail para concluir o cadastro.`;
+      
       toast({
         title: 'Aluno convidado com sucesso!',
-        description: `${formData.name} receberá um e-mail para concluir o cadastro.`
+        description: successMessage,
+        duration: data?.billing ? 5000 : 3000,
       });
       setIsAddDialogOpen(false);
       loadStudents();

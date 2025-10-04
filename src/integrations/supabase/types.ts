@@ -1311,6 +1311,39 @@ export type Database = {
           },
         ]
       }
+      student_overage_charges: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          extra_students: number
+          id: string
+          status: string
+          stripe_payment_intent_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          extra_students: number
+          id?: string
+          status: string
+          stripe_payment_intent_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          extra_students?: number
+          id?: string
+          status?: string
+          stripe_payment_intent_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscription_plans: {
         Row: {
           billing_interval: string

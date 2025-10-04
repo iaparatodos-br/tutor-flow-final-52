@@ -68,8 +68,65 @@ serve(async (req) => {
 
     logStep("Found subscription", { subscriptionId: subscriptionData.stripe_subscription_id });
 
-    // Check if we already have an overage line item
+    // Retrieve subscription to get payment method
     const subscription = await stripe.subscriptions.retrieve(subscriptionData.stripe_subscription_id);
+    
+    let immediateChargeSuccess = false;
+    let immediateChargeError = null;
+
+    // Try to create immediate charge if payment method exists
+    if (subscription.default_payment_method) {
+      try {
+        logStep("Creating immediate charge", { amount: 500, customerId: subscriptionData.stripe_customer_id });
+        
+        const immediateCharge = await stripe.paymentIntents.create({
+          amount: 500, // R$ 5.00 em centavos
+          currency: 'brl',
+          customer: subscriptionData.stripe_customer_id,
+          description: 'Cobrança imediata - Aluno adicional',
+          payment_method: subscription.default_payment_method as string,
+          off_session: true,
+          confirm: true,
+          metadata: {
+            type: 'student_overage_immediate',
+            user_id: user.id,
+            extra_students: extraStudents.toString(),
+          }
+        });
+
+        logStep("Immediate charge created", { 
+          paymentIntentId: immediateCharge.id,
+          status: immediateCharge.status 
+        });
+
+        // Register immediate charge in database
+        const { error: insertError } = await supabaseClient
+          .from('student_overage_charges')
+          .insert({
+            user_id: user.id,
+            stripe_payment_intent_id: immediateCharge.id,
+            amount_cents: 500,
+            status: immediateCharge.status,
+            extra_students: extraStudents,
+          });
+
+        if (insertError) {
+          logStep("Error inserting charge record", { error: insertError });
+        }
+
+        immediateChargeSuccess = true;
+      } catch (immediateChargeError: any) {
+        logStep("Immediate charge failed, continuing with recurring only", { 
+          error: immediateChargeError.message 
+        });
+        immediateChargeError = immediateChargeError.message;
+      }
+    } else {
+      logStep("No default payment method, skipping immediate charge");
+      immediateChargeError = "No default payment method configured";
+    }
+
+    // Check if we already have an overage line item
     const overageItem = subscription.items.data.find((item: any) => 
       item.price.metadata?.type === 'student_overage'
     );
@@ -78,7 +135,7 @@ serve(async (req) => {
       // Update existing overage quantity
       await stripe.subscriptionItems.update(overageItem.id, {
         quantity: extraStudents,
-        proration_behavior: 'create_prorations',
+        proration_behavior: 'none', // No proration since we already charged immediately
       });
       logStep("Updated existing overage item", { itemId: overageItem.id, quantity: extraStudents });
     } else {
@@ -96,7 +153,7 @@ serve(async (req) => {
           metadata: { type: 'student_overage' },
         },
         quantity: extraStudents,
-        proration_behavior: 'create_prorations',
+        proration_behavior: 'none', // No proration since we already charged immediately
       });
       logStep("Created new overage item", { quantity: extraStudents });
     }
@@ -120,14 +177,20 @@ serve(async (req) => {
     logStep("Student overage billing completed", { 
       extraStudents, 
       extraCostCents,
-      subscriptionId: subscriptionData.stripe_subscription_id 
+      subscriptionId: subscriptionData.stripe_subscription_id,
+      immediateChargeSuccess,
+      immediateChargeError 
     });
 
     return new Response(JSON.stringify({ 
       success: true,
       extraStudents,
       extraCostCents,
-      message: `Cobrança adicional de R$ ${(extraCostCents / 100).toFixed(2)} configurada para ${extraStudents} aluno(s) extra`
+      immediateChargeSuccess,
+      immediateChargeFailed: !immediateChargeSuccess,
+      message: immediateChargeSuccess 
+        ? `Cobrança imediata de R$ 5,00 realizada. A partir do próximo mês, será cobrado R$ ${(extraCostCents / 100).toFixed(2)}/mês.`
+        : `Cobrança recorrente de R$ ${(extraCostCents / 100).toFixed(2)}/mês configurada. ${immediateChargeError ? 'Cobrança imediata não pôde ser realizada: ' + immediateChargeError : ''}`
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

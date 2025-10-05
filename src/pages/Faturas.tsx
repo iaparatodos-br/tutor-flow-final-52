@@ -10,7 +10,7 @@ import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, FileText } from 'lucide-react';
 
 interface Invoice {
   id: string;
@@ -156,6 +156,7 @@ export default function Faturas() {
                         <InvoiceStatusBadge status={invoice.status} paymentOrigin={invoice.payment_origin} />
                       </TableCell>
                       <TableCell className="text-right">
+                        {/* Faturas pendentes/vencidas: Botão "Pagar Agora" */}
                         {(invoice.status === 'open' || 
                           invoice.status === 'overdue' || 
                           invoice.status === 'pendente' || 
@@ -172,6 +173,28 @@ export default function Faturas() {
                               URL de pagamento não disponível
                             </div>
                           )
+                        )}
+
+                        {/* Faturas pagas via Stripe: Botão "Ver Recibo" */}
+                        {(invoice.status === 'paid' || invoice.status === 'paga') && 
+                         invoice.payment_origin === 'stripe' && 
+                         invoice.stripe_hosted_invoice_url && (
+                          <Button 
+                            onClick={() => window.open(invoice.stripe_hosted_invoice_url!, '_blank')}
+                            size="sm"
+                            variant="outline"
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            Ver Recibo
+                          </Button>
+                        )}
+
+                        {/* Faturas pagas manualmente: Sem ação */}
+                        {(invoice.status === 'paid' || invoice.status === 'paga') && 
+                         invoice.payment_origin === 'manual' && (
+                          <div className="text-sm text-muted-foreground">
+                            Pagamento manual
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>

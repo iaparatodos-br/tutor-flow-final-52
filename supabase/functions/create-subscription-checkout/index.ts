@@ -144,6 +144,20 @@ serve(async (req) => {
     
     logStep("Plan found", { planId: plan.id, planName: plan.name, priceId: plan.stripe_price_id });
 
+    // Count teacher's students
+    const { count: studentCount, error: countError } = await supabaseClient
+      .from('teacher_student_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('teacher_id', user.id);
+
+    if (countError) {
+      logStep("ERROR: Failed to count students", { error: countError.message });
+      throw new Error("Failed to count students");
+    }
+
+    const totalStudents = studentCount || 0;
+    logStep("Student count retrieved", { totalStudents });
+
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2023-10-16",
     });
@@ -320,7 +334,7 @@ serve(async (req) => {
     
     // Only add quantity for non-metered pricing
     if (priceDetails.recurring?.usage_type !== 'metered') {
-      lineItem.quantity = 1;
+      lineItem.quantity = totalStudents > 0 ? totalStudents : 1; // Use total student count or minimum of 1
     }
     
     const session = await stripe.checkout.sessions.create({
@@ -332,7 +346,8 @@ serve(async (req) => {
       allow_promotion_codes: true,
       metadata: {
         user_id: user.id,
-        plan_id: plan.id
+        plan_id: plan.id,
+        student_count: totalStudents.toString()
       }
     });
     

@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2, Check, TrendingUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProgressModal } from './ProgressModal';
+import { useSubscription } from '@/contexts/SubscriptionContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Student {
   id: string;
@@ -43,11 +45,40 @@ export function PlanDowngradeSelectionModal({
   needToRemove
 }: PlanDowngradeSelectionModalProps) {
   const { t } = useTranslation('subscription');
+  const { plans, createCheckoutSession } = useSubscription();
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [progressSteps, setProgressSteps] = useState<any[]>([]);
   const [progress, setProgress] = useState(0);
+  const [availablePlans, setAvailablePlans] = useState<any[]>([]);
+  const [selectedTab, setSelectedTab] = useState<string>('select-students');
+
+  useEffect(() => {
+    // Filter plans that can accommodate current student count
+    const suitablePlans = plans.filter(plan => 
+      plan.student_limit >= currentCount && 
+      plan.price_cents > (newPlan?.price_cents || 0)
+    ).sort((a, b) => a.price_cents - b.price_cents);
+    
+    setAvailablePlans(suitablePlans);
+  }, [plans, currentCount, newPlan]);
+
+  const handleUpgradeToPlan = async (planSlug: string) => {
+    setProcessing(true);
+    try {
+      const checkoutUrl = await createCheckoutSession(planSlug);
+      window.location.href = checkoutUrl;
+    } catch (error) {
+      console.error('Error creating checkout:', error);
+      toast({
+        title: "Erro ao processar upgrade",
+        description: "Não foi possível iniciar o processo de upgrade.",
+        variant: "destructive",
+      });
+      setProcessing(false);
+    }
+  };
 
   const handleStudentToggle = (studentId: string) => {
     setSelectedStudents(prev => {
@@ -211,14 +242,26 @@ export function PlanDowngradeSelectionModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Seleção Obrigatória de Alunos
+            Ação Necessária: Limite de Alunos Excedido
           </DialogTitle>
           <DialogDescription>
-            Seu plano mudou para um com menor limite de alunos. Selecione quais alunos deseja manter.
+            Seu plano atual não comporta todos os seus alunos. Escolha uma opção abaixo.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-4">
+        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="select-students">
+              <Users className="h-4 w-4 mr-2" />
+              Selecionar Alunos
+            </TabsTrigger>
+            <TabsTrigger value="upgrade-plan">
+              <TrendingUp className="h-4 w-4 mr-2" />
+              Fazer Upgrade
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="select-students" className="flex-1 overflow-y-auto space-y-4 mt-4">
           {/* Plan Change Summary */}
           <Card>
             <CardHeader className="pb-3">
@@ -360,25 +403,139 @@ export function PlanDowngradeSelectionModal({
               </AlertDescription>
             </Alert>
           )}
-        </div>
 
-        <DialogFooter className="gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => onClose()}
-            disabled={processing}
-          >
-            Voltar
-          </Button>
-          <Button 
-            variant="destructive"
-            onClick={handleConfirmSelection}
-            disabled={selectedCount !== targetLimit || processing}
-          >
-            {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {processing ? 'Processando...' : `Confirmar Seleção (${selectedCount}/${targetLimit})`}
-          </Button>
-        </DialogFooter>
+          <DialogFooter className="gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => onClose()}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleConfirmSelection}
+              disabled={selectedCount !== targetLimit || processing}
+            >
+              {processing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {processing ? 'Processando...' : `Confirmar Seleção (${selectedCount}/${targetLimit})`}
+            </Button>
+          </DialogFooter>
+        </TabsContent>
+
+        <TabsContent value="upgrade-plan" className="flex-1 overflow-y-auto space-y-4 mt-4">
+          {/* Upgrade Option Header */}
+          <Alert>
+            <Check className="h-4 w-4" />
+            <AlertTitle>Mantenha Todos os Seus Alunos</AlertTitle>
+            <AlertDescription>
+              Escolha um plano que comporte seus {currentCount} alunos e evite a exclusão de qualquer aluno.
+            </AlertDescription>
+          </Alert>
+
+          {/* Current Situation */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Situação Atual</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Plano Novo</p>
+                  <p className="font-medium">{newPlan?.name}</p>
+                  <p className="text-xs text-muted-foreground">Limite: {newPlan?.student_limit} alunos</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Alunos Atuais</p>
+                  <p className="font-medium text-lg">{currentCount}</p>
+                  <p className="text-xs text-red-600">Excede em {needToRemove} aluno(s)</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Available Plans */}
+          <div className="space-y-3">
+            <h3 className="font-semibold">Planos Disponíveis</h3>
+            {availablePlans.length === 0 ? (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Nenhum plano disponível comporta {currentCount} alunos no momento.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              availablePlans.map(plan => (
+                <Card key={plan.id} className="hover:border-primary transition-colors">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-semibold text-lg">{plan.name}</h4>
+                          <Badge>{plan.student_limit} alunos</Badge>
+                        </div>
+                        <p className="text-2xl font-bold text-primary mb-1">
+                          R$ {(plan.price_cents / 100).toFixed(2)}
+                          <span className="text-sm font-normal text-muted-foreground">
+                            /{plan.billing_interval === 'month' ? 'mês' : 'ano'}
+                          </span>
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {plan.features?.financial_module && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Check className="h-3 w-3 mr-1" />
+                              Módulo Financeiro
+                            </Badge>
+                          )}
+                          {plan.features?.group_classes && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Check className="h-3 w-3 mr-1" />
+                              Aulas em Grupo
+                            </Badge>
+                          )}
+                          {plan.features?.expenses && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Check className="h-3 w-3 mr-1" />
+                              Controle de Despesas
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => handleUpgradeToPlan(plan.slug)}
+                        disabled={processing}
+                        className="ml-4"
+                      >
+                        {processing ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Processando...
+                          </>
+                        ) : (
+                          <>
+                            <TrendingUp className="mr-2 h-4 w-4" />
+                            Escolher Plano
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => onClose()}
+              disabled={processing}
+            >
+              Cancelar
+            </Button>
+          </DialogFooter>
+        </TabsContent>
+      </Tabs>
       </DialogContent>
       
       <ProgressModal

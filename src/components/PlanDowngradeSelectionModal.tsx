@@ -55,10 +55,11 @@ export function PlanDowngradeSelectionModal({
   const [selectedTab, setSelectedTab] = useState<string>('select-students');
 
   useEffect(() => {
-    // Filter plans that can accommodate current student count
+    // Filter plans that are superior to the new plan
+    // Include plans with lower student_limit because they can pay for additional students
     const suitablePlans = plans.filter(plan => 
-      plan.student_limit >= currentCount && 
-      plan.price_cents > (newPlan?.price_cents || 0)
+      plan.price_cents > (newPlan?.price_cents || 0) &&
+      plan.slug !== 'free' // Exclude free plan
     ).sort((a, b) => a.price_cents - b.price_cents);
     
     setAvailablePlans(suitablePlans);
@@ -465,21 +466,38 @@ export function PlanDowngradeSelectionModal({
                 </AlertDescription>
               </Alert>
             ) : (
-              availablePlans.map(plan => (
+              availablePlans.map(plan => {
+                const extraStudentsNeeded = Math.max(0, currentCount - plan.student_limit);
+                const extraCost = extraStudentsNeeded * 500; // R$ 5,00 per student in cents
+                const totalMonthlyCost = plan.price_cents + extraCost;
+                
+                return (
                 <Card key={plan.id} className="hover:border-primary transition-colors">
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <h4 className="font-semibold text-lg">{plan.name}</h4>
-                          <Badge>{plan.student_limit} alunos</Badge>
+                          <Badge>{plan.student_limit} alunos inclusos</Badge>
+                          {extraStudentsNeeded > 0 && (
+                            <Badge variant="secondary">
+                              +{extraStudentsNeeded} adicional{extraStudentsNeeded > 1 ? 'is' : ''}
+                            </Badge>
+                          )}
                         </div>
-                        <p className="text-2xl font-bold text-primary mb-1">
-                          R$ {(plan.price_cents / 100).toFixed(2)}
-                          <span className="text-sm font-normal text-muted-foreground">
-                            /{plan.billing_interval === 'month' ? 'mês' : 'ano'}
-                          </span>
-                        </p>
+                        <div className="mb-1">
+                          <p className="text-2xl font-bold text-primary">
+                            R$ {(totalMonthlyCost / 100).toFixed(2)}
+                            <span className="text-sm font-normal text-muted-foreground">
+                              /{plan.billing_interval === 'month' ? 'mês' : 'ano'}
+                            </span>
+                          </p>
+                          {extraStudentsNeeded > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              R$ {(plan.price_cents / 100).toFixed(2)} do plano + R$ {(extraCost / 100).toFixed(2)} ({extraStudentsNeeded} aluno{extraStudentsNeeded > 1 ? 's' : ''} adicional{extraStudentsNeeded > 1 ? 'is' : ''})
+                            </p>
+                          )}
+                        </div>
                         <div className="flex flex-wrap gap-2 mt-3">
                           {plan.features?.financial_module && (
                             <Badge variant="secondary" className="text-xs">
@@ -521,7 +539,7 @@ export function PlanDowngradeSelectionModal({
                     </div>
                   </CardContent>
                 </Card>
-              ))
+              )})
             )}
           </div>
 

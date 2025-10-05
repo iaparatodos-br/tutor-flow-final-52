@@ -59,9 +59,6 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
     .eq('id', invoiceId)
     .single();
 
-  console.log('Invoice data from query:', data);
-  console.log('Business profile:', data?.business_profile);
-
   if (error) throw new Error(error.message);
   return data as Invoice;
 };

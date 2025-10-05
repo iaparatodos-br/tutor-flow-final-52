@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import Stripe from 'https://esm.sh/stripe@14.21.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,96 @@ interface SmartDeleteResponse {
   action: 'unlinked' | 'deleted';
   message: string;
   error?: string;
+}
+
+async function updateStripeSubscriptionQuantity(
+  supabaseAdmin: any,
+  teacherId: string,
+  stripe: Stripe
+) {
+  try {
+    // 1. Contar alunos restantes
+    const { count: totalStudents } = await supabaseAdmin
+      .from('teacher_student_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('teacher_id', teacherId);
+
+    console.log('Total students after deletion:', totalStudents);
+
+    // 2. Buscar subscription ativa
+    const { data: subscription, error: subError } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('stripe_subscription_id, plan_id')
+      .eq('user_id', teacherId)
+      .eq('status', 'active')
+      .single();
+
+    if (subError || !subscription?.stripe_subscription_id) {
+      console.log('No active subscription found, skipping Stripe update');
+      return { success: true, message: 'No active subscription' };
+    }
+
+    // 3. Buscar subscription no Stripe
+    const stripeSubscription = await stripe.subscriptions.retrieve(
+      subscription.stripe_subscription_id
+    );
+
+    // 4. Encontrar o subscription item principal (o que tem o tiered pricing)
+    const mainItem = stripeSubscription.items.data[0];
+
+    if (!mainItem) {
+      console.error('No subscription item found');
+      return { success: false, message: 'No subscription item found' };
+    }
+
+    // 5. Atualizar quantity com o total de alunos
+    const newQuantity = Math.max(1, totalStudents || 0);
+    
+    await stripe.subscriptionItems.update(mainItem.id, {
+      quantity: newQuantity,
+      proration_behavior: 'create_prorations'
+    });
+
+    console.log('Updated subscription item:', { 
+      itemId: mainItem.id, 
+      oldQuantity: mainItem.quantity,
+      newQuantity 
+    });
+
+    // 6. Buscar plano para calcular extras (para atualizar user_subscriptions)
+    const { data: plan } = await supabaseAdmin
+      .from('subscription_plans')
+      .select('student_limit')
+      .eq('id', subscription.plan_id)
+      .single();
+
+    const extraStudents = Math.max(0, (totalStudents || 0) - (plan?.student_limit || 0));
+    const extraCostCents = extraStudents * 500;
+
+    // 7. Atualizar user_subscriptions
+    await supabaseAdmin
+      .from('user_subscriptions')
+      .update({
+        extra_students: extraStudents,
+        extra_cost_cents: extraCostCents,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', teacherId)
+      .eq('status', 'active');
+
+    console.log('user_subscriptions updated:', { extraStudents, extraCostCents });
+
+    return {
+      success: true,
+      totalStudents,
+      newQuantity,
+      extraStudents,
+      extraCostCents
+    };
+  } catch (error) {
+    console.error('Error updating Stripe subscription quantity:', error);
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -98,6 +189,25 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Atualizar quantity no Stripe
+      try {
+        const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+        if (stripeKey) {
+          const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+          const updateResult = await updateStripeSubscriptionQuantity(
+            supabaseAdmin, 
+            teacher_id, 
+            stripe
+          );
+          console.log('Stripe subscription updated after unlink:', updateResult);
+        } else {
+          console.warn('STRIPE_SECRET_KEY not found, skipping Stripe update');
+        }
+      } catch (updateError) {
+        console.error('Error updating Stripe subscription:', updateError);
+        // Não falha - o aluno já foi removido com sucesso
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
@@ -153,6 +263,25 @@ Deno.serve(async (req) => {
           // Don't return error here since relationship was already deleted
           console.log('Profile deletion failed, but relationship was removed successfully');
         }
+      }
+
+      // Atualizar quantity no Stripe
+      try {
+        const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+        if (stripeKey) {
+          const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+          const updateResult = await updateStripeSubscriptionQuantity(
+            supabaseAdmin, 
+            teacher_id, 
+            stripe
+          );
+          console.log('Stripe subscription updated after delete:', updateResult);
+        } else {
+          console.warn('STRIPE_SECRET_KEY not found, skipping Stripe update');
+        }
+      } catch (updateError) {
+        console.error('Error updating Stripe subscription:', updateError);
+        // Não falha - o aluno já foi removido com sucesso
       }
 
       return new Response(

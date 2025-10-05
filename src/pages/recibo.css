@@ -1,0 +1,38 @@
+@media print {
+  /* Ocultar elementos não necessários na impressão */
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Ajustar layout para impressão */
+  body {
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Garantir que o recibo ocupe a página toda */
+  .min-h-screen {
+    min-height: auto !important;
+  }
+
+  /* Remover sombras e bordas desnecessárias */
+  .shadow, .shadow-sm, .shadow-md, .shadow-lg {
+    box-shadow: none !important;
+  }
+
+  /* Cores mais fortes para impressão */
+  .text-muted-foreground {
+    color: #666 !important;
+  }
+
+  /* Quebra de página após o recibo */
+  .max-w-4xl {
+    page-break-after: always;
+  }
+
+  /* Garantir que elementos importantes não sejam quebrados */
+  .bg-primary\/10, .bg-muted {
+    break-inside: avoid;
+  }
+}

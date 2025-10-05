@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, FileText } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Invoice {
   id: string;
@@ -39,6 +40,7 @@ const fetchStudentInvoices = async (teacherId: string) => {
 
 export default function Faturas() {
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
+  const navigate = useNavigate();
 
   const { data: invoices, isLoading, error } = useQuery({
     queryKey: ['studentInvoices', selectedTeacherId],
@@ -48,6 +50,10 @@ export default function Faturas() {
 
   const handlePayNow = (url: string) => {
     window.open(url, '_blank');
+  };
+
+  const handleViewReceipt = (invoiceId: string) => {
+    navigate(`/recibo/${invoiceId}`);
   };
 
   const formatCurrency = (amount: number) => {
@@ -175,26 +181,16 @@ export default function Faturas() {
                           )
                         )}
 
-                        {/* Faturas pagas via Stripe: Botão "Ver Recibo" */}
-                        {(invoice.status === 'paid' || invoice.status === 'paga') && 
-                         invoice.payment_origin !== 'manual' && 
-                         invoice.stripe_hosted_invoice_url && (
+                        {/* Faturas pagas: Botão "Ver Recibo" */}
+                        {(invoice.status === 'paid' || invoice.status === 'paga') && (
                           <Button 
-                            onClick={() => window.open(invoice.stripe_hosted_invoice_url!, '_blank')}
+                            onClick={() => handleViewReceipt(invoice.id)}
                             size="sm"
                             variant="outline"
                           >
                             <FileText className="h-4 w-4 mr-2" />
                             Ver Recibo
                           </Button>
-                        )}
-
-                        {/* Faturas pagas manualmente: Sem ação */}
-                        {(invoice.status === 'paid' || invoice.status === 'paga') && 
-                         invoice.payment_origin === 'manual' && (
-                          <div className="text-sm text-muted-foreground">
-                            Pagamento manual
-                          </div>
                         )}
                       </TableCell>
                     </TableRow>

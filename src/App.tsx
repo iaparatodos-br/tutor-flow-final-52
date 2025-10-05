@@ -33,6 +33,7 @@ import Subscription from "./pages/Subscription";
 import Historico from "./pages/Historico";
 import StudentDashboard from "./pages/StudentDashboard";
 import Faturas from "./pages/Faturas";
+import Recibo from "./pages/Recibo";
 import PainelNegocios from "./pages/PainelNegocios";
 import Seguranca from "./pages/Seguranca";
 import NotFound from "./pages/NotFound";
@@ -107,6 +108,7 @@ const AppWithProviders = () => {
             <Route path="/aulas" element={<Agenda />} />
             <Route path="/financeiro" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
             <Route path="/faturas" element={<FinancialRouteGuard><Faturas /></FinancialRouteGuard>} />
+            <Route path="/recibo/:invoiceId" element={<FinancialRouteGuard><Recibo /></FinancialRouteGuard>} />
             <Route path="/materiais" element={<Materiais />} />
             <Route path="/meus-materiais" element={<MeusMateriais />} />
             

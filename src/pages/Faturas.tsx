@@ -177,7 +177,7 @@ export default function Faturas() {
 
                         {/* Faturas pagas via Stripe: Botão "Ver Recibo" */}
                         {(invoice.status === 'paid' || invoice.status === 'paga') && 
-                         invoice.payment_origin === 'stripe' && 
+                         invoice.payment_origin !== 'manual' && 
                          invoice.stripe_hosted_invoice_url && (
                           <Button 
                             onClick={() => window.open(invoice.stripe_hosted_invoice_url!, '_blank')}

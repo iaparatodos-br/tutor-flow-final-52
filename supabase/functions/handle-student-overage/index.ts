@@ -47,6 +47,19 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
+    // Get total number of students for this teacher
+    const { count: totalStudents, error: countError } = await supabaseClient
+      .from('teacher_student_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('teacher_id', user.id);
+
+    if (countError) {
+      logStep("Error counting students", { error: countError });
+      throw new Error(`Failed to count students: ${countError.message}`);
+    }
+
+    logStep("Total students counted", { totalStudents });
+
     // Get current subscription
     const { data: subscriptionData, error: subError } = await supabaseClient
       .from('user_subscriptions')
@@ -126,37 +139,26 @@ serve(async (req) => {
       immediateChargeError = "No default payment method configured";
     }
 
-    // Check if we already have an overage line item
-    const overageItem = subscription.items.data.find((item: any) => 
-      item.price.metadata?.type === 'student_overage'
-    );
-
-    if (overageItem) {
-      // Update existing overage quantity
-      await stripe.subscriptionItems.update(overageItem.id, {
-        quantity: extraStudents,
-        proration_behavior: 'none', // No proration since we already charged immediately
-      });
-      logStep("Updated existing overage item", { itemId: overageItem.id, quantity: extraStudents });
-    } else {
-      // Create new overage line item
-      await stripe.subscriptionItems.create({
-        subscription: subscriptionData.stripe_subscription_id,
-        price_data: {
-          currency: 'brl',
-          product_data: {
-            name: 'Alunos Adicionais',
-            description: 'Cobrança adicional por alunos acima do limite do plano',
-          },
-          unit_amount: 500, // R$ 5 per student
-          recurring: { interval: 'month' },
-          metadata: { type: 'student_overage' },
-        },
-        quantity: extraStudents,
-        proration_behavior: 'none', // No proration since we already charged immediately
-      });
-      logStep("Created new overage item", { quantity: extraStudents });
+    // Update the main subscription item quantity with total students
+    // The tiered pricing will automatically calculate the correct charge
+    const mainItem = subscription.items.data[0]; // Main subscription item with tiered pricing
+    
+    if (!mainItem) {
+      logStep("ERROR: No main subscription item found");
+      throw new Error("No main subscription item found");
     }
+
+    await stripe.subscriptionItems.update(mainItem.id, {
+      quantity: totalStudents, // Update with total students, not just extra
+      proration_behavior: 'none', // No proration since we already charged immediately
+    });
+    
+    logStep("Updated main subscription item", { 
+      itemId: mainItem.id, 
+      oldQuantity: mainItem.quantity,
+      newQuantity: totalStudents,
+      extraStudents 
+    });
 
     // Update local subscription record
     const { error: updateError } = await supabaseClient

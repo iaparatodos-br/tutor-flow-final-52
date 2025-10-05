@@ -199,67 +199,7 @@ serve(async (req) => {
       }
     }
 
-    // Check if teacher needs to be charged for overage before creating relationship
-    let billingResult = null;
-    
-    // Get current student count for this teacher
-    const { count: currentStudentCount } = await supabaseAdmin
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', body.teacher_id);
-
-    // Get teacher's subscription and plan
-    const { data: subscription } = await supabaseAdmin
-      .from('user_subscriptions')
-      .select('plan_id, status')
-      .eq('user_id', body.teacher_id)
-      .eq('status', 'active')
-      .maybeSingle();
-
-    if (subscription?.plan_id) {
-      const { data: plan } = await supabaseAdmin
-        .from('subscription_plans')
-        .select('student_limit, slug')
-        .eq('id', subscription.plan_id)
-        .single();
-
-      // Check if adding this student exceeds the limit (only for paid plans)
-      if (plan && plan.slug !== 'free' && (currentStudentCount ?? 0) >= plan.student_limit) {
-        const extraStudents = (currentStudentCount ?? 0) - plan.student_limit + 1;
-        console.log('Student count exceeds limit, triggering overage billing', { 
-          currentCount: currentStudentCount, 
-          limit: plan.student_limit, 
-          extraStudents 
-        });
-
-        try {
-          // Get auth token to call the edge function
-          const { data: { session } } = await supabaseAdmin.auth.getSession();
-          
-          const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
-            'handle-student-overage',
-            {
-              body: {
-                extraStudents,
-                planLimit: plan.student_limit,
-              }
-            }
-          );
-
-          if (billingError) {
-            console.error('Error setting up overage billing:', billingError);
-          } else {
-            billingResult = billingData;
-            console.log('Overage billing configured', billingData);
-          }
-        } catch (err) {
-          console.error('Failed to setup overage billing:', err);
-          // Continue with student creation even if billing fails
-        }
-      }
-    }
-
-    // Create the teacher-student relationship with teacher-specific data
+    // Create the teacher-student relationship with teacher-specific data FIRST
     const { error: relationshipError } = await supabaseAdmin
       .from('teacher_student_relationships')
       .insert({
@@ -283,6 +223,79 @@ serve(async (req) => {
     }
 
     console.log('Teacher-student relationship created successfully');
+
+    // NOW check if teacher needs to be charged for overage AFTER creating relationship
+    let billingResult = null;
+    let billingWarning = null;
+    
+    // Get UPDATED student count for this teacher (now includes the new student)
+    const { count: currentStudentCount } = await supabaseAdmin
+      .from('teacher_student_relationships')
+      .select('id', { count: 'exact', head: true })
+      .eq('teacher_id', body.teacher_id);
+
+    // Get teacher's subscription and plan
+    const { data: subscription } = await supabaseAdmin
+      .from('user_subscriptions')
+      .select('plan_id, status')
+      .eq('user_id', body.teacher_id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (subscription?.plan_id) {
+      const { data: plan } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('student_limit, slug')
+        .eq('id', subscription.plan_id)
+        .single();
+
+      // Check if adding this student exceeds the limit (only for paid plans)
+      if (plan && plan.slug !== 'free' && (currentStudentCount ?? 0) > plan.student_limit) {
+        const extraStudents = (currentStudentCount ?? 0) - plan.student_limit;
+        console.log('[BILLING] Student count exceeds limit, triggering overage billing', { 
+          currentCount: currentStudentCount, 
+          limit: plan.student_limit, 
+          extraStudents,
+          teacherId: body.teacher_id,
+          studentEmail: body.email
+        });
+
+        try {
+          const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
+            'handle-student-overage',
+            {
+              body: {
+                extraStudents,
+                planLimit: plan.student_limit,
+              }
+            }
+          );
+
+          if (billingError) {
+            console.error('[BILLING ERROR]', {
+              teacherId: body.teacher_id,
+              studentEmail: body.email,
+              extraStudents,
+              error: billingError
+            });
+            
+            billingWarning = `Aluno adicionado, mas houve falha na cobrança adicional de R$ ${(extraStudents * 5).toFixed(2)}. O valor será incluído na próxima fatura.`;
+          } else {
+            billingResult = billingData;
+            console.log('[BILLING SUCCESS]', { teacherId: body.teacher_id, billingData });
+          }
+        } catch (err) {
+          console.error('[BILLING EXCEPTION]', {
+            teacherId: body.teacher_id,
+            studentEmail: body.email,
+            extraStudents,
+            error: (err as Error).message
+          });
+          
+          billingWarning = `Aluno adicionado com sucesso, mas não foi possível processar a cobrança adicional. Entre em contato com o suporte.`;
+        }
+      }
+    }
 
     // Send a confirmation email to the professor if provided
     if (body.notify_professor_email) {
@@ -311,7 +324,8 @@ serve(async (req) => {
         user_id: studentId, 
         is_new_student: isNewStudent,
         message: isNewStudent ? 'Aluno criado com sucesso!' : 'Aluno vinculado com sucesso!',
-        billing: billingResult
+        billing: billingResult,
+        billing_warning: billingWarning
       }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );

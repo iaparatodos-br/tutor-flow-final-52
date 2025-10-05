@@ -286,13 +286,45 @@ serve(async (req) => {
         const { userId } = await findUserByCustomer(customerId);
         if (!userId) {
           log("User not found for customer", { customerId });
+          await completeEventProcessing(supabase, event.id, false, new Error("User not found"));
           break;
         }
 
+        // Extract student_count from metadata
+        const studentCountStr = session.metadata?.student_count;
+        const totalStudents = studentCountStr ? parseInt(studentCountStr, 10) : 0;
+        
+        log("Checkout with student count", { totalStudents, metadata: session.metadata });
+
         let priceId: string | null = null;
+        let extraStudents = 0;
+        let extraCostCents = 0;
+        
         if (subscriptionId) {
           const sub = await stripe.subscriptions.retrieve(subscriptionId);
           priceId = sub.items.data[0]?.price?.id ?? null;
+          
+          // Get plan to calculate extras
+          const planId = await getPlanIdByPriceId(priceId);
+          if (planId) {
+            const { data: planData } = await supabase
+              .from('subscription_plans')
+              .select('student_limit')
+              .eq('id', planId)
+              .single();
+            
+            if (planData && totalStudents > 0) {
+              extraStudents = Math.max(0, totalStudents - (planData.student_limit || 0));
+              extraCostCents = extraStudents * 500;
+              log("Calculated overage from checkout", { 
+                totalStudents, 
+                planLimit: planData.student_limit, 
+                extraStudents,
+                extraCostCents 
+              });
+            }
+          }
+          
           await upsertUserSubscription({
             userId,
             stripeCustomerId: customerId,
@@ -303,7 +335,22 @@ serve(async (req) => {
             currentPeriodEnd: sub.current_period_end ?? null,
             cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
           });
+          
+          // Update extra_students and extra_cost_cents separately if needed
+          if (extraStudents > 0) {
+            await supabase
+              .from("user_subscriptions")
+              .update({
+                extra_students: extraStudents,
+                extra_cost_cents: extraCostCents
+              })
+              .eq("user_id", userId);
+            
+            log("Updated subscription with overage info", { userId, extraStudents, extraCostCents });
+          }
         }
+        
+        await completeEventProcessing(supabase, event.id, true);
         break;
       }
 

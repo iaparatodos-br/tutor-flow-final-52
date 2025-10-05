@@ -114,57 +114,7 @@ export default function Alunos() {
     if (!profile?.id) return;
     setSubmitting(true);
     try {
-      // Check if adding this student would exceed limits and trigger billing
-      if (currentPlan && currentPlan.slug !== 'free') {
-        const {
-          isOverLimit,
-          additionalCost
-        } = getStudentOverageInfo(students.length);
-        if (isOverLimit && subscription) {
-          // Setup billing for extra students
-          const extraStudents = students.length - (currentPlan?.student_limit ?? 0) + 1;
-          try {
-            const {
-              data: billingData,
-              error: billingError
-            } = await supabase.functions.invoke('handle-student-overage', {
-              body: {
-                extraStudents,
-                planLimit: currentPlan?.student_limit ?? 0
-              }
-            });
-            if (billingError) {
-              console.error('Error setting up billing:', billingError);
-              toast({
-                title: 'Aviso de Cobrança',
-                description: `O aluno será adicionado, mas pode haver cobrança adicional de R$ ${(additionalCost / 100).toFixed(2)}.`,
-                variant: "default"
-              });
-            } else if (billingData?.success) {
-              if (billingData.immediateChargeSuccess) {
-                toast({
-                  title: '✅ Cobrança Processada',
-                  description: billingData.message,
-                  variant: "default",
-                  duration: 5000,
-                });
-              } else if (billingData.immediateChargeFailed) {
-                toast({
-                  title: '⚠️ Atenção',
-                  description: billingData.message || 'Não foi possível cobrar imediatamente. O valor será incluído na próxima fatura.',
-                  variant: "default",
-                  duration: 5000,
-                });
-              }
-            }
-          } catch (err) {
-            console.error('Billing automation error:', err);
-            // Continue with student creation even if billing setup fails
-          }
-        }
-      }
-
-      // Create student via Edge Function with admin privileges
+      // Create student via Edge Function with admin privileges (backend handles ALL billing logic)
       // Don't send localhost URLs - let the function handle the redirect URL
       const redirectUrl = window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`;
       console.log('Calling create-student function...');
@@ -215,15 +165,21 @@ export default function Alunos() {
         return;
       }
 
-      // Success case - check if there's billing info in the response
-      const successMessage = data?.billing?.message 
-        ? `${formData.name} receberá um e-mail para concluir o cadastro. ${data.billing.message}`
-        : `${formData.name} receberá um e-mail para concluir o cadastro.`;
+      // Success case - check if there's billing info or warning in the response
+      let successMessage = data?.is_new_student 
+        ? `${formData.name} receberá um e-mail para concluir o cadastro.`
+        : `${formData.name} foi vinculado à sua conta.`;
+      
+      if (data?.billing_warning) {
+        successMessage += ` ⚠️ ${data.billing_warning}`;
+      } else if (data?.billing?.message) {
+        successMessage += ` ${data.billing.message}`;
+      }
       
       toast({
         title: 'Aluno convidado com sucesso!',
         description: successMessage,
-        duration: data?.billing ? 5000 : 3000,
+        duration: data?.billing_warning || data?.billing ? 5000 : 3000,
       });
       setIsAddDialogOpen(false);
       loadStudents();

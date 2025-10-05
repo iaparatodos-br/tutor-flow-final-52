@@ -54,7 +54,7 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
       updated_at,
       teacher:profiles!invoices_teacher_id_fkey(name, email),
       student:profiles!invoices_student_id_fkey(name, email, guardian_name, guardian_email),
-      business_profile:business_profiles(business_name, cnpj)
+      business_profile:business_profiles!invoices_business_profile_id_fkey(business_name, cnpj)
     `)
     .eq('id', invoiceId)
     .single();

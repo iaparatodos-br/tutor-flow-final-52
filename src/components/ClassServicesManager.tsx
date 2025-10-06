@@ -77,17 +77,18 @@ export function ClassServicesManager() {
     try {
       setDeletingId(id);
       
-      // Verificar se há aulas futuras usando este serviço
+      // Verificar se há aulas não faturadas usando este serviço
+      // Isso inclui: aulas futuras, completadas não faturadas, ou canceladas com cobrança pendente
       const { count } = await supabase
         .from('classes')
         .select('*', { count: 'exact', head: true })
         .eq('service_id', id)
-        .gte('class_date', new Date().toISOString());
+        .or('class_date.gte.' + new Date().toISOString() + ',and(billed.eq.false,status.eq.concluido),and(billed.eq.false,charge_applied.eq.true,cancelled_at.not.is.null)');
 
       if (count && count > 0) {
         toast({
           title: "Não é possível excluir",
-          description: "Este serviço está vinculado a aulas futuras.",
+          description: "Este serviço está vinculado a aulas futuras ou não faturadas.",
           variant: "destructive",
         });
         return;

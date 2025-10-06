@@ -20,6 +20,11 @@ interface UpdateStudentRequest {
   guardian_name?: string | null;
   guardian_email?: string | null;
   guardian_phone?: string | null;
+  guardian_cpf?: string | null;
+  guardian_address_street?: string | null;
+  guardian_address_city?: string | null;
+  guardian_address_state?: string | null;
+  guardian_address_postal_code?: string | null;
   billing_day?: number | null;
   business_profile_id?: string | null;
 }
@@ -69,6 +74,11 @@ serve(async (req) => {
     if (body.guardian_name !== undefined) updateData.student_guardian_name = body.guardian_name;
     if (body.guardian_email !== undefined) updateData.student_guardian_email = body.guardian_email;
     if (body.guardian_phone !== undefined) updateData.student_guardian_phone = body.guardian_phone;
+    if (body.guardian_cpf !== undefined) updateData.student_guardian_cpf = body.guardian_cpf;
+    if (body.guardian_address_street !== undefined) updateData.student_guardian_address_street = body.guardian_address_street;
+    if (body.guardian_address_city !== undefined) updateData.student_guardian_address_city = body.guardian_address_city;
+    if (body.guardian_address_state !== undefined) updateData.student_guardian_address_state = body.guardian_address_state;
+    if (body.guardian_address_postal_code !== undefined) updateData.student_guardian_address_postal_code = body.guardian_address_postal_code;
     if (body.billing_day !== undefined) updateData.billing_day = body.billing_day;
     if (body.business_profile_id !== undefined) updateData.business_profile_id = body.business_profile_id;
 
@@ -91,6 +101,11 @@ serve(async (req) => {
     if (body.guardian_name !== undefined) profileUpdateData.guardian_name = body.guardian_name;
     if (body.guardian_email !== undefined) profileUpdateData.guardian_email = body.guardian_email;
     if (body.guardian_phone !== undefined) profileUpdateData.guardian_phone = body.guardian_phone;
+    if (body.guardian_cpf !== undefined) profileUpdateData.guardian_cpf = body.guardian_cpf;
+    if (body.guardian_address_street !== undefined) profileUpdateData.guardian_address_street = body.guardian_address_street;
+    if (body.guardian_address_city !== undefined) profileUpdateData.guardian_address_city = body.guardian_address_city;
+    if (body.guardian_address_state !== undefined) profileUpdateData.guardian_address_state = body.guardian_address_state;
+    if (body.guardian_address_postal_code !== undefined) profileUpdateData.guardian_address_postal_code = body.guardian_address_postal_code;
 
     if (Object.keys(profileUpdateData).length > 0) {
       const { error: updateProfileError } = await supabaseAdmin

@@ -1093,6 +1093,11 @@ export type Database = {
           current_plan_id: string | null
           default_billing_day: number | null
           email: string
+          guardian_address_city: string | null
+          guardian_address_postal_code: string | null
+          guardian_address_state: string | null
+          guardian_address_street: string | null
+          guardian_cpf: string | null
           guardian_email: string | null
           guardian_name: string | null
           guardian_phone: string | null
@@ -1119,6 +1124,11 @@ export type Database = {
           current_plan_id?: string | null
           default_billing_day?: number | null
           email: string
+          guardian_address_city?: string | null
+          guardian_address_postal_code?: string | null
+          guardian_address_state?: string | null
+          guardian_address_street?: string | null
+          guardian_cpf?: string | null
           guardian_email?: string | null
           guardian_name?: string | null
           guardian_phone?: string | null
@@ -1145,6 +1155,11 @@ export type Database = {
           current_plan_id?: string | null
           default_billing_day?: number | null
           email?: string
+          guardian_address_city?: string | null
+          guardian_address_postal_code?: string | null
+          guardian_address_state?: string | null
+          guardian_address_street?: string | null
+          guardian_cpf?: string | null
           guardian_email?: string | null
           guardian_name?: string | null
           guardian_phone?: string | null
@@ -1394,6 +1409,11 @@ export type Database = {
           id: string
           preferred_payment_account_id: string | null
           stripe_customer_id: string | null
+          student_guardian_address_city: string | null
+          student_guardian_address_postal_code: string | null
+          student_guardian_address_state: string | null
+          student_guardian_address_street: string | null
+          student_guardian_cpf: string | null
           student_guardian_email: string | null
           student_guardian_name: string | null
           student_guardian_phone: string | null
@@ -1409,6 +1429,11 @@ export type Database = {
           id?: string
           preferred_payment_account_id?: string | null
           stripe_customer_id?: string | null
+          student_guardian_address_city?: string | null
+          student_guardian_address_postal_code?: string | null
+          student_guardian_address_state?: string | null
+          student_guardian_address_street?: string | null
+          student_guardian_cpf?: string | null
           student_guardian_email?: string | null
           student_guardian_name?: string | null
           student_guardian_phone?: string | null
@@ -1424,6 +1449,11 @@ export type Database = {
           id?: string
           preferred_payment_account_id?: string | null
           stripe_customer_id?: string | null
+          student_guardian_address_city?: string | null
+          student_guardian_address_postal_code?: string | null
+          student_guardian_address_state?: string | null
+          student_guardian_address_street?: string | null
+          student_guardian_cpf?: string | null
           student_guardian_email?: string | null
           student_guardian_name?: string | null
           student_guardian_phone?: string | null

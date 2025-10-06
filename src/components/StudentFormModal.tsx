@@ -22,6 +22,11 @@ interface StudentFormData {
   guardian_name: string;
   guardian_email: string;
   guardian_phone: string;
+  guardian_cpf: string;
+  guardian_address_street: string;
+  guardian_address_city: string;
+  guardian_address_state: string;
+  guardian_address_postal_code: string;
   billing_day: number;
   business_profile_id: string | null;
 }
@@ -61,6 +66,11 @@ const getInitialFormData = (student?: StudentFormModalProps['student'], teacherD
     guardian_name: student?.guardian_name || "",
     guardian_email: student?.guardian_email || "",
     guardian_phone: student?.guardian_phone || "",
+    guardian_cpf: "",
+    guardian_address_street: "",
+    guardian_address_city: "",
+    guardian_address_state: "",
+    guardian_address_postal_code: "",
     billing_day: student?.billing_day || teacherDefaultBillingDay || 15,
     business_profile_id: student?.business_profile_id || null
   };
@@ -88,6 +98,11 @@ export function StudentFormModal({
     phone: false,
     guardian_name: false,
     guardian_email: false,
+    guardian_cpf: false,
+    guardian_address_street: false,
+    guardian_address_city: false,
+    guardian_address_state: false,
+    guardian_address_postal_code: false,
     billing_day: false,
     business_profile_id: false
   });
@@ -140,6 +155,11 @@ export function StudentFormModal({
       phone: false,
       guardian_name: false,
       guardian_email: false,
+      guardian_cpf: false,
+      guardian_address_street: false,
+      guardian_address_city: false,
+      guardian_address_state: false,
+      guardian_address_postal_code: false,
       billing_day: false,
       business_profile_id: false
     });
@@ -161,6 +181,11 @@ export function StudentFormModal({
       newFormData.guardian_name = "";
       newFormData.guardian_email = "";
       newFormData.guardian_phone = "";
+      newFormData.guardian_cpf = "";
+      newFormData.guardian_address_street = "";
+      newFormData.guardian_address_city = "";
+      newFormData.guardian_address_state = "";
+      newFormData.guardian_address_postal_code = "";
     }
 
     setFormData(newFormData);
@@ -222,6 +247,11 @@ export function StudentFormModal({
       phone: false,
       guardian_name: !formData.isOwnResponsible && !formData.guardian_name.trim(),
       guardian_email: !formData.isOwnResponsible && !formData.guardian_email.trim(),
+      guardian_cpf: false,
+      guardian_address_street: false,
+      guardian_address_city: false,
+      guardian_address_state: false,
+      guardian_address_postal_code: false,
       billing_day: hasFinancialModule && (formData.billing_day < 1 || formData.billing_day > 28),
       business_profile_id: hasFinancialModule && businessProfiles && businessProfiles.length > 0 && !formData.business_profile_id
     };
@@ -390,6 +420,94 @@ export function StudentFormModal({
                     <p className="text-xs text-muted-foreground">
                       {hasFinancialModule ? "As faturas serão enviadas para este email" : "Email para contato"}
                     </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="guardian-cpf">CPF do Responsável</Label>
+                    <Input
+                      id="guardian-cpf"
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={formData.guardian_cpf}
+                      onChange={(e) => {
+                        setFormData(prev => ({ ...prev, guardian_cpf: e.target.value }));
+                        setValidationErrors(prev => ({ ...prev, guardian_cpf: false }));
+                      }}
+                      className={validationErrors.guardian_cpf ? "border-destructive" : ""}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      CPF que será usado para emissão de boletos
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label className="text-sm font-medium">Endereço do Responsável</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Necessário para emissão de boletos
+                    </p>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="guardian-address-street">Endereço Completo</Label>
+                      <Input
+                        id="guardian-address-street"
+                        type="text"
+                        placeholder="Rua, número, complemento"
+                        value={formData.guardian_address_street}
+                        onChange={(e) => {
+                          setFormData(prev => ({ ...prev, guardian_address_street: e.target.value }));
+                          setValidationErrors(prev => ({ ...prev, guardian_address_street: false }));
+                        }}
+                        className={validationErrors.guardian_address_street ? "border-destructive" : ""}
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="guardian-address-city">Cidade</Label>
+                        <Input
+                          id="guardian-address-city"
+                          type="text"
+                          placeholder="Cidade"
+                          value={formData.guardian_address_city}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, guardian_address_city: e.target.value }));
+                            setValidationErrors(prev => ({ ...prev, guardian_address_city: false }));
+                          }}
+                          className={validationErrors.guardian_address_city ? "border-destructive" : ""}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="guardian-address-state">Estado</Label>
+                        <Input
+                          id="guardian-address-state"
+                          type="text"
+                          placeholder="UF"
+                          maxLength={2}
+                          value={formData.guardian_address_state}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, guardian_address_state: e.target.value.toUpperCase() }));
+                            setValidationErrors(prev => ({ ...prev, guardian_address_state: false }));
+                          }}
+                          className={validationErrors.guardian_address_state ? "border-destructive" : ""}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="guardian-address-postal-code">CEP</Label>
+                        <Input
+                          id="guardian-address-postal-code"
+                          type="text"
+                          placeholder="00000-000"
+                          value={formData.guardian_address_postal_code}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, guardian_address_postal_code: e.target.value }));
+                            setValidationErrors(prev => ({ ...prev, guardian_address_postal_code: false }));
+                          }}
+                          className={validationErrors.guardian_address_postal_code ? "border-destructive" : ""}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </>
               )}

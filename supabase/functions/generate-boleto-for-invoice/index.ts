@@ -36,8 +36,9 @@ serve(async (req) => {
       .select(`
         *,
         student:profiles!invoices_student_id_fkey(
-          id, name, email, cpf, guardian_name, guardian_email,
-          address_street, address_city, address_state, address_postal_code, address_complete
+          id, name, email, cpf, guardian_name, guardian_email, guardian_cpf,
+          address_street, address_city, address_state, address_postal_code, address_complete,
+          guardian_address_street, guardian_address_city, guardian_address_state, guardian_address_postal_code
         ),
         teacher:profiles!invoices_teacher_id_fkey(name, email)
       `)
@@ -50,29 +51,47 @@ serve(async (req) => {
 
     // Check if student has complete profile data required for boleto
     const student = invoice.student;
-    if (!student.address_complete || !student.cpf || !student.address_street || 
-        !student.address_city || !student.address_state || !student.address_postal_code) {
-      throw new Error("Student profile incomplete - CPF and address required for boleto generation");
+    
+    // Determine if we should use guardian or student data
+    const hasGuardian = !!student.guardian_name;
+    
+    // Validate required data based on who will be the payer
+    const payerCpf = hasGuardian && student.guardian_cpf ? student.guardian_cpf : student.cpf;
+    const payerAddressStreet = hasGuardian && student.guardian_address_street ? student.guardian_address_street : student.address_street;
+    const payerAddressCity = hasGuardian && student.guardian_address_city ? student.guardian_address_city : student.address_city;
+    const payerAddressState = hasGuardian && student.guardian_address_state ? student.guardian_address_state : student.address_state;
+    const payerAddressPostalCode = hasGuardian && student.guardian_address_postal_code ? student.guardian_address_postal_code : student.address_postal_code;
+
+    if (!payerCpf || !payerAddressStreet || !payerAddressCity || !payerAddressState || !payerAddressPostalCode) {
+      const missingFields = [];
+      if (!payerCpf) missingFields.push('CPF');
+      if (!payerAddressStreet) missingFields.push('Endereço');
+      if (!payerAddressCity) missingFields.push('Cidade');
+      if (!payerAddressState) missingFields.push('Estado');
+      if (!payerAddressPostalCode) missingFields.push('CEP');
+      
+      throw new Error(`Dados incompletos do ${hasGuardian ? 'responsável' : 'aluno'} - ${missingFields.join(', ')} obrigatório(s) para geração de boleto`);
     }
 
-    logStep("Student profile validated", { 
+    logStep("Payer profile validated", { 
       studentId: student.id, 
-      hasAddress: student.address_complete,
-      hasCpf: !!student.cpf 
+      hasGuardian,
+      hasCpf: !!payerCpf,
+      hasAddress: !!(payerAddressStreet && payerAddressCity && payerAddressState && payerAddressPostalCode)
     });
 
     // Call create-payment-intent-connect to generate boleto
     const paymentData = {
       invoice_id: invoice_id,
       payment_method: "boleto",
-      payer_tax_id: student.cpf,
+      payer_tax_id: payerCpf,
       payer_name: student.guardian_name || student.name,
       payer_email: student.guardian_email || student.email,
       payer_address: {
-        street: student.address_street,
-        city: student.address_city,
-        state: student.address_state,
-        postal_code: student.address_postal_code
+        street: payerAddressStreet,
+        city: payerAddressCity,
+        state: payerAddressState,
+        postal_code: payerAddressPostalCode
       }
     };
 

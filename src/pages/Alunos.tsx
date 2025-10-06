@@ -130,6 +130,11 @@ export default function Alunos() {
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
           guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
+          guardian_cpf: formData.isOwnResponsible ? null : formData.guardian_cpf || null,
+          guardian_address_street: formData.isOwnResponsible ? null : formData.guardian_address_street || null,
+          guardian_address_city: formData.isOwnResponsible ? null : formData.guardian_address_city || null,
+          guardian_address_state: formData.isOwnResponsible ? null : formData.guardian_address_state || null,
+          guardian_address_postal_code: formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
           billing_day: formData.billing_day,
           notify_professor_email: profile.email,
           professor_name: profile.name,
@@ -215,6 +220,11 @@ export default function Alunos() {
           guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
           guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
           guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
+          guardian_cpf: formData.isOwnResponsible ? null : formData.guardian_cpf || null,
+          guardian_address_street: formData.isOwnResponsible ? null : formData.guardian_address_street || null,
+          guardian_address_city: formData.isOwnResponsible ? null : formData.guardian_address_city || null,
+          guardian_address_state: formData.isOwnResponsible ? null : formData.guardian_address_state || null,
+          guardian_address_postal_code: formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
           billing_day: formData.billing_day,
           business_profile_id: formData.business_profile_id
         }

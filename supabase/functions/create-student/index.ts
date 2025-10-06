@@ -23,6 +23,11 @@ interface CreateStudentRequest {
   guardian_name?: string | null;
   guardian_email?: string | null;
   guardian_phone?: string | null;
+  guardian_cpf?: string | null;
+  guardian_address_street?: string | null;
+  guardian_address_city?: string | null;
+  guardian_address_state?: string | null;
+  guardian_address_postal_code?: string | null;
   billing_day?: number | null;
   stripe_customer_id?: string | null;
   notify_professor_email?: string | null;
@@ -194,6 +199,11 @@ serve(async (req) => {
             guardian_name: body.guardian_name ?? null,
             guardian_email: body.guardian_email ?? null,
             guardian_phone: body.guardian_phone ?? null,
+            guardian_cpf: body.guardian_cpf ?? null,
+            guardian_address_street: body.guardian_address_street ?? null,
+            guardian_address_city: body.guardian_address_city ?? null,
+            guardian_address_state: body.guardian_address_state ?? null,
+            guardian_address_postal_code: body.guardian_address_postal_code ?? null
           })
           .eq('id', studentId);
       }
@@ -211,6 +221,11 @@ serve(async (req) => {
         student_guardian_name: body.guardian_name ?? null,
         student_guardian_email: body.guardian_email ?? null,
         student_guardian_phone: body.guardian_phone ?? null,
+        student_guardian_cpf: body.guardian_cpf ?? null,
+        student_guardian_address_street: body.guardian_address_street ?? null,
+        student_guardian_address_city: body.guardian_address_city ?? null,
+        student_guardian_address_state: body.guardian_address_state ?? null,
+        student_guardian_address_postal_code: body.guardian_address_postal_code ?? null,
         business_profile_id: body.business_profile_id ?? null,
       });
 

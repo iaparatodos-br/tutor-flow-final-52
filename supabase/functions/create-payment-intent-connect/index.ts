@@ -170,15 +170,30 @@ serve(async (req) => {
     }
     
     // Use profile data if not provided in request (for automated boleto generation)
-    const finalPayerTaxId = payer_tax_id || invoice.student?.cpf;
-    const finalPayerName = payer_name || invoice.student?.guardian_name || invoice.student?.name || "Cliente";
-    const finalPayerEmail = payer_email || customerEmail;
-    const finalPayerAddress = payer_address || (invoice.student?.address_complete ? {
+    // Priorizar dados do responsável se existir, caso contrário usar dados do aluno
+    const hasGuardian = invoice.student?.guardian_cpf && invoice.student?.guardian_name;
+    
+    const finalPayerTaxId = payer_tax_id || (hasGuardian ? invoice.student.guardian_cpf : invoice.student?.cpf);
+    const finalPayerName = payer_name || (hasGuardian ? invoice.student.guardian_name : invoice.student?.name) || "Cliente";
+    const finalPayerEmail = payer_email || (hasGuardian ? invoice.student.guardian_email : invoice.student?.email);
+    
+    // Para endereço: usar endereço do responsável se existir e estiver completo, senão usar endereço do aluno
+    const guardianAddressComplete = invoice.student?.guardian_address_street && 
+                                    invoice.student?.guardian_address_city && 
+                                    invoice.student?.guardian_address_state && 
+                                    invoice.student?.guardian_address_postal_code;
+    
+    const finalPayerAddress = payer_address || (guardianAddressComplete ? {
+      street: invoice.student.guardian_address_street,
+      city: invoice.student.guardian_address_city,
+      state: invoice.student.guardian_address_state,
+      postal_code: invoice.student.guardian_address_postal_code
+    } : (invoice.student?.address_complete ? {
       street: invoice.student.address_street,
       city: invoice.student.address_city,
       state: invoice.student.address_state,
       postal_code: invoice.student.address_postal_code
-    } : null);
+    } : null));
 
     // Create or get customer
     const customers = await stripe.customers.list({ 

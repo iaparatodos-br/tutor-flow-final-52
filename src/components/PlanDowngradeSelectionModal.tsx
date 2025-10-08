@@ -69,7 +69,7 @@ export function PlanDowngradeSelectionModal({
     setProcessing(true);
     try {
       const checkoutUrl = await createCheckoutSession(planSlug);
-      window.location.href = checkoutUrl;
+      window.open(checkoutUrl, '_blank'); // Opens in a new tab, keeps the app running
     } catch (error) {
       console.error('Error creating checkout:', error);
       toast({

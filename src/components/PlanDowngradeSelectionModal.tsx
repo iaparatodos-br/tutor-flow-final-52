@@ -69,7 +69,17 @@ export function PlanDowngradeSelectionModal({
     setProcessing(true);
     try {
       const checkoutUrl = await createCheckoutSession(planSlug);
-      window.open(checkoutUrl, '_blank'); // Opens in a new tab, keeps the app running
+      window.open(checkoutUrl, '_blank');
+      
+      toast({
+        title: "Redirecionando para pagamento",
+        description: "Complete o pagamento no Stripe. Seus dados serão atualizados automaticamente.",
+      });
+      
+      // Fecha o modal após 2 segundos
+      setTimeout(() => {
+        onClose(true);
+      }, 2000);
     } catch (error) {
       console.error('Error creating checkout:', error);
       toast({

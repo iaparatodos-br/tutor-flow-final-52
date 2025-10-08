@@ -119,21 +119,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check for payment failure first
-      if (data?.payment_failed) {
-        console.log('Payment failure detected:', data.payment_failure_data);
-        setPaymentFailureDetected(true);
-        setPaymentFailureData(data.payment_failure_data || {});
-        
-        // Set current plan to plan from response or free plan
-        if (data.plan) {
-          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
-        } else {
-          const freePlan = plans.find(p => p.slug === 'free');
-          setCurrentPlan(freePlan || null);
-        }
-        setSubscription(null);
-      } else if (data?.subscription) {
+      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      if (data?.subscription && data.subscription.status === 'active') {
+        console.log('Active subscription found - clearing any payment failure state');
         setSubscription(data.subscription);
         
         // Use plan directly from check-subscription-status response if available
@@ -152,9 +140,25 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           }
         }
         
-        // Clear payment failure state if subscription is active
+        // CRITICAL: Clear payment failure state when active subscription exists
         setPaymentFailureDetected(false);
         setPaymentFailureData(null);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+      } else if (data?.payment_failed) {
+        // Só mostrar payment failure se NÃO houver subscription ativa
+        console.log('Payment failure detected (no active subscription):', data.payment_failure_data);
+        setPaymentFailureDetected(true);
+        setPaymentFailureData(data.payment_failure_data || {});
+        
+        // Set current plan to plan from response or free plan
+        if (data.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
+        setSubscription(null);
       } else if (data?.needs_student_selection) {
         // Handle student selection requirement
         setNeedsStudentSelection(true);
@@ -272,9 +276,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // Check for payment failure first  
-      if (data?.payment_failed) {
-        console.log('Payment failure detected on refresh:', data.payment_failure_data);
+      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      if (data?.subscription && data.subscription.status === 'active') {
+        console.log('Active subscription found on refresh - clearing any payment failure state');
+        setSubscription(data.subscription);
+        setCurrentPlan(data.plan);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+        
+        // CRITICAL: Clear payment failure state when active subscription exists
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
+      } else if (data?.payment_failed) {
+        // Só mostrar payment failure se NÃO houver subscription ativa
+        console.log('Payment failure detected on refresh (no active subscription):', data.payment_failure_data);
         setPaymentFailureDetected(true);
         setPaymentFailureData(data.payment_failure_data || {});
         
@@ -288,15 +303,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setSubscription(null);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
-      } else if (data?.subscription) {
-        setSubscription(data.subscription);
-        setCurrentPlan(data.plan);
-        setNeedsStudentSelection(false);
-        setStudentSelectionData(null);
-        
-        // Clear payment failure state if subscription is active
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
       } else if (data?.needs_student_selection) {
         // Handle student selection requirement
         setNeedsStudentSelection(true);
@@ -644,6 +650,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const verifyAndCleanUrl = async () => {
         try {
           await refreshSubscription();
+          
+          // CRITICAL: Limpar explicitamente payment failure após renovação bem-sucedida
+          console.log('Stripe return processed - clearing payment failure state');
+          setPaymentFailureDetected(false);
+          setPaymentFailureData(null);
           
           // Limpa os parâmetros da URL após a verificação
           const newUrl = new URL(window.location.href);

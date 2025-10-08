@@ -127,8 +127,8 @@ serve(async (req) => {
     
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Get user's current subscription from database (active or expired for student selection check)
-    const { data: subscription, error: subError } = await supabaseClient
+    // Get ALL subscriptions from database (active or expired) to properly detect renewal
+    const { data: allSubscriptions, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select(`
         *,
@@ -136,13 +136,57 @@ serve(async (req) => {
       `)
       .eq('user_id', user.id)
       .in('status', ['active', 'expired'])
-      .order('updated_at', { ascending: false })
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
     if (subError) throw subError;
 
+    logStep("All user subscriptions retrieved", {
+      count: allSubscriptions?.length || 0,
+      subscriptions: allSubscriptions?.map(s => ({
+        id: s.id,
+        status: s.status,
+        current_period_end: s.current_period_end,
+        updated_at: s.updated_at
+      }))
+    });
+
+    // Check if there's an active subscription with future period_end (ignore expired ones)
+    const now = new Date();
+    const activeSubscription = allSubscriptions?.find(sub => 
+      sub.status === 'active' && new Date(sub.current_period_end) > now
+    );
+
+    if (activeSubscription) {
+      logStep("Found ACTIVE subscription with future period_end - ignoring any payment failures", {
+        subscriptionId: activeSubscription.id,
+        status: activeSubscription.status,
+        currentPeriodEnd: activeSubscription.current_period_end
+      });
+
+      // Return active subscription WITHOUT checking for payment failures
+      return new Response(JSON.stringify({
+        subscription: {
+          id: activeSubscription.id,
+          plan_id: activeSubscription.plan_id,
+          status: activeSubscription.status,
+          current_period_end: activeSubscription.current_period_end,
+          cancel_at_period_end: activeSubscription.cancel_at_period_end,
+          extra_students: activeSubscription.extra_students,
+          extra_cost_cents: activeSubscription.extra_cost_cents
+        },
+        plan: activeSubscription.subscription_plans,
+        paymentFailure: null // Explicitly set to null - active subscription overrides payment failures
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // If no active subscription, get the most recent one (could be expired or canceled)
+    const subscription = allSubscriptions?.[0];
+
     if (subscription) {
-      logStep("Found active subscription in database", { 
+      logStep("Found subscription in database (no active with future period)", { 
         subscriptionId: subscription.id, 
         status: subscription.status,
         currentPeriodEnd: subscription.current_period_end 

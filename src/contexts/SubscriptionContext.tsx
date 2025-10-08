@@ -550,7 +550,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         // Create checkout session for current plan
         if (currentPlan) {
           const url = await createCheckoutSession(currentPlan.slug);
-          window.location.href = url;
+          window.open(url, '_blank');
         }
       } else if (action === 'downgrade') {
         // Check if user has excess students

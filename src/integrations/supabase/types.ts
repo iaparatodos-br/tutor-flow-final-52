@@ -1667,6 +1667,11 @@ export type Database = {
           billing_day: number
           business_profile_id: string
           created_at: string
+          guardian_address_city: string
+          guardian_address_postal_code: string
+          guardian_address_state: string
+          guardian_address_street: string
+          guardian_cpf: string
           guardian_email: string
           guardian_name: string
           guardian_phone: string

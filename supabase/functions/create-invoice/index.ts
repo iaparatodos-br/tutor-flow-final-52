@@ -137,6 +137,22 @@ serve(async (req) => {
     // Generate payment URL automatically
     logStep("Generating payment URL", { invoiceId: newInvoice.id });
     try {
+      // Fetch guardian data from relationship for better logging
+      const { data: relationshipData, error: relError } = await supabaseClient
+        .from('teacher_student_relationships')
+        .select('student_guardian_cpf, student_guardian_name, student_guardian_email, student_guardian_phone, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code')
+        .eq('student_id', body.student_id)
+        .eq('teacher_id', user.id)
+        .single();
+      
+      logStep('Guardian data from relationship', {
+        hasRelationshipData: !!relationshipData,
+        hasGuardianCpf: !!relationshipData?.student_guardian_cpf,
+        hasGuardianName: !!relationshipData?.student_guardian_name,
+        hasGuardianAddress: !!(relationshipData?.student_guardian_address_street && relationshipData?.student_guardian_address_city),
+        guardianCpf: relationshipData?.student_guardian_cpf ? `***${String(relationshipData.student_guardian_cpf).slice(-4)}` : 'none'
+      });
+      
       const { data: paymentResult, error: paymentError } = await supabaseClient.functions.invoke(
         'create-payment-intent-connect',
         {
@@ -149,6 +165,15 @@ serve(async (req) => {
           }
         }
       );
+
+      logStep("Payment intent response", { 
+        status: paymentError ? 'error' : 'success',
+        hasData: !!paymentResult,
+        hasBoletoUrl: !!paymentResult?.boleto_url,
+        hasLinhaDigitavel: !!paymentResult?.linha_digitavel,
+        errorMessage: paymentError?.message,
+        errorDetails: paymentError
+      });
 
       if (!paymentError && paymentResult?.boleto_url) {
         // Update invoice with the generated payment URL
@@ -177,10 +202,17 @@ serve(async (req) => {
           logStep("Warning: Could not update invoice with payment URL", { error: updateError });
         }
       } else {
-        logStep("Warning: Could not generate payment URL", { error: paymentError });
+        logStep("Warning: Could not generate payment URL", { 
+          error: paymentError,
+          hasResult: !!paymentResult,
+          resultData: paymentResult
+        });
       }
-    } catch (paymentGenerationError) {
-      logStep("Warning: Failed to generate payment URL", { error: paymentGenerationError });
+    } catch (paymentGenerationError: any) {
+      logStep("Warning: Failed to generate payment URL", { 
+        error: paymentGenerationError.message,
+        stack: paymentGenerationError.stack
+      });
       // Continue without failing the invoice creation
     }
 

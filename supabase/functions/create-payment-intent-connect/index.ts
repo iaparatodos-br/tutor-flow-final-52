@@ -38,7 +38,8 @@ serve(async (req) => {
       .select(`
         *,
         student:profiles!invoices_student_id_fkey(
-          name, email, cpf, guardian_name, guardian_email,
+          name, email, cpf, guardian_name, guardian_email, guardian_cpf,
+          guardian_address_street, guardian_address_city, guardian_address_state, guardian_address_postal_code,
           address_street, address_city, address_state, address_postal_code, address_complete
         ),
         teacher:profiles!invoices_teacher_id_fkey(name, email, payment_due_days),
@@ -173,6 +174,16 @@ serve(async (req) => {
     // Priorizar dados do responsável se existir, caso contrário usar dados do aluno
     const hasGuardian = invoice.student?.guardian_cpf && invoice.student?.guardian_name;
     
+    logStep('Guardian data check', {
+      hasGuardian,
+      guardian_cpf: invoice.student?.guardian_cpf ? `***${String(invoice.student.guardian_cpf).slice(-4)}` : 'none',
+      guardian_name: invoice.student?.guardian_name || 'none',
+      guardian_address_street: invoice.student?.guardian_address_street || 'none',
+      guardian_address_city: invoice.student?.guardian_address_city || 'none',
+      guardian_address_state: invoice.student?.guardian_address_state || 'none',
+      guardian_address_postal_code: invoice.student?.guardian_address_postal_code || 'none'
+    });
+    
     const finalPayerTaxId = payer_tax_id || (hasGuardian ? invoice.student.guardian_cpf : invoice.student?.cpf);
     const finalPayerName = payer_name || (hasGuardian ? invoice.student.guardian_name : invoice.student?.name) || "Cliente";
     const finalPayerEmail = payer_email || (hasGuardian ? invoice.student.guardian_email : invoice.student?.email);
@@ -194,6 +205,13 @@ serve(async (req) => {
       state: invoice.student.address_state,
       postal_code: invoice.student.address_postal_code
     } : null));
+    
+    logStep('Payer details prepared', {
+      payerTaxId: finalPayerTaxId ? `***${String(finalPayerTaxId).slice(-4)}` : 'none',
+      payerName: finalPayerName,
+      payerEmail: finalPayerEmail,
+      hasAddress: !!(finalPayerAddress?.street && finalPayerAddress?.city && finalPayerAddress?.state && finalPayerAddress?.postal_code)
+    });
 
     // Create or get customer
     const customers = await stripe.customers.list({ 

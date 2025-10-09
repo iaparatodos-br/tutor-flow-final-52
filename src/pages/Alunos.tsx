@@ -23,6 +23,11 @@ interface Student {
   guardian_name?: string;
   guardian_email?: string;
   guardian_phone?: string;
+  guardian_cpf?: string;
+  guardian_address_street?: string;
+  guardian_address_city?: string;
+  guardian_address_state?: string;
+  guardian_address_postal_code?: string;
   billing_day?: number;
   relationship_id?: string;
   stripe_customer_id?: string;
@@ -77,6 +82,11 @@ export default function Alunos() {
         guardian_name: student.guardian_name,
         guardian_email: student.guardian_email,
         guardian_phone: student.guardian_phone,
+        guardian_cpf: student.guardian_cpf,
+        guardian_address_street: student.guardian_address_street,
+        guardian_address_city: student.guardian_address_city,
+        guardian_address_state: student.guardian_address_state,
+        guardian_address_postal_code: student.guardian_address_postal_code,
         billing_day: student.billing_day,
         relationship_id: student.relationship_id,
         stripe_customer_id: student.stripe_customer_id,

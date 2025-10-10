@@ -36,9 +36,8 @@ serve(async (req) => {
       .select(`
         *,
         student:profiles!invoices_student_id_fkey(
-          id, name, email, cpf, guardian_name, guardian_email, guardian_cpf,
-          address_street, address_city, address_state, address_postal_code, address_complete,
-          guardian_address_street, guardian_address_city, guardian_address_state, guardian_address_postal_code
+          id, name, email, cpf,
+          address_street, address_city, address_state, address_postal_code, address_complete
         ),
         teacher:profiles!invoices_teacher_id_fkey(name, email)
       `)
@@ -49,18 +48,30 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
+    // Get guardian data from teacher_student_relationships
+    const { data: relationship, error: relationshipError } = await supabaseClient
+      .from("teacher_student_relationships")
+      .select("student_guardian_name, student_guardian_email, student_guardian_cpf, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code")
+      .eq("teacher_id", invoice.teacher_id)
+      .eq("student_id", invoice.student_id)
+      .maybeSingle();
+
+    if (relationshipError) {
+      logStep("Error fetching guardian data", relationshipError);
+    }
+
     // Check if student has complete profile data required for boleto
     const student = invoice.student;
     
     // Determine if we should use guardian or student data
-    const hasGuardian = !!student.guardian_name;
+    const hasGuardian = !!(relationship?.student_guardian_name);
     
     // Validate required data based on who will be the payer
-    const payerCpf = hasGuardian && student.guardian_cpf ? student.guardian_cpf : student.cpf;
-    const payerAddressStreet = hasGuardian && student.guardian_address_street ? student.guardian_address_street : student.address_street;
-    const payerAddressCity = hasGuardian && student.guardian_address_city ? student.guardian_address_city : student.address_city;
-    const payerAddressState = hasGuardian && student.guardian_address_state ? student.guardian_address_state : student.address_state;
-    const payerAddressPostalCode = hasGuardian && student.guardian_address_postal_code ? student.guardian_address_postal_code : student.address_postal_code;
+    const payerCpf = hasGuardian && relationship?.student_guardian_cpf ? relationship.student_guardian_cpf : student.cpf;
+    const payerAddressStreet = hasGuardian && relationship?.student_guardian_address_street ? relationship.student_guardian_address_street : student.address_street;
+    const payerAddressCity = hasGuardian && relationship?.student_guardian_address_city ? relationship.student_guardian_address_city : student.address_city;
+    const payerAddressState = hasGuardian && relationship?.student_guardian_address_state ? relationship.student_guardian_address_state : student.address_state;
+    const payerAddressPostalCode = hasGuardian && relationship?.student_guardian_address_postal_code ? relationship.student_guardian_address_postal_code : student.address_postal_code;
 
     if (!payerCpf || !payerAddressStreet || !payerAddressCity || !payerAddressState || !payerAddressPostalCode) {
       const missingFields = [];
@@ -85,8 +96,8 @@ serve(async (req) => {
       invoice_id: invoice_id,
       payment_method: "boleto",
       payer_tax_id: payerCpf,
-      payer_name: student.guardian_name || student.name,
-      payer_email: student.guardian_email || student.email,
+      payer_name: relationship?.student_guardian_name || student.name,
+      payer_email: relationship?.student_guardian_email || student.email,
       payer_address: {
         street: payerAddressStreet,
         city: payerAddressCity,

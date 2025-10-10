@@ -192,21 +192,8 @@ serve(async (req) => {
         await new Promise((r) => setTimeout(r, 150));
       }
 
-      if (profileFound) {
-        await supabaseAdmin
-          .from('profiles')
-          .update({
-            guardian_name: body.guardian_name ?? null,
-            guardian_email: body.guardian_email ?? null,
-            guardian_phone: body.guardian_phone ?? null,
-            guardian_cpf: body.guardian_cpf ?? null,
-            guardian_address_street: body.guardian_address_street ?? null,
-            guardian_address_city: body.guardian_address_city ?? null,
-            guardian_address_state: body.guardian_address_state ?? null,
-            guardian_address_postal_code: body.guardian_address_postal_code ?? null
-          })
-          .eq('id', studentId);
-      }
+      // Guardian data is now stored ONLY in teacher_student_relationships table
+      // No longer updating profiles table for guardian information
     }
 
     // Create the teacher-student relationship with teacher-specific data FIRST

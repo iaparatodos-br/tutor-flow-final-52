@@ -42,42 +42,71 @@ export function BillingSettings({ studentId, isModal = false }: BillingSettingsP
     setLoading(true);
     try {
       const targetId = studentId || profile?.id;
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('guardian_name, guardian_email, guardian_phone, cpf, address_street, address_city, address_state, address_postal_code')
-        .eq('id', targetId)
-        .single();
 
-      if (error) throw error;
-
-      // Determine billing day from relationship
-      let billingDay = 15;
+      // Guardian data is now ONLY in teacher_student_relationships
       if (isProfessor && studentId) {
-        const { data: rel } = await supabase
+        // Teacher editing a student: get from relationship
+        const { data: rel, error: relError } = await supabase
           .from('teacher_student_relationships')
-          .select('billing_day')
+          .select('student_guardian_name, student_guardian_email, student_guardian_phone, billing_day')
           .eq('teacher_id', profile?.id)
           .eq('student_id', studentId)
-          .maybeSingle();
-        if (rel?.billing_day) billingDay = rel.billing_day;
-      } else if (profile?.role === 'aluno') {
-        const { data: teachers } = await supabase.rpc('get_student_teachers', {
-          student_user_id: profile.id
-        });
-        if (teachers && teachers.length > 0) billingDay = teachers[0].billing_day || 15;
-      }
+          .single();
 
-      setSettings({
-        guardian_name: data?.guardian_name || '',
-        guardian_email: data?.guardian_email || '',
-        guardian_phone: data?.guardian_phone || '',
-        billing_day: billingDay,
-        cpf: data?.cpf || '',
-        address_street: data?.address_street || '',
-        address_city: data?.address_city || '',
-        address_state: data?.address_state || '',
-        address_postal_code: data?.address_postal_code || ''
-      });
+        if (relError) throw relError;
+
+        // Student's own CPF and address are still in profiles
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('cpf, address_street, address_city, address_state, address_postal_code')
+          .eq('id', studentId)
+          .single();
+
+        if (profileError) throw profileError;
+
+        setSettings({
+          guardian_name: rel?.student_guardian_name || '',
+          guardian_email: rel?.student_guardian_email || '',
+          guardian_phone: rel?.student_guardian_phone || '',
+          billing_day: rel?.billing_day || 15,
+          cpf: profileData?.cpf || '',
+          address_street: profileData?.address_street || '',
+          address_city: profileData?.address_city || '',
+          address_state: profileData?.address_state || '',
+          address_postal_code: profileData?.address_postal_code || ''
+        });
+      } else if (profile?.role === 'aluno') {
+        // Student viewing own data: get first teacher relationship
+        const { data: rel, error: relError } = await supabase
+          .from('teacher_student_relationships')
+          .select('student_guardian_name, student_guardian_email, student_guardian_phone, billing_day')
+          .eq('student_id', profile.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (relError) throw relError;
+
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('cpf, address_street, address_city, address_state, address_postal_code')
+          .eq('id', profile.id)
+          .single();
+
+        if (profileError) throw profileError;
+
+        setSettings({
+          guardian_name: rel?.student_guardian_name || '',
+          guardian_email: rel?.student_guardian_email || '',
+          guardian_phone: rel?.student_guardian_phone || '',
+          billing_day: rel?.billing_day || 15,
+          cpf: profileData?.cpf || '',
+          address_street: profileData?.address_street || '',
+          address_city: profileData?.address_city || '',
+          address_state: profileData?.address_state || '',
+          address_postal_code: profileData?.address_postal_code || ''
+        });
+      }
     } catch (error) {
       console.error('Error loading billing settings:', error);
       toast({
@@ -109,12 +138,11 @@ export function BillingSettings({ studentId, isModal = false }: BillingSettingsP
     setSaving(true);
     try {
       const targetId = studentId || profile?.id;
-      const { error } = await supabase
+      
+      // Update CPF and address in profiles (student's own data)
+      const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          guardian_name: settings.guardian_name || null,
-          guardian_email: settings.guardian_email || null,
-          guardian_phone: settings.guardian_phone || null,
           cpf: settings.cpf.replace(/\D/g, '') || null,
           address_street: settings.address_street || null,
           address_city: settings.address_city || null,
@@ -124,24 +152,44 @@ export function BillingSettings({ studentId, isModal = false }: BillingSettingsP
         })
         .eq('id', targetId);
 
-      if (error) throw error;
+      if (profileError) throw profileError;
 
-      // Update billing day in relationship
+      // Update guardian and billing day in relationship
       if (isProfessor && studentId) {
-        await supabase
+        const { error: relError } = await supabase
           .from('teacher_student_relationships')
-          .update({ billing_day: settings.billing_day })
+          .update({ 
+            student_guardian_name: settings.guardian_name || null,
+            student_guardian_email: settings.guardian_email || null,
+            student_guardian_phone: settings.guardian_phone || null,
+            billing_day: settings.billing_day 
+          })
           .eq('teacher_id', profile?.id)
           .eq('student_id', studentId);
+        
+        if (relError) throw relError;
       } else if (profile?.role === 'aluno') {
-        const { data: teachers } = await supabase.rpc('get_student_teachers', {
-          student_user_id: profile.id
-        });
-        if (teachers && teachers.length > 0) {
-          await supabase
+        // Student updating own guardian data: update first teacher relationship
+        const { data: rel } = await supabase
+          .from('teacher_student_relationships')
+          .select('id')
+          .eq('student_id', profile.id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        if (rel) {
+          const { error: relError } = await supabase
             .from('teacher_student_relationships')
-            .update({ billing_day: settings.billing_day })
-            .eq('id', teachers[0].relationship_id);
+            .update({ 
+              student_guardian_name: settings.guardian_name || null,
+              student_guardian_email: settings.guardian_email || null,
+              student_guardian_phone: settings.guardian_phone || null,
+              billing_day: settings.billing_day 
+            })
+            .eq('id', rel.id);
+          
+          if (relError) throw relError;
         }
       }
 

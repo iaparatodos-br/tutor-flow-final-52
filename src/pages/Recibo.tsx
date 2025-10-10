@@ -53,7 +53,7 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
       stripe_payment_intent_id,
       updated_at,
       teacher:profiles!invoices_teacher_id_fkey(name, email),
-      student:profiles!invoices_student_id_fkey(name, email, guardian_name, guardian_email),
+      student:profiles!invoices_student_id_fkey(name, email),
       business_profile:business_profiles!invoices_business_profile_id_fkey(business_name, cnpj)
     `)
     .eq('id', invoiceId)

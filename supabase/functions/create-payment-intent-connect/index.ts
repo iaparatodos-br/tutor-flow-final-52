@@ -33,13 +33,13 @@ serve(async (req) => {
     if (!invoice_id) throw new Error("invoice_id is required");
 
     // Get invoice details with business profile
+    // NOTE: Guardian data is now stored ONLY in teacher_student_relationships
     const { data: invoice, error: invoiceError } = await supabaseClient
       .from("invoices")
       .select(`
         *,
         student:profiles!invoices_student_id_fkey(
-          name, email, cpf, guardian_name, guardian_email, guardian_cpf,
-          guardian_address_street, guardian_address_city, guardian_address_state, guardian_address_postal_code,
+          name, email, cpf,
           address_street, address_city, address_state, address_postal_code, address_complete
         ),
         teacher:profiles!invoices_teacher_id_fkey(name, email, payment_due_days),
@@ -55,6 +55,23 @@ serve(async (req) => {
     }
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
+    
+    // Fetch guardian data from teacher_student_relationships
+    const { data: relationship, error: relError } = await supabaseClient
+      .from("teacher_student_relationships")
+      .select("student_guardian_name, student_guardian_email, student_guardian_cpf, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code")
+      .eq("teacher_id", invoice.teacher_id)
+      .eq("student_id", invoice.student_id)
+      .maybeSingle();
+
+    if (relError) {
+      logStep("Warning: Could not fetch relationship data", { error: relError });
+    }
+
+    logStep("Relationship guardian data fetched", { 
+      hasRelationship: !!relationship,
+      hasGuardianData: !!(relationship?.student_guardian_cpf && relationship?.student_guardian_name)
+    });
 
     // VALIDAÇÕES DE INTEGRIDADE - Adicionadas conforme solicitado
     
@@ -164,41 +181,41 @@ serve(async (req) => {
     // Convert amount from decimal to cents
     const amountInCents = Math.round(parseFloat(invoice.amount) * 100);
     
-    // Determine customer email
-    const customerEmail = invoice.student?.guardian_email || invoice.student?.email;
+    // Determine customer email - use guardian from relationship if available
+    const customerEmail = relationship?.student_guardian_email || invoice.student?.email;
     if (!customerEmail) {
       throw new Error("No email found for customer");
     }
     
-    // Use profile data if not provided in request (for automated boleto generation)
+    // Use relationship data if available (for guardian information)
     // Priorizar dados do responsável se existir, caso contrário usar dados do aluno
-    const hasGuardian = invoice.student?.guardian_cpf && invoice.student?.guardian_name;
+    const hasGuardian = relationship?.student_guardian_cpf && relationship?.student_guardian_name;
     
     logStep('Guardian data check', {
       hasGuardian,
-      guardian_cpf: invoice.student?.guardian_cpf ? `***${String(invoice.student.guardian_cpf).slice(-4)}` : 'none',
-      guardian_name: invoice.student?.guardian_name || 'none',
-      guardian_address_street: invoice.student?.guardian_address_street || 'none',
-      guardian_address_city: invoice.student?.guardian_address_city || 'none',
-      guardian_address_state: invoice.student?.guardian_address_state || 'none',
-      guardian_address_postal_code: invoice.student?.guardian_address_postal_code || 'none'
+      guardian_cpf: relationship?.student_guardian_cpf ? `***${String(relationship.student_guardian_cpf).slice(-4)}` : 'none',
+      guardian_name: relationship?.student_guardian_name || 'none',
+      guardian_address_street: relationship?.student_guardian_address_street || 'none',
+      guardian_address_city: relationship?.student_guardian_address_city || 'none',
+      guardian_address_state: relationship?.student_guardian_address_state || 'none',
+      guardian_address_postal_code: relationship?.student_guardian_address_postal_code || 'none'
     });
     
-    const finalPayerTaxId = payer_tax_id || (hasGuardian ? invoice.student.guardian_cpf : invoice.student?.cpf);
-    const finalPayerName = payer_name || (hasGuardian ? invoice.student.guardian_name : invoice.student?.name) || "Cliente";
-    const finalPayerEmail = payer_email || (hasGuardian ? invoice.student.guardian_email : invoice.student?.email);
+    const finalPayerTaxId = payer_tax_id || (hasGuardian ? relationship.student_guardian_cpf : invoice.student?.cpf);
+    const finalPayerName = payer_name || (hasGuardian ? relationship.student_guardian_name : invoice.student?.name) || "Cliente";
+    const finalPayerEmail = payer_email || (hasGuardian ? relationship.student_guardian_email : invoice.student?.email);
     
     // Para endereço: usar endereço do responsável se existir e estiver completo, senão usar endereço do aluno
-    const guardianAddressComplete = invoice.student?.guardian_address_street && 
-                                    invoice.student?.guardian_address_city && 
-                                    invoice.student?.guardian_address_state && 
-                                    invoice.student?.guardian_address_postal_code;
+    const guardianAddressComplete = relationship?.student_guardian_address_street && 
+                                    relationship?.student_guardian_address_city && 
+                                    relationship?.student_guardian_address_state && 
+                                    relationship?.student_guardian_address_postal_code;
     
     const finalPayerAddress = payer_address || (guardianAddressComplete ? {
-      street: invoice.student.guardian_address_street,
-      city: invoice.student.guardian_address_city,
-      state: invoice.student.guardian_address_state,
-      postal_code: invoice.student.guardian_address_postal_code
+      street: relationship.student_guardian_address_street,
+      city: relationship.student_guardian_address_city,
+      state: relationship.student_guardian_address_state,
+      postal_code: relationship.student_guardian_address_postal_code
     } : (invoice.student?.address_complete ? {
       street: invoice.student.address_street,
       city: invoice.student.address_city,

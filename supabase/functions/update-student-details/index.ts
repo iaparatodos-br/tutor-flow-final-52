@@ -96,28 +96,8 @@ serve(async (req) => {
       );
     }
 
-    // Update profiles table for guardian information
-    const profileUpdateData: any = {};
-    if (body.guardian_name !== undefined) profileUpdateData.guardian_name = body.guardian_name;
-    if (body.guardian_email !== undefined) profileUpdateData.guardian_email = body.guardian_email;
-    if (body.guardian_phone !== undefined) profileUpdateData.guardian_phone = body.guardian_phone;
-    if (body.guardian_cpf !== undefined) profileUpdateData.guardian_cpf = body.guardian_cpf;
-    if (body.guardian_address_street !== undefined) profileUpdateData.guardian_address_street = body.guardian_address_street;
-    if (body.guardian_address_city !== undefined) profileUpdateData.guardian_address_city = body.guardian_address_city;
-    if (body.guardian_address_state !== undefined) profileUpdateData.guardian_address_state = body.guardian_address_state;
-    if (body.guardian_address_postal_code !== undefined) profileUpdateData.guardian_address_postal_code = body.guardian_address_postal_code;
-
-    if (Object.keys(profileUpdateData).length > 0) {
-      const { error: updateProfileError } = await supabaseAdmin
-        .from('profiles')
-        .update(profileUpdateData)
-        .eq('id', body.student_id);
-
-      if (updateProfileError) {
-        logStep("Warning: Could not update profile", { error: updateProfileError });
-        // Don't fail the request for profile update errors
-      }
-    }
+    // Guardian data is now stored ONLY in teacher_student_relationships table
+    // No longer updating profiles table for guardian information
 
     logStep("Student details updated successfully", { relationshipId: body.relationship_id });
 

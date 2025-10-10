@@ -1093,14 +1093,6 @@ export type Database = {
           current_plan_id: string | null
           default_billing_day: number | null
           email: string
-          guardian_address_city: string | null
-          guardian_address_postal_code: string | null
-          guardian_address_state: string | null
-          guardian_address_street: string | null
-          guardian_cpf: string | null
-          guardian_email: string | null
-          guardian_name: string | null
-          guardian_phone: string | null
           id: string
           name: string
           password_changed: boolean
@@ -1124,14 +1116,6 @@ export type Database = {
           current_plan_id?: string | null
           default_billing_day?: number | null
           email: string
-          guardian_address_city?: string | null
-          guardian_address_postal_code?: string | null
-          guardian_address_state?: string | null
-          guardian_address_street?: string | null
-          guardian_cpf?: string | null
-          guardian_email?: string | null
-          guardian_name?: string | null
-          guardian_phone?: string | null
           id?: string
           name: string
           password_changed?: boolean
@@ -1155,14 +1139,6 @@ export type Database = {
           current_plan_id?: string | null
           default_billing_day?: number | null
           email?: string
-          guardian_address_city?: string | null
-          guardian_address_postal_code?: string | null
-          guardian_address_state?: string | null
-          guardian_address_street?: string | null
-          guardian_cpf?: string | null
-          guardian_email?: string | null
-          guardian_name?: string | null
-          guardian_phone?: string | null
           id?: string
           name?: string
           password_changed?: boolean

@@ -105,7 +105,7 @@ export default function PerfilAluno() {
       // Load student profile - first verify teacher-student relationship
       const { data: relationshipData, error: relationshipError } = await supabase
         .from('teacher_student_relationships')
-        .select('student_id')
+        .select('student_id, student_guardian_name, student_guardian_email, student_guardian_phone, billing_day')
         .eq('teacher_id', profile.id)
         .eq('student_id', id)
         .single();
@@ -114,15 +114,25 @@ export default function PerfilAluno() {
         throw new Error('Acesso negado: Este aluno não está vinculado ao seu perfil.');
       }
 
-      // Now load the student profile
+      // Now load the student basic data
       const { data: studentData, error: studentError } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, name, email, created_at')
         .eq('id', id)
         .single();
 
       if (studentError) throw studentError;
-      setStudent(studentData);
+      
+      // Combine student data with guardian data from relationship
+      const combinedStudent = {
+        ...studentData,
+        guardian_name: relationshipData.student_guardian_name,
+        guardian_email: relationshipData.student_guardian_email,
+        guardian_phone: relationshipData.student_guardian_phone,
+        billing_day: relationshipData.billing_day
+      };
+      
+      setStudent(combinedStudent);
 
       // Load classes (individual and group classes)
       // First get individual classes

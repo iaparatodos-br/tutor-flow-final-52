@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
+import { UpdatePaymentMethodModal } from "@/components/UpdatePaymentMethodModal";
 import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
@@ -57,6 +58,9 @@ export default function Alunos() {
   const [warningModalOpen, setWarningModalOpen] = useState(false);
   const [warningStudent, setWarningStudent] = useState<Student | null>(null);
   const [warningAction, setWarningAction] = useState("");
+  const [paymentErrorModalOpen, setPaymentErrorModalOpen] = useState(false);
+  const [paymentErrorMessage, setPaymentErrorMessage] = useState("");
+  const [pendingStudentData, setPendingStudentData] = useState<any>(null);
   useEffect(() => {
     if (profile?.id) {
       loadStudents();
@@ -172,6 +176,16 @@ export default function Alunos() {
       // Check if the function returned success: false
       if (data && !data.success) {
         console.log('Function returned success: false, error:', data.error);
+        
+        // Check if it's a payment failure
+        if (data.payment_failed) {
+          console.log('Payment failed - showing payment update modal');
+          setPaymentErrorMessage(data.error);
+          setPendingStudentData(formData);
+          setPaymentErrorModalOpen(true);
+          return;
+        }
+        
         toast({
           title: 'Erro ao cadastrar aluno',
           description: data.error || 'Este e-mail já está sendo utilizado por outro aluno ou professor',
@@ -617,6 +631,18 @@ export default function Alunos() {
         }
         setIsEditDialogOpen(true);
       }} action={warningAction} />}
+
+        {/* Update Payment Method Modal */}
+        <UpdatePaymentMethodModal
+          open={paymentErrorModalOpen}
+          onOpenChange={setPaymentErrorModalOpen}
+          errorMessage={paymentErrorMessage}
+          onRetry={() => {
+            if (pendingStudentData) {
+              setIsAddDialogOpen(true);
+            }
+          }}
+        />
       </div>
     </Layout>;
 }

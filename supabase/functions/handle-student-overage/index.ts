@@ -112,6 +112,11 @@ serve(async (req) => {
           status: immediateCharge.status 
         });
 
+        // Check if payment succeeded
+        if (immediateCharge.status !== 'succeeded') {
+          throw new Error(`Payment failed with status: ${immediateCharge.status}`);
+        }
+
         // Register immediate charge in database
         const { error: insertError } = await supabaseClient
           .from('student_overage_charges')
@@ -129,14 +134,32 @@ serve(async (req) => {
 
         immediateChargeSuccess = true;
       } catch (immediateChargeError: any) {
-        logStep("Immediate charge failed, continuing with recurring only", { 
+        logStep("Immediate charge failed - CRITICAL ERROR", { 
           error: immediateChargeError.message 
         });
-        immediateChargeError = immediateChargeError.message;
+        
+        // CRITICAL: If immediate charge fails, we must return error to block student creation
+        return new Response(JSON.stringify({ 
+          success: false,
+          error: `Falha ao processar pagamento: ${immediateChargeError.message}`,
+          payment_failed: true
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 500,
+        });
       }
     } else {
-      logStep("No default payment method, skipping immediate charge");
-      immediateChargeError = "No default payment method configured";
+      logStep("No default payment method - BLOCKING student creation");
+      
+      // CRITICAL: No payment method = cannot charge = block student creation
+      return new Response(JSON.stringify({ 
+        success: false,
+        error: "Nenhum método de pagamento configurado. Configure um cartão antes de adicionar alunos extras.",
+        payment_failed: true
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
     }
 
     // Update the main subscription item quantity with total students
@@ -176,23 +199,19 @@ serve(async (req) => {
       throw updateError;
     }
 
-    logStep("Student overage billing completed", { 
+    logStep("Student overage billing completed successfully", { 
       extraStudents, 
       extraCostCents,
       subscriptionId: subscriptionData.stripe_subscription_id,
-      immediateChargeSuccess,
-      immediateChargeError 
+      immediateChargeSuccess: true
     });
 
     return new Response(JSON.stringify({ 
       success: true,
       extraStudents,
       extraCostCents,
-      immediateChargeSuccess,
-      immediateChargeFailed: !immediateChargeSuccess,
-      message: immediateChargeSuccess 
-        ? `Cobrança imediata de R$ 5,00 realizada. A partir do próximo mês, será cobrado R$ ${(extraCostCents / 100).toFixed(2)}/mês.`
-        : `Cobrança recorrente de R$ ${(extraCostCents / 100).toFixed(2)}/mês configurada. ${immediateChargeError ? 'Cobrança imediata não pôde ser realizada: ' + immediateChargeError : ''}`
+      immediateChargeSuccess: true,
+      message: `Cobrança imediata de R$ 5,00 realizada com sucesso. A partir do próximo mês, será cobrado R$ ${(extraCostCents / 100).toFixed(2)}/mês.`
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

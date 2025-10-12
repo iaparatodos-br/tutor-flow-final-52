@@ -245,6 +245,7 @@ serve(async (req) => {
               body: {
                 extraStudents,
                 planLimit: plan.student_limit,
+                userId: body.teacher_id,
               }
             }
           );

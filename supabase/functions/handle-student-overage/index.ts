@@ -1,3 +1,15 @@
+/**
+ * INTERNAL FUNCTION - Called only by create-student edge function
+ * 
+ * This function handles billing for student overage when a teacher
+ * exceeds their plan's student limit. It processes an immediate R$ 5.00
+ * charge and updates the subscription quantity.
+ * 
+ * Security: This function should ONLY be called by other edge functions
+ * using service_role key. It does not authenticate end users directly.
+ * The userId must be provided in the request body.
+ */
+
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
@@ -29,18 +41,13 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
+    const { extraStudents, planLimit, userId } = await req.json();
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated or email not available");
+    if (!userId) {
+      throw new Error("userId is required in request body");
+    }
 
-    logStep("User authenticated", { userId: user.id, email: user.email });
-
-    const { extraStudents, planLimit } = await req.json();
+    logStep("Processing student overage for user", { userId, extraStudents, planLimit });
 
     // Calculate extra cost (R$ 5 per additional student)
     const extraCostCents = extraStudents * 500; // R$ 5.00 = 500 cents
@@ -51,7 +58,7 @@ serve(async (req) => {
     const { count: totalStudents, error: countError } = await supabaseClient
       .from('teacher_student_relationships')
       .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', user.id);
+      .eq('teacher_id', userId);
 
     if (countError) {
       logStep("Error counting students", { error: countError });
@@ -64,7 +71,7 @@ serve(async (req) => {
     const { data: subscriptionData, error: subError } = await supabaseClient
       .from('user_subscriptions')
       .select('stripe_subscription_id, stripe_customer_id, plan_id')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('status', 'active')
       .single();
 
@@ -102,7 +109,7 @@ serve(async (req) => {
           confirm: true,
           metadata: {
             type: 'student_overage_immediate',
-            user_id: user.id,
+            user_id: userId,
             extra_students: extraStudents.toString(),
           }
         });
@@ -121,7 +128,7 @@ serve(async (req) => {
         const { error: insertError } = await supabaseClient
           .from('student_overage_charges')
           .insert({
-            user_id: user.id,
+            user_id: userId,
             stripe_payment_intent_id: immediateCharge.id,
             amount_cents: 500,
             status: immediateCharge.status,
@@ -191,7 +198,7 @@ serve(async (req) => {
         extra_cost_cents: extraCostCents,
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('status', 'active');
 
     if (updateError) {

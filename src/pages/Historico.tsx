@@ -23,7 +23,19 @@ interface ArchivedClass {
   status: string;
   notes?: string;
   service_id?: string;
+  is_group_class?: boolean;
   class_reports?: ArchivedClassReport[];
+  participants?: Array<{
+    student_id: string;
+    status: string;
+    cancelled_at?: string;
+    charge_applied?: boolean;
+    cancellation_reason?: string;
+    student: {
+      name: string;
+      email: string;
+    };
+  }>;
 }
 
 interface ArchivedClassReport {

@@ -29,33 +29,29 @@ serve(async (req) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 45);
 
-    const { data: orphanClasses, error: orphanError } = await supabaseAdmin
-      .from('classes')
+    const { data: orphanParticipants, error: orphanError } = await supabaseAdmin
+      .from('class_participants')
       .select(`
         id,
-        teacher_id,
+        class_id,
         student_id,
-        service_id,
         cancelled_at,
-        class_services (
+        charge_applied,
+        cancellation_reason,
+        classes!inner (
           id,
-          name,
-          price
+          teacher_id,
+          service_id,
+          class_services (
+            id,
+            name,
+            price
+          )
         ),
-        teacher:profiles!classes_teacher_id_fkey (
-          id,
-          name,
-          payment_due_days
-        ),
-        student:profiles!classes_student_id_fkey (
+        student:profiles!class_participants_student_id_fkey (
           id,
           name,
           email
-        ),
-        relationship:teacher_student_relationships!inner (
-          id,
-          business_profile_id,
-          billing_day
         )
       `)
       .eq('status', 'cancelada')
@@ -64,11 +60,11 @@ serve(async (req) => {
       .lt('cancelled_at', cutoffDate.toISOString());
 
     if (orphanError) {
-      logStep("Error fetching orphan classes", orphanError);
+      logStep("Error fetching orphan participants", orphanError);
       throw orphanError;
     }
 
-    if (!orphanClasses || orphanClasses.length === 0) {
+    if (!orphanParticipants || orphanParticipants.length === 0) {
       logStep('No orphan cancellation charges found');
       return new Response(JSON.stringify({ 
         message: 'Nenhuma cobrança órfã encontrada.',
@@ -79,46 +75,62 @@ serve(async (req) => {
       });
     }
 
-    logStep(`Found ${orphanClasses.length} orphan cancellation charges`);
+    logStep(`Found ${orphanParticipants.length} orphan cancellation charges`);
 
     // Agrupar por relacionamento professor-aluno
     const groupedCharges = new Map();
     
-    for (const classItem of orphanClasses) {
-      const teacher = Array.isArray(classItem.teacher) ? classItem.teacher[0] : classItem.teacher;
-      const student = Array.isArray(classItem.student) ? classItem.student[0] : classItem.student;
-      const relationship = Array.isArray(classItem.relationship) ? classItem.relationship[0] : classItem.relationship;
+    for (const participant of orphanParticipants) {
+      const classData = Array.isArray(participant.classes) ? participant.classes[0] : participant.classes;
+      const student = Array.isArray(participant.student) ? participant.student[0] : participant.student;
+
+      // Buscar dados do professor e relacionamento
+      const { data: teacherData } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, payment_due_days')
+        .eq('id', classData.teacher_id)
+        .single();
+
+      const { data: relationshipData } = await supabaseAdmin
+        .from('teacher_student_relationships')
+        .select('business_profile_id')
+        .eq('teacher_id', classData.teacher_id)
+        .eq('student_id', participant.student_id)
+        .single();
 
       // Validar se o professor tem módulo financeiro
       const { data: hasFinancialModule } = await supabaseAdmin
-        .rpc('teacher_has_financial_module', { teacher_id: classItem.teacher_id });
+        .rpc('teacher_has_financial_module', { teacher_id: classData.teacher_id });
 
       if (!hasFinancialModule) {
-        logStep(`Skipping class ${classItem.id} - teacher has no financial module`);
+        logStep(`Skipping participant ${participant.id} - teacher has no financial module`);
         // Remover cobrança se não tem módulo financeiro
         await supabaseAdmin
-          .from('classes')
+          .from('class_participants')
           .update({ charge_applied: false, billed: true })
-          .eq('id', classItem.id);
+          .eq('id', participant.id);
         continue;
       }
 
-      const key = `${classItem.teacher_id}-${classItem.student_id}`;
+      const key = `${classData.teacher_id}-${participant.student_id}`;
       
       if (!groupedCharges.has(key)) {
         groupedCharges.set(key, {
-          teacher_id: classItem.teacher_id,
-          student_id: classItem.student_id,
-          teacher_name: teacher?.name || '',
+          teacher_id: classData.teacher_id,
+          student_id: participant.student_id,
+          teacher_name: teacherData?.name || '',
           student_name: student?.name || '',
           student_email: student?.email || '',
-          payment_due_days: teacher?.payment_due_days || 15,
-          business_profile_id: relationship?.business_profile_id,
-          classes: []
+          payment_due_days: teacherData?.payment_due_days || 15,
+          business_profile_id: relationshipData?.business_profile_id,
+          participants: []
         });
       }
       
-      groupedCharges.get(key).classes.push(classItem);
+      groupedCharges.get(key).participants.push({
+        ...participant,
+        classData
+      });
     }
 
     let processedCount = 0;
@@ -136,13 +148,13 @@ serve(async (req) => {
         }
 
         let totalAmount = 0;
-        const classIds = [];
+        const participantIds = [];
 
         // Calcular valor total das cobranças
-        for (const classItem of group.classes) {
-          const service = Array.isArray(classItem.class_services) 
-            ? classItem.class_services[0] 
-            : classItem.class_services;
+        for (const participant of group.participants) {
+          const service = Array.isArray(participant.classData.class_services) 
+            ? participant.classData.class_services[0] 
+            : participant.classData.class_services;
           
           const baseAmount = service?.price || 100;
 
@@ -158,10 +170,10 @@ serve(async (req) => {
           const chargeAmount = (baseAmount * chargePercentage) / 100;
           
           totalAmount += chargeAmount;
-          classIds.push(classItem.id);
+          participantIds.push(participant.id);
         }
 
-        logStep(`Total orphan charges: R$ ${totalAmount.toFixed(2)} for ${classIds.length} classes`);
+        logStep(`Total orphan charges: R$ ${totalAmount.toFixed(2)} for ${participantIds.length} cancellations`);
 
         const now = new Date();
         const dueDate = new Date(now);
@@ -171,28 +183,39 @@ serve(async (req) => {
           student_id: group.student_id,
           teacher_id: group.teacher_id,
           amount: totalAmount,
-          description: `Cobrança de cancelamentos pendentes - ${group.classes.length} cancelamento${group.classes.length > 1 ? 's' : ''}`,
+          description: `Cobrança de cancelamentos pendentes - ${group.participants.length} cancelamento${group.participants.length > 1 ? 's' : ''}`,
           due_date: dueDate.toISOString().split('T')[0],
           status: 'pendente' as const,
           invoice_type: 'orphan_charges',
           business_profile_id: group.business_profile_id,
         };
 
-        // Criar fatura e marcar classes atomicamente
-        const { data: transactionResult, error: transactionError } = await supabaseAdmin
-          .rpc('create_invoice_and_mark_classes_billed', {
-            p_invoice_data: invoiceData,
-            p_class_ids: classIds
-          });
+        // Criar fatura
+        const { data: invoiceResult, error: invoiceError } = await supabaseAdmin
+          .from('invoices')
+          .insert(invoiceData)
+          .select()
+          .single();
 
-        if (transactionError || !transactionResult?.success) {
-          logStep(`Error creating orphan charges invoice`, {
-            error: transactionError,
-            result: transactionResult
-          });
+        if (invoiceError) {
+          logStep(`Error creating invoice`, invoiceError);
           errorCount++;
           continue;
         }
+
+        // Marcar participantes como faturados
+        const { error: updateError } = await supabaseAdmin
+          .from('class_participants')
+          .update({ billed: true })
+          .in('id', participantIds);
+
+        if (updateError) {
+          logStep(`Error marking participants as billed`, updateError);
+          errorCount++;
+          continue;
+        }
+
+        const transactionResult = { success: true, invoice_id: invoiceResult.id };
 
         logStep(`Orphan charges invoice created`, { 
           invoiceId: transactionResult.invoice_id,

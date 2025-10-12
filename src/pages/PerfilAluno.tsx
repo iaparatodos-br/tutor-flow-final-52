@@ -134,32 +134,46 @@ export default function PerfilAluno() {
       
       setStudent(combinedStudent);
 
-      // Load classes (individual and group classes)
-      // First get individual classes
-      const { data: individualClasses } = await supabase
-        .from('classes')
-        .select('*')
-        .eq('student_id', id)
-        .eq('teacher_id', profile.id);
-      
-      // Then get group classes
-      const { data: groupClasses } = await supabase
-        .from('classes')
+      // Load student's class participations (both individual and group)
+      const { data: participationsData, error: participationsError } = await supabase
+        .from('class_participants')
         .select(`
-          *,
-          class_participants!inner(student_id)
+          id,
+          status,
+          class_id,
+          cancelled_at,
+          charge_applied,
+          cancellation_reason,
+          classes!inner (
+            id,
+            class_date,
+            duration_minutes,
+            notes,
+            teacher_id
+          )
         `)
-        .eq('teacher_id', profile.id)
-        .eq('class_participants.student_id', id);
-      
-      // Combine both results
-      const allClasses = [...(individualClasses || []), ...(groupClasses || [])];
-      const classesData = allClasses.sort((a, b) => 
-        new Date(b.class_date).getTime() - new Date(a.class_date).getTime()
-      );
+        .eq('student_id', id)
+        .eq('classes.teacher_id', profile.id)
+        .order('classes(class_date)', { ascending: false });
 
-      
-      setClasses(classesData || []);
+      if (participationsError) throw participationsError;
+
+      // Transform to ClassRecord format
+      const classesData = (participationsData || []).map(p => {
+        const classData = Array.isArray(p.classes) ? p.classes[0] : p.classes;
+        return {
+          id: p.class_id,
+          class_date: classData.class_date,
+          status: p.status,
+          duration_minutes: classData.duration_minutes,
+          notes: classData.notes,
+          cancellation_reason: p.cancellation_reason,
+          cancelled_at: p.cancelled_at,
+          cancelled_by: null
+        };
+      });
+
+      setClasses(classesData);
 
       // Load invoices and calculate financial stats only if teacher has financial module
       let invoicesData: Invoice[] = [];
@@ -183,10 +197,10 @@ export default function PerfilAluno() {
         pendingAmount = invoicesData.filter(i => i.status === 'pendente').reduce((sum, i) => sum + Number(i.amount), 0);
       }
 
-      // Calculate stats
-      const totalClasses = classesData?.length || 0;
-      const completedClasses = classesData?.filter(c => c.status === 'concluida').length || 0;
-      const cancelledClasses = classesData?.filter(c => c.status === 'cancelada').length || 0;
+      // Calculate stats from participations
+      const totalClasses = participationsData?.length || 0;
+      const completedClasses = participationsData?.filter(p => p.status === 'concluida').length || 0;
+      const cancelledClasses = participationsData?.filter(p => p.status === 'cancelada').length || 0;
       const attendanceRate = totalClasses > 0 ? (completedClasses / totalClasses) * 100 : 0;
 
       setStats({

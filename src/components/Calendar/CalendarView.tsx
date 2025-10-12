@@ -31,6 +31,7 @@ export interface CalendarClass {
   };
   participants?: Array<{
     student_id: string;
+    status?: string;
     student: {
       name: string;
       email: string;

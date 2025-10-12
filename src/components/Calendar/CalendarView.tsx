@@ -19,6 +19,15 @@ import { ClassReportView } from '@/components/ClassReportView';
 moment.locale('pt-br');
 const localizer = momentLocalizer(moment);
 
+export interface ClassParticipant {
+  student_id: string;
+  status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  student: {
+    name: string;
+    email: string;
+  };
+}
+
 export interface CalendarClass {
   id: string;
   title: string;
@@ -29,14 +38,7 @@ export interface CalendarClass {
     name: string;
     email: string;
   };
-  participants?: Array<{
-    student_id: string;
-    status?: string;
-    student: {
-      name: string;
-      email: string;
-    };
-  }>;
+  participants?: ClassParticipant[];
   notes?: string;
   is_experimental?: boolean;
   is_group_class?: boolean;

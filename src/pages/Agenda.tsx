@@ -770,12 +770,13 @@ export default function Agenda() {
         insertedClasses = classes;
       }
 
-      // Insert participants for group classes
-      if (formData.is_group_class && formData.selectedStudents.length > 0) {
+      // Insert participants for all classes (individual and group)
+      if (formData.selectedStudents.length > 0) {
         for (const classInstance of insertedClasses) {
           const participantInserts = formData.selectedStudents.map((studentId: string) => ({
             class_id: classInstance.id,
-            student_id: studentId
+            student_id: studentId,
+            status: 'confirmada' // Professor-created classes are confirmed by default
           }));
           const {
             error: participantError

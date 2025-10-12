@@ -72,12 +72,20 @@ serve(async (req) => {
         .gte('end_datetime', nowIso)
         .order('start_datetime', { ascending: true }),
       supabase
-        .from('classes')
-        .select('class_date, duration_minutes, status')
-        .eq('teacher_id', teacherId)
+        .from('class_participants')
+        .select(`
+          class_id,
+          status,
+          classes!inner (
+            class_date,
+            duration_minutes,
+            teacher_id
+          )
+        `)
+        .eq('classes.teacher_id', teacherId)
         .in('status', ['pendente', 'confirmada'])
-        .gte('class_date', nowIso)
-        .order('class_date', { ascending: true }),
+        .gte('classes.class_date', nowIso)
+        .order('classes.class_date', { ascending: true }),
       supabase
         .from('class_services')
         .select('id, name, price, duration_minutes, is_default')
@@ -95,7 +103,10 @@ serve(async (req) => {
       JSON.stringify({
         workingHours: (workingHoursRes as any).data ?? [],
         availabilityBlocks: (blocksRes as any).data ?? [],
-        existingClasses: ((classesRes as any).data ?? []).map((c: any) => ({ class_date: c.class_date, duration_minutes: c.duration_minutes })),
+        existingClasses: ((classesRes as any).data ?? []).map((cp: any) => ({ 
+          class_date: cp.classes.class_date, 
+          duration_minutes: cp.classes.duration_minutes 
+        })),
         services: (servicesRes as any).data ?? []
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }

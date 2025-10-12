@@ -85,7 +85,7 @@ serve(async (req) => {
     if (serviceError) throw serviceError;
     if (!service) throw new Error("Serviço inválido");
 
-    const { error: insertError } = await supabase
+    const { data: newClass, error: insertError } = await supabase
       .from('classes')
       .insert({
         teacher_id: teacherId,
@@ -97,9 +97,22 @@ serve(async (req) => {
         notes: notes?.trim() || null,
         is_experimental: false,
         is_group_class: false
-      });
+      })
+      .select()
+      .single();
 
     if (insertError) throw insertError;
+
+    // Create participant record
+    const { error: participantError } = await supabase
+      .from('class_participants')
+      .insert({
+        class_id: newClass.id,
+        student_id: user.id,
+        status: 'pendente'
+      });
+
+    if (participantError) throw participantError;
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -285,9 +285,16 @@ serve(async (req) => {
         const subscriptionId = (session.subscription as string) ?? null;
         const { userId } = await findUserByCustomer(customerId);
         if (!userId) {
-          log("User not found for customer", { customerId });
-          await completeEventProcessing(supabase, event.id, false, new Error("User not found"));
-          break;
+          log("CRITICAL: User not found for customer on checkout", { customerId, sessionId: session.id });
+          await completeEventProcessing(supabase, event.id, false, new Error("User not found for customer"));
+          return new Response(JSON.stringify({ 
+            error: "User not found for customer",
+            customerId,
+            sessionId: session.id
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400,
+          });
         }
 
         // Extract student_count from metadata
@@ -361,8 +368,17 @@ serve(async (req) => {
         const customerId = (sub.customer as string) ?? "";
         const { userId } = await findUserByCustomer(customerId);
         if (!userId) {
-          log("User not found for customer on subscription.*", { customerId, subId: sub.id });
-          break;
+          log("CRITICAL: User not found for customer on subscription event", { customerId, subId: sub.id, eventType: event.type });
+          await completeEventProcessing(supabase, event.id, false, new Error("User not found for customer"));
+          return new Response(JSON.stringify({ 
+            error: "User not found for customer",
+            customerId,
+            subscriptionId: sub.id,
+            eventType: event.type
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400,
+          });
         }
         
         // Handle teacher subscription cancellation for updated/deleted subscriptions
@@ -389,8 +405,16 @@ serve(async (req) => {
         const customerId = (invoice.customer as string) ?? "";
         const { userId } = await findUserByCustomer(customerId);
         if (!userId) {
-          log("User not found for customer on invoice.payment_succeeded", { customerId, invoiceId: invoice.id });
-          break;
+          log("CRITICAL: User not found for customer on invoice.payment_succeeded", { customerId, invoiceId: invoice.id });
+          await completeEventProcessing(supabase, event.id, false, new Error("User not found for customer"));
+          return new Response(JSON.stringify({ 
+            error: "User not found for customer",
+            customerId,
+            invoiceId: invoice.id
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400,
+          });
         }
 
         // Retrieve subscription to sync period and status
@@ -417,8 +441,16 @@ serve(async (req) => {
         const customerId = (invoice.customer as string) ?? "";
         const { userId } = await findUserByCustomer(customerId);
         if (!userId) {
-          log("User not found for customer on invoice.payment_failed", { customerId, invoiceId: invoice.id });
-          break;
+          log("CRITICAL: User not found for customer on invoice.payment_failed", { customerId, invoiceId: invoice.id });
+          await completeEventProcessing(supabase, event.id, false, new Error("User not found for customer"));
+          return new Response(JSON.stringify({ 
+            error: "User not found for customer",
+            customerId,
+            invoiceId: invoice.id
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 400,
+          });
         }
 
         // Mark as past_due if subscription exists

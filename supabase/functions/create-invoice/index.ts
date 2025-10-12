@@ -127,11 +127,25 @@ serve(async (req) => {
         .update({ invoice_id: newInvoice.id })
         .in('id', body.class_ids);
 
-      if (updateClassesError) {
-        logStep("Warning: Could not update classes", { error: updateClassesError });
+    if (updateClassesError) {
+      logStep("Warning: Could not update classes", { error: updateClassesError });
+    } else {
+      logStep("Classes updated with invoice_id", { classIds: body.class_ids });
+      
+      // CRITICAL: Mark participants as billed
+      const { error: updateParticipantsError } = await supabaseClient
+        .from('class_participants')
+        .update({ billed: true })
+        .in('class_id', body.class_ids);
+      
+      if (updateParticipantsError) {
+        logStep("Warning: Could not mark participants as billed", { 
+          error: updateParticipantsError 
+        });
       } else {
-        logStep("Classes updated with invoice_id", { classIds: body.class_ids });
+        logStep("Participants marked as billed", { classIds: body.class_ids });
       }
+    }
     }
 
     // Generate payment URL automatically

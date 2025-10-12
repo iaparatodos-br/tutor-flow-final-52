@@ -395,19 +395,39 @@ export function SimpleCalendar({
                   )}
 
                   {/* Class Report Section */}
-                  {(selectedEvent as CalendarClass).status === 'concluida' && (
-                    <div className="pt-4 border-t">
-                      <ClassReportView
-                        classId={(selectedEvent as CalendarClass).id}
-                        onEditReport={() => {
-                          if (onManageReport) {
-                            onManageReport(selectedEvent as CalendarClass);
-                          }
-                        }}
-                        showEditButton={isProfessor}
-                      />
-                    </div>
-                  )}
+                  {(() => {
+                    const classEvent = selectedEvent as CalendarClass;
+                    
+                    // For students in group classes, check individual status
+                    let showReport = false;
+                    if (!isProfessor && classEvent.is_group_class) {
+                      // Need to get student ID from context/profile
+                      // This assumes profile is available in parent scope
+                      // If not, you'll need to pass it as a prop
+                      const studentId = (window as any).__STUDENT_ID__; // Temporary workaround
+                      const myParticipation = classEvent.participants?.find(
+                        p => p.student_id === studentId
+                      );
+                      showReport = myParticipation?.status === 'concluida';
+                    } else {
+                      // For professors or individual classes, use class status
+                      showReport = classEvent.status === 'concluida';
+                    }
+                    
+                    return showReport ? (
+                      <div className="pt-4 border-t">
+                        <ClassReportView
+                          classId={classEvent.id}
+                          onEditReport={() => {
+                            if (onManageReport) {
+                              onManageReport(classEvent);
+                            }
+                          }}
+                          showEditButton={isProfessor}
+                        />
+                      </div>
+                    ) : null;
+                  })()}
 
                   {/* Action Buttons */}
                   <div className="flex justify-end gap-3 pt-4 border-t">

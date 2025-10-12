@@ -166,6 +166,16 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
           return false;
         }
         
+        // For group classes, check if there are active participants
+        if ((existingClass as any).is_group_class && (existingClass as any).participants) {
+          const activeParticipants = (existingClass as any).participants.filter(
+            (p: any) => p.status === 'pendente' || p.status === 'confirmada'
+          );
+          if (activeParticipants.length === 0) {
+            return false; // No active participants = no conflict
+          }
+        }
+        
         const existingStart = new Date(existingClass.class_date);
         const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
         

@@ -104,7 +104,7 @@ serve(async (req) => {
     
     console.log(`Arquivando dados anteriores a: ${eighteenMonthsAgo.toISOString()}`);
     
-    // Buscar aulas antigas com seus relatórios
+    // Buscar aulas antigas com seus relatórios e participantes
     const { data: oldClasses, error: fetchError } = await supabaseAdmin
       .from('classes')
       .select(`
@@ -118,6 +118,18 @@ serve(async (req) => {
         service_id,
         created_at,
         updated_at,
+        class_participants (
+          id,
+          student_id,
+          status,
+          cancelled_at,
+          cancelled_by,
+          charge_applied,
+          cancellation_reason,
+          confirmed_at,
+          completed_at,
+          billed
+        ),
         class_reports (
           id,
           lesson_summary,
@@ -188,19 +200,40 @@ serve(async (req) => {
           // Coletar IDs para deleção
           const classIds = data.classes.map(c => c.id);
           const reportIds = data.reports.map(r => r.id);
+          const participantIds = data.classes
+            .flatMap(c => c.class_participants || [])
+            .map(p => p.id);
           
-          // Deletar dados do banco principal (dentro de transação)
-          const { error: deleteReportsError } = await supabaseAdmin
-            .from('class_reports')
-            .delete()
-            .in('id', reportIds);
-            
-          if (deleteReportsError) {
-            console.error(`Erro ao deletar relatórios para período ${period}:`, deleteReportsError);
-            totalErrors++;
-            continue;
+          // Deletar dados do banco principal (dentro de transação, ordem importa)
+          // 1. Deletar relatórios primeiro
+          if (reportIds.length > 0) {
+            const { error: deleteReportsError } = await supabaseAdmin
+              .from('class_reports')
+              .delete()
+              .in('id', reportIds);
+              
+            if (deleteReportsError) {
+              console.error(`Erro ao deletar relatórios para período ${period}:`, deleteReportsError);
+              totalErrors++;
+              continue;
+            }
           }
           
+          // 2. Deletar participantes
+          if (participantIds.length > 0) {
+            const { error: deleteParticipantsError } = await supabaseAdmin
+              .from('class_participants')
+              .delete()
+              .in('id', participantIds);
+              
+            if (deleteParticipantsError) {
+              console.error(`Erro ao deletar participantes para período ${period}:`, deleteParticipantsError);
+              totalErrors++;
+              continue;
+            }
+          }
+          
+          // 3. Deletar classes por último
           const { error: deleteClassesError } = await supabaseAdmin
             .from('classes')
             .delete()

@@ -160,33 +160,40 @@ export default function StudentDashboard() {
     });
 
     try {
-      // Count upcoming classes
-      const upcomingQuery = supabase
-        .from('classes')
-        .select('*', { count: 'exact', head: true })
+      // Count upcoming classes (via participations)
+      const { count: upcomingCount, error: upcomingError } = await supabase
+        .from('class_participants')
+        .select(`
+          id,
+          classes!inner (
+            teacher_id,
+            class_date
+          )
+        `, { count: 'exact', head: true })
         .eq('student_id', profile.id)
-        .eq('teacher_id', selectedTeacherId)
-        .gte('class_date', new Date().toISOString())
-        .eq('status', 'confirmada');
-      
-      console.log('StudentDashboard: About to execute upcoming classes query');
-      const { count: upcomingCount, error: upcomingError } = await upcomingQuery;
+        .eq('classes.teacher_id', selectedTeacherId)
+        .gte('classes.class_date', new Date().toISOString())
+        .in('status', ['pendente', 'confirmada']);
       
       console.log('StudentDashboard: Upcoming classes result', {
         count: upcomingCount,
         error: upcomingError
       });
 
-      // Count completed classes
-      const completedQuery = supabase
-        .from('classes')
-        .select('*', { count: 'exact', head: true })
+      if (upcomingError) throw upcomingError;
+
+      // Count completed classes (via participations)
+      const { count: completedCount, error: completedError } = await supabase
+        .from('class_participants')
+        .select(`
+          id,
+          classes!inner (
+            teacher_id
+          )
+        `, { count: 'exact', head: true })
         .eq('student_id', profile.id)
-        .eq('teacher_id', selectedTeacherId)
+        .eq('classes.teacher_id', selectedTeacherId)
         .eq('status', 'concluida');
-        
-      console.log('StudentDashboard: About to execute completed classes query');
-      const { count: completedCount, error: completedError } = await completedQuery;
       
       console.log('StudentDashboard: Completed classes result', {
         count: completedCount,
@@ -232,26 +239,35 @@ export default function StudentDashboard() {
     if (!selectedTeacherId || !profile?.id) return;
 
     try {
-      const { data: classes } = await supabase
-        .from('classes')
+      const { data: participations } = await supabase
+        .from('class_participants')
         .select(`
           id,
-          class_date,
-          duration_minutes,
-          notes,
-          class_services(name)
+          classes!inner (
+            id,
+            class_date,
+            duration_minutes,
+            notes,
+            teacher_id,
+            class_services (
+              name
+            )
+          )
         `)
         .eq('student_id', profile.id)
-        .eq('teacher_id', selectedTeacherId)
-        .gte('class_date', new Date().toISOString())
-        .eq('status', 'confirmada')
-        .order('class_date', { ascending: true })
+        .eq('classes.teacher_id', selectedTeacherId)
+        .gte('classes.class_date', new Date().toISOString())
+        .in('status', ['pendente', 'confirmada'])
+        .order('classes(class_date)', { ascending: true })
         .limit(3);
 
-      if (classes) {
-        setUpcomingClasses(classes.map(cls => ({
-          ...cls,
-          service_name: cls.class_services?.name || 'Aula'
+      if (participations) {
+        setUpcomingClasses(participations.map(p => ({
+          id: p.classes.id,
+          class_date: p.classes.class_date,
+          duration_minutes: p.classes.duration_minutes,
+          notes: p.classes.notes,
+          service_name: p.classes.class_services?.name || 'Aula'
         })));
       }
     } catch (error) {

@@ -333,20 +333,36 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   )}
 
                   {/* Class Report Section */}
-                  {(selectedEvent as CalendarClass).status === 'concluida' && (
-                    <div className="mt-6">
-                      <Separator className="mb-4" />
-                      <ClassReportView
-                        classId={(selectedEvent as CalendarClass).id}
-                        onEditReport={() => {
-                          if (onCompleteClass) {
-                            onCompleteClass(selectedEvent as CalendarClass);
-                          }
-                        }}
-                        showEditButton={isProfessor}
-                      />
-                    </div>
-                  )}
+                  {(() => {
+                    const classEvent = selectedEvent as CalendarClass;
+                    
+                    // For students in group classes, check individual status
+                    let showReport = false;
+                    if (!isProfessor && classEvent.is_group_class && profile?.id) {
+                      const myParticipation = classEvent.participants?.find(
+                        p => p.student_id === profile.id
+                      );
+                      showReport = myParticipation?.status === 'concluida';
+                    } else {
+                      // For professors or individual classes, use class status
+                      showReport = classEvent.status === 'concluida';
+                    }
+                    
+                    return showReport ? (
+                      <div className="mt-6">
+                        <Separator className="mb-4" />
+                        <ClassReportView
+                          classId={classEvent.id}
+                          onEditReport={() => {
+                            if (onCompleteClass) {
+                              onCompleteClass(classEvent);
+                            }
+                          }}
+                          showEditButton={isProfessor}
+                        />
+                      </div>
+                    ) : null;
+                  })()}
 
                   {/* Action Buttons */}
                   {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' ? (

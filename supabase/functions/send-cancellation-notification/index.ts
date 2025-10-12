@@ -12,6 +12,8 @@ interface NotificationRequest {
   charge_applied: boolean;
   cancellation_reason: string;
   is_group_class?: boolean;
+  notification_target?: 'teacher' | 'students'; // NOVO
+  removed_student_id?: string; // NOVO
   participants?: Array<{
     student_id: string;
     profile: {
@@ -39,6 +41,8 @@ serve(async (req) => {
       charge_applied, 
       cancellation_reason,
       is_group_class = false,
+      notification_target,
+      removed_student_id,
       participants = []
     }: NotificationRequest = await req.json();
 
@@ -74,6 +78,8 @@ serve(async (req) => {
       cancelled_by_type,
       charge_applied,
       is_group_class,
+      notification_target,
+      removed_student_id,
       participants_count: participants.length,
       teacher: teacher?.email,
       student: student?.email
@@ -83,7 +89,61 @@ serve(async (req) => {
     const classTypeLabel = is_group_class ? 'aula em grupo' : 'aula';
     const emailsToSend: Array<{ to: string; subject: string; html: string }> = [];
 
-    if (cancelled_by_type === 'student') {
+    // Caso especial: notificar professor sobre saída de participante
+    if (notification_target === 'teacher' && removed_student_id) {
+      const { data: removedStudent } = await supabaseClient
+        .from('profiles')
+        .select('name, email')
+        .eq('id', removed_student_id)
+        .maybeSingle();
+
+      const recipientEmail = teacher?.email || '';
+      const subject = `Aluno saiu da aula em grupo`;
+      
+      const htmlContent = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #dc2626;">Participante Removido da Aula em Grupo</h2>
+          
+          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <p><strong>Aluno:</strong> ${removedStudent?.name}</p>
+            <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
+            ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
+            <p><strong>Motivo:</strong> ${cancellation_reason}</p>
+          </div>
+
+          ${charge_applied ? `
+            <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #991b1b;">
+                <strong>⚠️ Cobrança Aplicada ao Aluno:</strong><br>
+                O cancelamento foi fora do prazo e será incluído na próxima fatura mensal do aluno.
+              </p>
+            </div>
+          ` : `
+            <div style="background: #f0fdf4; border-left: 4px solid #16a34a; padding: 15px; margin: 20px 0;">
+              <p style="margin: 0; color: #166534;">
+                <strong>✓ Cancelamento Gratuito:</strong><br>
+                O cancelamento foi dentro do prazo estabelecido.
+              </p>
+            </div>
+          `}
+
+          <div style="background: #fef9c3; border-left: 4px solid #facc15; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0; color: #713f12;">
+              <strong>ℹ️ Aula Continua:</strong><br>
+              A aula continua normalmente para os outros participantes.
+            </p>
+          </div>
+
+          <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+            Esta é uma notificação automática do Tutor Flow.
+          </p>
+        </div>
+      `;
+
+      if (recipientEmail) {
+        emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
+      }
+    } else if (cancelled_by_type === 'student') {
       // Notificar professor que aluno cancelou
       const recipientEmail = teacher?.email || '';
       const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${student?.name || 'Aluno'}`;

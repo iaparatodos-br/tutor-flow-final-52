@@ -293,24 +293,58 @@ export type Database = {
       }
       class_participants: {
         Row: {
+          billed: boolean | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          charge_applied: boolean | null
           class_id: string
+          completed_at: string | null
+          confirmed_at: string | null
           created_at: string
           id: string
+          status: string
           student_id: string
+          updated_at: string
         }
         Insert: {
+          billed?: boolean | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          charge_applied?: boolean | null
           class_id: string
+          completed_at?: string | null
+          confirmed_at?: string | null
           created_at?: string
           id?: string
+          status?: string
           student_id: string
+          updated_at?: string
         }
         Update: {
+          billed?: boolean | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          charge_applied?: boolean | null
           class_id?: string
+          completed_at?: string | null
+          confirmed_at?: string | null
           created_at?: string
           id?: string
+          status?: string
           student_id?: string
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "class_participants_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "class_participants_class_id_fkey"
             columns: ["class_id"]

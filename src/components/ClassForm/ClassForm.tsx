@@ -53,7 +53,7 @@ interface ClassFormProps {
     id: string;
     class_date: string;
     duration_minutes: number;
-    status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida';
+    status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
   }>;
   onSubmit: (data: ClassFormData) => Promise<void>;
   loading?: boolean;

@@ -24,7 +24,7 @@ export interface CalendarClass {
   title: string;
   start: Date;
   end: Date;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
   student: {
     name: string;
     email: string;

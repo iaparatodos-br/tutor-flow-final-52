@@ -42,42 +42,55 @@ export function CancellationModal({
   const [willBeCharged, setWillBeCharged] = useState(false);
   const [chargeAmount, setChargeAmount] = useState(0);
   const [hoursUntilClass, setHoursUntilClass] = useState(0);
+  const [classData, setClassData] = useState<{ 
+    is_group_class: boolean;
+    class_date: string;
+    class_services: any;
+  } | null>(null);
 
   // Check if teacher has financial module
   const teacherHasFinancialModule = hasTeacherFeature('financial_module');
 
   useEffect(() => {
     if (isOpen && classId) {
-      // Clear previous policy data to ensure fresh load
+      // Clear previous data to ensure fresh load
       setPolicy(null);
+      setClassData(null);
       loadPolicyAndCalculateCharge();
     }
   }, [isOpen, classId]);
 
   const loadPolicyAndCalculateCharge = async () => {
     try {
-      // Get class details with service information
-      const { data: classData, error: classError } = await supabase
+      // Get class details with service and group information
+      const { data: fetchedClassData, error: classError } = await supabase
         .from('classes')
         .select(`
           teacher_id, 
           class_date, 
           service_id,
+          is_group_class,
           class_services(price)
         `)
         .eq('id', classId)
         .maybeSingle();
 
-      if (classError || !classData) {
+      if (classError || !fetchedClassData) {
         console.error('Error loading class data:', classError);
         return;
       }
+      
+      setClassData({ 
+        is_group_class: fetchedClassData.is_group_class,
+        class_date: fetchedClassData.class_date,
+        class_services: fetchedClassData.class_services
+      });
 
       // Get teacher's policy - always fetch fresh data
       const { data: policyData, error: policyError } = await supabase
         .from('cancellation_policies')
         .select('*')
-        .eq('teacher_id', classData.teacher_id)
+        .eq('teacher_id', fetchedClassData.teacher_id)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .maybeSingle();
@@ -228,6 +241,27 @@ export function CancellationModal({
                 </Alert>
               )}
             </div>
+          )}
+          
+          {classData?.is_group_class && !isProfessor && (
+            <Alert className="border-blue-200 bg-blue-50">
+              <AlertDescription>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <strong>Aula em Grupo</strong>
+                    <p className="text-sm mt-1">
+                      Ao cancelar, apenas você será removido desta aula. 
+                      Os demais participantes continuarão normalmente.
+                      {willBeCharged && (
+                        <span className="text-orange-600 font-semibold">
+                          {' '}A cobrança será aplicada apenas a você.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </AlertDescription>
+            </Alert>
           )}
 
           <div className="space-y-2">

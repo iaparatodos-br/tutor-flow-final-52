@@ -147,25 +147,37 @@ serve(async (req) => {
           });
         }
         
-        const { data: classesToInvoice, error: classesError } = await supabaseAdmin
-          .from('classes')
+        // NOVA LÓGICA: Buscar aulas concluídas via class_participants
+        const { data: completedParticipations, error: classesError } = await supabaseAdmin
+          .from('class_participants')
           .select(`
-            id, 
-            notes,
-            service_id,
-            class_date,
-            status,
-            class_services (
+            id,
+            class_id,
+            student_id,
+            billed,
+            classes!inner (
               id,
-              name,
-              price,
-              description
+              class_date,
+              service_id,
+              teacher_id,
+              class_services (
+                id,
+                name,
+                price,
+                description
+              )
             )
           `)
           .eq('student_id', studentInfo.student_id)
-          .eq('teacher_id', studentInfo.teacher_id)
           .eq('status', 'concluida')
           .eq('billed', false);
+        
+        // Transform to match expected structure
+        const classesToInvoice = completedParticipations?.map(cp => ({
+          id: cp.class_id,
+          participant_id: cp.id,
+          ...(Array.isArray(cp.classes) ? cp.classes[0] : cp.classes)
+        })) || [];
 
         logStep(`Query result - Unbilled classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
@@ -175,29 +187,41 @@ serve(async (req) => {
           continue;
         }
 
-        // 2.1. Encontrar aulas canceladas com cobrança pendente (não faturadas)
-        const { data: cancelledClassesWithCharge, error: cancelledError } = await supabaseAdmin
-          .from('classes')
+        // 2.1. Encontrar cancelamentos com cobrança pendente via class_participants
+        const { data: cancelledParticipations, error: cancelledError } = await supabaseAdmin
+          .from('class_participants')
           .select(`
-            id, 
-            notes,
-            service_id,
-            class_date,
-            status,
+            id,
+            class_id,
+            student_id,
+            charge_applied,
+            billed,
             cancellation_reason,
-            cancelled_at,
-            class_services (
+            classes!inner (
               id,
-              name,
-              price,
-              description
+              class_date,
+              service_id,
+              teacher_id,
+              class_services (
+                id,
+                name,
+                price,
+                description
+              )
             )
           `)
           .eq('student_id', studentInfo.student_id)
-          .eq('teacher_id', studentInfo.teacher_id)
           .eq('status', 'cancelada')
           .eq('charge_applied', true)
           .eq('billed', false);
+        
+        // Transform to match expected structure
+        const cancelledClassesWithCharge = cancelledParticipations?.map(cp => ({
+          id: cp.class_id,
+          participant_id: cp.id,
+          ...(Array.isArray(cp.classes) ? cp.classes[0] : cp.classes),
+          is_cancellation_charge: true
+        })) || [];
 
         logStep(`Query result - Cancelled classes with charge: ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
 
@@ -206,16 +230,16 @@ serve(async (req) => {
           // Continue without cancellation charges
         }
 
-        // Consolidar aulas concluídas e canceladas com cobrança
-        const unbilledClasses = classesToInvoice || [];
-        const cancelledChargeable = cancelledClassesWithCharge || [];
+        // Consolidar participações concluídas e canceladas com cobrança
+        const unbilledClasses = classesToInvoice;
+        const cancelledChargeable = cancelledClassesWithCharge;
         
         if (unbilledClasses.length === 0 && cancelledChargeable.length === 0) {
           logStep(`No unbilled classes or cancellation charges found for ${studentInfo.student_name}`);
           continue;
         }
 
-        logStep(`Found ${unbilledClasses.length} unbilled classes and ${cancelledChargeable.length} cancellation charges to invoice for ${studentInfo.student_name}`);
+        logStep(`Found ${unbilledClasses.length} unbilled participations and ${cancelledChargeable.length} cancellation charges to invoice for ${studentInfo.student_name}`);
 
         // 3. Calcular valor total e criar fatura e marcar classes como faturadas atomicamente
         let totalAmount = 0;
@@ -273,7 +297,13 @@ serve(async (req) => {
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        // Consolidar IDs de todas as classes (concluídas + canceladas com cobrança)
+        // Consolidar IDs dos participantes (para marcar como faturados)
+        const participantIds = [
+          ...unbilledClasses.map(c => c.participant_id),
+          ...cancelledChargeable.map(c => c.participant_id)
+        ];
+        
+        // IDs das classes (para criar relação na fatura se necessário)
         const classIds = [
           ...unbilledClasses.map(c => c.id),
           ...cancelledChargeable.map(c => c.id)
@@ -317,11 +347,19 @@ serve(async (req) => {
         }
 
         const invoiceId = transactionResult.invoice_id;
+        
+        // Marcar participantes como faturados
+        await supabaseAdmin
+          .from('class_participants')
+          .update({ billed: true })
+          .in('id', participantIds);
+        
         logStep(`Invoice created atomically`, { 
           invoiceId,
           amount: totalAmount,
           businessProfileId: studentInfo.business_profile_id,
-          classesMarked: transactionResult.classes_updated
+          classesMarked: transactionResult.classes_updated,
+          participantsMarked: participantIds.length
         });
 
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)

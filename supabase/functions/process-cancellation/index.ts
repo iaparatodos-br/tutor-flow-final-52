@@ -109,7 +109,7 @@ serve(async (req) => {
     const hoursBeforeClass = policy?.hours_before_class || 24;
     const chargePercentage = policy?.charge_percentage || 0;
     
-    // Calculate time difference (reutilizar now e classDate das validações)
+    // Calculate time difference
     const hoursUntilClass = (classDate.getTime() - now.getTime()) / (1000 * 60 * 60);
 
     let shouldCharge = false;
@@ -125,46 +125,99 @@ serve(async (req) => {
       hoursUntilClass,
       hoursBeforeClass,
       chargePercentage,
-      shouldCharge
+      shouldCharge,
+      is_group_class: classData.is_group_class
     });
 
-    // PROTEÇÃO: Bloquear processamento concorrente - usar timestamp de processamento
-    const processingLock = `cancellation_${class_id}_${now.getTime()}`;
-    
-    // Update class - sempre usar status 'cancelada', diferenciar com charge_applied boolean
-    const { error: updateError } = await supabaseClient
-      .from('classes')
-      .update({
-        status: 'cancelada',
-        cancellation_reason: reason,
-        cancelled_at: now.toISOString(),
-        cancelled_by: cancelled_by,
-        charge_applied: shouldCharge,
-        billed: false // Garantir que está marcada como não faturada ainda
-      })
-      .eq('id', class_id)
-      .eq('status', classData.status); // Garantir que só atualiza se o status ainda for o original
+    // ===== NOVA LÓGICA: Determinar tipo de cancelamento =====
+    const isStudentLeavingGroupClass = cancelled_by_type === 'student' && classData.is_group_class;
 
-    if (updateError) {
-      console.error('Error updating class:', updateError);
+    if (isStudentLeavingGroupClass) {
+      // CENÁRIO 1: Aluno saindo de aula em grupo
+      console.log('Student leaving group class - updating only participant status');
       
-      // Se erro for de concorrência (nenhuma linha afetada), significa que houve cancelamento duplicado
-      if (updateError.code === 'PGRST116' || updateError.message?.includes('0 rows')) {
-        throw new Error('Esta aula já está sendo cancelada ou foi cancelada recentemente');
+      const { error: updateParticipantError } = await supabaseClient
+        .from('class_participants')
+        .update({
+          status: 'cancelada',
+          cancelled_at: now.toISOString(),
+          cancelled_by: cancelled_by,
+          charge_applied: shouldCharge,
+          cancellation_reason: reason
+        })
+        .eq('class_id', class_id)
+        .eq('student_id', cancelled_by);
+
+      if (updateParticipantError) {
+        console.error('Error updating participant:', updateParticipantError);
+        throw new Error('Erro ao atualizar participante');
       }
-      
-      throw new Error('Erro ao atualizar aula');
-    }
 
-    // NOTIFICAÇÃO: Criar registro de notificação e enviar email
-    try {
-      const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
+      // Notificar apenas o professor
+      await supabaseClient.from('class_notifications').insert({
+        class_id: class_id,
+        student_id: classData.teacher_id,
+        notification_type: shouldCharge ? 'participant_left_with_charge' : 'participant_left',
+        status: 'sent'
+      });
+
+      // Email ao professor sobre saída do participante
+      supabaseClient.functions.invoke('send-cancellation-notification', {
+        body: {
+          class_id,
+          cancelled_by_type: 'student',
+          charge_applied: shouldCharge,
+          cancellation_reason: reason,
+          is_group_class: true,
+          notification_target: 'teacher',
+          removed_student_id: cancelled_by
+        }
+      }).then(({ error: emailError }) => {
+        if (emailError) {
+          console.error('Error sending notification email (non-critical):', emailError);
+        }
+      });
+
+      console.log(`Participant ${cancelled_by} removed from group class ${class_id}`);
+
+    } else {
+      // CENÁRIO 2: Professor cancela ou aula individual
+      console.log('Full class cancellation - updating all participants');
       
+      // Cancelar TODOS os participantes
+      const { error: cancelAllError } = await supabaseClient
+        .from('class_participants')
+        .update({
+          status: 'cancelada',
+          cancelled_at: now.toISOString(),
+          cancelled_by: cancelled_by,
+          charge_applied: shouldCharge,
+          cancellation_reason: reason
+        })
+        .eq('class_id', class_id);
+
+      if (cancelAllError) {
+        console.error('Error cancelling participants:', cancelAllError);
+        throw new Error('Erro ao cancelar participantes');
+      }
+
+      // Atualizar a classe (o trigger sync_class_status_from_participants já foi disparado)
+      await supabaseClient
+        .from('classes')
+        .update({
+          status: 'cancelada',
+          cancelled_at: now.toISOString(),
+          cancelled_by: cancelled_by,
+          cancellation_reason: reason
+        })
+        .eq('id', class_id);
+
       // Create notification records for all affected students
       const studentsToNotify = classData.is_group_class 
         ? participants.map(p => p.student_id)
         : [classData.student_id];
 
+      const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
       for (const studentId of studentsToNotify) {
         await supabaseClient
           .from('class_notifications')
@@ -175,10 +228,8 @@ serve(async (req) => {
             status: 'sent'
           });
       }
-      
-      console.log(`Created ${studentsToNotify.length} notification record(s)`);
 
-      // Enviar email de notificação de forma assíncrona (não bloquear resposta)
+      // Enviar email de notificação
       supabaseClient.functions.invoke('send-cancellation-notification', {
         body: {
           class_id: class_id,
@@ -194,15 +245,13 @@ serve(async (req) => {
       }).then(({ error: emailError }) => {
         if (emailError) {
           console.error('Error sending notification email (non-critical):', emailError);
-        } else {
-          console.log('Notification email sent successfully');
         }
       });
 
-    } catch (notificationError) {
-      console.error('Error creating notification (non-critical):', notificationError);
-      // Não falhar o cancelamento por causa de erro na notificação
+      console.log(`Full class ${class_id} cancelled for ${studentsToNotify.length} students`);
     }
+
+    // Notifications already sent in the specific scenarios above
 
     // Check if teacher has financial module access (only if charging)
     if (shouldCharge) {
@@ -215,19 +264,18 @@ serve(async (req) => {
 
       if (!hasFinancialModule) {
         console.log('Teacher does not have financial module access, removing charge');
-        // Update class to remove charge if no financial module
-        const { error: updateError } = await supabaseClient
-          .from('classes')
+        
+        // Update participant charge status
+        await supabaseClient
+          .from('class_participants')
           .update({ charge_applied: false })
-          .eq('id', class_id);
-
-        if (updateError) {
-          console.error('Error updating class charge status:', updateError);
-        }
+          .eq('class_id', class_id)
+          .eq('student_id', cancelled_by);
 
         return new Response(JSON.stringify({ 
           success: true, 
           charged: false,
+          type: isStudentLeavingGroupClass ? 'participant_removed' : 'full_cancellation',
           message: 'Aula cancelada sem cobrança - módulo financeiro não disponível'
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -239,9 +287,14 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       charged: shouldCharge,
-      message: shouldCharge 
-        ? 'Aula cancelada. A cobrança será incluída na próxima fatura mensal.' 
-        : 'Aula cancelada sem cobrança'
+      type: isStudentLeavingGroupClass ? 'participant_removed' : 'full_cancellation',
+      message: isStudentLeavingGroupClass
+        ? (shouldCharge 
+          ? 'Você foi removido da aula. A cobrança será incluída na próxima fatura.' 
+          : 'Você foi removido da aula sem cobrança')
+        : (shouldCharge 
+          ? 'Aula cancelada. A cobrança será incluída na próxima fatura mensal.' 
+          : 'Aula cancelada sem cobrança')
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

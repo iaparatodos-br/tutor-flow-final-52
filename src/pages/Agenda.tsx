@@ -27,7 +27,7 @@ interface ClassWithParticipants {
   id: string;
   class_date: string;
   duration_minutes: number;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
@@ -36,9 +36,16 @@ interface ClassWithParticipants {
   student_id?: string;
   service_id?: string;
   teacher_id?: string;
-  isVirtual?: boolean; // Flag for client-side generated instances
+  isVirtual?: boolean;
   participants: Array<{
     student_id: string;
+    status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+    cancelled_at?: string;
+    charge_applied?: boolean;
+    confirmed_at?: string;
+    completed_at?: string;
+    cancellation_reason?: string;
+    billed?: boolean;
     student: {
       name: string;
       email: string;
@@ -210,7 +217,7 @@ export default function Agenda() {
           p_end_date: endDate.toISOString()
         }));
       } else {
-        // For students, get classes normally and filter by selected teacher
+        // For students, get classes where they are active participants
         let query = supabase.from('classes').select(`
             id,
             class_date,
@@ -228,14 +235,25 @@ export default function Agenda() {
               name,
               email
             ),
-            class_participants (
+            class_participants!inner (
               student_id,
+              status,
+              cancelled_at,
+              charge_applied,
+              confirmed_at,
+              completed_at,
+              cancellation_reason,
+              billed,
               profiles!class_participants_student_id_fkey (
                 name,
                 email
               )
             )
-          `).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
+          `)
+          .eq('class_participants.student_id', profile.id)
+          .in('class_participants.status', ['pendente', 'confirmada', 'concluida'])
+          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('class_date');
 
         // Execute two separate queries to avoid PostgREST or() limitations with joins
         const [individualClassesResult, groupClassesResult] = await Promise.all([
@@ -436,30 +454,47 @@ export default function Agenda() {
       setClasses(allClasses);
 
       // Transform for calendar view
-      const calendarEvents: CalendarClass[] = allClasses.map(cls => {
-        const startDate = new Date(cls.class_date);
-        const endDate = new Date(startDate.getTime() + cls.duration_minutes * 60 * 1000);
-        const participantNames = cls.participants.map(p => p.student.name).join(', ');
-        const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
-        const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
-        const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
-        return {
-          id: cls.id,
-          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
-          start: startDate,
-          end: endDate,
-          status: cls.status,
-          student: cls.participants[0]?.student || {
-            name: 'Sem aluno',
-            email: ''
-          },
-          participants: cls.participants,
-          notes: cls.notes || undefined,
-          is_experimental: cls.is_experimental,
-          is_group_class: cls.is_group_class,
-          isVirtual: cls.isVirtual
-        };
-      });
+      const calendarEvents: CalendarClass[] = allClasses
+        .filter(cls => {
+          // For students, show only classes with active participation
+          if (!isProfessor && cls.participants.length > 0) {
+            const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+            return myParticipation && ['pendente', 'confirmada', 'concluida'].includes(myParticipation.status || cls.status);
+          }
+          return true;
+        })
+        .map(cls => {
+          const startDate = new Date(cls.class_date);
+          const endDate = new Date(startDate.getTime() + cls.duration_minutes * 60 * 1000);
+          const participantNames = cls.participants.map(p => p.student.name).join(', ');
+          const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
+          const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
+          const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
+          
+          // Determine display status for students
+          let displayStatus = cls.status;
+          if (!isProfessor && cls.participants.length > 0) {
+            const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+            displayStatus = myParticipation?.status || cls.status;
+          }
+          
+          return {
+            id: cls.id,
+            title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
+            start: startDate,
+            end: endDate,
+            status: displayStatus,
+            student: cls.participants[0]?.student || {
+              name: 'Sem aluno',
+              email: ''
+            },
+            participants: cls.participants,
+            notes: cls.notes || undefined,
+            is_experimental: cls.is_experimental,
+            is_group_class: cls.is_group_class,
+            isVirtual: cls.isVirtual
+          };
+        });
       setCalendarClasses(calendarEvents);
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);

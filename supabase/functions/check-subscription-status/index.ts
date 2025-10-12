@@ -157,13 +157,66 @@ serve(async (req) => {
     );
 
     if (activeSubscription) {
-      logStep("Found ACTIVE subscription with future period_end - ignoring any payment failures", {
+      logStep("Found ACTIVE subscription with future period_end - checking Stripe for payment failures", {
         subscriptionId: activeSubscription.id,
         status: activeSubscription.status,
-        currentPeriodEnd: activeSubscription.current_period_end
+        currentPeriodEnd: activeSubscription.current_period_end,
+        stripeSubscriptionId: activeSubscription.stripe_subscription_id
       });
 
-      // Return active subscription WITHOUT checking for payment failures
+      let paymentFailure = null;
+
+      // ALWAYS check Stripe status if we have a stripe_subscription_id
+      if (activeSubscription.stripe_subscription_id) {
+        const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+        
+        try {
+          const stripeSubscription = await stripe.subscriptions.retrieve(activeSubscription.stripe_subscription_id);
+          logStep("Retrieved Stripe subscription for active sub", { 
+            status: stripeSubscription.status,
+            isPastDue: stripeSubscription.status === 'past_due'
+          });
+
+          // Check if subscription is in past_due or other failure states
+          if (stripeSubscription.status === 'past_due' || 
+              stripeSubscription.status === 'incomplete' ||
+              stripeSubscription.status === 'incomplete_expired') {
+            
+            logStep("PAYMENT FAILURE DETECTED for active subscription", {
+              stripeStatus: stripeSubscription.status,
+              dbStatus: activeSubscription.status
+            });
+
+            // Get latest invoice to check failure details
+            const invoices = await stripe.invoices.list({
+              customer: stripeSubscription.customer as string,
+              limit: 5,
+              status: 'open'
+            });
+
+            const failedInvoice = invoices.data.find((inv: any) => inv.status === 'open' && inv.attempt_count > 0);
+            
+            paymentFailure = {
+              detected: true,
+              status: stripeSubscription.status,
+              lastFailureDate: failedInvoice?.status_transitions?.finalized_at ? 
+                new Date(failedInvoice.status_transitions.finalized_at * 1000).toISOString() : null,
+              attemptsCount: failedInvoice?.attempt_count || 0,
+              nextAttempt: failedInvoice?.next_payment_attempt ? 
+                new Date(failedInvoice.next_payment_attempt * 1000).toISOString() : null
+            };
+
+            logStep("Payment failure details", paymentFailure);
+          }
+        } catch (stripeError) {
+          logStep("Error checking Stripe subscription status for active sub", { 
+            error: stripeError instanceof Error ? stripeError.message : 'Unknown error' 
+          });
+          // Continue without payment failure data
+        }
+      }
+
+      // Return active subscription WITH payment failure data if detected
       return new Response(JSON.stringify({
         subscription: {
           id: activeSubscription.id,
@@ -175,7 +228,7 @@ serve(async (req) => {
           extra_cost_cents: activeSubscription.extra_cost_cents
         },
         plan: activeSubscription.subscription_plans,
-        paymentFailure: null // Explicitly set to null - active subscription overrides payment failures
+        paymentFailure: paymentFailure
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

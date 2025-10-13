@@ -1,10 +1,12 @@
 {
   "title": "Expenses",
+  "subtitle": "Manage your expenses and receipts",
   "newExpense": "New Expense",
   "editExpense": "Edit Expense",
   "addExpense": "Add Expense",
   "description": "Register a new expense",
   "updateDescription": "Update expense data",
+  "loading": "Loading expenses...",
   "fields": {
     "description": "Description",
     "amount": "Amount",
@@ -14,18 +16,43 @@
   },
   "placeholders": {
     "description": "Describe the expense...",
-    "amount": "0.00"
+    "amount": "0.00",
+    "searchDescription": "Search by description or category..."
+  },
+  "summary": {
+    "totalExpenses": "Total expenses",
+    "registeredExpenses": "Registered expenses",
+    "withReceipt": "With receipt"
+  },
+  "filters": {
+    "category": "Filter by category",
+    "allCategories": "All categories"
+  },
+  "table": {
+    "date": "Date",
+    "description": "Description",
+    "category": "Category",
+    "amount": "Amount",
+    "receipt": "Receipt",
+    "actions": "Actions",
+    "noExpenses": "No expenses found",
+    "noExpensesDescription": "Register your first expense by clicking the button above.",
+    "view": "View",
+    "edit": "Edit",
+    "delete": "Delete"
   },
   "receipt": {
     "upload": "Click to upload",
     "formats": "JPG, PNG or PDF up to 5MB",
     "attached": "Receipt attached",
-    "preview": "Receipt"
+    "preview": "Receipt",
+    "viewReceipt": "View receipt"
   },
   "category": {
     "newCategory": "New Category",
     "selectCategory": "Select a category",
-    "noCategoriesFound": "No categories found"
+    "noCategoriesFound": "No categories found",
+    "manageCategories": "Manage categories"
   },
   "validation": {
     "fillRequired": "Fill in all required fields.",
@@ -35,9 +62,15 @@
   "messages": {
     "expenseRegistered": "Expense Registered",
     "expenseUpdated": "Expense Updated",
+    "expenseDeleted": "Expense Deleted",
     "registeredSuccess": "The expense was registered successfully.",
     "updatedSuccess": "The expense was updated successfully.",
-    "saveError": "Could not save the expense. Please try again."
+    "deletedSuccess": "The expense was deleted successfully.",
+    "saveError": "Could not save the expense. Please try again.",
+    "loadError": "Could not load expenses.",
+    "deleteError": "Could not delete the expense.",
+    "receiptError": "Could not open the receipt.",
+    "confirmDelete": "Are you sure you want to delete this expense?"
   },
   "actions": {
     "cancel": "Cancel",

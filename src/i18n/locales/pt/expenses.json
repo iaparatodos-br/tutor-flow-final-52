@@ -1,10 +1,12 @@
 {
   "title": "Despesas",
+  "subtitle": "Gerencie suas despesas e comprovantes",
   "newExpense": "Nova Despesa",
   "editExpense": "Editar Despesa",
   "addExpense": "Adicionar Despesa",
   "description": "Cadastre uma nova despesa",
   "updateDescription": "Atualize os dados da despesa",
+  "loading": "Carregando despesas...",
   "fields": {
     "description": "Descrição",
     "amount": "Valor",
@@ -14,18 +16,43 @@
   },
   "placeholders": {
     "description": "Descreva a despesa...",
-    "amount": "0,00"
+    "amount": "0,00",
+    "searchDescription": "Buscar por descrição ou categoria..."
+  },
+  "summary": {
+    "totalExpenses": "Total de despesas",
+    "registeredExpenses": "Despesas registradas",
+    "withReceipt": "Com comprovante"
+  },
+  "filters": {
+    "category": "Filtrar por categoria",
+    "allCategories": "Todas as categorias"
+  },
+  "table": {
+    "date": "Data",
+    "description": "Descrição",
+    "category": "Categoria",
+    "amount": "Valor",
+    "receipt": "Comprovante",
+    "actions": "Ações",
+    "noExpenses": "Nenhuma despesa encontrada",
+    "noExpensesDescription": "Cadastre sua primeira despesa clicando no botão acima.",
+    "view": "Ver",
+    "edit": "Editar",
+    "delete": "Excluir"
   },
   "receipt": {
     "upload": "Clique para fazer upload",
     "formats": "JPG, PNG ou PDF até 5MB",
     "attached": "Comprovante anexado",
-    "preview": "Comprovante"
+    "preview": "Comprovante",
+    "viewReceipt": "Ver comprovante"
   },
   "category": {
     "newCategory": "Nova Categoria",
     "selectCategory": "Selecione uma categoria",
-    "noCategoriesFound": "Nenhuma categoria encontrada"
+    "noCategoriesFound": "Nenhuma categoria encontrada",
+    "manageCategories": "Gerenciar categorias"
   },
   "validation": {
     "fillRequired": "Preencha todos os campos obrigatórios.",
@@ -35,9 +62,15 @@
   "messages": {
     "expenseRegistered": "Despesa Cadastrada",
     "expenseUpdated": "Despesa Atualizada",
+    "expenseDeleted": "Despesa Excluída",
     "registeredSuccess": "A despesa foi cadastrada com sucesso.",
     "updatedSuccess": "A despesa foi atualizada com sucesso.",
-    "saveError": "Não foi possível salvar a despesa. Tente novamente."
+    "deletedSuccess": "A despesa foi excluída com sucesso.",
+    "saveError": "Não foi possível salvar a despesa. Tente novamente.",
+    "loadError": "Não foi possível carregar as despesas.",
+    "deleteError": "Não foi possível excluir a despesa.",
+    "receiptError": "Não foi possível abrir o comprovante.",
+    "confirmDelete": "Tem certeza que deseja excluir esta despesa?"
   },
   "actions": {
     "cancel": "Cancelar",

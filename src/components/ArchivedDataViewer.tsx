@@ -127,14 +127,14 @@ export function ArchivedDataViewer() {
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2">
           <Archive className="h-4 w-4" />
-          Histórico Arquivado
+          {t('button')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Archive className="h-5 w-5" />
-            Histórico de Aulas Arquivadas
+            {t('title')}
           </DialogTitle>
         </DialogHeader>
 
@@ -142,18 +142,18 @@ export function ArchivedDataViewer() {
           {/* Filtros */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Buscar Dados Arquivados</CardTitle>
+              <CardTitle className="text-lg">{t('search.title')}</CardTitle>
               <CardDescription>
-                Dados com mais de 18 meses são automaticamente arquivados para otimizar a performance.
+                {t('search.description')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex gap-4 items-end">
                 <div className="grid gap-2">
-                  <label className="text-sm font-medium">Ano</label>
+                  <label className="text-sm font-medium">{t('search.year')}</label>
                   <Select value={selectedYear} onValueChange={setSelectedYear}>
                     <SelectTrigger className="w-32">
-                      <SelectValue placeholder="Ano" />
+                      <SelectValue placeholder={t('search.year')} />
                     </SelectTrigger>
                     <SelectContent>
                       {years.map(year => (
@@ -166,10 +166,10 @@ export function ArchivedDataViewer() {
                 </div>
 
                 <div className="grid gap-2">
-                  <label className="text-sm font-medium">Mês</label>
+                  <label className="text-sm font-medium">{t('search.month')}</label>
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                     <SelectTrigger className="w-40">
-                      <SelectValue placeholder="Mês" />
+                      <SelectValue placeholder={t('search.month')} />
                     </SelectTrigger>
                     <SelectContent>
                       {months.map(month => (
@@ -186,7 +186,7 @@ export function ArchivedDataViewer() {
                   disabled={loading || !selectedYear || !selectedMonth}
                   className="gap-2"
                 >
-                  {loading ? "Carregando..." : "Buscar"}
+                  {loading ? t('search.loading') : t('search.button')}
                 </Button>
               </div>
             </CardContent>
@@ -200,7 +200,7 @@ export function ArchivedDataViewer() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Calendar className="h-5 w-5" />
-                    Resumo do Período: {selectedYear}/{selectedMonth}
+                    {t('summary.title', { year: selectedYear, month: selectedMonth })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -209,17 +209,17 @@ export function ArchivedDataViewer() {
                       <div className="text-2xl font-bold text-primary">
                         {archivedData.metadata.totalClasses}
                       </div>
-                      <div className="text-sm text-muted-foreground">Aulas</div>
+                      <div className="text-sm text-muted-foreground">{t('summary.classes')}</div>
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-primary">
                         {archivedData.metadata.totalReports}
                       </div>
-                      <div className="text-sm text-muted-foreground">Relatórios</div>
+                      <div className="text-sm text-muted-foreground">{t('summary.reports')}</div>
                     </div>
                     <div className="text-center col-span-2">
                       <div className="text-sm text-muted-foreground">
-                        Arquivado em: {formatDateTime(archivedData.metadata.archivedAt)}
+                        {t('summary.archivedAt', { date: formatDateTime(archivedData.metadata.archivedAt) })}
                       </div>
                     </div>
                   </div>
@@ -232,7 +232,7 @@ export function ArchivedDataViewer() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="h-5 w-5" />
-                      Aulas ({archivedData.classes.length})
+                      {t('classes.title', { count: archivedData.classes.length })}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -247,7 +247,7 @@ export function ArchivedDataViewer() {
                                   {formatDateTime(classItem.class_date)}
                                 </span>
                                 <Clock className="h-4 w-4 ml-2" />
-                                <span>{classItem.duration_minutes} min</span>
+                                <span>{classItem.duration_minutes} {t('classes.minutes')}</span>
                               </div>
                               {classItem.notes && (
                                 <p className="text-sm text-muted-foreground mt-2">
@@ -272,7 +272,7 @@ export function ArchivedDataViewer() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <FileText className="h-5 w-5" />
-                      Relatórios de Aula ({archivedData.reports.length})
+                      {t('reports.title', { count: archivedData.reports.length })}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -281,7 +281,7 @@ export function ArchivedDataViewer() {
                         <div key={report.id} className="border rounded-lg p-4">
                           <div className="space-y-3">
                             <div>
-                              <h4 className="font-medium mb-2">Resumo da Aula</h4>
+                              <h4 className="font-medium mb-2">{t('reports.lessonSummary')}</h4>
                               <p className="text-sm">{report.lesson_summary}</p>
                             </div>
                             
@@ -289,7 +289,7 @@ export function ArchivedDataViewer() {
                               <>
                                 <Separator />
                                 <div>
-                                  <h4 className="font-medium mb-2">Tarefa de Casa</h4>
+                                  <h4 className="font-medium mb-2">{t('reports.homework')}</h4>
                                   <p className="text-sm">{report.homework}</p>
                                 </div>
                               </>
@@ -299,7 +299,7 @@ export function ArchivedDataViewer() {
                               <>
                                 <Separator />
                                 <div>
-                                  <h4 className="font-medium mb-2">Materiais Extras</h4>
+                                  <h4 className="font-medium mb-2">{t('reports.extraMaterials')}</h4>
                                   <div className="text-sm whitespace-pre-wrap">
                                     {report.extra_materials}
                                   </div>
@@ -309,7 +309,7 @@ export function ArchivedDataViewer() {
                             
                             <Separator />
                             <div className="text-xs text-muted-foreground">
-                              Criado em: {formatDateTime(report.created_at)}
+                              {t('reports.createdAt', { date: formatDateTime(report.created_at) })}
                             </div>
                           </div>
                         </div>
@@ -326,7 +326,7 @@ export function ArchivedDataViewer() {
               <CardContent className="text-center py-8">
                 <Archive className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">
-                  Nenhum dado arquivado encontrado para {selectedMonth}/{selectedYear}
+                  {t('messages.noData', { month: selectedMonth, year: selectedYear })}
                 </p>
               </CardContent>
             </Card>

@@ -11,8 +11,9 @@ import { useToast } from "@/hooks/use-toast";
 import { ExpenseModal } from "./ExpenseModal";
 import { Edit, Trash2, FileText, Image, Eye, Search, Filter } from "lucide-react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { ptBR, enUS } from "date-fns/locale";
 import { FeatureGate } from "@/components/FeatureGate";
+import { useTranslation } from "react-i18next";
 
 interface Expense {
   id: string;
@@ -33,6 +34,7 @@ interface ExpenseCategory {
 export function ExpenseList() {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t, i18n } = useTranslation('expenses');
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,8 +64,8 @@ export function ExpenseList() {
     } catch (error) {
       console.error('Error loading expenses:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível carregar as despesas.",
+        title: t('messages.loadError'),
+        description: t('messages.loadError'),
         variant: "destructive",
       });
     } finally {
@@ -87,7 +89,7 @@ export function ExpenseList() {
   };
 
   const handleDelete = async (expenseId: string) => {
-    if (!confirm("Tem certeza que deseja excluir esta despesa?")) return;
+    if (!confirm(t('messages.confirmDelete'))) return;
 
     try {
       const { error } = await supabase
@@ -98,16 +100,16 @@ export function ExpenseList() {
       if (error) throw error;
 
       toast({
-        title: "Despesa Excluída",
-        description: "A despesa foi excluída com sucesso.",
+        title: t('messages.expenseDeleted'),
+        description: t('messages.deletedSuccess'),
       });
 
       loadExpenses();
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível excluir a despesa.",
+        title: t('messages.deleteError'),
+        description: t('messages.deleteError'),
         variant: "destructive",
       });
     }
@@ -131,7 +133,8 @@ export function ExpenseList() {
   };
 
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), 'dd/MM/yyyy', { locale: ptBR });
+    const locale = i18n.language === 'en' ? enUS : ptBR;
+    return format(new Date(dateString), 'dd/MM/yyyy', { locale });
   };
 
   const getCategoryColor = (categoryName: string) => {
@@ -158,8 +161,8 @@ export function ExpenseList() {
         if (error) {
           console.error('Error creating signed URL:', error);
           toast({
-            title: "Erro",
-            description: "Não foi possível abrir o comprovante.",
+            title: t('messages.receiptError'),
+            description: t('messages.receiptError'),
             variant: "destructive",
           });
           return;
@@ -172,7 +175,7 @@ export function ExpenseList() {
   };
 
   if (loading) {
-    return <div className="flex justify-center p-8">Carregando despesas...</div>;
+    return <div className="flex justify-center p-8">{t('loading')}</div>;
   }
 
   return (
@@ -181,13 +184,13 @@ export function ExpenseList() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Despesas</CardTitle>
+              <CardTitle>{t('title')}</CardTitle>
               <CardDescription>
-                Gerencie suas despesas e comprovantes
+                {t('subtitle')}
               </CardDescription>
             </div>
             <Button onClick={() => setModalOpen(true)}>
-              Nova Despesa
+              {t('newExpense')}
             </Button>
           </div>
         </CardHeader>
@@ -200,7 +203,7 @@ export function ExpenseList() {
                   {formatCurrency(totalExpenses)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Total de despesas
+                  {t('summary.totalExpenses')}
                 </p>
               </CardContent>
             </Card>
@@ -210,7 +213,7 @@ export function ExpenseList() {
                   {filteredExpenses.length}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Despesas registradas
+                  {t('summary.registeredExpenses')}
                 </p>
               </CardContent>
             </Card>
@@ -220,7 +223,7 @@ export function ExpenseList() {
                   {filteredExpenses.filter(e => e.receipt_url).length}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Com comprovante
+                  {t('summary.withReceipt')}
                 </p>
               </CardContent>
             </Card>
@@ -231,7 +234,7 @@ export function ExpenseList() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por descrição ou categoria..."
+                placeholder={t('placeholders.searchDescription')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -239,15 +242,15 @@ export function ExpenseList() {
             </div>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Filtrar por categoria" />
+                <SelectValue placeholder={t('filters.category')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Todas as categorias</SelectItem>
+                <SelectItem value="all">{t('filters.allCategories')}</SelectItem>
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.name}>
                     <div className="flex items-center gap-2">
                       <div 
-                        className="w-3 h-3 rounded-full" 
+                        className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: category.color }}
                       />
                       {category.name}

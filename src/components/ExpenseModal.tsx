@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, Image, X, Plus, Settings } from "lucide-react";
 import { formatDate } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -35,6 +36,7 @@ interface ExpenseCategory {
 export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: ExpenseModalProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('expenses');
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [formData, setFormData] = useState({
@@ -100,8 +102,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
     if (file) {
       if (file.size > 5 * 1024 * 1024) { // 5MB limit
         toast({
-          title: "Erro",
-          description: "O arquivo deve ter no máximo 5MB.",
+          title: t('validation.fileSizeLimit'),
+          description: t('validation.fileSizeLimit'),
           variant: "destructive",
         });
         return;
@@ -110,8 +112,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
       const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
       if (!validTypes.includes(file.type)) {
         toast({
-          title: "Erro", 
-          description: "Apenas arquivos JPG, PNG ou PDF são permitidos.",
+          title: t('validation.invalidFileType'), 
+          description: t('validation.invalidFileType'),
           variant: "destructive",
         });
         return;
@@ -152,8 +154,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   const handleSubmit = async () => {
     if (!formData.description.trim() || !formData.amount || !formData.category) {
       toast({
-        title: "Erro",
-        description: "Preencha todos os campos obrigatórios.",
+        title: t('validation.fillRequired'),
+        description: t('validation.fillRequired'),
         variant: "destructive",
       });
       return;
@@ -191,8 +193,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
       if (error) throw error;
 
       toast({
-        title: expense ? "Despesa Atualizada" : "Despesa Cadastrada",
-        description: expense ? "A despesa foi atualizada com sucesso." : "A despesa foi cadastrada com sucesso.",
+        title: expense ? t('messages.expenseUpdated') : t('messages.expenseRegistered'),
+        description: expense ? t('messages.updatedSuccess') : t('messages.registeredSuccess'),
       });
 
       onExpenseAdded();
@@ -201,8 +203,8 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
     } catch (error) {
       console.error('Error saving expense:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível salvar a despesa. Tente novamente.",
+        title: t('messages.saveError'),
+        description: t('messages.saveError'),
         variant: "destructive",
       });
     } finally {
@@ -214,39 +216,39 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{expense ? "Editar Despesa" : "Nova Despesa"}</DialogTitle>
+          <DialogTitle>{expense ? t('editExpense') : t('newExpense')}</DialogTitle>
           <DialogDescription>
-            {expense ? "Atualize os dados da despesa" : "Cadastre uma nova despesa"}
+            {expense ? t('updateDescription') : t('description')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição *</Label>
+            <Label htmlFor="description">{t('fields.description')} *</Label>
             <Textarea
               id="description"
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Descreva a despesa..."
+              placeholder={t('placeholders.description')}
               rows={2}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Valor *</Label>
+              <Label htmlFor="amount">{t('fields.amount')} *</Label>
               <Input
                 id="amount"
                 type="number"
                 step="0.01"
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                placeholder="0,00"
+                placeholder={t('placeholders.amount')}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="expense_date">Data *</Label>
+              <Label htmlFor="expense_date">{t('fields.date')} *</Label>
               <Input
                 id="expense_date"
                 type="date"

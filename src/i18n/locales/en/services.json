@@ -1,0 +1,34 @@
+{
+  "title": "Services",
+  "new": "New Service",
+  "edit": "Edit Service",
+  "fields": {
+    "name": "Service Name",
+    "namePlaceholder": "E.g.: Individual Class 60min",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional service description",
+    "price": "Price ($)",
+    "pricePlaceholder": "0.00",
+    "duration": "Duration (min)",
+    "durationPlaceholder": "60",
+    "isActive": "Service active",
+    "isDefault": "Set as default"
+  },
+  "validation": {
+    "loginRequired": "You need to be logged in to create a service.",
+    "nameRequired": "Service name is required.",
+    "validPrice": "Price must be a valid value.",
+    "validDuration": "Duration must be greater than zero."
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "create": "Create",
+    "update": "Update",
+    "saving": "Saving..."
+  },
+  "messages": {
+    "createSuccess": "Service created successfully.",
+    "updateSuccess": "Service updated successfully.",
+    "saveError": "Could not save service."
+  }
+}

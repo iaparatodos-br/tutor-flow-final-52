@@ -1,0 +1,34 @@
+{
+  "title": "Serviços",
+  "new": "Novo Serviço",
+  "edit": "Editar Serviço",
+  "fields": {
+    "name": "Nome do Serviço",
+    "namePlaceholder": "Ex: Aula Individual 60min",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Descrição opcional do serviço",
+    "price": "Preço (R$)",
+    "pricePlaceholder": "0,00",
+    "duration": "Duração (min)",
+    "durationPlaceholder": "60",
+    "isActive": "Serviço ativo",
+    "isDefault": "Definir como padrão"
+  },
+  "validation": {
+    "loginRequired": "Você precisa estar logado para criar um serviço.",
+    "nameRequired": "O nome do serviço é obrigatório.",
+    "validPrice": "O preço deve ser um valor válido.",
+    "validDuration": "A duração deve ser maior que zero."
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "create": "Criar",
+    "update": "Atualizar",
+    "saving": "Salvando..."
+  },
+  "messages": {
+    "createSuccess": "Serviço criado com sucesso.",
+    "updateSuccess": "Serviço atualizado com sucesso.",
+    "saveError": "Não foi possível salvar o serviço."
+  }
+}

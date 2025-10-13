@@ -26,7 +26,9 @@
     },
     "language": {
       "title": "Idioma",
-      "description": "Selecione o idioma do sistema"
+      "description": "Selecione o idioma do sistema",
+      "portuguese": "Português",
+      "english": "English"
     },
     "interface": {
       "title": "Interface",

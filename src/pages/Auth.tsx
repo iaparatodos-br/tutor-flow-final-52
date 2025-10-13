@@ -64,16 +64,16 @@ export default function Auth() {
       if (error.message?.includes('Email not confirmed') || error.message?.includes('email_not_confirmed')) {
         setEmailNotConfirmed(loginForm.email);
         toast({
-          title: "E-mail não confirmado",
-          description: "Por favor, confirme seu e-mail antes de fazer login.",
+          title: t('messages.emailNotConfirmed'),
+          description: t('messages.emailNotConfirmedDescription'),
           variant: "destructive",
         });
       } else {
         setEmailNotConfirmed(null);
         toast({
-          title: "Erro ao fazer login",
+          title: t('messages.loginError'),
           description: error.message === "Invalid login credentials" 
-            ? "E-mail ou senha incorretos" 
+            ? t('messages.incorrectCredentials')
             : error.message,
           variant: "destructive",
         });
@@ -81,8 +81,8 @@ export default function Auth() {
     } else {
       setEmailNotConfirmed(null);
       toast({
-        title: "Login realizado com sucesso!",
-        description: "Bem-vindo ao TutorFlow",
+        title: t('messages.loginSuccess'),
+        description: t('messages.welcomeBack'),
       });
     }
     
@@ -98,14 +98,14 @@ export default function Auth() {
     
     if (error) {
       toast({
-        title: "Erro ao reenviar confirmação",
-        description: error.message || "Tente novamente mais tarde",
+        title: t('messages.confirmationResentError'),
+        description: error.message || t('messages.confirmationResentErrorDescription'),
         variant: "destructive",
       });
     } else {
       toast({
-        title: "E-mail reenviado!",
-        description: "Verifique sua caixa de entrada. O link é válido por 1 hora.",
+        title: t('messages.confirmationResentTitle'),
+        description: t('messages.confirmationResentDescription'),
       });
       setEmailNotConfirmed(null);
     }
@@ -137,17 +137,17 @@ export default function Auth() {
     
     if (error) {
       toast({
-        title: "Erro ao criar conta",
+        title: t('messages.signupError'),
         description: error.includes("já está sendo usado") 
           ? error
           : error === "User already registered" 
-          ? "Este e-mail já está registrado" 
+          ? t('messages.emailInUse')
           : error,
         variant: "destructive",
       });
     } else {
       toast({
-        title: "Conta criada com sucesso!",
+        title: t('messages.registerSuccess'),
         description: "Você já pode fazer login",
       });
     }
@@ -174,7 +174,7 @@ export default function Auth() {
     
     if (error) {
       toast({
-        title: "Erro ao enviar email",
+        title: t('messages.resetEmailError'),
         description: error.includes("not found") 
           ? t('messages.emailNotFound')
           : error,
@@ -207,15 +207,15 @@ export default function Auth() {
             TutorFlow
           </h1>
           <p className="text-muted-foreground mt-2">
-            Gerencie suas aulas e alunos com facilidade
+            {t('ui.tagline')}
           </p>
         </div>
 
         <Card className="shadow-card">
           <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Entrar</TabsTrigger>
-              <TabsTrigger value="signup">Registrar</TabsTrigger>
+              <TabsTrigger value="login">{t('login')}</TabsTrigger>
+              <TabsTrigger value="signup">{t('register')}</TabsTrigger>
             </TabsList>
             
             {/* Login Tab */}
@@ -223,18 +223,18 @@ export default function Auth() {
               {!showResetForm ? (
                 <form onSubmit={handleLogin}>
                   <CardHeader>
-                    <CardTitle>Fazer Login</CardTitle>
+                    <CardTitle>{t('ui.loginTitle')}</CardTitle>
                     <CardDescription>
-                      Entre com sua conta para acessar a plataforma
+                      {t('ui.loginDescription')}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="login-email">E-mail</Label>
+                      <Label htmlFor="login-email">{t('fields.email')}</Label>
                       <Input
                         id="login-email"
                         type="email"
-                        placeholder="seu@email.com"
+                        placeholder={t('placeholders.email')}
                         value={loginForm.email}
                         onChange={(e) => {
                           setLoginForm(prev => ({ ...prev, email: e.target.value }));
@@ -245,12 +245,12 @@ export default function Auth() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="login-password">Senha</Label>
+                      <Label htmlFor="login-password">{t('fields.password')}</Label>
                       <div className="relative">
                         <Input
                           id="login-password"
                           type={showLoginPassword ? "text" : "password"}
-                          placeholder="Sua senha"
+                          placeholder={t('placeholders.password')}
                           value={loginForm.password}
                           onChange={(e) => {
                             setLoginForm(prev => ({ ...prev, password: e.target.value }));
@@ -291,7 +291,7 @@ export default function Auth() {
                          <Mail className="h-4 w-4" />
                          <AlertDescription className="flex flex-col gap-2">
                            <span className="text-sm">
-                             Seu e-mail ainda não foi confirmado. Clique abaixo para receber um novo link de confirmação.
+                             {t('ui.emailNotConfirmedAlert')}
                            </span>
                            <Button
                              type="button"
@@ -302,7 +302,7 @@ export default function Auth() {
                              className="w-full"
                            >
                              {resendingConfirmation && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                             Reenviar E-mail de Confirmação
+                             {t('ui.resendConfirmation')}
                            </Button>
                          </AlertDescription>
                        </Alert>
@@ -313,7 +313,7 @@ export default function Auth() {
                       disabled={loading}
                     >
                       {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Entrar
+                      {t('ui.enterButton')}
                     </Button>
                    </CardFooter>
                  </form>
@@ -376,18 +376,18 @@ export default function Auth() {
             <TabsContent value="signup">
               <form onSubmit={handleSignup}>
                 <CardHeader>
-                  <CardTitle>Criar Conta</CardTitle>
+                  <CardTitle>{t('ui.signupTitle')}</CardTitle>
                   <CardDescription>
-                    Registre-se na plataforma TutorFlow
+                    {t('ui.signupDescription')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="signup-name">Nome completo</Label>
+                    <Label htmlFor="signup-name">{t('fields.name')}</Label>
                     <Input
                       id="signup-name"
                       type="text"
-                      placeholder="Seu nome completo"
+                      placeholder={t('placeholders.name')}
                       value={signupForm.name}
                       onChange={(e) => {
                         setSignupForm(prev => ({ ...prev, name: e.target.value }));
@@ -398,11 +398,11 @@ export default function Auth() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email">E-mail</Label>
+                    <Label htmlFor="signup-email">{t('fields.email')}</Label>
                     <Input
                       id="signup-email"
                       type="email"
-                      placeholder="seu@email.com"
+                      placeholder={t('placeholders.email')}
                       value={signupForm.email}
                       onChange={(e) => {
                         setSignupForm(prev => ({ ...prev, email: e.target.value }));
@@ -413,12 +413,12 @@ export default function Auth() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password">Senha</Label>
+                    <Label htmlFor="signup-password">{t('fields.password')}</Label>
                     <div className="relative">
                       <Input
                         id="signup-password"
                         type={showSignupPassword ? "text" : "password"}
-                        placeholder="Mínimo 8 caracteres com maiúscula, minúscula e número"
+                        placeholder={t('placeholders.password')}
                         value={signupForm.password}
                         onChange={(e) => {
                           setSignupForm(prev => ({ ...prev, password: e.target.value }));

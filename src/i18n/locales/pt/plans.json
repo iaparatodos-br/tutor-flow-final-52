@@ -1,0 +1,53 @@
+{
+  "title": "Planos TutorFlow",
+  "subtitle": "Escolha o plano ideal para sua atividade de ensino. Todos os planos incluem upload e compartilhamento de materiais.",
+  "badges": {
+    "mostPopular": "Mais Popular",
+    "premium": "Premium",
+    "currentPlan": "Plano Atual"
+  },
+  "pricing": {
+    "perMonth": "/mês",
+    "free": "Grátis",
+    "upTo": "Até",
+    "students": "alunos",
+    "additionalStudent": "+ R$ 5,00 por aluno adicional",
+    "unlimited": "+ilimitados"
+  },
+  "buttons": {
+    "subscribe": "Assinar",
+    "free": "Gratuito",
+    "loading": "Carregando...",
+    "currentPlan": "Plano Atual",
+    "manageSubscription": "Gerenciar Assinatura"
+  },
+  "features": {
+    "financialModuleFull": "Módulo Financeiro Completo",
+    "financialModuleBasic": "Módulo Financeiro Básico",
+    "groupClasses": "Aulas em Grupo",
+    "individualOnly": "Apenas Aulas Individuais",
+    "expenses": "Cadastro de Despesas",
+    "noExpenses": "Sem Cadastro de Despesas",
+    "storage": "Armazenamento de Materiais",
+    "materialSharing": "Upload e Compartilhamento de Materiais",
+    "limitedMaterials": "Materiais Limitados"
+  },
+  "comparison": {
+    "title": "Compare os Planos",
+    "table": {
+      "feature": "Funcionalidade",
+      "studentLimit": "Limite de Alunos",
+      "financialModule": "Módulo Financeiro",
+      "groupClasses": "Aulas em Grupo",
+      "expenses": "Cadastro de Despesas",
+      "materialSharing": "Upload e Compartilhamento de Materiais",
+      "storage": "Armazenamento de Materiais"
+    }
+  },
+  "messages": {
+    "freePlanTitle": "Plano Gratuito",
+    "freePlanDescription": "Você já tem acesso ao plano gratuito!",
+    "errorTitle": "Erro",
+    "errorDescription": "Não foi possível iniciar o processo de assinatura. Tente novamente."
+  }
+}

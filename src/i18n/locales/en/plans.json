@@ -1,0 +1,53 @@
+{
+  "title": "TutorFlow Plans",
+  "subtitle": "Choose the ideal plan for your teaching activity. All plans include material upload and sharing.",
+  "badges": {
+    "mostPopular": "Most Popular",
+    "premium": "Premium",
+    "currentPlan": "Current Plan"
+  },
+  "pricing": {
+    "perMonth": "/month",
+    "free": "Free",
+    "upTo": "Up to",
+    "students": "students",
+    "additionalStudent": "+ $5.00 per additional student",
+    "unlimited": "+unlimited"
+  },
+  "buttons": {
+    "subscribe": "Subscribe",
+    "free": "Free",
+    "loading": "Loading...",
+    "currentPlan": "Current Plan",
+    "manageSubscription": "Manage Subscription"
+  },
+  "features": {
+    "financialModuleFull": "Full Financial Module",
+    "financialModuleBasic": "Basic Financial Module",
+    "groupClasses": "Group Classes",
+    "individualOnly": "Individual Classes Only",
+    "expenses": "Expense Tracking",
+    "noExpenses": "No Expense Tracking",
+    "storage": "Material Storage",
+    "materialSharing": "Material Upload and Sharing",
+    "limitedMaterials": "Limited Materials"
+  },
+  "comparison": {
+    "title": "Compare Plans",
+    "table": {
+      "feature": "Feature",
+      "studentLimit": "Student Limit",
+      "financialModule": "Financial Module",
+      "groupClasses": "Group Classes",
+      "expenses": "Expense Tracking",
+      "materialSharing": "Material Upload and Sharing",
+      "storage": "Material Storage"
+    }
+  },
+  "messages": {
+    "freePlanTitle": "Free Plan",
+    "freePlanDescription": "You already have access to the free plan!",
+    "errorTitle": "Error",
+    "errorDescription": "Unable to start subscription process. Please try again."
+  }
+}

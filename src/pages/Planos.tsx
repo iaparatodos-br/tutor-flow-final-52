@@ -10,8 +10,10 @@ import { toast } from '@/hooks/use-toast';
 import { PlanDowngradeWarningModal } from '@/components/PlanDowngradeWarningModal';
 import { PlanChangeConfirmationModal } from '@/components/PlanChangeConfirmationModal';
 import { useStudentCount } from '@/hooks/useStudentCount';
+import { useTranslation } from 'react-i18next';
 
 export default function Planos() {
+  const { t } = useTranslation('plans');
   const { plans, currentPlan, createCheckoutSession, subscription } = useSubscription();
   const { studentCount } = useStudentCount();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
@@ -28,8 +30,8 @@ export default function Planos() {
   const handlePlanSelect = async (planSlug: string) => {
     if (planSlug === 'free') {
       toast({
-        title: "Plano Gratuito",
-        description: "Você já tem acesso ao plano gratuito!",
+        title: t('messages.freePlanTitle'),
+        description: t('messages.freePlanDescription'),
       });
       return;
     }
@@ -69,8 +71,8 @@ export default function Planos() {
     } catch (error) {
       console.error('Error creating checkout:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível iniciar o processo de assinatura. Tente novamente.",
+        title: t('messages.errorTitle'),
+        description: t('messages.errorDescription'),
         variant: "destructive",
       });
     } finally {
@@ -121,15 +123,15 @@ export default function Planos() {
   const getFeatureLabel = (key: string, value: any) => {
     switch (key) {
       case 'financial_module':
-        return value ? 'Módulo Financeiro Completo' : 'Módulo Financeiro Básico';
+        return value ? t('features.financialModuleFull') : t('features.financialModuleBasic');
       case 'group_classes':
-        return value ? 'Aulas em Grupo' : 'Apenas Aulas Individuais';
+        return value ? t('features.groupClasses') : t('features.individualOnly');
       case 'expenses':
-        return value ? 'Cadastro de Despesas' : 'Sem Cadastro de Despesas';
+        return value ? t('features.expenses') : t('features.noExpenses');
       case 'storage_mb':
-        return `Armazenamento de Materiais: ${formatStorage(value)}`;
+        return `${t('features.storage')}: ${formatStorage(value)}`;
       case 'material_sharing':
-        return value ? 'Upload e Compartilhamento de Materiais' : 'Materiais Limitados';
+        return value ? t('features.materialSharing') : t('features.limitedMaterials');
       default:
         return key;
     }
@@ -139,9 +141,9 @@ export default function Planos() {
     <Layout>
       <div className="space-y-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold">Planos TutorFlow</h1>
+          <h1 className="text-3xl font-bold">{t('title')}</h1>
           <p className="text-muted-foreground mt-2">
-            Escolha o plano ideal para sua atividade de ensino. Todos os planos incluem upload e compartilhamento de materiais.
+            {t('subtitle')}
           </p>
         </div>
 
@@ -165,14 +167,14 @@ export default function Planos() {
                 {isPopular && (
                   <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary">
                     <Star className="h-3 w-3 mr-1" />
-                    Mais Popular
+                    {t('badges.mostPopular')}
                   </Badge>
                 )}
                 
                 {isPremium && (
                   <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-500 to-pink-500">
                     <Zap className="h-3 w-3 mr-1" />
-                    Premium
+                    {t('badges.premium')}
                   </Badge>
                 )}
 
@@ -182,17 +184,17 @@ export default function Planos() {
                     {plan.price_cents > 0 ? (
                       <>
                         R$ {(plan.price_cents / 100).toFixed(2)}
-                        <span className="text-sm font-normal text-muted-foreground">/mês</span>
+                        <span className="text-sm font-normal text-muted-foreground">{t('pricing.perMonth')}</span>
                       </>
                     ) : (
-                      'Grátis'
+                      t('pricing.free')
                     )}
                   </div>
                   <CardDescription>
-                    Até {plan.student_limit} alunos
+                    {t('pricing.upTo')} {plan.student_limit} {t('pricing.students')}
                     {plan.slug !== 'free' && (
                       <span className="block text-xs mt-1">
-                        + R$ 5,00 por aluno adicional
+                        {t('pricing.additionalStudent')}
                       </span>
                     )}
                   </CardDescription>
@@ -217,13 +219,13 @@ export default function Planos() {
                     disabled={loadingPlan === plan.slug}
                   >
                     {loadingPlan === plan.slug ? (
-                      "Carregando..."
+                      t('buttons.loading')
                     ) : isCurrentPlan ? (
-                      "Plano Atual"
+                      t('buttons.currentPlan')
                     ) : plan.price_cents === 0 ? (
-                      "Gratuito"
+                      t('buttons.free')
                     ) : (
-                      "Assinar"
+                      t('buttons.subscribe')
                     )}
                   </Button>
 
@@ -234,7 +236,7 @@ export default function Planos() {
                       className="w-full"
                       onClick={() => navigate('/subscription')}
                     >
-                      Gerenciar Assinatura
+                      {t('buttons.manageSubscription')}
                     </Button>
                   )}
                 </CardContent>
@@ -244,12 +246,12 @@ export default function Planos() {
         </div>
 
         <div className="bg-muted/50 rounded-lg p-6">
-          <h2 className="text-xl font-semibold mb-4">Compare os Planos</h2>
+          <h2 className="text-xl font-semibold mb-4">{t('comparison.title')}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="text-left py-2">Funcionalidade</th>
+                  <th className="text-left py-2">{t('comparison.table.feature')}</th>
                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <th key={plan.id} className="text-center py-2 px-4">
                       {plan.name}
@@ -259,20 +261,20 @@ export default function Planos() {
               </thead>
               <tbody>
                 <tr className="border-b">
-                  <td className="py-2">Limite de Alunos</td>
+                  <td className="py-2">{t('comparison.table.studentLimit')}</td>
                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.student_limit}
                       {plan.slug !== 'free' && (
                         <div className="text-xs text-muted-foreground">
-                          +ilimitados
+                          {t('pricing.unlimited')}
                         </div>
                       )}
                     </td>
                   ))}
                 </tr>
                 <tr className="border-b">
-                  <td className="py-2">Módulo Financeiro</td>
+                  <td className="py-2">{t('comparison.table.financialModule')}</td>
                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.financial_module ? (
@@ -284,7 +286,7 @@ export default function Planos() {
                   ))}
                 </tr>
                 <tr className="border-b">
-                  <td className="py-2">Aulas em Grupo</td>
+                  <td className="py-2">{t('comparison.table.groupClasses')}</td>
                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.group_classes ? (
@@ -296,7 +298,7 @@ export default function Planos() {
                   ))}
                 </tr>
                 <tr className="border-b">
-                  <td className="py-2">Cadastro de Despesas</td>
+                  <td className="py-2">{t('comparison.table.expenses')}</td>
                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                     <td key={plan.id} className="text-center py-2 px-4">
                       {plan.features.expenses ? (
@@ -308,7 +310,7 @@ export default function Planos() {
                   ))}
                 </tr>
                 <tr className="border-b">
-                   <td className="py-2">Upload e Compartilhamento de Materiais</td>
+                   <td className="py-2">{t('comparison.table.materialSharing')}</td>
                    {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                      <td key={plan.id} className="text-center py-2 px-4">
                        <Check className="h-4 w-4 text-green-500 mx-auto" />
@@ -316,7 +318,7 @@ export default function Planos() {
                    ))}
                  </tr>
                  <tr>
-                   <td className="py-2">Armazenamento de Materiais</td>
+                   <td className="py-2">{t('comparison.table.storage')}</td>
                    {plans.filter(plan => plan.slug !== 'free').map((plan) => (
                      <td key={plan.id} className="text-center py-2 px-4">
                        <div className="font-medium">{formatStorage(plan.features.storage_mb)}</div>

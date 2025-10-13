@@ -34,7 +34,7 @@ export default function Configuracoes() {
             {t('title')}
           </h1>
           <p className="text-muted-foreground mt-2">
-            Gerencie suas preferências e configurações da conta
+            {t('subtitle')}
           </p>
         </div>
 

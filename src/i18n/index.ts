@@ -101,6 +101,14 @@ i18n
 
     ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive', 'billing', 'services', 'plans'],
     defaultNS: 'common',
+
+    // Handler para keys faltando
+    saveMissing: true,
+    missingKeyHandler: (lng, ns, key) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`🌐 Missing translation: [${ns}] ${key} for language ${lng}`);
+      }
+    },
   });
 
 export default i18n;

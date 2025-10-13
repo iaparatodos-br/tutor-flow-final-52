@@ -149,5 +149,13 @@
       "downgradeCompleted": "Downgrade Completed",
       "errorProcessing": "Error processing downgrade. Please try again."
     }
+  },
+  "errors": {
+    "loadError": "Error loading subscription information"
+  },
+  "upgradeBanner": {
+    "title": "Unlock the full potential of the platform",
+    "description": "Group classes, complete financial module, expenses and much more!",
+    "button": "View Plans"
   }
 }

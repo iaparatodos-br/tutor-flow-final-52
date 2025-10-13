@@ -149,5 +149,13 @@
       "downgradeCompleted": "Downgrade concluído",
       "errorProcessing": "Erro no downgrade. Tente novamente."
     }
+  },
+  "errors": {
+    "loadError": "Erro ao carregar informações da assinatura"
+  },
+  "upgradeBanner": {
+    "title": "Desbloqueie todo o potencial da plataforma",
+    "description": "Aulas em grupo, módulo financeiro completo, despesas e muito mais!",
+    "button": "Ver Planos"
   }
 }

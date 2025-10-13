@@ -3,10 +3,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Crown, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useTranslation } from 'react-i18next';
 
 export function UpgradeBanner() {
   const navigate = useNavigate();
   const { currentPlan } = useSubscription();
+  const { t } = useTranslation('subscription');
 
   // Only show for free plan users
   if (!currentPlan || currentPlan.slug !== 'free') {
@@ -23,10 +25,10 @@ export function UpgradeBanner() {
             </div>
             <div>
               <h3 className="font-semibold text-amber-800">
-                Desbloqueie todo o potencial da plataforma
+                {t('upgradeBanner.title')}
               </h3>
               <p className="text-sm text-amber-700">
-                Aulas em grupo, módulo financeiro completo, despesas e muito mais!
+                {t('upgradeBanner.description')}
               </p>
             </div>
           </div>
@@ -35,7 +37,7 @@ export function UpgradeBanner() {
             className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
             size="sm"
           >
-            Ver Planos
+            {t('upgradeBanner.button')}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </div>

@@ -1,40 +1,99 @@
 {
   "title": "Configurações",
+  "subtitle": "Gerencie suas preferências e configurações da conta",
   "tabs": {
     "profile": "Perfil",
     "preferences": "Preferências",
     "billing": "Cobrança",
-    "cancellation": "Política do Professor",
+    "cancellation": "Política de Cancelamento",
     "notifications": "Notificações"
-  },
-  "preferences": {
-    "title": "Preferências",
-    "description": "Personalize a aparência e idioma do aplicativo",
-    "theme": {
-      "title": "Tema",
-      "description": "Escolha entre tema claro, escuro ou automático",
-      "light": "Claro",
-      "dark": "Escuro",
-      "system": "Sistema"
-    },
-    "language": {
-      "title": "Idioma",
-      "description": "Selecione o idioma da interface",
-      "portuguese": "Português",
-      "english": "English"
-    },
-    "interface": {
-      "title": "Interface",
-      "description": "Configurações da interface do usuário",
-      "moreOptions": "Outras opções de personalização da interface serão adicionadas em breve."
-    }
   },
   "profile": {
     "title": "Informações Pessoais",
+    "description": "Atualize suas informações de perfil",
     "email": "Email",
-    "emailNote": "O email não pode ser alterado aqui",
-    "otherInfo": "Outras informações do perfil podem ser editadas em outro local.",
-    "viewFullProfile": "Ver Perfil Completo"
+    "emailDescription": "O email não pode ser alterado aqui",
+    "viewProfile": "Ver Perfil Completo",
+    "otherInfo": "Outras informações de perfil podem ser editadas através do seu perfil principal.",
+    "infoMessage": "Funcionalidade de edição será implementada em breve."
+  },
+  "preferences": {
+    "title": "Preferências",
+    "description": "Personalize sua experiência no Tutor Flow",
+    "theme": {
+      "title": "Tema",
+      "description": "Escolha o tema da interface"
+    },
+    "language": {
+      "title": "Idioma",
+      "description": "Selecione o idioma do sistema"
+    },
+    "interface": {
+      "title": "Interface",
+      "description": "Personalize a aparência da interface",
+      "moreOptions": "Mais opções de personalização em breve."
+    }
+  },
+  "billing": {
+    "title": "Configurações de Cobrança",
+    "description": "Gerencie suas configurações de cobrança padrão",
+    "loading": "Carregando configurações...",
+    "paymentDueDays": "Dias de Vencimento",
+    "paymentDueDaysDescription": "Número de dias após a emissão para vencimento da fatura",
+    "defaultBillingDay": "Dia de Cobrança Padrão",
+    "defaultBillingDayDescription": "Dia do mês para cobrança padrão de novos alunos (1-31)",
+    "save": "Salvar Configurações",
+    "saving": "Salvando...",
+    "success": "Configurações de cobrança atualizadas com sucesso!",
+    "error": "Erro ao salvar configurações"
+  },
+  "cancellationPolicy": {
+    "title": "Política de Cancelamento",
+    "description": "Configure as regras de cancelamento de aulas",
+    "loading": "Carregando política...",
+    "hoursBeforeClass": "Horas antes da aula",
+    "hoursBeforeClassDescription": "Tempo mínimo para cancelamento sem cobrança",
+    "chargePercentage": "Porcentagem de cobrança (%)",
+    "chargePercentageDescription": "Valor a ser cobrado em caso de cancelamento tardio",
+    "amnesty": "Anistia",
+    "amnestyDescription": "Permite que alunos solicitem isenção da cobrança",
+    "document": {
+      "title": "Documento da Política",
+      "description": "Faça upload de um documento detalhando sua política de cancelamento",
+      "current": "Documento atual",
+      "view": "Ver documento",
+      "remove": "Remover documento",
+      "upload": "Fazer upload de documento (PDF, máx 5MB)",
+      "validations": {
+        "required": "Selecione um arquivo PDF",
+        "fileType": "Apenas arquivos PDF são permitidos",
+        "fileSize": "O arquivo deve ter no máximo 5MB"
+      }
+    },
+    "preview": {
+      "title": "Resumo da Política",
+      "rule1": "Cancelamentos com mais de {{hours}} horas de antecedência: sem cobrança",
+      "rule2": "Cancelamentos com menos de {{hours}} horas de antecedência: cobrança de {{percentage}}% do valor da aula",
+      "rule3": "Política de anistia {{enabled}}",
+      "amnestyEnabled": "ativa",
+      "amnestyDisabled": "desativada"
+    },
+    "save": "Salvar Política",
+    "saving": "Salvando...",
+    "success": "Política de cancelamento salva com sucesso!",
+    "uploadSuccess": "Documento enviado com sucesso!",
+    "removeSuccess": "Documento removido com sucesso!",
+    "error": "Erro ao salvar política"
+  },
+  "notifications": {
+    "title": "Notificações",
+    "description": "Configure suas preferências de notificação",
+    "inDevelopment": {
+      "title": "Em Desenvolvimento",
+      "subtitle": "Este recurso está em desenvolvimento",
+      "heading": "Notificações em Breve",
+      "message": "Estamos trabalhando nas configurações de notificação. Em breve você poderá personalizar como recebe alertas e atualizações."
+    }
   },
   "accessDenied": "Acesso restrito a professores."
 }

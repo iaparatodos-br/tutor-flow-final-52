@@ -1,40 +1,99 @@
 {
   "title": "Settings",
+  "subtitle": "Manage your preferences and account settings",
   "tabs": {
     "profile": "Profile",
     "preferences": "Preferences",
     "billing": "Billing",
-    "cancellation": "Teacher Policy",
+    "cancellation": "Cancellation Policy",
     "notifications": "Notifications"
-  },
-  "preferences": {
-    "title": "Preferences",
-    "description": "Customize the appearance and language of the application",
-    "theme": {
-      "title": "Theme",
-      "description": "Choose between light, dark or automatic theme",
-      "light": "Light",
-      "dark": "Dark",
-      "system": "System"
-    },
-    "language": {
-      "title": "Language",
-      "description": "Select the interface language",
-      "portuguese": "Português",
-      "english": "English"
-    },
-    "interface": {
-      "title": "Interface",
-      "description": "User interface settings",
-      "moreOptions": "Additional interface customization options will be added soon."
-    }
   },
   "profile": {
     "title": "Personal Information",
+    "description": "Update your profile information",
     "email": "Email",
-    "emailNote": "Email cannot be changed here",
-    "otherInfo": "Other profile information can be edited elsewhere.",
-    "viewFullProfile": "View Full Profile"
+    "emailDescription": "Email cannot be changed here",
+    "viewProfile": "View Full Profile",
+    "otherInfo": "Other profile information can be edited through your main profile.",
+    "infoMessage": "Editing functionality will be implemented soon."
+  },
+  "preferences": {
+    "title": "Preferences",
+    "description": "Customize your Tutor Flow experience",
+    "theme": {
+      "title": "Theme",
+      "description": "Choose the interface theme"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Select system language"
+    },
+    "interface": {
+      "title": "Interface",
+      "description": "Customize interface appearance",
+      "moreOptions": "More customization options coming soon."
+    }
+  },
+  "billing": {
+    "title": "Billing Settings",
+    "description": "Manage your default billing settings",
+    "loading": "Loading settings...",
+    "paymentDueDays": "Payment Due Days",
+    "paymentDueDaysDescription": "Number of days after issue for invoice due date",
+    "defaultBillingDay": "Default Billing Day",
+    "defaultBillingDayDescription": "Day of month for default billing of new students (1-31)",
+    "save": "Save Settings",
+    "saving": "Saving...",
+    "success": "Billing settings updated successfully!",
+    "error": "Error saving settings"
+  },
+  "cancellationPolicy": {
+    "title": "Cancellation Policy",
+    "description": "Configure class cancellation rules",
+    "loading": "Loading policy...",
+    "hoursBeforeClass": "Hours before class",
+    "hoursBeforeClassDescription": "Minimum time for cancellation without charge",
+    "chargePercentage": "Charge percentage (%)",
+    "chargePercentageDescription": "Amount to be charged in case of late cancellation",
+    "amnesty": "Amnesty",
+    "amnestyDescription": "Allows students to request exemption from charge",
+    "document": {
+      "title": "Policy Document",
+      "description": "Upload a document detailing your cancellation policy",
+      "current": "Current document",
+      "view": "View document",
+      "remove": "Remove document",
+      "upload": "Upload document (PDF, max 5MB)",
+      "validations": {
+        "required": "Select a PDF file",
+        "fileType": "Only PDF files are allowed",
+        "fileSize": "File must be at most 5MB"
+      }
+    },
+    "preview": {
+      "title": "Policy Summary",
+      "rule1": "Cancellations with more than {{hours}} hours notice: no charge",
+      "rule2": "Cancellations with less than {{hours}} hours notice: {{percentage}}% charge of class value",
+      "rule3": "Amnesty policy {{enabled}}",
+      "amnestyEnabled": "active",
+      "amnestyDisabled": "disabled"
+    },
+    "save": "Save Policy",
+    "saving": "Saving...",
+    "success": "Cancellation policy saved successfully!",
+    "uploadSuccess": "Document uploaded successfully!",
+    "removeSuccess": "Document removed successfully!",
+    "error": "Error saving policy"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Configure your notification preferences",
+    "inDevelopment": {
+      "title": "In Development",
+      "subtitle": "This feature is under development",
+      "heading": "Notifications Coming Soon",
+      "message": "We're working on notification settings. Soon you'll be able to customize how you receive alerts and updates."
+    }
   },
   "accessDenied": "Access restricted to professors."
 }

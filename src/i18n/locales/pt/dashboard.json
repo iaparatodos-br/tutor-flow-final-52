@@ -43,7 +43,8 @@
   },
   "studentPortal": {
     "title": "Portal do Aluno",
-    "description": "Bem-vindo, {{name}}! Use o menu lateral para navegar pelas suas aulas e faturas."
+    "description": "Bem-vindo, {{name}}! Use o menu lateral para navegar pelas suas aulas e faturas.",
+    "accessButton": "Acessar Portal do Aluno"
   },
   "configuration": "Configurações"
 }

@@ -127,7 +127,7 @@ export default function Dashboard() {
               onClick={() => navigate("/portal-do-aluno")}
             >
               <Calendar className="h-5 w-5 mr-2" />
-              Acessar Portal do Aluno
+              {t('dashboard:studentPortal.accessButton')}
             </div>
           </div>
         </div>

@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { User, Mail, Phone, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export function ProfileSettings() {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('settings');
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: ''
@@ -28,11 +30,10 @@ export function ProfileSettings() {
   const handleSave = async () => {
     setLoading(true);
     
-    // Para agora, apenas mostrar informação
     setTimeout(() => {
       toast({
-        title: "Informação",
-        description: "Funcionalidade de edição será implementada em breve.",
+        title: t('profile.title'),
+        description: t('profile.infoMessage'),
       });
       setLoading(false);
     }, 500);
@@ -44,15 +45,15 @@ export function ProfileSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            Informações Pessoais
+            {t('profile.title')}
           </CardTitle>
           <CardDescription>
-            Atualize suas informações de perfil
+            {t('profile.description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('profile.email')}</Label>
             <Input
               id="email"
               type="email"
@@ -61,18 +62,18 @@ export function ProfileSettings() {
               className="bg-muted"
             />
             <p className="text-xs text-muted-foreground">
-              O email não pode ser alterado aqui
+              {t('profile.emailDescription')}
             </p>
           </div>
           
           <p className="text-sm text-muted-foreground">
-            Outras informações de perfil podem ser editadas através do seu perfil principal.
+            {t('profile.otherInfo')}
           </p>
         </CardContent>
       </Card>
 
       <Button onClick={handleSave} disabled={loading} className="w-full">
-        {loading ? "Ver Informações" : "Ver Perfil Completo"}
+        {t('profile.viewProfile')}
       </Button>
     </div>
   );

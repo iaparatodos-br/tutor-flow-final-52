@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface ClassService {
   id: string;
@@ -28,6 +29,7 @@ interface ServiceModalProps {
 
 export function ServiceModal({ open, onClose, service, onSuccess, profileId }: ServiceModalProps) {
   const { toast } = useToast();
+  const { t } = useTranslation('services');
   
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -66,8 +68,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
     
     if (!profileId) {
       toast({
-        title: "Erro",
-        description: "Você precisa estar logado para criar um serviço.",
+        title: t('messages.error'),
+        description: t('validation.loginRequired'),
         variant: "destructive",
       });
       return;
@@ -75,8 +77,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
 
     if (!formData.name.trim()) {
       toast({
-        title: "Erro",
-        description: "O nome do serviço é obrigatório.",
+        title: t('messages.error'),
+        description: t('validation.nameRequired'),
         variant: "destructive",
       });
       return;
@@ -84,8 +86,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
 
     if (!formData.price || parseFloat(formData.price) < 0) {
       toast({
-        title: "Erro",
-        description: "O preço deve ser um valor válido.",
+        title: t('messages.error'),
+        description: t('validation.validPrice'),
         variant: "destructive",
       });
       return;
@@ -93,8 +95,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
 
     if (!formData.duration_minutes || parseInt(formData.duration_minutes) <= 0) {
       toast({
-        title: "Erro",
-        description: "A duração deve ser maior que zero.",
+        title: t('messages.error'),
+        description: t('validation.validDuration'),
         variant: "destructive",
       });
       return;
@@ -123,8 +125,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
         if (error) throw error;
 
         toast({
-          title: "Sucesso",
-          description: "Serviço atualizado com sucesso.",
+          title: t('messages.success'),
+          description: t('messages.updateSuccess'),
         });
       } else {
         // Criar novo serviço
@@ -135,8 +137,8 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
         if (error) throw error;
 
         toast({
-          title: "Sucesso",
-          description: "Serviço criado com sucesso.",
+          title: t('messages.success'),
+          description: t('messages.createSuccess'),
         });
       }
 
@@ -145,11 +147,11 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
     } catch (error) {
       console.error('Erro ao salvar serviço:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível salvar o serviço.",
+        title: t('messages.error'),
+        description: t('messages.saveError'),
         variant: "destructive",
       });
-    } finally {
+    } finally{
       setSaving(false);
     }
   };
@@ -166,17 +168,17 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {service ? 'Editar Serviço' : 'Novo Serviço'}
+            {service ? t('edit') : t('new')}
           </DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Nome do Serviço *</Label>
+            <Label htmlFor="name">{t('fields.name')} *</Label>
             <Input
               id="name"
               type="text"
-              placeholder="Ex: Aula Individual 60min"
+              placeholder={t('fields.namePlaceholder')}
               value={formData.name}
               onChange={(e) => handleChange('name', e.target.value)}
               required
@@ -184,10 +186,10 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="description">{t('fields.description')}</Label>
             <Textarea
               id="description"
-              placeholder="Descrição opcional do serviço"
+              placeholder={t('fields.descriptionPlaceholder')}
               value={formData.description}
               onChange={(e) => handleChange('description', e.target.value)}
               rows={2}
@@ -196,13 +198,13 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="price">Preço (R$) *</Label>
+              <Label htmlFor="price">{t('fields.price')} *</Label>
               <Input
                 id="price"
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="0,00"
+                placeholder={t('fields.pricePlaceholder')}
                 value={formData.price}
                 onChange={(e) => handleChange('price', e.target.value)}
                 required
@@ -210,12 +212,12 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="duration">Duração (min) *</Label>
+              <Label htmlFor="duration">{t('fields.duration')} *</Label>
               <Input
                 id="duration"
                 type="number"
                 min="1"
-                placeholder="60"
+                placeholder={t('fields.durationPlaceholder')}
                 value={formData.duration_minutes}
                 onChange={(e) => handleChange('duration_minutes', e.target.value)}
                 required
@@ -231,7 +233,7 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
                 onCheckedChange={(checked) => handleChange('is_active', checked)}
               />
               <Label htmlFor="is_active" className="text-sm">
-                Serviço ativo
+                {t('fields.isActive')}
               </Label>
             </div>
 
@@ -242,17 +244,17 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
                 onCheckedChange={(checked) => handleChange('is_default', checked)}
               />
               <Label htmlFor="is_default" className="text-sm">
-                Definir como padrão
+                {t('fields.isDefault')}
               </Label>
             </div>
           </div>
 
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" disabled={saving} className="flex-1">
-              {saving ? 'Salvando...' : service ? 'Atualizar' : 'Criar'}
+              {saving ? t('actions.saving') : service ? t('actions.update') : t('actions.create')}
             </Button>
           </div>
         </form>

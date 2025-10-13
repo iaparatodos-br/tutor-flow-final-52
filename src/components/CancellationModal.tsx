@@ -9,6 +9,7 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Clock, DollarSign } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface CancellationModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ export function CancellationModal({
   const { profile, isProfessor } = useAuth();
   const { hasTeacherFeature } = useSubscription();
   const { toast } = useToast();
+  const { t } = useTranslation('cancellation');
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
   const [policy, setPolicy] = useState<CancellationPolicy | null>(null);
@@ -141,8 +143,8 @@ export function CancellationModal({
   const handleCancel = async () => {
     if (!reason.trim()) {
       toast({
-        title: "Erro",
-        description: "O motivo do cancelamento é obrigatório.",
+        title: t('messages.error'),
+        description: t('fields.reasonRequired'),
         variant: "destructive",
       });
       return;
@@ -162,7 +164,7 @@ export function CancellationModal({
       if (error) throw error;
 
       toast({
-        title: "Aula Cancelada",
+        title: t('messages.success'),
         description: data.message,
         variant: data.charged ? "destructive" : "default",
       });
@@ -173,8 +175,8 @@ export function CancellationModal({
     } catch (error) {
       console.error('Error cancelling class:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível cancelar a aula. Tente novamente.",
+        title: t('messages.error'),
+        description: t('messages.errorDescription'),
         variant: "destructive",
       });
     } finally {
@@ -186,9 +188,9 @@ export function CancellationModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Cancelar Aula</DialogTitle>
+          <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>
-            {className} - {new Date(classDate).toLocaleDateString()} às {new Date(classDate).toLocaleTimeString()} (Horário de Brasília)
+            {className} - {new Date(classDate).toLocaleDateString()} {t('at')} {new Date(classDate).toLocaleTimeString()} {t('timezone')}
           </DialogDescription>
         </DialogHeader>
         
@@ -199,19 +201,19 @@ export function CancellationModal({
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Clock className="h-4 w-4" />
                 <span>
-                  Faltam {Math.max(0, Math.round(hoursUntilClass))} horas para a aula
+                  {t('status.hoursUntil', { hours: Math.max(0, Math.round(hoursUntilClass)) })}
                 </span>
               </div>
 
               {/* Política de cancelamento */}
               <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
-                <div className="font-medium text-foreground">Política de Cancelamento:</div>
-                <div>• Prazo limite para cancelamento gratuito: <strong>{policy.hours_before_class}h</strong> antes da aula</div>
+                <div className="font-medium text-foreground">{t('policy.title')}</div>
+                <div>• {t('policy.freeDeadline')}: <strong>{t('policy.hours', { hours: policy.hours_before_class })}</strong> {t('policy.beforeClass')}</div>
                 {teacherHasFinancialModule && policy.charge_percentage > 0 && (
-                  <div>• Cobrança por cancelamento tardio: <strong>{policy.charge_percentage}%</strong> do valor da aula</div>
+                  <div>• {t('policy.lateCharge')}: <strong>{t('policy.percentage', { percentage: policy.charge_percentage })}</strong> {t('policy.ofValue')}</div>
                 )}
                 {teacherHasFinancialModule && policy.allow_amnesty && (
-                  <div>• O professor pode conceder amnistia em casos especiais</div>
+                  <div>• {t('policy.amnestyAvailable')}</div>
                 )}
               </div>
 
@@ -220,22 +222,22 @@ export function CancellationModal({
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    <strong>⚠️ Cancelamento com Cobrança</strong><br />
-                    O prazo limite de {policy.hours_before_class}h já passou.<br />
-                    <strong>Valor da cobrança: R$ {chargeAmount.toFixed(2)}</strong><br />
-                    <small>A cobrança será incluída na próxima fatura mensal.</small>
+                    <strong>{t('alert.withCharge.title')}</strong><br />
+                    {t('alert.withCharge.deadlinePassed', { hours: policy.hours_before_class })}<br />
+                    <strong>{t('alert.withCharge.chargeAmount', { amount: chargeAmount.toFixed(2) })}</strong><br />
+                    <small>{t('alert.withCharge.nextInvoice')}</small>
                   </AlertDescription>
                 </Alert>
               ) : (
                 <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
                   <DollarSign className="h-4 w-4 text-green-600" />
                   <AlertDescription className="text-green-800 dark:text-green-200">
-                    <strong>✅ Cancelamento Gratuito</strong><br />
+                    <strong>{t('alert.free.title')}</strong><br />
                     {isProfessor ? 
-                      "Professores podem cancelar aulas sem cobrança." :
+                      t('alert.free.professor') :
                       teacherHasFinancialModule ?
-                        `Cancelamento realizado dentro do prazo de ${policy.hours_before_class}h.` :
-                        "Cancelamento sem cobrança - sistema de cobrança não disponível."
+                        t('alert.free.withinDeadline', { hours: policy.hours_before_class }) :
+                        t('alert.free.systemUnavailable')
                     }
                   </AlertDescription>
                 </Alert>
@@ -248,13 +250,12 @@ export function CancellationModal({
               <AlertDescription>
                 <div className="flex items-center gap-2">
                   <div>
-                    <strong>Aula em Grupo</strong>
+                    <strong>{t('alert.groupClass.title')}</strong>
                     <p className="text-sm mt-1">
-                      Ao cancelar, apenas você será removido desta aula. 
-                      Os demais participantes continuarão normalmente.
+                      {t('alert.groupClass.description')}
                       {willBeCharged && (
                         <span className="text-orange-600 font-semibold">
-                          {' '}A cobrança será aplicada apenas a você.
+                          {' '}{t('alert.groupClass.chargeApplied')}
                         </span>
                       )}
                     </p>
@@ -265,12 +266,12 @@ export function CancellationModal({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="reason">Motivo do cancelamento *</Label>
+            <Label htmlFor="reason">{t('fields.reason')} *</Label>
             <Textarea
               id="reason"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Descreva o motivo do cancelamento..."
+              placeholder={t('fields.reasonPlaceholder')}
               rows={3}
             />
           </div>
@@ -278,14 +279,14 @@ export function CancellationModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>
-            Voltar
+            {t('actions.back')}
           </Button>
           <Button 
             variant={willBeCharged ? "destructive" : "default"}
             onClick={handleCancel} 
             disabled={loading || !reason.trim()}
           >
-            {loading ? "Cancelando..." : willBeCharged ? "Cancelar com Cobrança" : "Cancelar Aula"}
+            {loading ? t('actions.canceling') : willBeCharged ? t('actions.cancelWithCharge') : t('actions.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

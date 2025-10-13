@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { Palette } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ export function CategoryModal({
   category = null 
 }: CategoryModalProps) {
   const { profile } = useProfile();
+  const { t } = useTranslation('materials');
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]);
@@ -64,7 +66,7 @@ export function CategoryModal({
     e.preventDefault();
     
     if (!profile || !name.trim()) {
-      toast.error("Nome da categoria é obrigatório");
+      toast.error(t('category.nameRequired'));
       return;
     }
 
@@ -83,7 +85,7 @@ export function CategoryModal({
           .eq('id', category.id);
 
         if (error) throw error;
-        toast.success("Categoria atualizada com sucesso!");
+        toast.success(t('category.updated'));
       } else {
         // Create new category
         const { error } = await supabase
@@ -96,14 +98,14 @@ export function CategoryModal({
           });
 
         if (error) throw error;
-        toast.success("Categoria criada com sucesso!");
+        toast.success(t('category.created'));
       }
 
       onCategoryAdded();
       onClose();
     } catch (error) {
       console.error('Error saving category:', error);
-      toast.error("Erro ao salvar categoria");
+      toast.error(t('category.saveError'));
     } finally {
       setLoading(false);
     }
@@ -114,30 +116,30 @@ export function CategoryModal({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {category ? "Editar Categoria" : "Nova Categoria"}
+            {category ? t('category.edit') : t('category.new')}
           </DialogTitle>
         </DialogHeader>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Nome *</Label>
+            <Label htmlFor="name">{t('category.name')} *</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Matemática, Exercícios, Provas..."
+              placeholder={t('category.namePlaceholder')}
               required
               disabled={loading}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="description">{t('category.description')}</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descreva o tipo de material desta categoria (opcional)"
+              placeholder={t('category.descriptionPlaceholder')}
               rows={3}
               disabled={loading}
             />
@@ -146,7 +148,7 @@ export function CategoryModal({
           <div className="space-y-3">
             <Label className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
-              Cor da Categoria
+              {t('category.color')}
             </Label>
             <div className="grid grid-cols-6 gap-2">
               {PRESET_COLORS.map((presetColor) => (
@@ -174,8 +176,8 @@ export function CategoryModal({
                 className="w-4 h-4 rounded-full" 
                 style={{ backgroundColor: color }}
               />
-              <span className="font-medium">Preview:</span>
-              <span>{name || "Nome da categoria"}</span>
+              <span className="font-medium">{t('category.preview')}:</span>
+              <span>{name || t('category.previewPlaceholder')}</span>
             </div>
           </div>
 
@@ -186,17 +188,17 @@ export function CategoryModal({
               onClick={onClose}
               disabled={loading}
             >
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button
               type="submit"
               disabled={!name.trim() || loading}
             >
               {loading 
-                ? "Salvando..." 
+                ? t('actions.saving')
                 : category 
-                  ? "Atualizar" 
-                  : "Criar Categoria"
+                  ? t('actions.update')
+                  : t('actions.create')
               }
             </Button>
           </div>

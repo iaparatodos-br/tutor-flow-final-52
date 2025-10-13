@@ -1,0 +1,58 @@
+{
+  "title": "Histórico de Aulas Arquivadas",
+  "subtitle": "Consulte suas aulas e relatórios arquivados por período",
+  "description": "Dados mais antigos que 18 meses são movidos para o arquivo",
+  "filters": {
+    "year": "Ano",
+    "month": "Mês",
+    "selectYear": "Selecionar ano",
+    "selectMonth": "Selecionar mês",
+    "search": "Buscar Histórico",
+    "searching": "Buscando..."
+  },
+  "months": {
+    "january": "Janeiro",
+    "february": "Fevereiro",
+    "march": "Março",
+    "april": "Abril",
+    "may": "Maio",
+    "june": "Junho",
+    "july": "July",
+    "august": "Agosto",
+    "september": "Setembro",
+    "october": "Outubro",
+    "november": "Novembro",
+    "december": "Dezembro"
+  },
+  "table": {
+    "dateTime": "Data/Hora",
+    "duration": "Duração",
+    "status": "Status",
+    "observations": "Observações",
+    "report": "Relatório",
+    "viewReport": "Ver Relatório",
+    "noReport": "Sem relatório"
+  },
+  "status": {
+    "completed": "Realizada",
+    "cancelled": "Cancelada",
+    "pending": "Pendente"
+  },
+  "report": {
+    "title": "Relatório da Aula",
+    "classDate": "Aula do dia",
+    "lessonSummary": "Resumo da Aula",
+    "homework": "Lição de Casa",
+    "extraMaterials": "Materiais Extras",
+    "createdAt": "Relatório criado em:"
+  },
+  "messages": {
+    "selectPeriod": "Por favor, selecione o ano e mês para consultar",
+    "noRecords": "Nenhum registro encontrado",
+    "noRecordsDescription": "Não há dados arquivados para {month} de {year}",
+    "recordsFound": "{count} registro(s) encontrado(s)",
+    "fetchSuccess": "Encontrados {count} registros arquivados",
+    "fetchError": "Erro ao buscar dados arquivados. Tente novamente",
+    "loading": "Carregando..."
+  }
+}

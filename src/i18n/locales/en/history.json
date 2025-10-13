@@ -1,0 +1,58 @@
+{
+  "title": "Archived Class History",
+  "subtitle": "View your archived classes and reports by period",
+  "description": "Data older than 18 months is moved to the archive",
+  "filters": {
+    "year": "Year",
+    "month": "Month",
+    "selectYear": "Select year",
+    "selectMonth": "Select month",
+    "search": "Search History",
+    "searching": "Searching..."
+  },
+  "months": {
+    "january": "January",
+    "february": "February",
+    "march": "March",
+    "april": "April",
+    "may": "May",
+    "june": "June",
+    "july": "July",
+    "august": "August",
+    "september": "September",
+    "october": "October",
+    "november": "November",
+    "december": "December"
+  },
+  "table": {
+    "dateTime": "Date/Time",
+    "duration": "Duration",
+    "status": "Status",
+    "observations": "Observations",
+    "report": "Report",
+    "viewReport": "View Report",
+    "noReport": "No report"
+  },
+  "status": {
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "pending": "Pending"
+  },
+  "report": {
+    "title": "Class Report",
+    "classDate": "Class on",
+    "lessonSummary": "Lesson Summary",
+    "homework": "Homework",
+    "extraMaterials": "Extra Materials",
+    "createdAt": "Report created on:"
+  },
+  "messages": {
+    "selectPeriod": "Please select year and month to query",
+    "noRecords": "No records found",
+    "noRecordsDescription": "There is no archived data for {month} {year}",
+    "recordsFound": "{count} record(s) found",
+    "fetchSuccess": "Found {count} archived records",
+    "fetchError": "Error fetching archived data. Please try again",
+    "loading": "Loading..."
+  }
+}

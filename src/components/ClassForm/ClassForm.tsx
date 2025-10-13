@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 interface Student {
   id: string;
@@ -61,6 +62,7 @@ interface ClassFormProps {
 
 export function ClassForm({ open, onOpenChange, students, services, existingClasses, onSubmit, loading }: ClassFormProps) {
   const { hasFeature, currentPlan } = useSubscription();
+  const { t } = useTranslation('classes');
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
     service_id: '',
@@ -127,7 +129,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
     // Check if it's a group class (more than 1 student) and user is on free plan
     if (formData.selectedStudents.length > 1 && currentPlan?.slug === 'free') {
-      toast.error('Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.');
+      toast.error(t('groupClassNote'));
       return;
     }
 
@@ -233,7 +235,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
-            Agendar Nova Aula
+            {t('scheduleNew')}
           </DialogTitle>
         </DialogHeader>
 
@@ -243,16 +245,16 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             <CardHeader className="pb-4">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                Selecionar Alunos
+                {t('selectStudents')}
               </CardTitle>
               <CardDescription>
-                Escolha um ou mais alunos para a aula
+                {t('selectStudentsDescription')}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {students.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Nenhum aluno cadastrado
+                  {t('noStudentsRegistered')}
                 </p>
               ) : (
                 <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -288,13 +290,13 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                    {formData.selectedStudents.length > 1 && currentPlan?.slug === 'free' && (
                      <Badge variant="destructive" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
-                       Aula em Grupo - Premium
+                       {t('groupClassPremium')}
                      </Badge>
                    )}
                    {formData.is_group_class && currentPlan?.slug !== 'free' && (
                      <Badge variant="outline" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
-                       Aula em Grupo
+                       {t('groupClass')}
                      </Badge>
                    )}
                 </div>
@@ -302,7 +304,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
               {validationErrors.students && (
                 <p className="text-sm text-destructive">
-                  Selecione pelo menos um aluno
+                  {t('selectStudentError')}
                 </p>
               )}
             </CardContent>
@@ -311,7 +313,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
           {/* Class Type Options */}
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg">Tipo de Aula</CardTitle>
+              <CardTitle className="text-lg">{t('classType')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center space-x-2">
@@ -328,12 +330,12 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 />
                 <Label htmlFor="experimental" className="flex items-center gap-2 cursor-pointer">
                   <Star className="h-4 w-4 text-warning" />
-                  Aula Experimental (gratuita)
+                  {t('experimental')}
                 </Label>
               </div>
               {formData.is_experimental && (
                 <p className="text-sm text-muted-foreground ml-6">
-                  Esta aula não será cobrada e será marcada como experimental
+                  {t('experimentalNote')}
                 </p>
               )}
             </CardContent>
@@ -345,16 +347,16 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <DollarSign className="h-4 w-4" />
-                  Selecionar Serviço
+                  {t('selectService')}
                 </CardTitle>
                 <CardDescription>
-                  Escolha o tipo de aula e seu preço
+                  {t('selectServiceDescription')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {services.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    Nenhum serviço cadastrado. <a href="/servicos" className="text-primary underline">Cadastre seus serviços</a> para definir preços.
+                    {t('noServicesRegistered')} <a href="/servicos" className="text-primary underline">{t('registerServicesLink')}</a> {t('registerServicesPrompt')}
                   </p>
                 ) : (
                   <div className="space-y-3">
@@ -373,7 +375,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione um serviço" />
+                        <SelectValue placeholder={t('selectServicePlaceholder')} />
                       </SelectTrigger>
                       <SelectContent>
                         {services.map((service) => (
@@ -403,7 +405,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                           const selectedService = services.find(s => s.id === formData.service_id);
                           return selectedService ? (
                             <div className="flex items-center justify-between text-sm">
-                              <span>Serviço selecionado:</span>
+                              <span>{t('serviceSelected')}</span>
                               <div className="flex items-center gap-2">
                                 <span className="font-medium">{selectedService.name}</span>
                                 <span className="text-muted-foreground">•</span>
@@ -426,7 +428,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 
                 {validationErrors.service && (
                   <p className="text-sm text-destructive">
-                    Selecione um serviço para definir o preço da aula
+                    {t('selectServiceError')}
                   </p>
                 )}
               </CardContent>
@@ -436,7 +438,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
           {/* Date and Time */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="date">Data *</Label>
+              <Label htmlFor="date">{t('fields.date')} *</Label>
               <Input
                 id="date"
                 type="date"
@@ -451,7 +453,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             </div>
 
             <div>
-              <Label htmlFor="time">Horário * <span className="text-xs text-muted-foreground">(Horário de Brasília)</span></Label>
+              <Label htmlFor="time">{t('fields.time')} * <span className="text-xs text-muted-foreground">{t('brasilia_timezone')}</span></Label>
               <Input
                 id="time"
                 type="time"
@@ -468,13 +470,13 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
           {validationErrors.pastDateTime && (
             <p className="text-sm text-destructive">
-              Não é possível agendar aulas para data/horário passado
+              {t('pastDateTimeError')}
             </p>
           )}
           
           {validationErrors.timeConflict && (
             <p className="text-sm text-destructive">
-              Já existe uma aula agendada neste horário
+              {t('timeConflictError')}
             </p>
           )}
 
@@ -486,10 +488,10 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 <div>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Repeat className="h-4 w-4" />
-                    Recorrência
+                    {t('recurrence')}
                   </CardTitle>
                   <CardDescription>
-                    Configure aulas recorrentes
+                    {t('recurrenceDescription')}
                   </CardDescription>
                 </div>
                 <Checkbox
@@ -513,7 +515,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             {showRecurrence && (
               <CardContent className="space-y-4">
                 <div>
-                  <Label>Frequência</Label>
+                  <Label>{t('frequency')}</Label>
                   <Select
                     value={formData.recurrence?.frequency || 'weekly'}
                     onValueChange={(value: 'weekly' | 'biweekly' | 'monthly') =>
@@ -527,18 +529,18 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="weekly">Semanal</SelectItem>
-                      <SelectItem value="biweekly">Quinzenal</SelectItem>
-                      <SelectItem value="monthly">Mensal</SelectItem>
+                      <SelectItem value="weekly">{t('weekly')}</SelectItem>
+                      <SelectItem value="biweekly">{t('biweekly')}</SelectItem>
+                      <SelectItem value="monthly">{t('monthly')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="flex items-center justify-between rounded-lg border p-4">
                   <div className="space-y-0.5">
-                    <Label htmlFor="infinite-recurrence">Recorrência Contínua</Label>
+                    <Label htmlFor="infinite-recurrence">{t('infiniteRecurrence')}</Label>
                     <p className="text-sm text-muted-foreground">
-                      A aula se repetirá indefinidamente
+                      {t('infiniteRecurrenceDescription')}
                     </p>
                   </div>
                   <Switch
@@ -561,14 +563,14 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
                 {recurrenceType !== 'infinite' && (
                   <div>
-                    <Label>Término da recorrência</Label>
+                    <Label>{t('endRecurrence')}</Label>
                     <Select value={recurrenceType} onValueChange={(value: "date" | "count") => setRecurrenceType(value as "date" | "count")}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="date">Até uma data</SelectItem>
-                        <SelectItem value="count">Número de aulas</SelectItem>
+                        <SelectItem value="date">{t('endDateOption')}</SelectItem>
+                        <SelectItem value="count">{t('countOption')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -576,7 +578,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
                 {recurrenceType === 'date' && (
                   <div>
-                    <Label htmlFor="end_date">Data final</Label>
+                    <Label htmlFor="end_date">{t('fields.endDate')}</Label>
                     <Input
                       id="end_date"
                       type="date"
@@ -593,7 +595,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
                 {recurrenceType === 'count' && (
                   <div>
-                    <Label htmlFor="occurrences">Número de aulas</Label>
+                    <Label htmlFor="occurrences">{t('fields.occurrences')}</Label>
                     <Input
                       id="occurrences"
                       type="number"
@@ -614,10 +616,10 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                   <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
                       <Repeat className="h-4 w-4" />
-                      <span className="font-medium">Recorrência Contínua</span>
+                      <span className="font-medium">{t('infiniteRecurrence')}</span>
                     </div>
                     <p className="text-sm text-blue-600/80 dark:text-blue-400/80">
-                      As aulas serão geradas automaticamente na agenda conforme você navegar pelos meses.
+                      {t('infiniteRecurrenceNote')}
                     </p>
                   </div>
                 )}
@@ -627,10 +629,10 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
           {/* Notes */}
           <div>
-            <Label htmlFor="notes">Observações</Label>
+            <Label htmlFor="notes">{t('fields.notes')}</Label>
             <Textarea
               id="notes"
-              placeholder="Observações sobre a aula..."
+              placeholder={t('fields.notesPlaceholder')}
               value={formData.notes}
               onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
             />
@@ -639,10 +641,10 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
           {/* Form Actions */}
           <div className="flex justify-end gap-2 pt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t('actions.cancel')}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Agendando..." : "Agendar Aula"}
+              {loading ? t('actions.scheduling') : t('actions.scheduleClass')}
             </Button>
           </div>
         </form>

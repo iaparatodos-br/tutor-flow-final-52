@@ -78,7 +78,9 @@
     "expenseAdded": "Despesa adicionada com sucesso!",
     "paymentProcessed": "Pagamento processado com sucesso!",
     "confirmDelete": "Tem certeza que deseja excluir este item?",
-    "noData": "Nenhum dado financeiro encontrado"
+    "noData": "Nenhum dado financeiro encontrado",
+    "loadError": "Erro ao carregar faturas",
+    "loadErrorDescription": "Tente novamente mais tarde"
   },
   "stripe": {
     "connect": {

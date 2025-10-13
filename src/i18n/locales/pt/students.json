@@ -106,6 +106,12 @@
     "studentUpdated": "Aluno atualizado com sucesso!",
     "studentDeleted": "Aluno excluído com sucesso!",
     "confirmDelete": "Tem certeza que deseja excluir este aluno?",
-    "noStudents": "Nenhum aluno encontrado"
+    "noStudents": "Nenhum aluno encontrado",
+    "loadError": "Erro ao carregar alunos",
+    "loadErrorDescription": "Tente novamente mais tarde",
+    "emailInUse": "Este e-mail já está sendo utilizado por outro aluno ou professor",
+    "relationshipNotFound": "Não foi possível encontrar o relacionamento do aluno",
+    "deleteError": "Erro ao processar a remoção do aluno",
+    "profileLoadError": "Não foi possível carregar os dados do aluno"
   }
 }

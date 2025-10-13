@@ -144,6 +144,20 @@
     "classCancelled": "Class cancelled successfully!",
     "confirmCancel": "Are you sure you want to cancel this class?",
     "noClasses": "No classes found",
-    "billingInfo": "Only classes marked as completed are included in automatic billing"
+    "billingInfo": "Only classes marked as completed are included in automatic billing",
+    "loadError": "Error loading calendar",
+    "loadErrorDescription": "Please try again later",
+    "classConfirmed": "Class confirmed!",
+    "classConfirmedDescription": "The class was confirmed successfully",
+    "recurringConfirmed": "Recurring series created!",
+    "recurringConfirmedDescription": "The class will repeat automatically according to the schedule",
+    "multipleScheduled": "Classes scheduled!",
+    "multipleScheduledDescription": "{{count}} classes were created successfully",
+    "singleScheduled": "Class scheduled!",
+    "singleScheduledDescription": "The class was created successfully",
+    "classCompleted": "Class completed!",
+    "classCompletedDescription": "The class was marked as completed",
+    "occurrenceCancelled": "Class cancelled",
+    "occurrenceCancelledDescription": "This class occurrence was cancelled successfully"
   }
 }

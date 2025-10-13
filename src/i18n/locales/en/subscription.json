@@ -157,5 +157,28 @@
     "title": "Unlock the full potential of the platform",
     "description": "Group classes, complete financial module, expenses and much more!",
     "button": "View Plans"
+  },
+  "portal": {
+    "updated": "Updated",
+    "updatedDescription": "Subscription status updated successfully!",
+    "opened": "Portal opened",
+    "openedDescription": "The management portal was opened in a new tab.",
+    "error": "Error",
+    "updateError": "Could not update subscription status.",
+    "openError": "Could not open management portal."
+  },
+  "cancel": {
+    "cancelled": "Subscription cancelled",
+    "cancelledDescription": "Your subscription will end at the end of the billing period.",
+    "cancelError": "Could not cancel subscription."
+  },
+  "reactivate": {
+    "reactivated": "Subscription Reactivated!",
+    "reactivatedDescription": "Your subscription was reactivated and will continue to be charged normally.",
+    "reactivateError": "Could not reactivate subscription."
+  },
+  "confirm": {
+    "confirmed": "Subscription confirmed!",
+    "confirmedDescription": "Your subscription was successfully activated. Features have been unlocked."
   }
 }

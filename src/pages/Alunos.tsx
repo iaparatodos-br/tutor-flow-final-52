@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
+import { useTranslation } from "react-i18next";
 interface Student {
   id: string;
   name: string;
@@ -36,6 +37,7 @@ interface Student {
   email_confirmed?: boolean;
 }
 export default function Alunos() {
+  const { t } = useTranslation(['students', 'common']);
   const {
     profile
   } = useProfile();
@@ -116,8 +118,8 @@ export default function Alunos() {
     } catch (error) {
       console.error('Erro ao carregar alunos:', error);
       toast({
-        title: "Erro ao carregar alunos",
-        description: "Tente novamente mais tarde",
+        title: t('messages.loadError'),
+        description: t('messages.loadErrorDescription'),
         variant: "destructive"
       });
     } finally {
@@ -166,8 +168,8 @@ export default function Alunos() {
         console.log('Error type:', typeof error);
         console.log('Error JSON:', JSON.stringify(error));
         toast({
-          title: 'Erro',
-          description: 'Este e-mail já está sendo utilizado por outro aluno ou professor',
+          title: t('common:messages.error'),
+          description: t('messages.emailInUse'),
           variant: 'destructive'
         });
         return;
@@ -283,8 +285,8 @@ export default function Alunos() {
   const handleSmartDelete = async (student: Student) => {
     if (!student.relationship_id) {
       toast({
-        title: "Erro",
-        description: "Não foi possível encontrar o relacionamento do aluno",
+        title: t('common:messages.error'),
+        description: t('messages.relationshipNotFound'),
         variant: "destructive"
       });
       return;
@@ -354,8 +356,8 @@ export default function Alunos() {
   const handleResendInvitation = async (student: Student) => {
     if (!student.relationship_id) {
       toast({
-        title: "Erro",
-        description: "Não foi possível encontrar o relacionamento do aluno",
+        title: t('common:messages.error'),
+        description: t('messages.relationshipNotFound'),
         variant: "destructive"
       });
       return;

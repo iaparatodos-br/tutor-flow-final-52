@@ -499,8 +499,8 @@ export default function Agenda() {
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);
       toast({
-        title: "Erro ao carregar agenda",
-        description: "Tente novamente mais tarde",
+        title: t('messages.loadError'),
+        description: t('messages.loadErrorDescription'),
         variant: "destructive"
       });
     } finally {
@@ -584,8 +584,8 @@ export default function Agenda() {
       }).eq('id', classId);
       if (error) throw error;
       toast({
-        title: "Aula confirmada!",
-        description: "A aula foi confirmada com sucesso"
+        title: t('messages.classConfirmed'),
+        description: t('messages.classConfirmedDescription')
       });
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
@@ -789,18 +789,18 @@ export default function Agenda() {
       }
       if (formData.recurrence?.is_infinite) {
         toast({
-          title: "Série recorrente criada!",
-          description: "A aula se repetirá automaticamente conforme a programação"
+          title: t('messages.recurringConfirmed'),
+          description: t('messages.recurringConfirmedDescription')
         });
       } else if (insertedClasses.length > 1) {
         toast({
-          title: "Aulas agendadas!",
-          description: `${insertedClasses.length} aulas foram criadas com sucesso`
+          title: t('messages.multipleScheduled'),
+          description: t('messages.multipleScheduledDescription', { count: insertedClasses.length })
         });
       } else {
         toast({
-          title: "Aula agendada!",
-          description: "A aula foi criada com sucesso"
+          title: t('messages.singleScheduled'),
+          description: t('messages.singleScheduledDescription')
         });
       }
       if (visibleRange) {
@@ -826,8 +826,8 @@ export default function Agenda() {
       }).eq('id', classId);
       if (error) throw error;
       toast({
-        title: "Aula concluída!",
-        description: "A aula foi marcada como concluída"
+        title: t('messages.classCompleted'),
+        description: t('messages.classCompletedDescription')
       });
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
@@ -916,8 +916,8 @@ export default function Agenda() {
       });
       if (error) throw error;
       toast({
-        title: "Aula cancelada",
-        description: "Esta ocorrência da aula foi cancelada com sucesso"
+        title: t('messages.occurrenceCancelled'),
+        description: t('messages.occurrenceCancelledDescription')
       });
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);

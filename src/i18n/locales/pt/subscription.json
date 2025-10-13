@@ -157,5 +157,28 @@
     "title": "Desbloqueie todo o potencial da plataforma",
     "description": "Aulas em grupo, módulo financeiro completo, despesas e muito mais!",
     "button": "Ver Planos"
+  },
+  "portal": {
+    "updated": "Atualizado",
+    "updatedDescription": "Status da assinatura atualizado com sucesso!",
+    "opened": "Portal aberto",
+    "openedDescription": "O portal de gerenciamento foi aberto em uma nova aba.",
+    "error": "Erro",
+    "updateError": "Não foi possível atualizar o status da assinatura.",
+    "openError": "Não foi possível abrir o portal de gerenciamento."
+  },
+  "cancel": {
+    "cancelled": "Assinatura cancelada",
+    "cancelledDescription": "Sua assinatura será encerrada ao final do período de cobrança.",
+    "cancelError": "Não foi possível cancelar a assinatura."
+  },
+  "reactivate": {
+    "reactivated": "Assinatura Reativada!",
+    "reactivatedDescription": "Sua assinatura foi reativada e continuará a ser cobrada normalmente.",
+    "reactivateError": "Não foi possível reativar a assinatura."
+  },
+  "confirm": {
+    "confirmed": "Assinatura confirmada!",
+    "confirmedDescription": "Sua assinatura foi ativada com sucesso. As funcionalidades foram desbloqueadas."
   }
 }

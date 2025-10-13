@@ -144,6 +144,20 @@
     "classCancelled": "Aula cancelada com sucesso!",
     "confirmCancel": "Tem certeza que deseja cancelar esta aula?",
     "noClasses": "Nenhuma aula encontrada",
-    "billingInfo": "Apenas aulas marcadas como concluídas são incluídas na fatura automática"
+    "billingInfo": "Apenas aulas marcadas como concluídas são incluídas na fatura automática",
+    "loadError": "Erro ao carregar agenda",
+    "loadErrorDescription": "Tente novamente mais tarde",
+    "classConfirmed": "Aula confirmada!",
+    "classConfirmedDescription": "A aula foi confirmada com sucesso",
+    "recurringConfirmed": "Série recorrente criada!",
+    "recurringConfirmedDescription": "A aula se repetirá automaticamente conforme a programação",
+    "multipleScheduled": "Aulas agendadas!",
+    "multipleScheduledDescription": "{{count}} aulas foram criadas com sucesso",
+    "singleScheduled": "Aula agendada!",
+    "singleScheduledDescription": "A aula foi criada com sucesso",
+    "classCompleted": "Aula concluída!",
+    "classCompletedDescription": "A aula foi marcada como concluída",
+    "occurrenceCancelled": "Aula cancelada",
+    "occurrenceCancelledDescription": "Esta ocorrência da aula foi cancelada com sucesso"
   }
 }

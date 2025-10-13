@@ -44,6 +44,40 @@
     "90": "1h 30min",
     "120": "2 hours"
   },
+  "calendar": {
+    "allDay": "All day",
+    "previous": "Previous",
+    "next": "Next",
+    "today": "Today",
+    "month": "Month",
+    "week": "Week",
+    "day": "Day",
+    "agenda": "Agenda",
+    "date": "Date",
+    "time": "Time",
+    "event": "Event",
+    "showMore": "+{count} more",
+    "noEventsInRange": "No events in this period",
+    "loadingCalendar": "Loading calendar...",
+    "noClassesScheduled": "No classes scheduled",
+    "noClassesProfessor": "Your upcoming classes will appear on the calendar",
+    "noClassesStudent": "You have no classes scheduled at the moment",
+    "noClassesCalendar": "Your upcoming classes will appear here",
+    "eventDetails": "Class Details",
+    "blockedTime": "Blocked Time",
+    "blocked": "Blocked",
+    "eventsOf": "Events of",
+    "classes": "Classes",
+    "blockedTimes": "Blocked Times",
+    "noEventsThisDay": "No events on this day",
+    "minutes": "minutes",
+    "note": "Note",
+    "notes": "Notes",
+    "participants": "Participants",
+    "student": "Student",
+    "groupWithCount": "Group Class ({count} students)",
+    "groupShort": "Group ({count})"
+  },
   "fields": {
     "student": "Student",
     "date": "Date",
@@ -59,10 +93,10 @@
     "occurrences": "Number of classes"
   },
   "status": {
-    "scheduled": "Scheduled",
-    "completed": "Completed",
+    "pending": "Pending",
+    "confirmed": "Confirmed",
     "cancelled": "Cancelled",
-    "rescheduled": "Rescheduled"
+    "completed": "Completed"
   },
   "types": {
     "individual": "Individual",
@@ -72,8 +106,37 @@
   },
   "actions": {
     "cancel": "Cancel",
+    "cancelClass": "Cancel Class",
     "scheduleClass": "Schedule Class",
-    "scheduling": "Scheduling..."
+    "scheduling": "Scheduling...",
+    "confirmClass": "Confirm Class",
+    "completeClass": "Complete Class",
+    "markAsCompleted": "Mark as Completed",
+    "createReport": "Create Report",
+    "editReport": "Edit Report"
+  },
+  "daysOfWeek": {
+    "sun": "Sun",
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat"
+  },
+  "months": {
+    "january": "January",
+    "february": "February",
+    "march": "March",
+    "april": "April",
+    "may": "May",
+    "june": "June",
+    "july": "July",
+    "august": "August",
+    "september": "September",
+    "october": "October",
+    "november": "November",
+    "december": "December"
   },
   "messages": {
     "classScheduled": "Class scheduled successfully!",

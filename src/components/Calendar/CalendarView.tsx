@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
+import { useTranslation } from 'react-i18next';
 
 // Configure moment to Portuguese
 moment.locale('pt-br');
@@ -63,27 +64,28 @@ interface CalendarViewProps {
   loading?: boolean;
 }
 
-const messages = {
-  allDay: 'Dia inteiro',
-  previous: 'Anterior',
-  next: 'Próximo',
-  today: 'Hoje',
-  month: 'Mês',
-  week: 'Semana',
-  day: 'Dia',
-  agenda: 'Agenda',
-  date: 'Data',
-  time: 'Hora',
-  event: 'Evento',
-  showMore: (count: number) => `+${count} mais`,
-  noEventsInRange: 'Não há eventos neste período',
-};
-
 export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, loading }: CalendarViewProps) {
   const { profile } = useAuth();
+  const { t } = useTranslation('classes');
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
+  
+  const messages = {
+    allDay: t('calendar.allDay'),
+    previous: t('calendar.previous'),
+    next: t('calendar.next'),
+    today: t('calendar.today'),
+    month: t('calendar.month'),
+    week: t('calendar.week'),
+    day: t('calendar.day'),
+    agenda: t('calendar.agenda'),
+    date: t('calendar.date'),
+    time: t('calendar.time'),
+    event: t('calendar.event'),
+    showMore: (count: number) => t('calendar.showMore', { count }),
+    noEventsInRange: t('calendar.noEventsInRange'),
+  };
   
   // Combine classes and availability blocks for calendar display
   const allEvents = [
@@ -153,10 +155,10 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pendente: { label: "Pendente", variant: "secondary" as const },
-      confirmada: { label: "Confirmada", variant: "default" as const },
-      cancelada: { label: "Cancelada", variant: "destructive" as const },
-      concluida: { label: "Concluída", variant: "outline" as const }
+      pendente: { label: t('status.pending'), variant: "secondary" as const },
+      confirmada: { label: t('status.confirmed'), variant: "default" as const },
+      cancelada: { label: t('status.cancelled'), variant: "destructive" as const },
+      concluida: { label: t('status.completed'), variant: "outline" as const }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
@@ -173,7 +175,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
         <CardContent className="p-6">
           <div className="text-center py-8">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando calendário...</p>
+            <p className="text-muted-foreground">{t('calendar.loadingCalendar')}</p>
           </div>
         </CardContent>
       </Card>
@@ -231,11 +233,11 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
           {classes.length === 0 && availabilityBlocks.length === 0 && (
             <div className="text-center py-8">
               <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Nenhuma aula agendada</h3>
+              <h3 className="text-lg font-medium mb-2">{t('calendar.noClassesScheduled')}</h3>
               <p className="text-muted-foreground">
                 {isProfessor 
-                  ? "Suas próximas aulas aparecerão no calendário"
-                  : "Você não tem aulas agendadas no momento"
+                  ? t('calendar.noClassesProfessor')
+                  : t('calendar.noClassesStudent')
                 }
               </p>
             </div>
@@ -247,7 +249,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Detalhes da Aula</DialogTitle>
+            <DialogTitle>{t('calendar.eventDetails')}</DialogTitle>
           </DialogHeader>
           
           {selectedEvent && (
@@ -258,7 +260,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   <div className="flex items-center gap-2 mb-4">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">{selectedEvent.title}</span>
-                    <Badge variant="secondary">Bloqueado</Badge>
+                    <Badge variant="secondary">{t('calendar.blocked')}</Badge>
                   </div>
 
                   <div className="space-y-2">
@@ -269,7 +271,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     
                     <div className="flex items-center gap-2">
                       <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)} <span className="text-xs text-muted-foreground">(Horário de Brasília)</span></span>
+                      <span>{formatEventTime(selectedEvent.start, selectedEvent.end)} <span className="text-xs text-muted-foreground">{t('brasilia_timezone')}</span></span>
                     </div>
                   </div>
                 </div>
@@ -281,7 +283,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">
                         {(selectedEvent as CalendarClass).is_group_class 
-                          ? `Aula em Grupo (${(selectedEvent as CalendarClass).participants?.length || 1} alunos)`
+                          ? t('calendar.groupWithCount', { count: (selectedEvent as CalendarClass).participants?.length || 1 })
                           : (selectedEvent as CalendarClass).student.name
                         }
                       </span>
@@ -290,7 +292,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                       {getStatusBadge((selectedEvent as CalendarClass).status)}
                       {(selectedEvent as CalendarClass).is_experimental && (
                         <Badge variant="outline" className="border-warning text-warning">
-                          Experimental
+                          {t('experimental')}
                         </Badge>
                       )}
                     </div>
@@ -311,7 +313,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   {/* Participants */}
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">
-                      {(selectedEvent as CalendarClass).is_group_class ? 'Participantes:' : 'Aluno:'}
+                      {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
                     </p>
                     <div className="space-y-2">
                       {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
@@ -330,7 +332,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
 
                   {(selectedEvent as CalendarClass).notes && (
                     <div>
-                      <p className="text-sm text-muted-foreground mb-1">Observações:</p>
+                      <p className="text-sm text-muted-foreground mb-1">{t('calendar.notes')}:</p>
                       <p className="text-sm bg-muted p-2 rounded">{(selectedEvent as CalendarClass).notes}</p>
                     </div>
                   )}
@@ -385,7 +387,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                           }}
                         >
                           <X className="h-4 w-4 mr-2" />
-                          Cancelar Aula
+                          {t('actions.cancelClass')}
                         </Button>
                       )}
                       
@@ -399,7 +401,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                           className="bg-gradient-primary shadow-glow"
                         >
                           <FileText className="h-4 w-4 mr-2" />
-                          Concluir Aula
+                          {t('actions.completeClass')}
                         </Button>
                       )}
                       
@@ -413,7 +415,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                           className="bg-gradient-success shadow-success hover:bg-success"
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
-                          Confirmar Aula
+                          {t('actions.confirmClass')}
                         </Button>
                       )}
                     </div>

@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, Check
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
+import { useTranslation } from 'react-i18next';
 
 interface SimpleCalendarProps {
   classes: CalendarClass[];
@@ -21,12 +22,6 @@ interface SimpleCalendarProps {
   onVisibleRangeChange?: (start: Date, end: Date) => void;
 }
 
-const DAYS_OF_WEEK = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-const MONTHS = [
-  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-];
-
 export function SimpleCalendar({ 
   classes, 
   availabilityBlocks = [], 
@@ -39,6 +34,7 @@ export function SimpleCalendar({
   onScheduleClass,
   onVisibleRangeChange
 }: SimpleCalendarProps) {
+  const { t } = useTranslation('classes');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState<{
@@ -46,6 +42,22 @@ export function SimpleCalendar({
     events: CalendarClass[];
     blocks: AvailabilityBlock[];
   } | null>(null);
+
+  const DAYS_OF_WEEK = [
+    t('daysOfWeek.sun'), 
+    t('daysOfWeek.mon'), 
+    t('daysOfWeek.tue'), 
+    t('daysOfWeek.wed'), 
+    t('daysOfWeek.thu'), 
+    t('daysOfWeek.fri'), 
+    t('daysOfWeek.sat')
+  ];
+  
+  const MONTHS = [
+    t('months.january'), t('months.february'), t('months.march'), t('months.april'), 
+    t('months.may'), t('months.june'), t('months.july'), t('months.august'), 
+    t('months.september'), t('months.october'), t('months.november'), t('months.december')
+  ];
 
   // Gerar os dias do mês atual
   const calendarData = useMemo(() => {
@@ -125,12 +137,12 @@ export function SimpleCalendar({
 
   const getStatusLabel = (status: string) => {
     const labels = {
-      pendente: 'Pendente',
-      confirmada: 'Confirmada',
-      cancelada: 'Cancelada',
-      concluida: 'Concluída'
+      pendente: t('status.pending'),
+      confirmada: t('status.confirmed'),
+      cancelada: t('status.cancelled'),
+      concluida: t('status.completed')
     };
-    return labels[status as keyof typeof labels] || 'Pendente';
+    return labels[status as keyof typeof labels] || t('status.pending');
   };
 
   if (loading) {
@@ -139,7 +151,7 @@ export function SimpleCalendar({
         <CardContent className="p-6">
           <div className="text-center py-8">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando calendário...</p>
+            <p className="text-muted-foreground">{t('calendar.loadingCalendar')}</p>
           </div>
         </CardContent>
       </Card>
@@ -159,7 +171,7 @@ export function SimpleCalendar({
               {isProfessor && onScheduleClass && (
                 <Button onClick={onScheduleClass} size="sm">
                   <Plus className="h-4 w-4 mr-2" />
-                  Agendar Nova Aula
+                  {t('scheduleNew')}
                 </Button>
               )}
             </div>
@@ -176,7 +188,7 @@ export function SimpleCalendar({
                 size="sm"
                 onClick={goToToday}
               >
-                Hoje
+                {t('calendar.today')}
               </Button>
               <Button
                 variant="outline"
@@ -234,7 +246,7 @@ export function SimpleCalendar({
                     >
                       <div className="font-medium truncate">
                         {event.is_group_class 
-                          ? `Grupo (${event.participants?.length || 1})`
+                          ? t('calendar.groupShort', { count: event.participants?.length || 1 })
                           : event.student.name
                         }
                       </div>
@@ -254,7 +266,7 @@ export function SimpleCalendar({
                         blocks: day.blocks
                       })}
                     >
-                      +{day.events.length - 2} mais
+                      {t('calendar.showMore', { count: day.events.length - 2 })}
                     </div>
                   )}
 
@@ -277,11 +289,11 @@ export function SimpleCalendar({
           {classes.length === 0 && availabilityBlocks.length === 0 && (
             <div className="text-center py-12">
               <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Nenhuma aula agendada</h3>
+              <h3 className="text-lg font-medium mb-2">{t('calendar.noClassesScheduled')}</h3>
               <p className="text-muted-foreground">
                 {isProfessor 
-                  ? "Suas próximas aulas aparecerão aqui"
-                  : "Você não tem aulas agendadas no momento"
+                  ? t('calendar.noClassesCalendar')
+                  : t('calendar.noClassesStudent')
                 }
               </p>
             </div>
@@ -295,8 +307,8 @@ export function SimpleCalendar({
           <DialogHeader>
             <DialogTitle>
               {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' 
-                ? 'Horário Bloqueado'
-                : 'Detalhes da Aula'
+                ? t('calendar.blockedTime')
+                : t('calendar.eventDetails')
               }
             </DialogTitle>
           </DialogHeader>
@@ -309,7 +321,7 @@ export function SimpleCalendar({
                   <div className="flex items-center gap-2">
                     <CalendarIcon className="h-5 w-5 text-muted-foreground" />
                     <span className="font-medium">{selectedEvent.title}</span>
-                    <Badge variant="secondary">Bloqueado</Badge>
+                    <Badge variant="secondary">{t('calendar.blocked')}</Badge>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -322,7 +334,7 @@ export function SimpleCalendar({
                       <Clock className="h-4 w-4 text-muted-foreground" />
                       <span>
                         {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
-                        <span className="text-xs text-muted-foreground ml-2">(Horário de Brasília)</span>
+                        <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
                       </span>
                     </div>
                   </div>
@@ -335,7 +347,7 @@ export function SimpleCalendar({
                       <User className="h-5 w-5 text-muted-foreground" />
                       <span className="font-medium">
                         {(selectedEvent as CalendarClass).is_group_class 
-                          ? `Aula em Grupo (${(selectedEvent as CalendarClass).participants?.length || 1} alunos)`
+                          ? t('calendar.groupWithCount', { count: (selectedEvent as CalendarClass).participants?.length || 1 })
                           : (selectedEvent as CalendarClass).student.name
                         }
                       </span>
@@ -346,7 +358,7 @@ export function SimpleCalendar({
                       </Badge>
                       {(selectedEvent as CalendarClass).is_experimental && (
                         <Badge variant="outline" className="border-warning text-warning">
-                          Experimental
+                          {t('experimental')}
                         </Badge>
                       )}
                     </div>
@@ -362,7 +374,7 @@ export function SimpleCalendar({
                         <Clock className="h-4 w-4 text-muted-foreground" />
                         <span>
                           {formatTime((selectedEvent as CalendarClass).start)} - {formatTime((selectedEvent as CalendarClass).end)}
-                          <span className="text-xs text-muted-foreground ml-2">(Horário de Brasília)</span>
+                          <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
                         </span>
                       </div>
                   </div>
@@ -370,7 +382,7 @@ export function SimpleCalendar({
                   {/* Participants */}
                   <div>
                     <p className="text-sm text-muted-foreground mb-2">
-                      {(selectedEvent as CalendarClass).is_group_class ? 'Participantes:' : 'Aluno:'}
+                      {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
                     </p>
                     <div className="space-y-2">
                       {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
@@ -389,7 +401,7 @@ export function SimpleCalendar({
 
                   {(selectedEvent as CalendarClass).notes && (
                     <div>
-                      <p className="text-sm text-muted-foreground mb-2">Observações:</p>
+                      <p className="text-sm text-muted-foreground mb-2">{t('calendar.notes')}:</p>
                       <p className="text-sm bg-muted p-3 rounded-lg">{(selectedEvent as CalendarClass).notes}</p>
                     </div>
                   )}
@@ -446,7 +458,7 @@ export function SimpleCalendar({
                         }}
                       >
                         <X className="h-4 w-4 mr-2" />
-                        Cancelar Aula
+                        {t('actions.cancelClass')}
                       </Button>
                     )}
                     
@@ -461,7 +473,7 @@ export function SimpleCalendar({
                         className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                       >
                         <FileText className="h-4 w-4 mr-2" />
-                        {(selectedEvent as CalendarClass).status === 'concluida' ? 'Editar Relatório' : 'Criar Relatório'}
+                        {(selectedEvent as CalendarClass).status === 'concluida' ? t('actions.editReport') : t('actions.createReport')}
                       </Button>
                     )}
                     
@@ -475,7 +487,7 @@ export function SimpleCalendar({
                         className="bg-gradient-primary"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
-                        Marcar como Concluída
+                        {t('actions.markAsCompleted')}
                       </Button>
                     )}
                     
@@ -489,7 +501,7 @@ export function SimpleCalendar({
                         className="bg-gradient-success"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
-                        Confirmar Aula
+                        {t('actions.confirmClass')}
                       </Button>
                     )}
                   </div>
@@ -505,7 +517,7 @@ export function SimpleCalendar({
         <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Eventos de {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+              {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
             </DialogTitle>
           </DialogHeader>
           
@@ -514,7 +526,7 @@ export function SimpleCalendar({
               {/* All Classes */}
               {selectedDayEvents.events.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg">Aulas ({selectedDayEvents.events.length})</h3>
+                  <h3 className="font-semibold mb-3 text-lg">{t('calendar.classes')} ({selectedDayEvents.events.length})</h3>
                   <div className="space-y-3">
                     {selectedDayEvents.events.map((event) => (
                       <div
@@ -532,7 +544,7 @@ export function SimpleCalendar({
                         <div className="flex items-center justify-between mb-2">
                           <div className="font-medium">
                             {event.is_group_class 
-                              ? `Aula em Grupo (${event.participants?.length || 1} alunos)`
+                              ? t('calendar.groupWithCount', { count: event.participants?.length || 1 })
                               : event.student.name
                             }
                           </div>
@@ -542,7 +554,7 @@ export function SimpleCalendar({
                             </Badge>
                             {event.is_experimental && (
                               <Badge variant="outline" className="border-warning text-warning text-xs">
-                                Experimental
+                                {t('experimental')}
                               </Badge>
                             )}
                           </div>
@@ -556,13 +568,13 @@ export function SimpleCalendar({
                             </span>
                           </div>
                           <div>
-                            {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))} minutos
+                            {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))} {t('calendar.minutes')}
                           </div>
                         </div>
 
                         {event.notes && (
                           <div className="mt-2 text-sm opacity-80">
-                            <span className="font-medium">Obs:</span> {event.notes}
+                            <span className="font-medium">{t('calendar.note')}:</span> {event.notes}
                           </div>
                         )}
                       </div>
@@ -574,7 +586,7 @@ export function SimpleCalendar({
               {/* Availability Blocks */}
               {selectedDayEvents.blocks.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3 text-lg">Horários Bloqueados ({selectedDayEvents.blocks.length})</h3>
+                  <h3 className="font-semibold mb-3 text-lg">{t('calendar.blockedTimes')} ({selectedDayEvents.blocks.length})</h3>
                   <div className="space-y-3">
                     {selectedDayEvents.blocks.map((block) => (
                       <div
@@ -587,7 +599,7 @@ export function SimpleCalendar({
                       >
                         <div className="flex items-center justify-between mb-2">
                           <div className="font-medium">{block.title}</div>
-                          <Badge variant="secondary">Bloqueado</Badge>
+                          <Badge variant="secondary">{t('calendar.blocked')}</Badge>
                         </div>
                         
                         <div className="flex items-center gap-1 text-sm">
@@ -605,7 +617,7 @@ export function SimpleCalendar({
               {selectedDayEvents.events.length === 0 && selectedDayEvents.blocks.length === 0 && (
                 <div className="text-center py-8">
                   <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">Nenhum evento neste dia</p>
+                  <p className="text-muted-foreground">{t('calendar.noEventsThisDay')}</p>
                 </div>
               )}
             </div>

@@ -44,6 +44,40 @@
     "90": "1h 30min",
     "120": "2 horas"
   },
+  "calendar": {
+    "allDay": "Dia inteiro",
+    "previous": "Anterior",
+    "next": "Próximo",
+    "today": "Hoje",
+    "month": "Mês",
+    "week": "Semana",
+    "day": "Dia",
+    "agenda": "Agenda",
+    "date": "Data",
+    "time": "Hora",
+    "event": "Evento",
+    "showMore": "+{count} mais",
+    "noEventsInRange": "Não há eventos neste período",
+    "loadingCalendar": "Carregando calendário...",
+    "noClassesScheduled": "Nenhuma aula agendada",
+    "noClassesProfessor": "Suas próximas aulas aparecerão no calendário",
+    "noClassesStudent": "Você não tem aulas agendadas no momento",
+    "noClassesCalendar": "Suas próximas aulas aparecerão aqui",
+    "eventDetails": "Detalhes da Aula",
+    "blockedTime": "Horário Bloqueado",
+    "blocked": "Bloqueado",
+    "eventsOf": "Eventos de",
+    "classes": "Aulas",
+    "blockedTimes": "Horários Bloqueados",
+    "noEventsThisDay": "Nenhum evento neste dia",
+    "minutes": "minutos",
+    "note": "Obs",
+    "notes": "Observações",
+    "participants": "Participantes",
+    "student": "Aluno",
+    "groupWithCount": "Aula em Grupo ({count} alunos)",
+    "groupShort": "Grupo ({count})"
+  },
   "fields": {
     "student": "Aluno",
     "date": "Data",
@@ -59,10 +93,10 @@
     "occurrences": "Número de aulas"
   },
   "status": {
-    "scheduled": "Agendada",
-    "completed": "Concluída",
+    "pending": "Pendente",
+    "confirmed": "Confirmada",
     "cancelled": "Cancelada",
-    "rescheduled": "Reagendada"
+    "completed": "Concluída"
   },
   "types": {
     "individual": "Individual",
@@ -72,8 +106,37 @@
   },
   "actions": {
     "cancel": "Cancelar",
+    "cancelClass": "Cancelar Aula",
     "scheduleClass": "Agendar Aula",
-    "scheduling": "Agendando..."
+    "scheduling": "Agendando...",
+    "confirmClass": "Confirmar Aula",
+    "completeClass": "Concluir Aula",
+    "markAsCompleted": "Marcar como Concluída",
+    "createReport": "Criar Relatório",
+    "editReport": "Editar Relatório"
+  },
+  "daysOfWeek": {
+    "sun": "Dom",
+    "mon": "Seg",
+    "tue": "Ter",
+    "wed": "Qua",
+    "thu": "Qui",
+    "fri": "Sex",
+    "sat": "Sáb"
+  },
+  "months": {
+    "january": "Janeiro",
+    "february": "Fevereiro",
+    "march": "Março",
+    "april": "Abril",
+    "may": "Maio",
+    "june": "Junho",
+    "july": "Julho",
+    "august": "Agosto",
+    "september": "Setembro",
+    "october": "Outubro",
+    "november": "Novembro",
+    "december": "Dezembro"
   },
   "messages": {
     "classScheduled": "Aula agendada com sucesso!",

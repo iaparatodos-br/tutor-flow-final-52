@@ -28,8 +28,34 @@
   "billingWarning": "Student will be added, but there may be additional charge of ${amount}.",
   "studentLimit": "{current} of {limit} students included in plan",
   "studentLimitFree": "{current} of {limit} students (free plan)",
+  "form": {
+    "sections": {
+      "studentData": "Student Information",
+      "billingResponsible": "Billing Responsible",
+      "guardianAddress": "Guardian Address"
+    },
+    "ownResponsible": "Student is responsible for their own billing",
+    "invoicesSentTo": "Invoices will be sent to: {email}",
+    "mainContact": "Main contact: {email}",
+    "invoiceEmail": "Invoices will be sent to this email",
+    "contactEmail": "Contact email",
+    "cpfForBoleto": "CPF to be used for bank slip issuance",
+    "addressRequired": "Required for bank slip issuance",
+    "billingDayDescription": "Day of the month when tuition will be automatically generated (1-28)",
+    "businessProfileLabel": "Receive payments from this student via *",
+    "selectBusiness": "Select the business to receive payments",
+    "businessProfileDescription": "This choice defines which bank account payments from this student will be directed to.",
+    "selectBusinessError": "Select a business to receive payments",
+    "noBusinessWarning": "You need to connect at least one business before registering students.",
+    "noBusinessAction": "Go to Settings → Business Management to connect your first business.",
+    "additionalCostWarning": "This student will generate additional costs:",
+    "immediateCost": "Immediate charge of $5.00 on your card",
+    "recurringCost": "Recurring charge of $5.00/month on your next invoice",
+    "estimatedTotal": "Estimated total: {amount}"
+  },
   "fields": {
     "name": "Name",
+    "fullName": "Full name",
     "email": "Email",
     "phone": "Phone",
     "address": "Address",
@@ -38,19 +64,42 @@
     "status": "Status",
     "enrollmentDate": "Registration Date",
     "responsible": "Guardian",
+    "guardianName": "Guardian Name",
+    "guardianEmail": "Guardian Email",
+    "guardianPhone": "Phone",
+    "guardianCpf": "Guardian CPF",
+    "fullAddress": "Full Address",
+    "city": "City",
+    "state": "State",
+    "postalCode": "ZIP Code",
     "billingDay": "Billing Day",
+    "monthlyBillingDay": "Monthly Billing Day",
     "actions": "Actions"
   },
   "placeholders": {
     "name": "Enter student name",
+    "studentName": "Student name",
     "email": "Enter student email",
+    "emailExample": "email@example.com",
     "phone": "Enter phone number",
+    "fullName": "Full name",
     "address": "Enter address",
+    "streetAddress": "Street, number, complement",
+    "city": "City",
+    "state": "ST",
+    "postalCode": "00000-000",
+    "cpf": "000.000.000-00",
+    "billingDay": "15",
     "notes": "Notes about the student"
   },
   "responsible": {
     "ownStudent": "Own student",
     "notConfigured": "Not configured"
+  },
+  "actions": {
+    "save": "Save Changes",
+    "register": "Register Student",
+    "saving": "Saving..."
   },
   "messages": {
     "studentAdded": "Student added successfully!",

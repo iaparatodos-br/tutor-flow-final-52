@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2 } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
+import { useTranslation } from "react-i18next";
 
 interface StudentFormData {
   name: string;
@@ -93,6 +94,7 @@ export function StudentFormModal({
 }: StudentFormModalProps) {
   const { currentPlan, getStudentOverageInfo, hasFeature } = useSubscription();
   const { profile } = useProfile();
+  const { t } = useTranslation('students');
   const hasFinancialModule = hasFeature('financial_module');
   const [teacherDefaultBillingDay, setTeacherDefaultBillingDay] = useState<number | undefined>();
   const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student, teacherDefaultBillingDay));
@@ -301,12 +303,12 @@ export function StudentFormModal({
                     <CreditCard className="h-4 w-4 text-amber-600" />
                     <AlertDescription className="text-amber-800 dark:text-amber-200">
                       <div className="space-y-2">
-                        <p><strong>Este aluno gerará custos adicionais:</strong></p>
+                        <p><strong>{t('form.additionalCostWarning')}</strong></p>
                         <ul className="list-disc list-inside space-y-1 text-sm">
-                          <li>Cobrança <strong>imediata</strong> de R$ 5,00 no seu cartão</li>
-                          <li>Cobrança <strong>recorrente</strong> de R$ 5,00/mês na sua próxima fatura</li>
+                          <li>{t('form.immediateCost')}</li>
+                          <li>{t('form.recurringCost')}</li>
                         </ul>
-                        <p className="text-xs mt-2">Total estimado: {message}</p>
+                        <p className="text-xs mt-2">{t('form.estimatedTotal', { amount: message })}</p>
                       </div>
                     </AlertDescription>
                   </Alert>
@@ -319,16 +321,16 @@ export function StudentFormModal({
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-3">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">Dados do Aluno</Label>
+                <Label className="text-sm font-medium">{t('form.sections.studentData')}</Label>
               </div>
               
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="student-name">Nome completo *</Label>
+                  <Label htmlFor="student-name">{t('fields.fullName')} *</Label>
                   <Input
                     id="student-name"
                     type="text"
-                    placeholder="Nome do aluno"
+                    placeholder={t('placeholders.studentName')}
                     value={formData.name}
                     onChange={(e) => handleNameChange(e.target.value)}
                     className={validationErrors.name ? "border-destructive" : ""}
@@ -336,7 +338,7 @@ export function StudentFormModal({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="student-phone">Telefone</Label>
+                  <Label htmlFor="student-phone">{t('fields.phone')}</Label>
                   <PhoneInput
                     id="student-phone"
                     value={formData.phone}
@@ -347,11 +349,11 @@ export function StudentFormModal({
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="student-email">E-mail *</Label>
+                <Label htmlFor="student-email">{t('fields.email')} *</Label>
                 <Input
                   id="student-email"
                   type="email"
-                  placeholder="email@exemplo.com"
+                  placeholder={t('placeholders.emailExample')}
                   value={formData.email}
                   onChange={(e) => handleEmailChange(e.target.value)}
                   className={validationErrors.email ? "border-destructive" : ""}
@@ -366,7 +368,7 @@ export function StudentFormModal({
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-3">
                 <UserCheck className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">Responsável pela Cobrança</Label>
+                <Label className="text-sm font-medium">{t('form.sections.billingResponsible')}</Label>
               </div>
 
               <div className="flex items-center space-x-2">
@@ -376,7 +378,7 @@ export function StudentFormModal({
                   onCheckedChange={handleIsOwnResponsibleChange}
                 />
                 <Label htmlFor="isOwnResponsible" className="text-sm">
-                  O próprio aluno é responsável pela cobrança
+                  {t('form.ownResponsible')}
                 </Label>
               </div>
 
@@ -384,11 +386,11 @@ export function StudentFormModal({
                 <>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="guardian-name">Nome do Responsável *</Label>
+                      <Label htmlFor="guardian-name">{t('fields.guardianName')} *</Label>
                       <Input
                         id="guardian-name"
                         type="text"
-                        placeholder="Nome completo"
+                        placeholder={t('placeholders.fullName')}
                         value={formData.guardian_name}
                         onChange={(e) => {
                           setFormData(prev => ({ ...prev, guardian_name: e.target.value }));
@@ -399,7 +401,7 @@ export function StudentFormModal({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="guardian-phone">Telefone</Label>
+                      <Label htmlFor="guardian-phone">{t('fields.guardianPhone')}</Label>
                       <PhoneInput
                         id="guardian-phone"
                         value={formData.guardian_phone}
@@ -409,11 +411,11 @@ export function StudentFormModal({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="guardian-email">Email do Responsável *</Label>
+                    <Label htmlFor="guardian-email">{t('fields.guardianEmail')} *</Label>
                     <Input
                       id="guardian-email"
                       type="email"
-                      placeholder="email@exemplo.com"
+                      placeholder={t('placeholders.emailExample')}
                       value={formData.guardian_email}
                       onChange={(e) => {
                         setFormData(prev => ({ ...prev, guardian_email: e.target.value }));
@@ -423,16 +425,16 @@ export function StudentFormModal({
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      {hasFinancialModule ? "As faturas serão enviadas para este email" : "Email para contato"}
+                      {hasFinancialModule ? t('form.invoiceEmail') : t('form.contactEmail')}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="guardian-cpf">CPF do Responsável</Label>
+                    <Label htmlFor="guardian-cpf">{t('fields.guardianCpf')}</Label>
                     <Input
                       id="guardian-cpf"
                       type="text"
-                      placeholder="000.000.000-00"
+                      placeholder={t('placeholders.cpf')}
                       value={formData.guardian_cpf}
                       onChange={(e) => {
                         setFormData(prev => ({ ...prev, guardian_cpf: e.target.value }));
@@ -441,22 +443,22 @@ export function StudentFormModal({
                       className={validationErrors.guardian_cpf ? "border-destructive" : ""}
                     />
                     <p className="text-xs text-muted-foreground">
-                      CPF que será usado para emissão de boletos
+                      {t('form.cpfForBoleto')}
                     </p>
                   </div>
 
                   <div className="space-y-4">
-                    <Label className="text-sm font-medium">Endereço do Responsável</Label>
+                    <Label className="text-sm font-medium">{t('form.sections.guardianAddress')}</Label>
                     <p className="text-xs text-muted-foreground">
-                      Necessário para emissão de boletos
+                      {t('form.addressRequired')}
                     </p>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="guardian-address-street">Endereço Completo</Label>
+                      <Label htmlFor="guardian-address-street">{t('fields.fullAddress')}</Label>
                       <Input
                         id="guardian-address-street"
                         type="text"
-                        placeholder="Rua, número, complemento"
+                        placeholder={t('placeholders.streetAddress')}
                         value={formData.guardian_address_street}
                         onChange={(e) => {
                           setFormData(prev => ({ ...prev, guardian_address_street: e.target.value }));
@@ -468,11 +470,11 @@ export function StudentFormModal({
 
                     <div className="grid gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor="guardian-address-city">Cidade</Label>
+                        <Label htmlFor="guardian-address-city">{t('fields.city')}</Label>
                         <Input
                           id="guardian-address-city"
                           type="text"
-                          placeholder="Cidade"
+                          placeholder={t('placeholders.city')}
                           value={formData.guardian_address_city}
                           onChange={(e) => {
                             setFormData(prev => ({ ...prev, guardian_address_city: e.target.value }));
@@ -483,11 +485,11 @@ export function StudentFormModal({
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="guardian-address-state">Estado</Label>
+                        <Label htmlFor="guardian-address-state">{t('fields.state')}</Label>
                         <Input
                           id="guardian-address-state"
                           type="text"
-                          placeholder="UF"
+                          placeholder={t('placeholders.state')}
                           maxLength={2}
                           value={formData.guardian_address_state}
                           onChange={(e) => {
@@ -499,11 +501,11 @@ export function StudentFormModal({
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="guardian-address-postal-code">CEP</Label>
+                        <Label htmlFor="guardian-address-postal-code">{t('fields.postalCode')}</Label>
                         <Input
                           id="guardian-address-postal-code"
                           type="text"
-                          placeholder="00000-000"
+                          placeholder={t('placeholders.postalCode')}
                           value={formData.guardian_address_postal_code}
                           onChange={(e) => {
                             setFormData(prev => ({ ...prev, guardian_address_postal_code: e.target.value }));
@@ -522,8 +524,8 @@ export function StudentFormModal({
                   <p className="text-sm text-muted-foreground mb-2">
                     <UserCheck className="h-4 w-4 inline mr-1" />
                     {hasFinancialModule ? 
-                      `As faturas serão enviadas para: ${formData.email}` :
-                      `Contato principal: ${formData.email}`
+                      t('form.invoicesSentTo', { email: formData.email }) :
+                      t('form.mainContact', { email: formData.email })
                     }
                   </p>
                 </div>
@@ -533,14 +535,14 @@ export function StudentFormModal({
                 <div className="space-y-2">
                   <Label htmlFor="billing-day">
                     <Calendar className="h-4 w-4 inline mr-1" />
-                    Dia da Cobrança Mensal *
+                    {t('fields.monthlyBillingDay')} *
                   </Label>
                   <Input
                     id="billing-day"
                     type="number"
                     min="1"
                     max="28"
-                    placeholder="15"
+                    placeholder={t('placeholders.billingDay')}
                     value={formData.billing_day}
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
@@ -550,7 +552,7 @@ export function StudentFormModal({
                     required
                   />
                   <p className="text-xs text-muted-foreground">
-                    Dia do mês em que as mensalidades serão geradas automaticamente (1-28)
+                    {t('form.billingDayDescription')}
                   </p>
                 </div>
               )}
@@ -560,7 +562,7 @@ export function StudentFormModal({
                  <div className="space-y-2">
                    <Label htmlFor="business-profile">
                      <Building2 className="h-4 w-4 inline mr-1" />
-                     Receber pagamentos deste aluno via *
+                     {t('form.businessProfileLabel')}
                    </Label>
                    <Select
                      value={formData.business_profile_id || ""}
@@ -570,7 +572,7 @@ export function StudentFormModal({
                      }}
                    >
                      <SelectTrigger className={validationErrors.business_profile_id ? "border-destructive" : ""}>
-                       <SelectValue placeholder="Selecione o negócio para receber os pagamentos" />
+                       <SelectValue placeholder={t('form.selectBusiness')} />
                      </SelectTrigger>
                      <SelectContent className="bg-background border z-50">
                        {businessProfiles.map((profile) => (
@@ -589,11 +591,11 @@ export function StudentFormModal({
                      </SelectContent>
                    </Select>
                    <p className="text-xs text-muted-foreground">
-                     Esta escolha define para qual conta bancária os pagamentos deste aluno serão direcionados.
+                     {t('form.businessProfileDescription')}
                    </p>
                    {validationErrors.business_profile_id && (
                      <p className="text-xs text-destructive">
-                       Selecione um negócio para receber os pagamentos
+                       {t('form.selectBusinessError')}
                      </p>
                    )}
                  </div>
@@ -603,9 +605,9 @@ export function StudentFormModal({
                  <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
                    <Building2 className="h-4 w-4 text-amber-600" />
                    <AlertDescription className="text-amber-800 dark:text-amber-200">
-                     <strong>Aviso:</strong> Você precisa conectar pelo menos um negócio antes de cadastrar alunos.
+                     <strong>{t('form.noBusinessWarning')}</strong>
                      <br />
-                     Acesse <strong>Configurações → Gestão de Negócios</strong> para conectar seu primeiro negócio.
+                     {t('form.noBusinessAction')}
                    </AlertDescription>
                  </Alert>
                )}
@@ -620,7 +622,7 @@ export function StudentFormModal({
                 (!student && currentPlan?.slug === 'free' && getStudentOverageInfo(currentStudentCount).isOverLimit)
               }
             >
-              {isSubmitting ? "Salvando..." : student ? "Salvar Alterações" : "Cadastrar Aluno"}
+              {isSubmitting ? t('actions.saving') : student ? t('actions.save') : t('actions.register')}
             </Button>
           </DialogFooter>
         </form>

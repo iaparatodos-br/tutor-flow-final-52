@@ -28,8 +28,34 @@
   "billingWarning": "O aluno será adicionado, mas pode haver cobrança adicional de R$ {amount}.",
   "studentLimit": "{current} de {limit} alunos incluídos no plano",
   "studentLimitFree": "{current} de {limit} alunos (plano gratuito)",
+  "form": {
+    "sections": {
+      "studentData": "Dados do Aluno",
+      "billingResponsible": "Responsável pela Cobrança",
+      "guardianAddress": "Endereço do Responsável"
+    },
+    "ownResponsible": "O próprio aluno é responsável pela cobrança",
+    "invoicesSentTo": "As faturas serão enviadas para: {email}",
+    "mainContact": "Contato principal: {email}",
+    "invoiceEmail": "As faturas serão enviadas para este email",
+    "contactEmail": "Email para contato",
+    "cpfForBoleto": "CPF que será usado para emissão de boletos",
+    "addressRequired": "Necessário para emissão de boletos",
+    "billingDayDescription": "Dia do mês em que as mensalidades serão geradas automaticamente (1-28)",
+    "businessProfileLabel": "Receber pagamentos deste aluno via *",
+    "selectBusiness": "Selecione o negócio para receber os pagamentos",
+    "businessProfileDescription": "Esta escolha define para qual conta bancária os pagamentos deste aluno serão direcionados.",
+    "selectBusinessError": "Selecione um negócio para receber os pagamentos",
+    "noBusinessWarning": "Você precisa conectar pelo menos um negócio antes de cadastrar alunos.",
+    "noBusinessAction": "Acesse Configurações → Gestão de Negócios para conectar seu primeiro negócio.",
+    "additionalCostWarning": "Este aluno gerará custos adicionais:",
+    "immediateCost": "Cobrança imediata de R$ 5,00 no seu cartão",
+    "recurringCost": "Cobrança recorrente de R$ 5,00/mês na sua próxima fatura",
+    "estimatedTotal": "Total estimado: {amount}"
+  },
   "fields": {
     "name": "Nome",
+    "fullName": "Nome completo",
     "email": "E-mail",
     "phone": "Telefone",
     "address": "Endereço",
@@ -38,19 +64,42 @@
     "status": "Status",
     "enrollmentDate": "Data de Cadastro",
     "responsible": "Responsável",
+    "guardianName": "Nome do Responsável",
+    "guardianEmail": "Email do Responsável",
+    "guardianPhone": "Telefone",
+    "guardianCpf": "CPF do Responsável",
+    "fullAddress": "Endereço Completo",
+    "city": "Cidade",
+    "state": "Estado",
+    "postalCode": "CEP",
     "billingDay": "Dia Cobrança",
+    "monthlyBillingDay": "Dia da Cobrança Mensal",
     "actions": "Ações"
   },
   "placeholders": {
     "name": "Digite o nome do aluno",
+    "studentName": "Nome do aluno",
     "email": "Digite o email do aluno",
+    "emailExample": "email@exemplo.com",
     "phone": "Digite o telefone",
+    "fullName": "Nome completo",
     "address": "Digite o endereço",
+    "streetAddress": "Rua, número, complemento",
+    "city": "Cidade",
+    "state": "UF",
+    "postalCode": "00000-000",
+    "cpf": "000.000.000-00",
+    "billingDay": "15",
     "notes": "Observações sobre o aluno"
   },
   "responsible": {
     "ownStudent": "Próprio aluno",
     "notConfigured": "Não configurado"
+  },
+  "actions": {
+    "save": "Salvar Alterações",
+    "register": "Cadastrar Aluno",
+    "saving": "Salvando..."
   },
   "messages": {
     "studentAdded": "Aluno adicionado com sucesso!",

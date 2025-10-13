@@ -1,0 +1,32 @@
+{
+  "title": "Billing Settings",
+  "subtitle": "Configure default billing settings for students",
+  "loading": "Loading settings...",
+  "fields": {
+    "paymentDueDays": {
+      "label": "Default Due Date (in days)",
+      "description": "How many days after invoice creation it should be due. Applied to all new invoices."
+    },
+    "defaultBillingDay": {
+      "label": "Default Billing Day",
+      "description": "Day of the month to be suggested when registering new students (1-28). Leave empty for no default.",
+      "placeholder": "15"
+    }
+  },
+  "validation": {
+    "minDays": "Must be at least 1 day",
+    "maxDays": "Maximum 90 days",
+    "dayRange": "Must be between 1 and 28"
+  },
+  "actions": {
+    "save": "Save Settings",
+    "saving": "Saving..."
+  },
+  "messages": {
+    "updateSuccess": "Settings updated",
+    "updateSuccessDescription": "Your billing settings have been saved successfully.",
+    "loadError": "Error loading settings",
+    "saveError": "Error saving settings",
+    "tryAgain": "Please try again later"
+  }
+}

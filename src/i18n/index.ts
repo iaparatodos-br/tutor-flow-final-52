@@ -17,6 +17,7 @@ import ptExpenses from './locales/pt/expenses.json';
 import ptNotifications from './locales/pt/notifications.json';
 import ptCancellation from './locales/pt/cancellation.json';
 import ptArchive from './locales/pt/archive.json';
+import ptBilling from './locales/pt/billing.json';
 
 import enCommon from './locales/en/common.json';
 import enNavigation from './locales/en/navigation.json';
@@ -32,6 +33,7 @@ import enExpenses from './locales/en/expenses.json';
 import enNotifications from './locales/en/notifications.json';
 import enCancellation from './locales/en/cancellation.json';
 import enArchive from './locales/en/archive.json';
+import enBilling from './locales/en/billing.json';
 
 const resources = {
   pt: {
@@ -49,6 +51,7 @@ const resources = {
     notifications: ptNotifications,
     cancellation: ptCancellation,
     archive: ptArchive,
+    billing: ptBilling,
   },
   en: {
     common: enCommon,
@@ -65,6 +68,7 @@ const resources = {
     notifications: enNotifications,
     cancellation: enCancellation,
     archive: enArchive,
+    billing: enBilling,
   },
 };
 
@@ -87,7 +91,7 @@ i18n
       escapeValue: false,
     },
 
-    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive'],
+    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive', 'billing'],
     defaultNS: 'common',
   });
 

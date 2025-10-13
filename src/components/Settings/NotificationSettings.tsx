@@ -1,13 +1,16 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Bell, Construction } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export function NotificationSettings() {
+  const { t } = useTranslation('notifications');
+
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-medium">Configurações de Notificação</h3>
+        <h3 className="text-lg font-medium">{t('title')}</h3>
         <p className="text-sm text-muted-foreground">
-          Gerencie como e quando você recebe notificações sobre suas aulas e atividades.
+          {t('description')}
         </p>
       </div>
 
@@ -15,10 +18,10 @@ export function NotificationSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Construction className="h-5 w-5 text-amber-500" />
-            Em Desenvolvimento
+            {t('inDevelopment.title')}
           </CardTitle>
           <CardDescription>
-            Esta funcionalidade está sendo desenvolvida
+            {t('inDevelopment.subtitle')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -26,11 +29,10 @@ export function NotificationSettings() {
             <Bell className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             <div>
               <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-                Configurações de Notificação em Breve
+                {t('inDevelopment.heading')}
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-300">
-                Estamos trabalhando para disponibilizar configurações personalizadas de notificação. 
-                Em breve você poderá gerenciar todas as suas preferências de notificação aqui.
+                {t('inDevelopment.message')}
               </p>
             </div>
           </div>

@@ -1,0 +1,10 @@
+{
+  "title": "Configurações de Notificação",
+  "description": "Gerencie como e quando você recebe notificações sobre suas aulas e atividades.",
+  "inDevelopment": {
+    "title": "Em Desenvolvimento",
+    "subtitle": "Esta funcionalidade está sendo desenvolvida",
+    "heading": "Configurações de Notificação em Breve",
+    "message": "Estamos trabalhando para disponibilizar configurações personalizadas de notificação. Em breve você poderá gerenciar todas as suas preferências de notificação aqui."
+  }
+}

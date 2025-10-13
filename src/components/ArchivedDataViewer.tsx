@@ -9,6 +9,7 @@ import { Archive, Calendar, Clock, FileText, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface ArchivedClass {
   id: string;
@@ -41,6 +42,7 @@ interface ArchivedData {
 
 export function ArchivedDataViewer() {
   const { user } = useAuth();
+  const { t, i18n } = useTranslation('archive');
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [archivedData, setArchivedData] = useState<ArchivedData | null>(null);
@@ -50,23 +52,23 @@ export function ArchivedDataViewer() {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 10 }, (_, i) => currentYear - i - 1);
   const months = [
-    { value: "1", label: "Janeiro" },
-    { value: "2", label: "Fevereiro" },
-    { value: "3", label: "Março" },
-    { value: "4", label: "Abril" },
-    { value: "5", label: "Maio" },
-    { value: "6", label: "Junho" },
-    { value: "7", label: "Julho" },
-    { value: "8", label: "Agosto" },
-    { value: "9", label: "Setembro" },
-    { value: "10", label: "Outubro" },
-    { value: "11", label: "Novembro" },
-    { value: "12", label: "Dezembro" },
+    { value: "1", label: t('months.january') },
+    { value: "2", label: t('months.february') },
+    { value: "3", label: t('months.march') },
+    { value: "4", label: t('months.april') },
+    { value: "5", label: t('months.may') },
+    { value: "6", label: t('months.june') },
+    { value: "7", label: t('months.july') },
+    { value: "8", label: t('months.august') },
+    { value: "9", label: t('months.september') },
+    { value: "10", label: t('months.october') },
+    { value: "11", label: t('months.november') },
+    { value: "12", label: t('months.december') },
   ];
 
   const fetchArchivedData = async () => {
     if (!selectedYear || !selectedMonth || !user) {
-      toast.error("Selecione ano e mês para buscar dados arquivados");
+      toast.error(t('messages.selectPeriod'));
       return;
     }
 
@@ -84,14 +86,14 @@ export function ArchivedDataViewer() {
 
       if (data.found) {
         setArchivedData(data.data);
-        toast.success("Dados arquivados carregados com sucesso");
+        toast.success(t('messages.loadSuccess'));
       } else {
         setArchivedData(null);
-        toast.info("Nenhum dado arquivado encontrado para este período");
+        toast.info(t('messages.notFound'));
       }
     } catch (error: any) {
       console.error("Erro ao buscar dados arquivados:", error);
-      toast.error("Erro ao carregar dados arquivados");
+      toast.error(t('messages.loadError'));
       setArchivedData(null);
     } finally {
       setLoading(false);
@@ -99,19 +101,21 @@ export function ArchivedDataViewer() {
   };
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR') + ' (Horário de Brasília)';
+    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+    return new Date(dateString).toLocaleString(locale) + ' (Horário de Brasília)';
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
+    return new Date(dateString).toLocaleDateString(locale);
   };
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      'confirmada': { label: 'Confirmada', variant: 'default' as const },
-      'pendente': { label: 'Pendente', variant: 'secondary' as const },
-      'cancelada': { label: 'Cancelada', variant: 'destructive' as const },
-      'concluida': { label: 'Concluída', variant: 'outline' as const },
+      'confirmada': { label: t('status.confirmed'), variant: 'default' as const },
+      'pendente': { label: t('status.pending'), variant: 'secondary' as const },
+      'cancelada': { label: t('status.cancelled'), variant: 'destructive' as const },
+      'concluida': { label: t('status.completed'), variant: 'outline' as const },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'secondary' as const };

@@ -14,6 +14,9 @@ import ptSettings from './locales/pt/settings.json';
 import ptAuth from './locales/pt/auth.json';
 import ptSubscription from './locales/pt/subscription.json';
 import ptExpenses from './locales/pt/expenses.json';
+import ptNotifications from './locales/pt/notifications.json';
+import ptCancellation from './locales/pt/cancellation.json';
+import ptArchive from './locales/pt/archive.json';
 
 import enCommon from './locales/en/common.json';
 import enNavigation from './locales/en/navigation.json';
@@ -26,6 +29,9 @@ import enSettings from './locales/en/settings.json';
 import enAuth from './locales/en/auth.json';
 import enSubscription from './locales/en/subscription.json';
 import enExpenses from './locales/en/expenses.json';
+import enNotifications from './locales/en/notifications.json';
+import enCancellation from './locales/en/cancellation.json';
+import enArchive from './locales/en/archive.json';
 
 const resources = {
   pt: {
@@ -40,6 +46,9 @@ const resources = {
     auth: ptAuth,
     subscription: ptSubscription,
     expenses: ptExpenses,
+    notifications: ptNotifications,
+    cancellation: ptCancellation,
+    archive: ptArchive,
   },
   en: {
     common: enCommon,
@@ -53,6 +62,9 @@ const resources = {
     auth: enAuth,
     subscription: enSubscription,
     expenses: enExpenses,
+    notifications: enNotifications,
+    cancellation: enCancellation,
+    archive: enArchive,
   },
 };
 
@@ -75,7 +87,7 @@ i18n
       escapeValue: false,
     },
 
-    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses'],
+    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive'],
     defaultNS: 'common',
   });
 

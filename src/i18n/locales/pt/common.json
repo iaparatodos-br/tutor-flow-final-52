@@ -73,5 +73,9 @@
   "timezone": {
     "label": "Horário de Brasília",
     "info": "Todos os horários são exibidos no fuso horário de Brasília (UTC-3)"
+  },
+  "notFound": {
+    "message": "Ops! Página não encontrada",
+    "returnHome": "Voltar para Início"
   }
 }

@@ -73,5 +73,9 @@
   "timezone": {
     "label": "Brazil Time",
     "info": "All times are displayed in Brazil timezone (UTC-3)"
+  },
+  "notFound": {
+    "message": "Oops! Page not found",
+    "returnHome": "Return to Home"
   }
 }

@@ -1,0 +1,56 @@
+{
+  "title": "Archived Class History",
+  "button": "Archived History",
+  "search": {
+    "title": "Search Archived Data",
+    "description": "Data older than 18 months is automatically archived to optimize performance.",
+    "year": "Year",
+    "month": "Month",
+    "button": "Search",
+    "loading": "Loading..."
+  },
+  "months": {
+    "january": "January",
+    "february": "February",
+    "march": "March",
+    "april": "April",
+    "may": "May",
+    "june": "June",
+    "july": "July",
+    "august": "August",
+    "september": "September",
+    "october": "October",
+    "november": "November",
+    "december": "December"
+  },
+  "summary": {
+    "title": "Period Summary: {{year}}/{{month}}",
+    "classes": "Classes",
+    "reports": "Reports",
+    "archivedAt": "Archived at: {{date}}"
+  },
+  "classes": {
+    "title": "Classes ({{count}})",
+    "minutes": "min"
+  },
+  "reports": {
+    "title": "Class Reports ({{count}})",
+    "lessonSummary": "Lesson Summary",
+    "homework": "Homework",
+    "extraMaterials": "Extra Materials",
+    "createdAt": "Created at: {{date}}"
+  },
+  "status": {
+    "confirmed": "Confirmed",
+    "pending": "Pending",
+    "cancelled": "Cancelled",
+    "completed": "Completed"
+  },
+  "messages": {
+    "selectPeriod": "Select year and month to search archived data",
+    "loadSuccess": "Archived data loaded successfully",
+    "notFound": "No archived data found for this period",
+    "loadError": "Error loading archived data",
+    "noData": "No archived data found for {{month}}/{{year}}"
+  }
+}

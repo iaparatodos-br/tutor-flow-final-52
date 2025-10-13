@@ -1,0 +1,59 @@
+{
+  "title": "Cancellation Policy",
+  "rules": {
+    "title": "Cancellation Rules",
+    "description": "Define the terms for cancellations of your classes",
+    "deadline": {
+      "label": "Minimum Cancellation Notice",
+      "description": "Minimum time the student must cancel before the class",
+      "hours": "{{count}}h ({{days}} days)"
+    },
+    "charge": {
+      "label": "Late Cancellation Fee",
+      "description": "Percentage to be charged if canceled after deadline"
+    },
+    "amnesty": {
+      "label": "Allow Amnesty",
+      "description": "Allows canceling charges case by case"
+    },
+    "saveButton": "Save Policy",
+    "updateButton": "Update Policy",
+    "createButton": "Create Policy",
+    "saving": "Saving..."
+  },
+  "summary": {
+    "title": "Policy Summary",
+    "description": "How your students will see your rules",
+    "heading": "Cancellation Policy:",
+    "deadline": "Notice: {{hours}} hours before class",
+    "charge": "Late fee: {{percentage}}% of value",
+    "amnestyAllowed": "Amnesty allowed",
+    "amnestyNotAllowed": "Amnesty not allowed",
+    "teacherFree": "Teacher cancellation always free",
+    "created": "Created:",
+    "updated": "Updated:",
+    "active": "✓ Active Policy",
+    "inactive": "○ Inactive Policy"
+  },
+  "document": {
+    "title": "Full Policy Document",
+    "description": "Upload a PDF with your detailed class policy (optional)",
+    "fileName": "policy.pdf",
+    "available": "Document available to students",
+    "remove": "Remove",
+    "selectFile": "Select PDF file (max. 5MB)",
+    "upload": "Upload Document",
+    "uploading": "Uploading..."
+  },
+  "messages": {
+    "saveSuccess": "Cancellation policy saved successfully.",
+    "saveError": "Could not save cancellation policy.",
+    "loadError": "Could not load cancellation policy.",
+    "uploadSuccess": "Policy document uploaded successfully.",
+    "uploadError": "Could not upload document.",
+    "removeSuccess": "Document removed successfully.",
+    "removeError": "Could not remove document.",
+    "fileTooLarge": "Maximum file size is 5MB.",
+    "invalidFileType": "Only PDF files are accepted."
+  }
+}

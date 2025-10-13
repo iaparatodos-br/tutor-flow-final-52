@@ -1,0 +1,56 @@
+{
+  "title": "Histórico de Aulas Arquivadas",
+  "button": "Histórico Arquivado",
+  "search": {
+    "title": "Buscar Dados Arquivados",
+    "description": "Dados com mais de 18 meses são automaticamente arquivados para otimizar a performance.",
+    "year": "Ano",
+    "month": "Mês",
+    "button": "Buscar",
+    "loading": "Carregando..."
+  },
+  "months": {
+    "january": "Janeiro",
+    "february": "Fevereiro",
+    "march": "Março",
+    "april": "Abril",
+    "may": "Maio",
+    "june": "Junho",
+    "july": "July",
+    "august": "Agosto",
+    "september": "Setembro",
+    "october": "Outubro",
+    "november": "Novembro",
+    "december": "Dezembro"
+  },
+  "summary": {
+    "title": "Resumo do Período: {{year}}/{{month}}",
+    "classes": "Aulas",
+    "reports": "Relatórios",
+    "archivedAt": "Arquivado em: {{date}}"
+  },
+  "classes": {
+    "title": "Aulas ({{count}})",
+    "minutes": "min"
+  },
+  "reports": {
+    "title": "Relatórios de Aula ({{count}})",
+    "lessonSummary": "Resumo da Aula",
+    "homework": "Tarefa de Casa",
+    "extraMaterials": "Materiais Extras",
+    "createdAt": "Criado em: {{date}}"
+  },
+  "status": {
+    "confirmed": "Confirmada",
+    "pending": "Pendente",
+    "cancelled": "Cancelada",
+    "completed": "Concluída"
+  },
+  "messages": {
+    "selectPeriod": "Selecione ano e mês para buscar dados arquivados",
+    "loadSuccess": "Dados arquivados carregados com sucesso",
+    "notFound": "Nenhum dado arquivado encontrado para este período",
+    "loadError": "Erro ao carregar dados arquivados",
+    "noData": "Nenhum dado arquivado encontrado para {{month}}/{{year}}"
+  }
+}

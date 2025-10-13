@@ -14,6 +14,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useTranslation } from "react-i18next";
 
 interface CancellationPolicy {
   id: string;
@@ -41,6 +42,7 @@ const policyDocumentSchema = z.object({
 export function CancellationPolicySettings() {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('cancellation');
   const [policy, setPolicy] = useState<CancellationPolicy | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +52,16 @@ export function CancellationPolicySettings() {
   const [hoursBeforeClass, setHoursBeforeClass] = useState([24]);
   const [chargePercentage, setChargePercentage] = useState([50]);
   const [allowAmnesty, setAllowAmnesty] = useState(true);
+
+  const policyDocumentSchema = z.object({
+    policyDocument: z
+      .instanceof(FileList)
+      .optional()
+      .refine((files) => !files || files.length === 0 || files[0]?.size <= MAX_FILE_SIZE, 
+        t('messages.fileTooLarge'))
+      .refine((files) => !files || files.length === 0 || ACCEPTED_FILE_TYPES.includes(files[0]?.type), 
+        t('messages.invalidFileType'))
+  });
 
   const form = useForm<z.infer<typeof policyDocumentSchema>>({
     resolver: zodResolver(policyDocumentSchema),
@@ -101,8 +113,8 @@ export function CancellationPolicySettings() {
     } catch (error) {
       console.error('Erro ao carregar política:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível carregar a política de cancelamento.",
+        title: t('messages.loadError'),
+        description: t('messages.loadError'),
         variant: "destructive",
       });
     } finally {
@@ -141,16 +153,16 @@ export function CancellationPolicySettings() {
       }
 
       toast({
-        title: "Sucesso",
-        description: "Política de cancelamento salva com sucesso.",
+        title: t('messages.saveSuccess'),
+        description: t('messages.saveSuccess'),
       });
 
       loadPolicy(); // Reload to get updated data
     } catch (error) {
       console.error('Erro ao salvar política:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível salvar a política de cancelamento.",
+        title: t('messages.saveError'),
+        description: t('messages.saveError'),
         variant: "destructive",
       });
     } finally {
@@ -184,14 +196,14 @@ export function CancellationPolicySettings() {
       form.reset();
       
       toast({
-        title: "Sucesso",
-        description: "Documento da política enviado com sucesso.",
+        title: t('messages.uploadSuccess'),
+        description: t('messages.uploadSuccess'),
       });
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível enviar o documento.",
+        title: t('messages.uploadError'),
+        description: t('messages.uploadError'),
         variant: "destructive",
       });
     } finally {
@@ -221,14 +233,14 @@ export function CancellationPolicySettings() {
       setPolicyDocumentUrl(null);
       
       toast({
-        title: "Sucesso",
-        description: "Documento removido com sucesso.",
+        title: t('messages.removeSuccess'),
+        description: t('messages.removeSuccess'),
       });
     } catch (error) {
       console.error('Erro ao remover documento:', error);
       toast({
-        title: "Erro",
-        description: "Não foi possível remover o documento.",
+        title: t('messages.removeError'),
+        description: t('messages.removeError'),
         variant: "destructive",
       });
     } finally {
@@ -253,20 +265,20 @@ export function CancellationPolicySettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              Regras de Cancelamento
+              {t('rules.title')}
             </CardTitle>
             <CardDescription>
-              Defina os termos para cancelamentos de suas aulas
+              {t('rules.description')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div>
                 <Label htmlFor="hours" className="text-sm font-medium">
-                  Prazo Mínimo para Cancelamento
+                  {t('rules.deadline.label')}
                 </Label>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Tempo mínimo que o aluno deve cancelar antes da aula
+                  {t('rules.deadline.description')}
                 </p>
                 <div className="px-2">
                   <Slider
@@ -289,10 +301,10 @@ export function CancellationPolicySettings() {
 
               <div>
                 <Label htmlFor="percentage" className="text-sm font-medium">
-                  Cobrança por Cancelamento Tardio
+                  {t('rules.charge.label')}
                 </Label>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Percentual a ser cobrado se cancelar após o prazo
+                  {t('rules.charge.description')}
                 </p>
                 <div className="px-2">
                   <Slider
@@ -313,9 +325,9 @@ export function CancellationPolicySettings() {
 
               <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
                 <div>
-                  <Label htmlFor="amnesty" className="text-sm font-medium">Permitir Anistia</Label>
+                  <Label htmlFor="amnesty" className="text-sm font-medium">{t('rules.amnesty.label')}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Permite cancelar cobranças caso a caso
+                    {t('rules.amnesty.description')}
                   </p>
                 </div>
                 <Switch
@@ -327,7 +339,7 @@ export function CancellationPolicySettings() {
             </div>
 
             <Button onClick={savePolicy} disabled={saving} className="w-full" size="lg">
-              {saving ? "Salvando..." : policy ? "Atualizar Política" : "Criar Política"}
+              {saving ? t('rules.saving') : policy ? t('rules.updateButton') : t('rules.createButton')}
             </Button>
           </CardContent>
         </Card>
@@ -337,33 +349,33 @@ export function CancellationPolicySettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5" />
-              Resumo da Política
+              {t('summary.title')}
             </CardTitle>
             <CardDescription>
-              Como seus alunos verão suas regras
+              {t('summary.description')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Alert className="border-primary/20 bg-primary/5">
               <AlertDescription className="text-sm">
                 <div className="space-y-2">
-                  <p className="font-semibold text-foreground">Política de Cancelamento:</p>
+                  <p className="font-semibold text-foreground">{t('summary.heading')}</p>
                   <ul className="space-y-1 ml-4">
                     <li className="flex items-start gap-2">
                       <span className="text-primary">•</span>
-                      <span>Prazo: <strong>{hoursBeforeClass[0]} horas</strong> antes da aula</span>
+                      <span>{t('summary.deadline', { hours: hoursBeforeClass[0] })}</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-warning">•</span>
-                      <span>Cobrança tardio: <strong>{chargePercentage[0]}%</strong> do valor</span>
+                      <span>{t('summary.charge', { percentage: chargePercentage[0] })}</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-success">•</span>
-                      <span>Anistia {allowAmnesty ? "permitida" : "não permitida"}</span>
+                      <span>{allowAmnesty ? t('summary.amnestyAllowed') : t('summary.amnestyNotAllowed')}</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-success">•</span>
-                      <span>Cancelamento pelo professor sempre gratuito</span>
+                      <span>{t('summary.teacherFree')}</span>
                     </li>
                   </ul>
                 </div>
@@ -373,10 +385,10 @@ export function CancellationPolicySettings() {
             {policy && (
               <div className="mt-4 pt-4 border-t space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Criada:</strong> {new Date(policy.created_at).toLocaleDateString('pt-BR')}
+                  <strong>{t('summary.created')}</strong> {new Date(policy.created_at).toLocaleDateString('pt-BR')}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  <strong>Atualizada:</strong> {new Date(policy.updated_at).toLocaleDateString('pt-BR')}
+                  <strong>{t('summary.updated')}</strong> {new Date(policy.updated_at).toLocaleDateString('pt-BR')}
                 </p>
                 <p className="text-xs">
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
@@ -384,7 +396,7 @@ export function CancellationPolicySettings() {
                       ? 'bg-success/10 text-success' 
                       : 'bg-muted text-muted-foreground'
                   }`}>
-                    {policy.is_active ? "✓ Política Ativa" : "○ Política Inativa"}
+                    {policy.is_active ? t('summary.active') : t('summary.inactive')}
                   </span>
                 </p>
               </div>
@@ -398,10 +410,10 @@ export function CancellationPolicySettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Documento Completo da Política
+            {t('document.title')}
           </CardTitle>
           <CardDescription>
-            Faça upload de um PDF com sua política detalhada de aulas (opcional)
+            {t('document.description')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -412,8 +424,8 @@ export function CancellationPolicySettings() {
                   <FileText className="h-5 w-5 text-success" />
                 </div>
                 <div>
-                  <p className="font-medium">policy.pdf</p>
-                  <p className="text-sm text-muted-foreground">Documento disponível para alunos</p>
+                  <p className="font-medium">{t('document.fileName')}</p>
+                  <p className="text-sm text-muted-foreground">{t('document.available')}</p>
                 </div>
               </div>
               <Button
@@ -423,7 +435,7 @@ export function CancellationPolicySettings() {
                 disabled={uploadingDocument}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Remover
+                {t('document.remove')}
               </Button>
             </div>
           ) : (
@@ -435,7 +447,7 @@ export function CancellationPolicySettings() {
                     name="policyDocument"
                     render={({ field: { value, onChange, ...field } }) => (
                       <FormItem>
-                        <FormLabel>Selecionar arquivo PDF (máx. 5MB)</FormLabel>
+                        <FormLabel>{t('document.selectFile')}</FormLabel>
                         <FormControl>
                           <div className="min-h-[50px] flex items-center">
                             <Input
@@ -454,7 +466,7 @@ export function CancellationPolicySettings() {
                   />
                   <Button type="submit" disabled={uploadingDocument} className="w-full">
                     <Upload className="h-4 w-4 mr-2" />
-                    {uploadingDocument ? "Enviando..." : "Enviar Documento"}
+                    {uploadingDocument ? t('document.uploading') : t('document.upload')}
                   </Button>
                 </form>
               </Form>

@@ -997,7 +997,24 @@ export default function Agenda() {
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && <StudentScheduleRequest teacherId={selectedTeacherId || undefined} />}
+        {isAluno && selectedTeacherId && <StudentScheduleRequest teacherId={selectedTeacherId} />}
+        
+        {/* Message for students without teacher selected */}
+        {isAluno && !selectedTeacherId && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="h-5 w-5" />
+                Selecione um Professor
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">
+                Por favor, selecione um professor no menu lateral para visualizar a agenda e solicitar aulas.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Billing Info Alert for Professors with Financial Module */}
         {isProfessor && hasFeature('financial_module') && showBillingAlert && <Alert className="bg-primary/5 border-primary/20 relative pr-12">

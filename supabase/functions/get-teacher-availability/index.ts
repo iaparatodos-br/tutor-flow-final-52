@@ -19,6 +19,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('🔍 [get-teacher-availability] Function started');
+    
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -26,14 +28,18 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get("Authorization");
+    console.log('🔍 Auth header present:', !!authHeader);
     if (!authHeader) throw new Error("No authorization header provided");
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    console.log('🔍 User data:', { userId: userData?.user?.id, error: userError?.message });
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
     const user = userData.user;
 
-    const { teacherId } = await req.json();
+    const body = await req.json();
+    console.log('🔍 Request body:', body);
+    const { teacherId } = body;
     if (!teacherId) throw new Error("teacherId is required");
 
     const { data: profile, error: profileError } = await supabase
@@ -42,11 +48,13 @@ serve(async (req) => {
       .eq('id', user.id)
       .maybeSingle();
 
+    console.log('🔍 Profile check:', { profile, profileError });
     if (profileError) throw profileError;
     if (!profile) throw new Error("Profile not found");
     if (profile.role !== 'aluno') throw new Error("Only students can access teacher availability");
 
     // Verify that this student is linked to the requested teacher
+    console.log('🔍 Checking relationship for teacherId:', teacherId, 'studentId:', user.id);
     const { data: relationship, error: relationshipError } = await supabase
       .from('teacher_student_relationships')
       .select('id')
@@ -54,6 +62,7 @@ serve(async (req) => {
       .eq('student_id', user.id)
       .maybeSingle();
 
+    console.log('🔍 Relationship check:', { relationship, relationshipError });
     if (relationshipError) throw relationshipError;
     if (!relationship) throw new Error("Student is not assigned to this teacher");
 
@@ -113,6 +122,8 @@ serve(async (req) => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error('❌ [get-teacher-availability] Error:', message);
+    console.error('❌ Full error:', error);
     return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,

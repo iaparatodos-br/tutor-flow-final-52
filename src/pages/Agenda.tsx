@@ -975,7 +975,7 @@ export default function Agenda() {
   };
   if (loading) {
     return <Layout>
-        <div className="container mx-auto p-6 space-y-6">
+        <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
           <Card>
             <CardContent className="flex items-center justify-center h-64">
               <div className="text-center">
@@ -988,7 +988,7 @@ export default function Agenda() {
       </Layout>;
   }
   return <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Agenda</h1>
           {isProfessor && <Button onClick={() => setIsDialogOpen(true)}>

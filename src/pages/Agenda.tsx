@@ -700,7 +700,8 @@ export default function Agenda() {
       currentDate = nextDate;
       classes.push({
         ...baseClass,
-        class_date: currentDate.toISOString()
+        class_date: currentDate.toISOString(),
+        status: 'confirmada' // Ensure all recurring classes are confirmed by default
       });
     }
     return classes;
@@ -710,15 +711,6 @@ export default function Agenda() {
     setSubmitting(true);
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
-
-      // Check if professor has access to financial module
-      const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
-
-      // If no financial access, mark class as experimental to prevent billing
-      const shouldMarkExperimental = !hasFinancialAccess || formData.is_experimental;
-      if (!hasFinancialAccess && !formData.is_experimental) {
-        console.log('Professor without financial module - marking class as experimental to prevent billing');
-      }
 
       // Create base class data
       const baseClassData = {
@@ -730,7 +722,7 @@ export default function Agenda() {
         notes: formData.notes || null,
         status: 'confirmada',
         // Professor-created classes are confirmed by default
-        is_experimental: shouldMarkExperimental,
+        is_experimental: formData.is_experimental, // Use form value directly
         is_group_class: formData.is_group_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };

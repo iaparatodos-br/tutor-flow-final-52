@@ -155,7 +155,7 @@ export default function Historico() {
 
   return (
     <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
         <div className="flex items-center gap-2">
           <Archive className="h-6 w-6 text-primary" />
           <h1 className="text-3xl font-bold">Histórico de Aulas Arquivadas</h1>

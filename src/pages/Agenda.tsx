@@ -250,11 +250,7 @@ export default function Agenda() {
                 email
               )
             )
-          `)
-          .eq('class_participants.student_id', profile.id)
-          .in('class_participants.status', ['pendente', 'confirmada', 'concluida'])
-          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('class_date');
+          `).eq('class_participants.student_id', profile.id).in('class_participants.status', ['pendente', 'confirmada', 'concluida']).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
 
         // Execute two separate queries to avoid PostgREST or() limitations with joins
         const [individualClassesResult, groupClassesResult] = await Promise.all([
@@ -455,47 +451,44 @@ export default function Agenda() {
       setClasses(allClasses);
 
       // Transform for calendar view
-      const calendarEvents: CalendarClass[] = allClasses
-        .filter(cls => {
-          // For students, show only classes with active participation
-          if (!isProfessor && cls.participants.length > 0) {
-            const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-            return myParticipation && ['pendente', 'confirmada', 'concluida'].includes(myParticipation.status || cls.status);
-          }
-          return true;
-        })
-        .map(cls => {
-          const startDate = new Date(cls.class_date);
-          const endDate = new Date(startDate.getTime() + cls.duration_minutes * 60 * 1000);
-          const participantNames = cls.participants.map(p => p.student.name).join(', ');
-          const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
-          const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
-          const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
-          
-          // Determine display status for students
-          let displayStatus = cls.status;
-          if (!isProfessor && cls.participants.length > 0) {
-            const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-            displayStatus = myParticipation?.status || cls.status;
-          }
-          
-          return {
-            id: cls.id,
-            title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
-            start: startDate,
-            end: endDate,
-            status: displayStatus,
-            student: cls.participants[0]?.student || {
-              name: 'Sem aluno',
-              email: ''
-            },
-            participants: cls.participants,
-            notes: cls.notes || undefined,
-            is_experimental: cls.is_experimental,
-            is_group_class: cls.is_group_class,
-            isVirtual: cls.isVirtual
-          };
-        });
+      const calendarEvents: CalendarClass[] = allClasses.filter(cls => {
+        // For students, show only classes with active participation
+        if (!isProfessor && cls.participants.length > 0) {
+          const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+          return myParticipation && ['pendente', 'confirmada', 'concluida'].includes(myParticipation.status || cls.status);
+        }
+        return true;
+      }).map(cls => {
+        const startDate = new Date(cls.class_date);
+        const endDate = new Date(startDate.getTime() + cls.duration_minutes * 60 * 1000);
+        const participantNames = cls.participants.map(p => p.student.name).join(', ');
+        const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
+        const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
+        const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
+
+        // Determine display status for students
+        let displayStatus = cls.status;
+        if (!isProfessor && cls.participants.length > 0) {
+          const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+          displayStatus = myParticipation?.status || cls.status;
+        }
+        return {
+          id: cls.id,
+          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
+          start: startDate,
+          end: endDate,
+          status: displayStatus,
+          student: cls.participants[0]?.student || {
+            name: 'Sem aluno',
+            email: ''
+          },
+          participants: cls.participants,
+          notes: cls.notes || undefined,
+          is_experimental: cls.is_experimental,
+          is_group_class: cls.is_group_class,
+          isVirtual: cls.isVirtual
+        };
+      });
       setCalendarClasses(calendarEvents);
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);
@@ -796,7 +789,9 @@ export default function Agenda() {
       } else if (insertedClasses.length > 1) {
         toast({
           title: t('messages.multipleScheduled'),
-          description: t('messages.multipleScheduledDescription', { count: insertedClasses.length })
+          description: t('messages.multipleScheduledDescription', {
+            count: insertedClasses.length
+          })
         });
       } else {
         toast({
@@ -991,23 +986,17 @@ export default function Agenda() {
       <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-3xl font-bold">Agenda</h1>
-          {isProfessor && <Button onClick={() => setIsDialogOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Aula
-            </Button>}
+          {isProfessor}
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && !teacherContextLoading && selectedTeacherId && (
-          <>
+        {isAluno && !teacherContextLoading && selectedTeacherId && <>
             {console.log('🎓 Rendering StudentScheduleRequest with teacherId:', selectedTeacherId)}
             <StudentScheduleRequest teacherId={selectedTeacherId} />
-          </>
-        )}
+          </>}
         
         {/* Message for students without teacher selected */}
-        {isAluno && !teacherContextLoading && !selectedTeacherId && (
-          <Card>
+        {isAluno && !teacherContextLoading && !selectedTeacherId && <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Info className="h-5 w-5" />
@@ -1019,8 +1008,7 @@ export default function Agenda() {
                 Por favor, selecione um professor no menu lateral para visualizar a agenda e solicitar aulas.
               </p>
             </CardContent>
-          </Card>
-        )}
+          </Card>}
 
         {/* Billing Info Alert for Professors with Financial Module */}
         {isProfessor && hasFeature('financial_module') && showBillingAlert && <Alert className="bg-primary/5 border-primary/20 relative pr-12">

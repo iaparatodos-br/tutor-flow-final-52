@@ -38,9 +38,27 @@ export function Layout({
     return <div className="min-h-screen bg-gradient-subtle">{children}</div>;
   }
   const content = <div className="flex h-screen w-full bg-background">
-      <AppSidebar isOpen={isOpen} />
+      {/* Backdrop para mobile */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={toggle}
+          aria-hidden="true"
+        />
+      )}
       
-      <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Sidebar com comportamento responsivo */}
+      <div className={`
+        ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        fixed md:relative
+        z-50 md:z-auto
+        transition-transform duration-300
+        h-full
+      `}>
+        <AppSidebar isOpen={isOpen} />
+      </div>
+      
+      <div className="flex flex-1 flex-col overflow-hidden w-full">
         {/* Header com trigger sempre visível */}
         <header className="flex h-16 items-center border-b bg-card px-4">
           <Button variant="ghost" size="sm" onClick={toggle} className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors">

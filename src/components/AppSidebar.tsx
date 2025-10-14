@@ -91,7 +91,7 @@ export function AppSidebar({
 
   // Don't render role-specific content until we're sure of the user's role
   if (loading || !profile || !isProfessor && !isAluno) {
-    return <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card flex-shrink-0`}>
+    return <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card h-full`}>
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center border-b px-4">
             <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export function AppSidebar({
     }
   };
   return <TooltipProvider>
-      <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card flex-shrink-0`}>
+      <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card h-full`}>
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex h-16 items-center border-b px-3">

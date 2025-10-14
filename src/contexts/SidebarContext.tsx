@@ -9,7 +9,10 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType | undefined>(undefined);
 
 export function SidebarProvider({ children }: { children: ReactNode }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => {
+    // Desktop: aberta por padrão, Mobile: fechada
+    return window.innerWidth >= 768;
+  });
 
   const toggle = () => {
     setIsOpen(!isOpen);

@@ -335,29 +335,35 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Week Navigation */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <Button
             variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
             onClick={() => {
               const newWeek = new Date(selectedWeek);
               newWeek.setDate(newWeek.getDate() - 7);
               setSelectedWeek(newWeek);
             }}
           >
-            Semana Anterior
+            <span className="hidden sm:inline">Semana Anterior</span>
+            <span className="sm:hidden">← Anterior</span>
           </Button>
-          <span className="font-medium">
+          <span className="font-medium text-sm sm:text-base text-center">
             {formatDate(selectedWeek)} - {formatDate(new Date(selectedWeek.getTime() + 6 * 24 * 60 * 60 * 1000))}
           </span>
           <Button
             variant="outline"
+            size="sm"
+            className="w-full sm:w-auto"
             onClick={() => {
               const newWeek = new Date(selectedWeek);
               newWeek.setDate(newWeek.getDate() + 7);
               setSelectedWeek(newWeek);
             }}
           >
-            Próxima Semana
+            <span className="hidden sm:inline">Próxima Semana</span>
+            <span className="sm:hidden">Próxima →</span>
           </Button>
         </div>
 
@@ -398,7 +404,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                     month: '2-digit'
                   })}
                 </h4>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                   {slots.map((slot, index) => (
                     <Dialog key={index} open={isDialogOpen && selectedTimeSlot === slot.datetime} onOpenChange={setIsDialogOpen}>
                       <DialogTrigger asChild>

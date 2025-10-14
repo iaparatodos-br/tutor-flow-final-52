@@ -94,7 +94,7 @@ serve(async (req) => {
         .eq('classes.teacher_id', teacherId)
         .in('status', ['pendente', 'confirmada'])
         .gte('classes.class_date', nowIso)
-        .order('classes.class_date', { ascending: true }),
+        .order('class_date', { ascending: true, foreignTable: 'classes' }),
       supabase
         .from('class_services')
         .select('id, name, price, duration_minutes, is_default')

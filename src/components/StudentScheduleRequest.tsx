@@ -82,11 +82,22 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
   }, [selectedWeek, workingHours, availabilityBlocks, existingClasses, selectedService]);
 
   const loadTeacherAvailability = async () => {
+    console.log('🎯 loadTeacherAvailability called with teacherId:', teacherId);
+    
+    if (!teacherId) {
+      console.warn('⚠️ No teacherId provided, skipping availability load');
+      setLoading(false);
+      return;
+    }
+    
     try {
+      console.log('📡 Calling get-teacher-availability edge function...');
       const { data, error } = await supabase.functions.invoke('get-teacher-availability', {
         body: { teacherId }
       });
 
+      console.log('📊 Edge function response:', { data, error });
+      
       if (error) throw error;
 
       setWorkingHours(data?.workingHours || []);

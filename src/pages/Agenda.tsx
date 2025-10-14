@@ -998,7 +998,12 @@ export default function Agenda() {
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && !teacherContextLoading && selectedTeacherId && <StudentScheduleRequest teacherId={selectedTeacherId} />}
+        {isAluno && !teacherContextLoading && selectedTeacherId && (
+          <>
+            {console.log('🎓 Rendering StudentScheduleRequest with teacherId:', selectedTeacherId)}
+            <StudentScheduleRequest teacherId={selectedTeacherId} />
+          </>
+        )}
         
         {/* Message for students without teacher selected */}
         {isAluno && !teacherContextLoading && !selectedTeacherId && (

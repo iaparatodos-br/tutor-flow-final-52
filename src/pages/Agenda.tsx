@@ -79,7 +79,8 @@ export default function Agenda() {
     toast
   } = useToast();
   const {
-    selectedTeacherId
+    selectedTeacherId,
+    loading: teacherContextLoading
   } = useTeacherContext();
   const {
     t
@@ -997,10 +998,10 @@ export default function Agenda() {
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && selectedTeacherId && <StudentScheduleRequest teacherId={selectedTeacherId} />}
+        {isAluno && !teacherContextLoading && selectedTeacherId && <StudentScheduleRequest teacherId={selectedTeacherId} />}
         
         {/* Message for students without teacher selected */}
-        {isAluno && !selectedTeacherId && (
+        {isAluno && !teacherContextLoading && !selectedTeacherId && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

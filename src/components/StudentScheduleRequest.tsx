@@ -387,7 +387,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                     month: '2-digit'
                   })}
                 </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                   {slots.map((slot, index) => (
                     <Dialog key={index} open={isDialogOpen && selectedTimeSlot === slot.datetime} onOpenChange={setIsDialogOpen}>
                       <DialogTrigger asChild>
@@ -395,7 +395,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                           variant={slot.available ? "outline" : "ghost"}
                           size="sm"
                           disabled={!slot.available}
-                          className={`text-xs ${
+                          className={`text-xs sm:text-sm min-h-[44px] ${
                             slot.available 
                               ? "hover:bg-primary hover:text-primary-foreground" 
                               : "opacity-50 cursor-not-allowed"

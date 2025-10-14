@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
+import { useSidebarState } from "@/contexts/SidebarContext";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -81,6 +82,7 @@ export function AppSidebar({
     hasTeacherFeature
   } = useSubscription();
   const teacherContext = isAluno ? useTeacherContext() : null;
+  const { toggle: toggleSidebar } = useSidebarState();
   const currentPath = location.pathname;
   const {
     t
@@ -137,6 +139,11 @@ export function AppSidebar({
       }
     }
     navigate(url);
+    
+    // Auto-close sidebar on mobile after navigation
+    if (window.innerWidth < 768) {
+      toggleSidebar();
+    }
   };
   return <TooltipProvider>
       <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card flex-shrink-0`}>

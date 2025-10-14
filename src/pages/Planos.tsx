@@ -202,14 +202,16 @@ export default function Planos() {
 
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    {Object.entries(plan.features).map(([key, value]) => (
-                      <div key={key} className="flex items-center gap-2 text-sm">
-                        {getFeatureIcon(key)}
-                        <span className={value ? '' : 'text-muted-foreground'}>
-                          {getFeatureLabel(key, value)}
-                        </span>
-                      </div>
-                    ))}
+                    {Object.entries(plan.features)
+                      .filter(([key]) => key !== 'payment_accounts')
+                      .map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2 text-sm">
+                          {getFeatureIcon(key)}
+                          <span className={value ? '' : 'text-muted-foreground'}>
+                            {getFeatureLabel(key, value)}
+                          </span>
+                        </div>
+                      ))}
                   </div>
 
                   <Button

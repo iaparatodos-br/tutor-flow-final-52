@@ -67,7 +67,7 @@ export default function Faturas() {
   if (teacherLoading) {
     return (
       <Layout>
-        <div className="container mx-auto p-6 space-y-6">
+        <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold">Minhas Faturas</h1>
           </div>
@@ -89,7 +89,7 @@ export default function Faturas() {
   if (!selectedTeacherId) {
     return (
       <Layout>
-        <div className="container mx-auto p-6 space-y-6">
+        <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold">Minhas Faturas</h1>
           </div>
@@ -106,7 +106,7 @@ export default function Faturas() {
 
   return (
     <Layout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold">Minhas Faturas</h1>
         </div>

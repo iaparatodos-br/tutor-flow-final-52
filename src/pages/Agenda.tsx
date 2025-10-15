@@ -191,7 +191,7 @@ export default function Agenda() {
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
       isVirtual: true,
-      status: 'pendente' as const
+      status: templateClass.status
     }));
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {

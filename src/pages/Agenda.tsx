@@ -772,17 +772,6 @@ export default function Agenda() {
             throw participantError;
           }
         }
-        
-        // Explicitly update all classes to confirmed status after participants are inserted
-        const classIds = insertedClasses.map(c => c.id);
-        const { error: updateError } = await supabase
-          .from('classes')
-          .update({ status: 'confirmada' })
-          .in('id', classIds);
-        
-        if (updateError) {
-          console.error('Error updating class status:', updateError);
-        }
       }
       if (formData.recurrence?.is_infinite) {
         toast({

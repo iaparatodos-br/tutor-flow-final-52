@@ -123,6 +123,7 @@ export default function Agenda() {
   const [showExceptionForm, setShowExceptionForm] = useState(false);
   const [showFutureExceptionForm, setShowFutureExceptionForm] = useState(false);
   const [showBillingAlert, setShowBillingAlert] = useState(true);
+  const [materializingClasses, setMaterializingClasses] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!authLoading && profile) {
       // Initial load with default range (current month)
@@ -191,7 +192,7 @@ export default function Agenda() {
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
       isVirtual: true,
-      status: templateClass.status
+      status: 'confirmada' as const  // Aulas virtuais sempre aparecem confirmadas
     }));
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
@@ -593,7 +594,14 @@ export default function Agenda() {
       });
     }
   };
-  const materializeVirtualClass = async (virtualId: string) => {
+  const materializeVirtualClass = async (virtualId: string, targetStatus: 'confirmada' | 'concluida' = 'confirmada'): Promise<string> => {
+    // Verificar se já está sendo materializada
+    if (materializingClasses.has(virtualId)) {
+      throw new Error('Esta aula já está sendo processada');
+    }
+
+    setMaterializingClasses(prev => new Set(prev).add(virtualId));
+
     try {
       // Find the virtual class in our current state
       const virtualClass = classes.find(cls => cls.id === virtualId);
@@ -608,7 +616,7 @@ export default function Agenda() {
         throw new Error('Template class not found');
       }
 
-      // Create real class from virtual instance
+      // Create real class from virtual instance with specified status
       const realClassData = {
         teacher_id: profile?.id,
         student_id: templateClass.student_id,
@@ -616,7 +624,7 @@ export default function Agenda() {
         class_date: virtualClass.class_date,
         duration_minutes: virtualClass.duration_minutes,
         notes: virtualClass.notes,
-        status: 'confirmada',
+        status: targetStatus,  // Status customizado
         is_experimental: virtualClass.is_experimental,
         is_group_class: virtualClass.is_group_class,
         parent_class_id: templateId
@@ -627,30 +635,50 @@ export default function Agenda() {
       } = await supabase.from('classes').insert([realClassData]).select().single();
       if (error) throw error;
 
-      // Insert participants if it's a group class
+      // Insert participants if it's a group class with matching status
       if (virtualClass.is_group_class && virtualClass.participants.length > 0) {
         const participantInserts = virtualClass.participants.map(p => ({
           class_id: newClass.id,
-          student_id: p.student_id
+          student_id: p.student_id,
+          status: targetStatus  // Participantes com mesmo status
         }));
         const {
           error: participantError
         } = await supabase.from('class_participants').insert(participantInserts);
         if (participantError) throw participantError;
       }
-      toast({
-        title: "Aula confirmada!",
-        description: "A aula recorrente foi confirmada e agendada"
-      });
+
+      const statusMessages = {
+        confirmada: {
+          title: "Aula confirmada!",
+          description: "A aula recorrente foi confirmada e agendada"
+        },
+        concluida: {
+          title: t('messages.classCompleted'),
+          description: t('messages.classCompletedDescription')
+        }
+      };
+
+      toast(statusMessages[targetStatus]);
+
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
       }
+
+      return newClass.id;  // Retornar ID da aula materializada
     } catch (error: any) {
       console.error('Erro ao materializar aula virtual:', error);
       toast({
-        title: "Erro ao confirmar aula",
+        title: "Erro ao processar aula",
         description: error.message || "Tente novamente mais tarde",
         variant: "destructive"
+      });
+      throw error;
+    } finally {
+      setMaterializingClasses(prev => {
+        const next = new Set(prev);
+        next.delete(virtualId);
+        return next;
       });
     }
   };
@@ -807,6 +835,12 @@ export default function Agenda() {
   };
   const handleCompleteClass = async (classId: string) => {
     try {
+      // Se for aula virtual, materializar primeiro com status 'concluida'
+      if (classId.includes('_virtual_')) {
+        await materializeVirtualClass(classId, 'concluida');
+        return;
+      }
+
       const {
         error
       } = await supabase.from('classes').update({
@@ -831,10 +865,31 @@ export default function Agenda() {
   };
 
   // Nova função para gerenciar relatórios
-  const handleManageReport = (classData: CalendarClass) => {
+  const handleManageReport = async (classData: CalendarClass) => {
+    let finalClassId = classData.id;
+    let finalClassData = classData;
+
+    // Se for virtual, materializar primeiro
+    if (classData.isVirtual && classData.id.includes('_virtual_')) {
+      try {
+        // Materializar com status 'concluida' se já estiver concluída, senão 'confirmada'
+        const materializedStatus: 'confirmada' | 'concluida' = classData.status === 'concluida' ? 'concluida' : 'confirmada';
+        finalClassId = await materializeVirtualClass(classData.id, materializedStatus);
+        // Atualizar dados da classe com o novo ID
+        finalClassData = {
+          ...classData,
+          id: finalClassId,
+          isVirtual: false
+        };
+      } catch (error) {
+        // Erro já tratado em materializeVirtualClass
+        return;
+      }
+    }
+
     setReportModal({
       isOpen: true,
-      classData: classData
+      classData: finalClassData
     });
   };
 

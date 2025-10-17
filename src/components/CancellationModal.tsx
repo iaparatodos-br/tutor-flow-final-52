@@ -11,6 +11,16 @@ import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Clock, DollarSign } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+interface VirtualClassData {
+  teacher_id: string;
+  class_date: string;
+  service_id: string | null;
+  is_group_class: boolean;
+  service_price: number | null;
+  class_template_id: string;
+  duration_minutes: number;
+}
+
 interface CancellationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,6 +28,7 @@ interface CancellationModalProps {
   className: string;
   classDate: string;
   onCancellationComplete: () => void;
+  virtualClassData?: VirtualClassData;
 }
 
 interface CancellationPolicy {
@@ -32,7 +43,8 @@ export function CancellationModal({
   classId, 
   className, 
   classDate,
-  onCancellationComplete 
+  onCancellationComplete,
+  virtualClassData
 }: CancellationModalProps) {
   const { profile, isProfessor } = useAuth();
   const { hasTeacherFeature } = useSubscription();
@@ -64,29 +76,50 @@ export function CancellationModal({
 
   const loadPolicyAndCalculateCharge = async () => {
     try {
-      // Get class details with service and group information
-      const { data: fetchedClassData, error: classError } = await supabase
-        .from('classes')
-        .select(`
-          teacher_id, 
-          class_date, 
-          service_id,
-          is_group_class,
-          class_services(price)
-        `)
-        .eq('id', classId)
-        .maybeSingle();
-
-      if (classError || !fetchedClassData) {
-        console.error('Error loading class data:', classError);
-        return;
-      }
+      let fetchedClassData;
       
-      setClassData({ 
-        is_group_class: fetchedClassData.is_group_class,
-        class_date: fetchedClassData.class_date,
-        class_services: fetchedClassData.class_services
-      });
+      // If virtualClassData is provided, use it instead of fetching from DB
+      if (virtualClassData) {
+        fetchedClassData = {
+          teacher_id: virtualClassData.teacher_id,
+          class_date: virtualClassData.class_date,
+          service_id: virtualClassData.service_id,
+          is_group_class: virtualClassData.is_group_class,
+          class_services: virtualClassData.service_price ? { price: virtualClassData.service_price } : null
+        };
+        
+        setClassData({ 
+          is_group_class: fetchedClassData.is_group_class,
+          class_date: fetchedClassData.class_date,
+          class_services: fetchedClassData.class_services
+        });
+      } else {
+        // Normal behavior: fetch from database
+        const { data, error: classError } = await supabase
+          .from('classes')
+          .select(`
+            teacher_id, 
+            class_date, 
+            service_id,
+            is_group_class,
+            class_services(price)
+          `)
+          .eq('id', classId)
+          .maybeSingle();
+
+        if (classError || !data) {
+          console.error('Error loading class data:', classError);
+          return;
+        }
+        
+        fetchedClassData = data;
+        
+        setClassData({ 
+          is_group_class: fetchedClassData.is_group_class,
+          class_date: fetchedClassData.class_date,
+          class_services: fetchedClassData.class_services
+        });
+      }
 
       // Get teacher's policy - always fetch fresh data
       const { data: policyData, error: policyError } = await supabase
@@ -152,9 +185,66 @@ export function CancellationModal({
 
     setLoading(true);
     try {
+      let finalClassId = classId;
+      
+      // If it's a virtual class, materialize it first
+      if (virtualClassData) {
+        console.log('Materializing virtual class before cancellation...');
+        
+        // Insert the materialized class
+        const { data: materializedClass, error: materializeError } = await supabase
+          .from('classes')
+          .insert({
+            teacher_id: virtualClassData.teacher_id,
+            class_date: virtualClassData.class_date,
+            duration_minutes: virtualClassData.duration_minutes,
+            service_id: virtualClassData.service_id,
+            is_group_class: virtualClassData.is_group_class,
+            class_template_id: virtualClassData.class_template_id,
+            is_template: false,
+            status: 'confirmada', // Materialize as confirmed before cancellation
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+          
+        if (materializeError) {
+          console.error('Error materializing class:', materializeError);
+          throw new Error('Failed to materialize virtual class');
+        }
+        
+        finalClassId = materializedClass.id;
+        
+        // If it's a group class, copy participants from template
+        if (virtualClassData.is_group_class) {
+          const { data: templateParticipants, error: participantsError } = await supabase
+            .from('class_participants')
+            .select('student_id')
+            .eq('class_id', virtualClassData.class_template_id);
+            
+          if (!participantsError && templateParticipants) {
+            const participantsToInsert = templateParticipants.map(p => ({
+              class_id: finalClassId,
+              student_id: p.student_id,
+              status: 'confirmada',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }));
+            
+            await supabase
+              .from('class_participants')
+              .insert(participantsToInsert);
+          }
+        }
+        
+        console.log('Virtual class materialized with ID:', finalClassId);
+      }
+      
+      // Now call the edge function with the materialized class ID
       const { data, error } = await supabase.functions.invoke('process-cancellation', {
         body: {
-          class_id: classId,
+          class_id: finalClassId,
           cancelled_by: profile!.id,
           reason: reason.trim(),
           cancelled_by_type: isProfessor ? 'teacher' : 'student'

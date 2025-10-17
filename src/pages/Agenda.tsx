@@ -102,6 +102,15 @@ export default function Agenda() {
     classId: string;
     className: string;
     classDate: string;
+    virtualClassData?: {
+      teacher_id: string;
+      class_date: string;
+      service_id: string | null;
+      is_group_class: boolean;
+      service_price: number | null;
+      class_template_id: string;
+      duration_minutes: number;
+    };
   }>({
     isOpen: false,
     classId: "",
@@ -923,12 +932,37 @@ export default function Agenda() {
   };
 
   const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
-    // Always use normal cancellation modal
+    const classToCancel = calendarClasses.find(c => c.id === classId);
+    
+    if (!classToCancel) {
+      toast({
+        title: "Erro",
+        description: "Aula não encontrada",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    // Find the full class data from classes array to get service info
+    const fullClassData = classes.find(c => c.id === classId);
+    
+    // Prepare virtual class data if it's a virtual class
+    const virtualData = classToCancel.isVirtual && fullClassData ? {
+      teacher_id: fullClassData.teacher_id || profile!.id,
+      class_date: fullClassData.class_date,
+      service_id: fullClassData.service_id || null,
+      is_group_class: fullClassData.is_group_class || false,
+      service_price: null, // Will be fetched from service if needed
+      class_template_id: fullClassData.class_template_id || '',
+      duration_minutes: fullClassData.duration_minutes || 60
+    } : undefined;
+    
     setCancellationModal({
       isOpen: true,
       classId,
       className,
-      classDate
+      classDate,
+      virtualClassData: virtualData
     });
   };
   if (loading) {
@@ -1004,10 +1038,18 @@ export default function Agenda() {
         <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} services={services} existingClasses={classes} />
 
         {/* Cancellation Modal */}
-        <CancellationModal isOpen={cancellationModal.isOpen} onClose={() => setCancellationModal(prev => ({
-        ...prev,
-        isOpen: false
-      }))} classId={cancellationModal.classId} className={cancellationModal.className} classDate={cancellationModal.classDate} onCancellationComplete={loadClasses} />
+        <CancellationModal 
+          isOpen={cancellationModal.isOpen} 
+          onClose={() => setCancellationModal(prev => ({
+            ...prev,
+            isOpen: false
+          }))} 
+          classId={cancellationModal.classId} 
+          className={cancellationModal.className} 
+          classDate={cancellationModal.classDate} 
+          virtualClassData={cancellationModal.virtualClassData}
+          onCancellationComplete={loadClasses} 
+        />
 
         {/* Class Report Modal */}
         <ClassReportModal isOpen={reportModal.isOpen} onOpenChange={open => setReportModal({

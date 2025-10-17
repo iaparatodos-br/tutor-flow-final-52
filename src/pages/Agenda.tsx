@@ -165,18 +165,20 @@ export default function Agenda() {
 
   // Helper function to generate virtual recurring instances for visible range
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
-    if (!templateClass.recurrence_pattern?.is_infinite) return [];
+    // OTIMIZAÇÃO: Limitar geração a 3 meses além da janela visível para performance
+    const maxEndDate = new Date(endDate);
+    maxEndDate.setMonth(maxEndDate.getMonth() + 3);
     
-    // Respeitar recurrence_end_date
-    let effectiveEndDate = endDate;
-    if (templateClass.recurrence_end_date) {
-      const recurrenceEnd = new Date(templateClass.recurrence_end_date);
-      if (recurrenceEnd < effectiveEndDate) {
-        effectiveEndDate = recurrenceEnd;
-      }
-    }
+    // Determinar data final: menor entre recurrence_end_date, maxEndDate
+    const recurrenceEndDate = templateClass.recurrence_end_date
+      ? new Date(Math.min(
+          new Date(templateClass.recurrence_end_date).getTime(),
+          maxEndDate.getTime()
+        ))
+      : maxEndDate;
     
     const pattern = templateClass.recurrence_pattern;
+    const effectiveEndDate = recurrenceEndDate;
     const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY : pattern.frequency === 'biweekly' ? Frequency.WEEKLY : pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
     const interval = pattern.frequency === 'biweekly' ? 2 : 1;
     const rule = new RRule({
@@ -606,8 +608,7 @@ export default function Agenda() {
         is_experimental: virtualClass.is_experimental,
         is_group_class: virtualClass.is_group_class,
         is_template: false,
-        class_template_id: templateId,
-        parent_class_id: null
+        class_template_id: templateId
       };
       const {
         data: newClass,
@@ -662,58 +663,6 @@ export default function Agenda() {
       });
     }
   };
-  const generateRecurringClasses = (baseClass: any, recurrence: any) => {
-    const classes = [baseClass];
-
-    // Normalize frequency to handle undefined values
-    const normalizedFrequency = recurrence.frequency || 'weekly';
-
-    // For finite recurrence, generate all instances
-    const startDate = new Date(baseClass.class_date);
-    let currentDate = new Date(startDate);
-    const getNextDate = (current: Date, frequency: string) => {
-      const next = new Date(current);
-      switch (frequency) {
-        case 'weekly':
-          next.setDate(next.getDate() + 7);
-          break;
-        case 'biweekly':
-          next.setDate(next.getDate() + 14);
-          break;
-        case 'monthly':
-          next.setMonth(next.getMonth() + 1);
-          break;
-        default:
-          console.warn(`Unknown frequency: ${frequency}, defaulting to weekly`);
-          next.setDate(next.getDate() + 7);
-          break;
-      }
-      return next;
-    };
-    const endDate = recurrence.end_date ? new Date(recurrence.end_date) : null;
-    const maxOccurrences = recurrence.occurrences || 50;
-    for (let i = 1; i < maxOccurrences; i++) {
-      const nextDate = getNextDate(currentDate, normalizedFrequency);
-
-      // Safety check: ensure date is advancing
-      if (nextDate.getTime() <= currentDate.getTime()) {
-        console.error(`Date not advancing for frequency ${normalizedFrequency}. Breaking loop.`);
-        break;
-      }
-
-      // Check if we've reached the end date
-      if (endDate && nextDate > endDate) {
-        break;
-      }
-      currentDate = nextDate;
-      classes.push({
-        ...baseClass,
-        class_date: currentDate.toISOString(),
-        status: 'confirmada' // Ensure all recurring classes are confirmed by default
-      });
-    }
-    return classes;
-  };
   // Helper to calculate end date from number of occurrences
   const calculateEndDateFromOccurrences = (
     startDate: Date,
@@ -738,6 +687,37 @@ export default function Agenda() {
     setSubmitting(true);
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+
+      // VALIDAÇÃO 1: Data no passado
+      const now = new Date();
+      if (classDateTime < now) {
+        toast({
+          title: "❌ Data Inválida",
+          description: "Não é possível agendar aulas no passado.",
+          variant: "destructive",
+        });
+        setSubmitting(false);
+        return;
+      }
+
+      // VALIDAÇÃO 2: Conflito de horário (warning, não bloqueio)
+      const classEndTime = new Date(classDateTime.getTime() + formData.duration_minutes * 60000);
+      const hasConflict = classes?.some(existingClass => {
+        if (existingClass.isVirtual || existingClass.is_template) return false;
+        
+        const existingStart = new Date(existingClass.class_date);
+        const existingEnd = new Date(existingStart.getTime() + existingClass.duration_minutes * 60000);
+        
+        return (
+          (classDateTime >= existingStart && classDateTime < existingEnd) ||
+          (classEndTime > existingStart && classEndTime <= existingEnd) ||
+          (classDateTime <= existingStart && classEndTime >= existingEnd)
+        );
+      });
+
+      if (hasConflict) {
+        console.warn('⚠️ Conflito de horário detectado, mas permitindo agendamento');
+      }
 
       // Create base class data
       const baseClassData = {
@@ -794,21 +774,30 @@ export default function Agenda() {
         insertedClasses = classes;
       }
 
-      // Insert participants for all classes (individual and group)
+      // ROLLBACK: Insert participants with error handling
       if (formData.selectedStudents.length > 0) {
-        for (const classInstance of insertedClasses) {
-          const participantInserts = formData.selectedStudents.map((studentId: string) => ({
-            class_id: classInstance.id,
-            student_id: studentId,
-            status: 'confirmada' // Professor-created classes are confirmed by default
-          }));
-          const {
-            error: participantError
-          } = await supabase.from('class_participants').insert(participantInserts);
-          if (participantError) {
-            console.error('Error inserting participants:', participantError);
-            throw participantError;
+        try {
+          for (const classInstance of insertedClasses) {
+            const participantInserts = formData.selectedStudents.map((studentId: string) => ({
+              class_id: classInstance.id,
+              student_id: studentId,
+              status: 'confirmada' // Professor-created classes are confirmed by default
+            }));
+            const {
+              error: participantError
+            } = await supabase.from('class_participants').insert(participantInserts);
+            if (participantError) {
+              throw participantError;
+            }
           }
+        } catch (participantError: any) {
+          console.error('Error inserting participants, rolling back classes:', participantError);
+          
+          // ROLLBACK: Delete created classes
+          const classIds = insertedClasses.map(c => c.id);
+          await supabase.from('classes').delete().in('id', classIds);
+          
+          throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
         }
       }
       if (formData.recurrence) {

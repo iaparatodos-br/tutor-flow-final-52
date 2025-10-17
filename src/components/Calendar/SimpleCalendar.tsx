@@ -3,7 +3,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus } from 'lucide-react';
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from '@/components/ui/alert-dialog';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
@@ -44,6 +54,9 @@ export function SimpleCalendar({
     events: CalendarClass[];
     blocks: AvailabilityBlock[];
   } | null>(null);
+  const [showEndRecurrenceDialog, setShowEndRecurrenceDialog] = useState(false);
+  const [endRecurrenceData, setEndRecurrenceData] = useState<{ templateId: string; endDate: string } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const DAYS_OF_WEEK = [
     t('daysOfWeek.sun'), 
@@ -511,21 +524,24 @@ export function SimpleCalendar({
                     {isProfessor && ((selectedEvent as CalendarClass).isVirtual || (selectedEvent as CalendarClass).class_template_id) && onEndRecurrence && (
                       <Button
                         variant="destructive"
+                        disabled={isProcessing}
                         onClick={() => {
                           const classEvent = selectedEvent as CalendarClass;
                           const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
                           const endDate = classEvent.start.toISOString();
                           
-                          if (confirm(
-                            'Tem certeza que deseja encerrar esta recorrência?\n\n' +
-                            'Todas as aulas futuras não concluídas serão permanentemente removidas.'
-                          )) {
-                            onEndRecurrence(templateId, endDate);
-                            setSelectedEvent(null);
-                          }
+                          setEndRecurrenceData({ templateId, endDate });
+                          setShowEndRecurrenceDialog(true);
                         }}
                       >
-                        🛑 Encerrar Recorrência
+                        {isProcessing ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processando...
+                          </>
+                        ) : (
+                          <>🛑 Encerrar Recorrência</>
+                        )}
                       </Button>
                     )}
                   </div>
@@ -648,6 +664,53 @@ export function SimpleCalendar({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* End Recurrence Confirmation Dialog */}
+      <AlertDialog open={showEndRecurrenceDialog} onOpenChange={setShowEndRecurrenceDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>🛑 Encerrar Recorrência</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p className="font-medium">Tem certeza que deseja encerrar esta série recorrente?</p>
+              <p className="text-sm">
+                ⚠️ <strong>Atenção:</strong> Todas as aulas futuras <strong>não concluídas</strong> desta série serão permanentemente removidas.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                As aulas já realizadas (concluídas) serão mantidas no histórico.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isProcessing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                if (!endRecurrenceData || !onEndRecurrence) return;
+                
+                setIsProcessing(true);
+                try {
+                  await onEndRecurrence(endRecurrenceData.templateId, endRecurrenceData.endDate);
+                  setSelectedEvent(null);
+                  setShowEndRecurrenceDialog(false);
+                } finally {
+                  setIsProcessing(false);
+                  setEndRecurrenceData(null);
+                }
+              }}
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                'Confirmar Encerramento'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -471,13 +471,16 @@ export type Database = {
           cancelled_by: string | null
           charge_applied: boolean | null
           class_date: string
+          class_template_id: string | null
           created_at: string | null
           duration_minutes: number
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_template: boolean | null
           notes: string | null
           parent_class_id: string | null
+          recurrence_end_date: string | null
           recurrence_pattern: Json | null
           service_id: string | null
           status: string
@@ -495,13 +498,16 @@ export type Database = {
           cancelled_by?: string | null
           charge_applied?: boolean | null
           class_date: string
+          class_template_id?: string | null
           created_at?: string | null
           duration_minutes?: number
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
+          recurrence_end_date?: string | null
           recurrence_pattern?: Json | null
           service_id?: string | null
           status?: string
@@ -519,13 +525,16 @@ export type Database = {
           cancelled_by?: string | null
           charge_applied?: boolean | null
           class_date?: string
+          class_template_id?: string | null
           created_at?: string | null
           duration_minutes?: number
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
+          recurrence_end_date?: string | null
           recurrence_pattern?: Json | null
           service_id?: string | null
           status?: string
@@ -534,6 +543,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "classes_class_template_id_fkey"
+            columns: ["class_template_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "classes_parent_class_id_fkey"
             columns: ["parent_class_id"]
@@ -1641,13 +1657,16 @@ export type Database = {
           cancelled_by: string | null
           charge_applied: boolean | null
           class_date: string
+          class_template_id: string | null
           created_at: string | null
           duration_minutes: number
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_template: boolean | null
           notes: string | null
           parent_class_id: string | null
+          recurrence_end_date: string | null
           recurrence_pattern: Json | null
           service_id: string | null
           status: string

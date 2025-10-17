@@ -17,6 +17,7 @@ interface SimpleCalendarProps {
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onManageReport?: (classData: CalendarClass) => void;
+  onEndRecurrence?: (templateId: string, endDate: string) => void;
   loading?: boolean;
   onScheduleClass?: () => void;
   onVisibleRangeChange?: (start: Date, end: Date) => void;
@@ -27,9 +28,10 @@ export function SimpleCalendar({
   availabilityBlocks = [], 
   isProfessor, 
   onConfirmClass, 
-  onCancelClass, 
+  onCancelClass,
   onCompleteClass,
   onManageReport,
+  onEndRecurrence,
   loading,
   onScheduleClass,
   onVisibleRangeChange
@@ -502,6 +504,28 @@ export function SimpleCalendar({
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         {t('actions.confirmClass')}
+                      </Button>
+                    )}
+                    
+                    {/* End Recurrence Button - For recurring classes */}
+                    {isProfessor && ((selectedEvent as CalendarClass).isVirtual || (selectedEvent as CalendarClass).class_template_id) && onEndRecurrence && (
+                      <Button
+                        variant="destructive"
+                        onClick={() => {
+                          const classEvent = selectedEvent as CalendarClass;
+                          const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
+                          const endDate = classEvent.start.toISOString();
+                          
+                          if (confirm(
+                            'Tem certeza que deseja encerrar esta recorrência?\n\n' +
+                            'Todas as aulas futuras não concluídas serão permanentemente removidas.'
+                          )) {
+                            onEndRecurrence(templateId, endDate);
+                            setSelectedEvent(null);
+                          }
+                        }}
+                      >
+                        🛑 Encerrar Recorrência
                       </Button>
                     )}
                   </div>

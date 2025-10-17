@@ -44,6 +44,7 @@ export interface CalendarClass {
   is_experimental?: boolean;
   is_group_class?: boolean;
   isVirtual?: boolean;
+  class_template_id?: string;
 }
 
 export interface AvailabilityBlock {

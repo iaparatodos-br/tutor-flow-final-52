@@ -21,3 +21,6 @@ verify_jwt = false
 [functions.setup-orphan-charges-automation]
 verify_jwt = false
 
+[functions.end-recurrence]
+verify_jwt = true
+

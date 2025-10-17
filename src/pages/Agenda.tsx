@@ -15,9 +15,6 @@ import { ClassForm } from "@/components/ClassForm/ClassForm";
 import { CancellationModal } from "@/components/CancellationModal";
 import { ClassReportModal } from "@/components/ClassReportModal";
 import { StudentScheduleRequest } from "@/components/StudentScheduleRequest";
-import { RecurringClassActionModal, RecurringActionType, ActionMode } from "@/components/RecurringClassActionModal";
-import { ClassExceptionForm } from "@/components/ClassExceptionForm";
-import { FutureClassExceptionForm } from "@/components/FutureClassExceptionForm";
 import { RRule, Frequency } from 'rrule';
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
@@ -31,7 +28,7 @@ interface ClassWithParticipants {
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
-  parent_class_id?: string;
+  
   recurrence_pattern?: any;
   student_id?: string;
   service_id?: string;
@@ -119,12 +116,6 @@ export default function Agenda() {
     classData: null
   });
 
-  // Exception handling states
-  const [showRecurringActionModal, setShowRecurringActionModal] = useState(false);
-  const [recurringActionMode, setRecurringActionMode] = useState<ActionMode>('edit');
-  const [pendingClassForAction, setPendingClassForAction] = useState<CalendarClass | null>(null);
-  const [showExceptionForm, setShowExceptionForm] = useState(false);
-  const [showFutureExceptionForm, setShowFutureExceptionForm] = useState(false);
   const [showBillingAlert, setShowBillingAlert] = useState(true);
   const [materializingClasses, setMaterializingClasses] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -247,7 +238,6 @@ export default function Agenda() {
             student_id,
             service_id,
             teacher_id,
-            parent_class_id,
             recurrence_pattern,
             profiles!classes_student_id_fkey (
               name,
@@ -284,7 +274,6 @@ export default function Agenda() {
                 student_id,
                 service_id,
                 teacher_id,
-                parent_class_id,
                 recurrence_pattern,
                 profiles!classes_student_id_fkey (
                   name,
@@ -316,7 +305,7 @@ export default function Agenda() {
                 student_id,
                 service_id,
                 teacher_id,
-                parent_class_id,
+                
                 recurrence_pattern,
                 profiles!classes_student_id_fkey (
                   name,
@@ -725,6 +714,25 @@ export default function Agenda() {
     }
     return classes;
   };
+  // Helper to calculate end date from number of occurrences
+  const calculateEndDateFromOccurrences = (
+    startDate: Date,
+    frequency: 'weekly' | 'biweekly' | 'monthly',
+    occurrences: number
+  ): string => {
+    const endDate = new Date(startDate);
+    
+    if (frequency === 'weekly') {
+      endDate.setDate(endDate.getDate() + (occurrences * 7));
+    } else if (frequency === 'biweekly') {
+      endDate.setDate(endDate.getDate() + (occurrences * 14));
+    } else if (frequency === 'monthly') {
+      endDate.setMonth(endDate.getMonth() + occurrences);
+    }
+    
+    return endDate.toISOString();
+  };
+
   const handleClassSubmit = async (formData: any) => {
     if (!profile?.id) return;
     setSubmitting(true);
@@ -747,29 +755,35 @@ export default function Agenda() {
       };
       let insertedClasses;
       if (formData.recurrence) {
-        if (formData.recurrence.is_infinite) {
-          // Create template class for infinite recurrence
-          const templateData = {
-            ...baseClassData,
-            is_template: true,
-            recurrence_pattern: formData.recurrence
-          };
-          const {
-            data: templateClass,
-            error: templateError
-          } = await supabase.from('classes').insert([templateData]).select().single();
-          if (templateError) throw templateError;
-          insertedClasses = [templateClass];
-        } else {
-          // Regular finite recurrence - create all instances
-          const classesToCreate = generateRecurringClasses(baseClassData, formData.recurrence);
-          const {
-            data: classes,
-            error: classError
-          } = await supabase.from('classes').insert(classesToCreate).select();
-          if (classError) throw classError;
-          insertedClasses = classes;
+        // Calculate recurrence_end_date for finite recurrences
+        let recurrenceEndDate = null;
+        if (!formData.recurrence.is_infinite) {
+          if (formData.recurrence.end_date) {
+            recurrenceEndDate = new Date(formData.recurrence.end_date).toISOString();
+          } else if (formData.recurrence.occurrences) {
+            // Calculate end date based on number of occurrences
+            recurrenceEndDate = calculateEndDateFromOccurrences(
+              classDateTime,
+              formData.recurrence.frequency,
+              formData.recurrence.occurrences
+            );
+          }
         }
+
+        // Always create a single template for any recurring class (infinite or finite)
+        const templateData = {
+          ...baseClassData,
+          is_template: true,
+          recurrence_pattern: formData.recurrence,
+          recurrence_end_date: recurrenceEndDate
+        };
+        
+        const {
+          data: templateClass,
+          error: templateError
+        } = await supabase.from('classes').insert([templateData]).select().single();
+        if (templateError) throw templateError;
+        insertedClasses = [templateClass];
       } else {
         // Single class
         const {
@@ -797,17 +811,10 @@ export default function Agenda() {
           }
         }
       }
-      if (formData.recurrence?.is_infinite) {
+      if (formData.recurrence) {
         toast({
           title: t('messages.recurringConfirmed'),
-          description: t('messages.recurringConfirmedDescription')
-        });
-      } else if (insertedClasses.length > 1) {
-        toast({
-          title: t('messages.multipleScheduled'),
-          description: t('messages.multipleScheduledDescription', {
-            count: insertedClasses.length
-          })
+          description: "A série de aulas foi criada e aparecerá automaticamente na agenda."
         });
       } else {
         toast({
@@ -923,125 +930,22 @@ export default function Agenda() {
 
   // Handle recurring class actions
   const handleRecurringClassEdit = (classData: CalendarClass) => {
-    // Check if this is a virtual recurring instance
+    // For virtual instances, materialize before editing
     if (classData.isVirtual) {
-      setPendingClassForAction(classData);
-      setRecurringActionMode('edit');
-      setShowRecurringActionModal(true);
+      console.log('Cannot edit virtual class directly. Materialize first or add notes to materialize.');
     } else {
-      // Handle normal class edit or show normal edit form
       console.log('Edit normal class:', classData);
     }
   };
+
   const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
-    const classData = calendarClasses.find(c => c.id === classId);
-    if (classData?.isVirtual) {
-      setPendingClassForAction(classData);
-      setRecurringActionMode('cancel');
-      setShowRecurringActionModal(true);
-    } else {
-      // Handle normal cancellation
-      setCancellationModal({
-        isOpen: true,
-        classId,
-        className,
-        classDate
-      });
-    }
-  };
-  const handleRecurringActionSelected = (action: RecurringActionType) => {
-    if (!pendingClassForAction) return;
-    if (action === 'this_only') {
-      if (recurringActionMode === 'edit') {
-        setShowExceptionForm(true);
-      } else if (recurringActionMode === 'cancel') {
-        // Cancel just this occurrence
-        handleCancelSingleOccurrence(pendingClassForAction);
-      }
-    } else if (action === 'this_and_future') {
-      if (recurringActionMode === 'edit') {
-        setShowFutureExceptionForm(true);
-      } else if (recurringActionMode === 'cancel') {
-        // Cancel this and future occurrences
-        handleCancelFutureOccurrences(pendingClassForAction);
-      }
-    }
-    // Future: handle 'all_series'
-  };
-  const handleCancelSingleOccurrence = async (classData: CalendarClass) => {
-    try {
-      // For virtual instances, extract the original class ID from the composite ID
-      let originalClassId = classData.id;
-      if (classData.isVirtual && classData.id.includes('_virtual_')) {
-        originalClassId = classData.id.split('_virtual_')[0];
-      }
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('manage-class-exception', {
-        body: {
-          original_class_id: originalClassId,
-          exception_date: classData.start.toISOString(),
-          action: 'cancel'
-        }
-      });
-      if (error) throw error;
-      toast({
-        title: t('messages.occurrenceCancelled'),
-        description: t('messages.occurrenceCancelledDescription')
-      });
-      if (visibleRange) {
-        loadClasses(visibleRange.start, visibleRange.end);
-      }
-    } catch (error) {
-      console.error('Erro ao cancelar aula:', error);
-      toast({
-        title: "Erro ao cancelar",
-        description: error instanceof Error ? error.message : "Tente novamente",
-        variant: "destructive"
-      });
-    }
-  };
-  const handleExceptionSuccess = () => {
-    if (visibleRange) {
-      loadClasses(visibleRange.start, visibleRange.end);
-    }
-    setPendingClassForAction(null);
-  };
-  const handleCancelFutureOccurrences = async (classData: CalendarClass) => {
-    try {
-      // For virtual instances, extract the original class ID
-      let originalClassId = classData.id;
-      if (classData.isVirtual && classData.id.includes('_virtual_')) {
-        originalClassId = classData.id.split('_virtual_')[0];
-      }
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('manage-future-class-exceptions', {
-        body: {
-          original_class_id: originalClassId,
-          from_date: classData.start.toISOString(),
-          action: 'cancel'
-        }
-      });
-      if (error) throw error;
-      toast({
-        title: "Aulas canceladas",
-        description: data.message || "Esta e as futuras aulas foram canceladas com sucesso"
-      });
-      if (visibleRange) {
-        loadClasses(visibleRange.start, visibleRange.end);
-      }
-      setPendingClassForAction(null);
-    } catch (error) {
-      console.error('Erro ao cancelar aulas futuras:', error);
-      toast({
-        title: "Erro ao cancelar",
-        description: error instanceof Error ? error.message : "Tente novamente",
-        variant: "destructive"
-      });
-    }
+    // Always use normal cancellation modal
+    setCancellationModal({
+      isOpen: true,
+      classId,
+      className,
+      classDate
+    });
   };
   if (loading) {
     return <Layout>
@@ -1127,43 +1031,6 @@ export default function Agenda() {
         isOpen: open,
         classData: open ? reportModal.classData : null
       })} classData={reportModal.classData} onReportCreated={loadClasses} />
-
-        {/* Recurring Class Action Modal */}
-        <RecurringClassActionModal open={showRecurringActionModal} onOpenChange={setShowRecurringActionModal} onActionSelected={handleRecurringActionSelected} mode={recurringActionMode} classDate={pendingClassForAction?.start || new Date()} />
-
-        {/* Class Exception Form */}
-        <ClassExceptionForm open={showExceptionForm} onOpenChange={setShowExceptionForm} originalClass={pendingClassForAction ? {
-        id: pendingClassForAction.id,
-        title: pendingClassForAction.title,
-        start: pendingClassForAction.start,
-        end: pendingClassForAction.end,
-        duration_minutes: 60,
-        // Default, could be extracted from title or stored separately
-        notes: pendingClassForAction.notes
-      } : {
-        id: '',
-        title: '',
-        start: new Date(),
-        end: new Date(),
-        duration_minutes: 60
-      }} services={services} onSuccess={handleExceptionSuccess} />
-
-        {/* Future Class Exception Form */}
-        <FutureClassExceptionForm open={showFutureExceptionForm} onOpenChange={setShowFutureExceptionForm} originalClass={pendingClassForAction ? {
-        id: pendingClassForAction.id,
-        title: pendingClassForAction.title,
-        start: pendingClassForAction.start,
-        end: pendingClassForAction.end,
-        duration_minutes: 60,
-        // Default, could be extracted from title or stored separately
-        notes: pendingClassForAction.notes
-      } : {
-        id: '',
-        title: '',
-        start: new Date(),
-        end: new Date(),
-        duration_minutes: 60
-      }} services={services} onSuccess={handleExceptionSuccess} />
       </div>
     </Layout>;
 }

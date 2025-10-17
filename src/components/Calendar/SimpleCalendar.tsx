@@ -521,7 +521,18 @@ export function SimpleCalendar({
                     )}
                     
                     {/* End Recurrence Button - For recurring classes */}
-                    {isProfessor && ((selectedEvent as CalendarClass).isVirtual || (selectedEvent as CalendarClass).class_template_id) && onEndRecurrence && (
+                    {isProfessor && onEndRecurrence && (() => {
+                      const classEvent = selectedEvent as CalendarClass;
+                      // Show button only if:
+                      // 1. It's a virtual class (always part of active recurrence), OR
+                      // 2. It's materialized with class_template_id AND recurrence hasn't ended
+                      const isVirtual = classEvent.isVirtual;
+                      const hasTemplate = classEvent.class_template_id;
+                      const recurrenceEndDate = (classEvent as any).recurrence_end_date;
+                      const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                      
+                      return isVirtual || (hasTemplate && isRecurrenceActive);
+                    })() && (
                       <Button
                         variant="destructive"
                         disabled={isProcessing}

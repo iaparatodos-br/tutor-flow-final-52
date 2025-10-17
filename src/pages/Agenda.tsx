@@ -715,9 +715,8 @@ export default function Agenda() {
         );
       });
 
-      if (hasConflict) {
-        console.warn('⚠️ Conflito de horário detectado, mas permitindo agendamento');
-      }
+      // Conflict detected but allowing scheduling
+      // Teacher will receive a warning in the UI
 
       // Create base class data
       const baseClassData = {
@@ -919,12 +918,8 @@ export default function Agenda() {
 
   // Handle recurring class actions
   const handleRecurringClassEdit = (classData: CalendarClass) => {
-    // For virtual instances, materialize before editing
-    if (classData.isVirtual) {
-      console.log('Cannot edit virtual class directly. Materialize first or add notes to materialize.');
-    } else {
-      console.log('Edit normal class:', classData);
-    }
+    // Virtual classes are materialized automatically when edited
+    // through other actions (complete, report, cancel)
   };
 
   const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
@@ -958,10 +953,9 @@ export default function Agenda() {
         </div>
 
         {/* Schedule Request Component for Students */}
-        {isAluno && !teacherContextLoading && selectedTeacherId && <>
-            {console.log('🎓 Rendering StudentScheduleRequest with teacherId:', selectedTeacherId)}
-            <StudentScheduleRequest teacherId={selectedTeacherId} />
-          </>}
+        {isAluno && !teacherContextLoading && selectedTeacherId && (
+          <StudentScheduleRequest teacherId={selectedTeacherId} />
+        )}
         
         {/* Message for students without teacher selected */}
         {isAluno && !teacherContextLoading && !selectedTeacherId && <Card>

@@ -286,6 +286,9 @@ export default function Agenda() {
                 service_id,
                 teacher_id,
                 recurrence_pattern,
+                is_template,
+                recurrence_end_date,
+                class_template_id,
                 profiles!classes_student_id_fkey (
                   name,
                   email
@@ -316,8 +319,10 @@ export default function Agenda() {
                 student_id,
                 service_id,
                 teacher_id,
-                
                 recurrence_pattern,
+                is_template,
+                recurrence_end_date,
+                class_template_id,
                 profiles!classes_student_id_fkey (
                   name,
                   email

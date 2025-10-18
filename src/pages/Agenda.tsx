@@ -552,7 +552,7 @@ export default function Agenda() {
       }).map(cls => {
         const calendarStartDate = new Date(cls.class_date);
         const calendarEndDate = new Date(calendarStartDate.getTime() + cls.duration_minutes * 60 * 1000);
-        const participantNames = cls.participants.map(p => p.student.name).join(', ');
+        const participantNames = cls.participants.map(p => p.student?.name || 'Nome não disponível').join(', ');
         const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
         const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
         const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';

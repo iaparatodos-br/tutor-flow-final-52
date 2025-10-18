@@ -179,19 +179,6 @@ export function ClassReportModal({
 
         if (insertError) throw insertError;
         reportId = newReport.id;
-
-        // Mark all participants as completed
-        const { error: participantStatusError } = await supabase
-          .from('class_participants')
-          .update({ 
-            status: 'concluida',
-            completed_at: new Date().toISOString()
-          })
-          .eq('class_id', classData.id);
-
-        if (participantStatusError) throw participantStatusError;
-        
-        // The trigger sync_class_status_from_participants will update classes.status automatically
       }
 
       // Handle individual feedbacks (if any)

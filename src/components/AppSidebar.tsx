@@ -35,8 +35,8 @@ const getProfessorItems = (t: any) => [{
   url: "/historico",
   icon: Archive
 }, {
-  title: t('navigation:sidebar.cancellationPolicies'),
-  url: "/politicas-cancelamento",
+  title: t('navigation:sidebar.settings'),
+  url: "/configuracoes",
   icon: Settings
 }];
 const getAlunoItems = (t: any) => [{

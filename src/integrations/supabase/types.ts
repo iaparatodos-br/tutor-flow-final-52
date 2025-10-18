@@ -1712,6 +1712,12 @@ export type Database = {
           student_role: string
         }[]
       }
+      get_user_class_ids: {
+        Args: { _user_id: string }
+        Returns: {
+          class_id: string
+        }[]
+      }
       has_overdue_invoices: {
         Args: { p_student_id: string }
         Returns: boolean

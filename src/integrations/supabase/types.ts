@@ -1734,6 +1734,10 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      is_student_in_class: {
+        Args: { p_class_id: string; p_student_id: string }
+        Returns: boolean
+      }
       log_login_attempt: {
         Args: {
           p_ip_address?: unknown

@@ -536,7 +536,7 @@ export default function Agenda() {
         // For students, show only classes with active participation
         if (!isProfessor && cls.participants.length > 0) {
           const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-          return myParticipation && ['pendente', 'confirmada', 'concluida'].includes(myParticipation.status || cls.status);
+          return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myParticipation.status || cls.status);
         }
         return true;
       }).map(cls => {

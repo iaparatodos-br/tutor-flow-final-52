@@ -382,12 +382,23 @@ export default function Agenda() {
           if (!participantsError && allParticipants) {
             // Criar um mapa de class_id -> participantes
             const participantsMap = new Map<string, any[]>();
-            allParticipants.forEach((p: any) => {
-              if (!participantsMap.has(p.class_id)) {
-                participantsMap.set(p.class_id, []);
-              }
-              participantsMap.get(p.class_id)!.push(p);
-            });
+        allParticipants.forEach((p: any) => {
+          if (!participantsMap.has(p.class_id)) {
+            participantsMap.set(p.class_id, []);
+          }
+          // Normalizar a estrutura para o formato esperado
+          participantsMap.get(p.class_id)!.push({
+            student_id: p.student_id,
+            status: p.status,
+            cancelled_at: p.cancelled_at,
+            charge_applied: p.charge_applied,
+            confirmed_at: p.confirmed_at,
+            completed_at: p.completed_at,
+            cancellation_reason: p.cancellation_reason,
+            billed: p.billed,
+            profiles: p.profiles // Mantém a estrutura aninhada
+          });
+        });
 
             // Atualizar as aulas em grupo com TODOS os participantes
             data = data.map((cls: any) => {

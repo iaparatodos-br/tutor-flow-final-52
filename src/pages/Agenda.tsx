@@ -353,6 +353,54 @@ export default function Agenda() {
         const uniqueClasses = allClasses.filter((cls, index, arr) => arr.findIndex(c => c.id === cls.id) === index);
         data = uniqueClasses;
         error = null;
+
+        // Para alunos, buscar TODOS os participantes das aulas em grupo (não apenas o aluno logado)
+        const groupClassIds = data
+          .filter((cls: any) => cls.is_group_class)
+          .map((cls: any) => cls.id);
+
+        if (groupClassIds.length > 0) {
+          const { data: allParticipants, error: participantsError } = await supabase
+            .from('class_participants')
+            .select(`
+              class_id,
+              student_id,
+              status,
+              cancelled_at,
+              charge_applied,
+              confirmed_at,
+              completed_at,
+              cancellation_reason,
+              billed,
+              profiles!class_participants_student_id_fkey (
+                name,
+                email
+              )
+            `)
+            .in('class_id', groupClassIds);
+
+          if (!participantsError && allParticipants) {
+            // Criar um mapa de class_id -> participantes
+            const participantsMap = new Map<string, any[]>();
+            allParticipants.forEach((p: any) => {
+              if (!participantsMap.has(p.class_id)) {
+                participantsMap.set(p.class_id, []);
+              }
+              participantsMap.get(p.class_id)!.push(p);
+            });
+
+            // Atualizar as aulas em grupo com TODOS os participantes
+            data = data.map((cls: any) => {
+              if (cls.is_group_class && participantsMap.has(cls.id)) {
+                return {
+                  ...cls,
+                  class_participants: participantsMap.get(cls.id)
+                };
+              }
+              return cls;
+            });
+          }
+        }
       }
       if (error) {
         console.error('Error loading classes:', error);

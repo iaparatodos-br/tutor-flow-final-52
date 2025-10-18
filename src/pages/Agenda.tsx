@@ -444,7 +444,25 @@ export default function Agenda() {
               
               return { ...template, participants };
             })()
-          : { ...template, participants: [] };
+          : await (async () => {
+              // AULAS INDIVIDUAIS: buscar o aluno pelo student_id
+              if (!template.student_id) {
+                return { ...template, participants: [] };
+              }
+              
+              const { data: studentData } = await supabase
+                .from('profiles')
+                .select('id, name, email')
+                .eq('id', template.student_id)
+                .maybeSingle();
+              
+              const participants = studentData ? [{
+                student_id: studentData.id,
+                student: studentData
+              }] : [];
+              
+              return { ...template, participants };
+            })();
 
         const virtualInstances = generateVirtualInstances(templateWithParticipants, startDate, endDate);
           

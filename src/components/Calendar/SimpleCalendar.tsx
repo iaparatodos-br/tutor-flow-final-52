@@ -427,19 +427,8 @@ export function SimpleCalendar({
                   {(() => {
                     const classEvent = selectedEvent as CalendarClass;
                     
-                    // For students in group classes, check individual status
-                    let showReport = false;
-                    if (!isProfessor && classEvent.is_group_class) {
-                      const myParticipation = classEvent.participants?.find(
-                        p => p.student_id === currentUserId
-                      );
-                      showReport = myParticipation?.status === 'concluida';
-                    } else {
-                      // For professors or individual classes, use class status
-                      showReport = classEvent.status === 'concluida';
-                    }
-                    
-                    return showReport ? (
+                    // Always show report section - ClassReportView handles its own loading/empty states
+                    return (
                       <div className="pt-4 border-t">
                         <ClassReportView
                           classId={classEvent.id}
@@ -451,7 +440,7 @@ export function SimpleCalendar({
                           showEditButton={isProfessor}
                         />
                       </div>
-                    ) : null;
+                    );
                   })()}
 
                   {/* Action Buttons */}

@@ -35,8 +35,8 @@
       "guardianAddress": "Endereço do Responsável"
     },
     "ownResponsible": "O próprio aluno é responsável pela cobrança",
-    "invoicesSentTo": "As faturas serão enviadas para: {email}",
-    "mainContact": "Contato principal: {email}",
+    "invoicesSentTo": "As faturas serão enviadas para: {{email}}",
+    "mainContact": "Contato principal: {{email}}",
     "invoiceEmail": "As faturas serão enviadas para este email",
     "contactEmail": "Email para contato",
     "cpfForBoleto": "CPF que será usado para emissão de boletos",

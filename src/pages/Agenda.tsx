@@ -469,9 +469,9 @@ export default function Agenda() {
         });
       }
 
-      // Generate virtual instances for infinite recurrences from TEMPLATES (only for professors)
+      // Generate virtual instances for infinite recurrences from TEMPLATES
       const allClasses: ClassWithParticipants[] = [...classesWithDetails];
-      if (isProfessor) {
+      
       // Process each template to generate virtual instances
       for (const template of templates) {
         // Check if recurrence is still active
@@ -537,7 +537,6 @@ export default function Agenda() {
           
           allClasses.push(...filteredVirtual);
         }
-      }
       setClasses(allClasses);
 
       // Transform for calendar view

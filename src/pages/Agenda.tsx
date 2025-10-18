@@ -1108,7 +1108,8 @@ export default function Agenda() {
 
         <SimpleCalendar 
           classes={calendarClasses} 
-          availabilityBlocks={availabilityBlocks} 
+          availabilityBlocks={availabilityBlocks}
+          currentUserId={profile?.id}
           onConfirmClass={handleConfirmClass} 
           onCancelClass={handleRecurringClassCancel} 
           onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)} 

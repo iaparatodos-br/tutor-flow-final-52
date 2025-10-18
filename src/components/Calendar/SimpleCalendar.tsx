@@ -23,6 +23,7 @@ interface SimpleCalendarProps {
   classes: CalendarClass[];
   availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
+  currentUserId?: string;
   onConfirmClass?: (classId: string) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
@@ -36,7 +37,8 @@ interface SimpleCalendarProps {
 export function SimpleCalendar({ 
   classes, 
   availabilityBlocks = [], 
-  isProfessor, 
+  isProfessor,
+  currentUserId, 
   onConfirmClass, 
   onCancelClass,
   onCompleteClass,
@@ -428,12 +430,8 @@ export function SimpleCalendar({
                     // For students in group classes, check individual status
                     let showReport = false;
                     if (!isProfessor && classEvent.is_group_class) {
-                      // Need to get student ID from context/profile
-                      // This assumes profile is available in parent scope
-                      // If not, you'll need to pass it as a prop
-                      const studentId = (window as any).__STUDENT_ID__; // Temporary workaround
                       const myParticipation = classEvent.participants?.find(
-                        p => p.student_id === studentId
+                        p => p.student_id === currentUserId
                       );
                       showReport = myParticipation?.status === 'concluida';
                     } else {

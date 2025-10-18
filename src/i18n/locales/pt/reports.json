@@ -1,0 +1,70 @@
+{
+  "modal": {
+    "title": {
+      "create": "Criar Relato da Aula",
+      "edit": "Editar Relato da Aula"
+    },
+    "classInfo": {
+      "title": "Informações da Aula",
+      "students": "Aluno(s):",
+      "date": "Data:",
+      "time": "Horário:",
+      "timezone": "(Horário de Brasília)"
+    },
+    "fields": {
+      "lessonSummary": {
+        "label": "Resumo da Aula",
+        "placeholder": "Descreva o que foi ensinado nesta aula (visível para todos os alunos)",
+        "required": "* Obrigatório"
+      },
+      "homework": {
+        "label": "Tarefas",
+        "placeholder": "Tarefas e exercícios para casa (opcional)"
+      },
+      "extraMaterials": {
+        "label": "Links e Materiais Extras",
+        "placeholder": "Links para materiais, vídeos, documentos, etc. (opcional)"
+      },
+      "individualFeedback": {
+        "label": "Feedback Individual",
+        "description": "Feedback personalizado para cada aluno (visível apenas para o aluno e responsável)",
+        "placeholder": "Feedback individual para {{name}} (opcional)"
+      }
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "create": "Criar Relato",
+      "update": "Atualizar Relato",
+      "saving": "Salvando..."
+    },
+    "messages": {
+      "createSuccess": "Relato da aula criado com sucesso",
+      "updateSuccess": "Relato da aula atualizado com sucesso",
+      "error": "Erro ao salvar relato",
+      "requiredField": "O resumo da aula é obrigatório"
+    }
+  },
+  "view": {
+    "title": "Relato da Aula",
+    "sections": {
+      "lessonSummary": "Resumo da Aula",
+      "homework": "Tarefas",
+      "materials": "Materiais e Links",
+      "feedback": {
+        "title": "Feedbacks Individuais",
+        "titleStudent": "Seu Feedback"
+      }
+    },
+    "empty": {
+      "title": "Nenhum relato disponível",
+      "descriptionProfessor": "O relato da aula será exibido aqui após ser criado",
+      "descriptionStudent": "O professor ainda não criou um relato para esta aula"
+    },
+    "actions": {
+      "edit": "Editar"
+    },
+    "updatedAt": "Atualizado em {{date}}",
+    "error": "Nenhum relato encontrado para esta aula",
+    "studentLabel": "Aluno"
+  }
+}

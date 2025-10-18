@@ -1,0 +1,81 @@
+{
+  "workingHours": {
+    "title": "Horários de Trabalho",
+    "timezone": "(Horário de Brasília)",
+    "configure": "Configurar",
+    "dialogTitle": "Configurar Horários de Trabalho",
+    "dialogDescription": "Todos os horários são configurados no fuso horário de Brasília",
+    "done": "Concluído",
+    "unavailable": "Indisponível",
+    "save": "Salvar",
+    "saving": "Salvando..."
+  },
+  "blocks": {
+    "title": "Bloqueios de Agenda",
+    "count": "({{count}})",
+    "new": "Novo Bloqueio",
+    "add": "Adicionar Bloqueio",
+    "empty": {
+      "title": "Nenhum bloqueio ativo",
+      "description": "Adicione bloqueios para indisponibilizar horários específicos"
+    },
+    "fields": {
+      "title": {
+        "label": "Título",
+        "placeholder": "Ex: Médico, Férias, Compromisso pessoal",
+        "required": "* Obrigatório"
+      },
+      "description": {
+        "label": "Descrição",
+        "placeholder": "Detalhes opcionais sobre o bloqueio"
+      },
+      "startDate": {
+        "label": "Data Início",
+        "required": "* Obrigatório"
+      },
+      "startTime": {
+        "label": "Hora Início",
+        "required": "* Obrigatório"
+      },
+      "endDate": {
+        "label": "Data Fim",
+        "required": "* Obrigatório"
+      },
+      "endTime": {
+        "label": "Hora Fim",
+        "required": "* Obrigatório"
+      }
+    },
+    "table": {
+      "title": "Título",
+      "period": "Período",
+      "description": "Descrição",
+      "actions": "Ações",
+      "until": "até"
+    },
+    "actions": {
+      "cancel": "Cancelar",
+      "add": "Adicionar"
+    }
+  },
+  "daysOfWeek": {
+    "sunday": "Domingo",
+    "monday": "Segunda",
+    "tuesday": "Terça",
+    "wednesday": "Quarta",
+    "thursday": "Quinta",
+    "friday": "Sexta",
+    "saturday": "Sábado"
+  },
+  "messages": {
+    "loading": "Carregando configurações...",
+    "addSuccess": "Bloqueio adicionado com sucesso",
+    "addError": "Erro ao adicionar bloqueio",
+    "deleteSuccess": "Bloqueio removido com sucesso",
+    "deleteError": "Erro ao remover bloqueio",
+    "updateError": "Erro ao atualizar horário de trabalho",
+    "loadError": "Erro ao carregar configurações de disponibilidade",
+    "requiredFields": "Preencha todos os campos obrigatórios",
+    "invalidDateTime": "A data/hora de fim deve ser posterior à de início"
+  }
+}

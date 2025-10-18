@@ -1,0 +1,81 @@
+{
+  "workingHours": {
+    "title": "Working Hours",
+    "timezone": "(Brasília Time)",
+    "configure": "Configure",
+    "dialogTitle": "Configure Working Hours",
+    "dialogDescription": "All times are set in Brasília timezone",
+    "done": "Done",
+    "unavailable": "Unavailable",
+    "save": "Save",
+    "saving": "Saving..."
+  },
+  "blocks": {
+    "title": "Schedule Blocks",
+    "count": "({{count}})",
+    "new": "New Block",
+    "add": "Add Block",
+    "empty": {
+      "title": "No active blocks",
+      "description": "Add blocks to make specific times unavailable"
+    },
+    "fields": {
+      "title": {
+        "label": "Title",
+        "placeholder": "E.g.: Doctor, Vacation, Personal commitment",
+        "required": "* Required"
+      },
+      "description": {
+        "label": "Description",
+        "placeholder": "Optional details about the block"
+      },
+      "startDate": {
+        "label": "Start Date",
+        "required": "* Required"
+      },
+      "startTime": {
+        "label": "Start Time",
+        "required": "* Required"
+      },
+      "endDate": {
+        "label": "End Date",
+        "required": "* Required"
+      },
+      "endTime": {
+        "label": "End Time",
+        "required": "* Required"
+      }
+    },
+    "table": {
+      "title": "Title",
+      "period": "Period",
+      "description": "Description",
+      "actions": "Actions",
+      "until": "until"
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "add": "Add"
+    }
+  },
+  "daysOfWeek": {
+    "sunday": "Sunday",
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday"
+  },
+  "messages": {
+    "loading": "Loading settings...",
+    "addSuccess": "Block added successfully",
+    "addError": "Error adding block",
+    "deleteSuccess": "Block removed successfully",
+    "deleteError": "Error removing block",
+    "updateError": "Error updating working hours",
+    "loadError": "Error loading availability settings",
+    "requiredFields": "Fill in all required fields",
+    "invalidDateTime": "End date/time must be after start date/time"
+  }
+}

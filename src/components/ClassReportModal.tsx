@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { CalendarClass } from '@/components/Calendar/CalendarView';
 import { useProfile } from '@/contexts/ProfileContext';
 import { BookOpen, FileText, Link, MessageSquare } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface ClassReportModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ export function ClassReportModal({
 }: ClassReportModalProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('reports');
   
   const [loading, setLoading] = useState(false);
   const [existingReport, setExistingReport] = useState<ClassReport | null>(null);
@@ -139,8 +141,8 @@ export function ClassReportModal({
     
     if (!lessonSummary.trim()) {
       toast({
-        title: "Erro",
-        description: "O resumo da aula é obrigatório",
+        title: t('modal.messages.error'),
+        description: t('modal.messages.requiredField'),
         variant: "destructive",
       });
       return;
@@ -221,10 +223,10 @@ export function ClassReportModal({
       }
 
       toast({
-        title: "Sucesso!",
+        title: t('common:success'),
         description: existingReport 
-          ? "Relato da aula atualizado com sucesso" 
-          : "Relato da aula criado com sucesso",
+          ? t('modal.messages.updateSuccess')
+          : t('modal.messages.createSuccess'),
       });
 
       onReportCreated?.();
@@ -233,8 +235,8 @@ export function ClassReportModal({
     } catch (error: any) {
       console.error('Error saving report:', error);
       toast({
-        title: "Erro",
-        description: error.message || "Erro ao salvar relato",
+        title: t('common:error'),
+        description: error.message || t('modal.messages.error'),
         variant: "destructive",
       });
     } finally {
@@ -254,7 +256,7 @@ export function ClassReportModal({
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {existingReport ? 'Editar Relato da Aula' : 'Criar Relato da Aula'}
+            {existingReport ? t('modal.title.edit') : t('modal.title.create')}
           </DialogTitle>
         </DialogHeader>
         
@@ -264,20 +266,20 @@ export function ClassReportModal({
             <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
-                Informações da Aula
+                {t('modal.classInfo.title')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div>
-                <strong>Aluno(s):</strong>{' '}
+                <strong>{t('modal.classInfo.students')}</strong>{' '}
                 {participants.map(p => p.student.name).join(', ')}
               </div>
               <div>
-                <strong>Data:</strong>{' '}
+                <strong>{t('modal.classInfo.date')}</strong>{' '}
                 {new Date(classData.start).toLocaleDateString('pt-BR')}
               </div>
               <div>
-                <strong>Horário:</strong>{' '}
+                <strong>{t('modal.classInfo.time')}</strong>{' '}
                 {new Date(classData.start).toLocaleTimeString('pt-BR', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
@@ -285,7 +287,7 @@ export function ClassReportModal({
                 {new Date(classData.end).toLocaleTimeString('pt-BR', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
-                })} <span className="text-xs text-muted-foreground">(Horário de Brasília)</span>
+                })} <span className="text-xs text-muted-foreground">{t('modal.classInfo.timezone')}</span>
               </div>
             </CardContent>
           </Card>
@@ -294,11 +296,11 @@ export function ClassReportModal({
           <div className="space-y-2">
             <Label htmlFor="lesson-summary" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
-              Resumo da Aula *
+              {t('modal.fields.lessonSummary.label')} *
             </Label>
             <Textarea
               id="lesson-summary"
-              placeholder="Descreva o que foi ensinado nesta aula (visível para todos os alunos)"
+              placeholder={t('modal.fields.lessonSummary.placeholder')}
               value={lessonSummary}
               onChange={(e) => setLessonSummary(e.target.value)}
               className="min-h-[100px]"
@@ -310,11 +312,11 @@ export function ClassReportModal({
           <div className="space-y-2">
             <Label htmlFor="homework" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
-              Tarefas
+              {t('modal.fields.homework.label')}
             </Label>
             <Textarea
               id="homework"
-              placeholder="Tarefas e exercícios para casa (opcional)"
+              placeholder={t('modal.fields.homework.placeholder')}
               value={homework}
               onChange={(e) => setHomework(e.target.value)}
               className="min-h-[80px]"
@@ -325,11 +327,11 @@ export function ClassReportModal({
           <div className="space-y-2">
             <Label htmlFor="materials" className="flex items-center gap-2">
               <Link className="h-4 w-4" />
-              Links e Materiais Extras
+              {t('modal.fields.extraMaterials.label')}
             </Label>
             <Textarea
               id="materials"
-              placeholder="Links para materiais, vídeos, documentos, etc. (opcional)"
+              placeholder={t('modal.fields.extraMaterials.placeholder')}
               value={extraMaterials}
               onChange={(e) => setExtraMaterials(e.target.value)}
               className="min-h-[80px]"
@@ -343,10 +345,10 @@ export function ClassReportModal({
               <div className="space-y-4">
                 <Label className="flex items-center gap-2 text-base">
                   <MessageSquare className="h-4 w-4" />
-                  Feedback Individual
+                  {t('modal.fields.individualFeedback.label')}
                 </Label>
                 <p className="text-sm text-muted-foreground">
-                  Feedback personalizado para cada aluno (visível apenas para o aluno e responsável)
+                  {t('modal.fields.individualFeedback.description')}
                 </p>
                 
                 {participants.map((participant, index) => {
@@ -357,7 +359,7 @@ export function ClassReportModal({
                         {participant.student.name}
                       </Label>
                       <Textarea
-                        placeholder={`Feedback individual para ${participant.student.name} (opcional)`}
+                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
                         className="min-h-[80px]"
@@ -376,13 +378,13 @@ export function ClassReportModal({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancelar
+              {t('modal.actions.cancel')}
             </Button>
             <Button 
               onClick={handleSubmit}
               disabled={loading || !lessonSummary.trim()}
             >
-              {loading ? 'Salvando...' : existingReport ? 'Atualizar Relato' : 'Criar Relato'}
+              {loading ? t('modal.actions.saving') : existingReport ? t('modal.actions.update') : t('modal.actions.create')}
             </Button>
           </div>
         </div>

@@ -1,0 +1,33 @@
+{
+  "button": "Amnesty",
+  "title": "Grant Amnesty",
+  "description": "You are about to remove the cancellation charge for <strong>{{studentName}}</strong>.",
+  "alert": {
+    "title": "This action:",
+    "removes": "Removes the cancellation charge",
+    "changes": "Changes status to \"Cancelled without Charge\"",
+    "cancels": "Cancels the related invoice",
+    "irreversible": "Cannot be undone"
+  },
+  "fields": {
+    "justification": {
+      "label": "Justification (optional)",
+      "placeholder": "E.g.: Technical issue, medical emergency, force majeure..."
+    }
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "grant": "Grant Amnesty",
+    "granting": "Granting..."
+  },
+  "messages": {
+    "success": {
+      "title": "Amnesty Granted",
+      "description": "The cancellation charge for {{studentName}} has been removed."
+    },
+    "error": {
+      "title": "Error",
+      "description": "Unable to grant amnesty. Please try again."
+    }
+  }
+}

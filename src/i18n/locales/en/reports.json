@@ -1,0 +1,70 @@
+{
+  "modal": {
+    "title": {
+      "create": "Create Class Report",
+      "edit": "Edit Class Report"
+    },
+    "classInfo": {
+      "title": "Class Information",
+      "students": "Student(s):",
+      "date": "Date:",
+      "time": "Time:",
+      "timezone": "(Brasília Time)"
+    },
+    "fields": {
+      "lessonSummary": {
+        "label": "Lesson Summary",
+        "placeholder": "Describe what was taught in this class (visible to all students)",
+        "required": "* Required"
+      },
+      "homework": {
+        "label": "Homework",
+        "placeholder": "Homework and exercises (optional)"
+      },
+      "extraMaterials": {
+        "label": "Extra Links and Materials",
+        "placeholder": "Links to materials, videos, documents, etc. (optional)"
+      },
+      "individualFeedback": {
+        "label": "Individual Feedback",
+        "description": "Personalized feedback for each student (visible only to the student and guardian)",
+        "placeholder": "Individual feedback for {{name}} (optional)"
+      }
+    },
+    "actions": {
+      "cancel": "Cancel",
+      "create": "Create Report",
+      "update": "Update Report",
+      "saving": "Saving..."
+    },
+    "messages": {
+      "createSuccess": "Class report created successfully",
+      "updateSuccess": "Class report updated successfully",
+      "error": "Error saving report",
+      "requiredField": "Lesson summary is required"
+    }
+  },
+  "view": {
+    "title": "Class Report",
+    "sections": {
+      "lessonSummary": "Lesson Summary",
+      "homework": "Homework",
+      "materials": "Materials and Links",
+      "feedback": {
+        "title": "Individual Feedback",
+        "titleStudent": "Your Feedback"
+      }
+    },
+    "empty": {
+      "title": "No report available",
+      "descriptionProfessor": "The class report will be displayed here after creation",
+      "descriptionStudent": "The teacher hasn't created a report for this class yet"
+    },
+    "actions": {
+      "edit": "Edit"
+    },
+    "updatedAt": "Updated on {{date}}",
+    "error": "No report found for this class",
+    "studentLabel": "Student"
+  }
+}

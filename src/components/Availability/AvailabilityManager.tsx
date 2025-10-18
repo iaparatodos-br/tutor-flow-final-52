@@ -13,6 +13,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Clock, Plus, Settings, X, Calendar, Edit, Trash2 } from 'lucide-react';
 import moment from 'moment';
+import { useTranslation } from 'react-i18next';
 
 interface AvailabilityBlock {
   id: string;
@@ -34,19 +35,10 @@ interface AvailabilityManagerProps {
   onAvailabilityChange?: () => void;
 }
 
-const DAYS_OF_WEEK = [
-  { value: 0, label: 'Domingo' },
-  { value: 1, label: 'Segunda' },
-  { value: 2, label: 'Terça' },
-  { value: 3, label: 'Quarta' },
-  { value: 4, label: 'Quinta' },
-  { value: 5, label: 'Sexta' },
-  { value: 6, label: 'Sábado' }
-];
-
 export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManagerProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('availability');
   
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -65,6 +57,16 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
   });
 
   const [selectedWorkingHour, setSelectedWorkingHour] = useState<WorkingHours | null>(null);
+
+  const DAYS_OF_WEEK = [
+    { value: 0, label: t('daysOfWeek.sunday') },
+    { value: 1, label: t('daysOfWeek.monday') },
+    { value: 2, label: t('daysOfWeek.tuesday') },
+    { value: 3, label: t('daysOfWeek.wednesday') },
+    { value: 4, label: t('daysOfWeek.thursday') },
+    { value: 5, label: t('daysOfWeek.friday') },
+    { value: 6, label: t('daysOfWeek.saturday') }
+  ];
 
   useEffect(() => {
     if (profile?.id) {
@@ -100,8 +102,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     } catch (error) {
       console.error('Erro ao carregar dados de disponibilidade:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao carregar configurações de disponibilidade",
+        title: t('common:error'),
+        description: t('messages.loadError'),
         variant: "destructive",
       });
     } finally {
@@ -114,8 +116,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     
     if (!profile?.id || !newBlock.title || !newBlock.start_date || !newBlock.start_time || !newBlock.end_date || !newBlock.end_time) {
       toast({
-        title: "Erro",
-        description: "Preencha todos os campos obrigatórios",
+        title: t('common:error'),
+        description: t('messages.requiredFields'),
         variant: "destructive",
       });
       return;
@@ -127,8 +129,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
 
       if (endDateTime <= startDateTime) {
         toast({
-          title: "Erro",
-          description: "A data/hora de fim deve ser posterior à de início",
+          title: t('common:error'),
+          description: t('messages.invalidDateTime'),
           variant: "destructive",
         });
         return;
@@ -147,8 +149,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
       if (error) throw error;
 
       toast({
-        title: "Sucesso",
-        description: "Bloqueio adicionado com sucesso",
+        title: t('common:success'),
+        description: t('messages.addSuccess'),
       });
 
       setIsBlockDialogOpen(false);
@@ -166,8 +168,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     } catch (error) {
       console.error('Erro ao adicionar bloqueio:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao adicionar bloqueio",
+        title: t('common:error'),
+        description: t('messages.addError'),
         variant: "destructive",
       });
     }
@@ -183,8 +185,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
       if (error) throw error;
 
       toast({
-        title: "Sucesso",
-        description: "Bloqueio removido com sucesso",
+        title: t('common:success'),
+        description: t('messages.deleteSuccess'),
       });
 
       await loadAvailabilityData();
@@ -192,8 +194,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     } catch (error) {
       console.error('Erro ao remover bloqueio:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao remover bloqueio",
+        title: t('common:error'),
+        description: t('messages.deleteError'),
         variant: "destructive",
       });
     }
@@ -238,8 +240,8 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     } catch (error) {
       console.error('Erro ao atualizar horário de trabalho:', error);
       toast({
-        title: "Erro",
-        description: "Erro ao atualizar horário de trabalho",
+        title: t('common:error'),
+        description: t('messages.updateError'),
         variant: "destructive",
       });
     }
@@ -259,7 +261,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
         <CardContent className="p-6">
           <div className="text-center py-8">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Carregando configurações...</p>
+            <p className="text-muted-foreground">{t('messages.loading')}</p>
           </div>
         </CardContent>
       </Card>
@@ -273,20 +275,20 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
-            Horários de Trabalho
-            <span className="text-xs text-muted-foreground font-normal">(Horário de Brasília)</span>
+            {t('workingHours.title')}
+            <span className="text-xs text-muted-foreground font-normal">{t('workingHours.timezone')}</span>
           </CardTitle>
           <Dialog open={isWorkingHoursDialogOpen} onOpenChange={setIsWorkingHoursDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm">
                 <Settings className="h-4 w-4 mr-2" />
-                Configurar
+                {t('workingHours.configure')}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[600px]">
               <DialogHeader>
-                <DialogTitle>Configurar Horários de Trabalho</DialogTitle>
-                <p className="text-sm text-muted-foreground">Todos os horários são configurados no fuso horário de Brasília</p>
+                <DialogTitle>{t('workingHours.dialogTitle')}</DialogTitle>
+                <p className="text-sm text-muted-foreground">{t('workingHours.dialogDescription')}</p>
               </DialogHeader>
               
               <div className="space-y-4">
@@ -305,7 +307,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
               
               <div className="flex justify-end">
                 <Button onClick={() => setIsWorkingHoursDialogOpen(false)}>
-                  Concluído
+                  {t('workingHours.done')}
                 </Button>
               </div>
             </DialogContent>
@@ -323,7 +325,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                       {hours.start_time.slice(0, 5)} - {hours.end_time.slice(0, 5)}
                     </Badge>
                   ) : (
-                    <Badge variant="secondary">Indisponível</Badge>
+                    <Badge variant="secondary">{t('workingHours.unavailable')}</Badge>
                   )}
                 </div>
               );
@@ -337,45 +339,45 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <Calendar className="h-5 w-5" />
-            Bloqueios de Agenda ({blocks.length})
+            {t('blocks.title')} {t('blocks.count', { count: blocks.length })}
           </CardTitle>
           <Dialog open={isBlockDialogOpen} onOpenChange={setIsBlockDialogOpen}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
-                Novo Bloqueio
+                {t('blocks.new')}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
-                <DialogTitle>Adicionar Bloqueio</DialogTitle>
+                <DialogTitle>{t('blocks.add')}</DialogTitle>
               </DialogHeader>
               
               <form onSubmit={handleAddBlock} className="space-y-4">
                 <div>
-                  <Label htmlFor="title">Título *</Label>
+                  <Label htmlFor="title">{t('blocks.fields.title.label')} *</Label>
                   <Input
                     id="title"
                     value={newBlock.title}
                     onChange={(e) => setNewBlock(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="Ex: Médico, Férias, Compromisso pessoal"
+                    placeholder={t('blocks.fields.title.placeholder')}
                     required
                   />
                 </div>
                 
                 <div>
-                  <Label htmlFor="description">Descrição</Label>
+                  <Label htmlFor="description">{t('blocks.fields.description.label')}</Label>
                   <Textarea
                     id="description"
                     value={newBlock.description}
                     onChange={(e) => setNewBlock(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Detalhes opcionais sobre o bloqueio"
+                    placeholder={t('blocks.fields.description.placeholder')}
                   />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="start_date">Data Início *</Label>
+                    <Label htmlFor="start_date">{t('blocks.fields.startDate.label')} *</Label>
                     <Input
                       id="start_date"
                       type="date"
@@ -385,7 +387,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                     />
                   </div>
                   <div>
-                    <Label htmlFor="start_time">Hora Início *</Label>
+                    <Label htmlFor="start_time">{t('blocks.fields.startTime.label')} *</Label>
                     <Input
                       id="start_time"
                       type="time"
@@ -398,7 +400,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="end_date">Data Fim *</Label>
+                    <Label htmlFor="end_date">{t('blocks.fields.endDate.label')} *</Label>
                     <Input
                       id="end_date"
                       type="date"
@@ -408,7 +410,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                     />
                   </div>
                   <div>
-                    <Label htmlFor="end_time">Hora Fim *</Label>
+                    <Label htmlFor="end_time">{t('blocks.fields.endTime.label')} *</Label>
                     <Input
                       id="end_time"
                       type="time"
@@ -421,10 +423,10 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="outline" onClick={() => setIsBlockDialogOpen(false)}>
-                    Cancelar
+                    {t('blocks.actions.cancel')}
                   </Button>
                   <Button type="submit">
-                    Adicionar
+                    {t('blocks.actions.add')}
                   </Button>
                 </div>
               </form>
@@ -435,19 +437,19 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
           {blocks.length === 0 ? (
             <div className="text-center py-8">
               <Calendar className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-lg font-medium mb-2">Nenhum bloqueio ativo</h3>
+              <h3 className="text-lg font-medium mb-2">{t('blocks.empty.title')}</h3>
               <p className="text-muted-foreground">
-                Adicione bloqueios para indisponibilizar horários específicos
+                {t('blocks.empty.description')}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Título</TableHead>
-                  <TableHead>Período</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead>Ações</TableHead>
+                  <TableHead>{t('blocks.table.title')}</TableHead>
+                  <TableHead>{t('blocks.table.period')}</TableHead>
+                  <TableHead>{t('blocks.table.description')}</TableHead>
+                  <TableHead>{t('blocks.table.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -458,7 +460,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                       <div className="text-sm">
                         <div>{formatDateTime(block.start_datetime)}</div>
                         <div className="text-muted-foreground">
-                          até {formatDateTime(block.end_datetime)}
+                          {t('blocks.table.until')} {formatDateTime(block.end_datetime)}
                         </div>
                       </div>
                     </TableCell>
@@ -493,6 +495,7 @@ interface WorkingHourRowProps {
 }
 
 function WorkingHourRow({ day, existingHours, onUpdate }: WorkingHourRowProps) {
+  const { t } = useTranslation('availability');
   const [isActive, setIsActive] = useState(existingHours?.is_active ?? false);
   const [startTime, setStartTime] = useState(existingHours?.start_time || '09:00');
   const [endTime, setEndTime] = useState(existingHours?.end_time || '18:00');
@@ -539,7 +542,7 @@ function WorkingHourRow({ day, existingHours, onUpdate }: WorkingHourRowProps) {
       )}
       
       {!isActive && (
-        <span className="text-muted-foreground text-sm">Indisponível</span>
+        <span className="text-muted-foreground text-sm">{t('workingHours.unavailable')}</span>
       )}
     </div>
   );

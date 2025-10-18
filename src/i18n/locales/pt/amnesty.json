@@ -1,0 +1,33 @@
+{
+  "button": "Anistia",
+  "title": "Conceder Anistia",
+  "description": "Você está prestes a remover a cobrança de cancelamento para <strong>{{studentName}}</strong>.",
+  "alert": {
+    "title": "Esta ação:",
+    "removes": "Remove a cobrança de cancelamento",
+    "changes": "Altera o status para \"Cancelada sem Cobrança\"",
+    "cancels": "Cancela a fatura relacionada",
+    "irreversible": "Não pode ser desfeita"
+  },
+  "fields": {
+    "justification": {
+      "label": "Justificativa (opcional)",
+      "placeholder": "Ex: Problema técnico, emergência médica, caso fortuito..."
+    }
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "grant": "Conceder Anistia",
+    "granting": "Concedendo..."
+  },
+  "messages": {
+    "success": {
+      "title": "Anistia Concedida",
+      "description": "A cobrança de cancelamento para {{studentName}} foi removida."
+    },
+    "error": {
+      "title": "Erro",
+      "description": "Não foi possível conceder a anistia. Tente novamente."
+    }
+  }
+}

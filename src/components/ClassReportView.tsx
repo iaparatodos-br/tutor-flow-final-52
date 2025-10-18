@@ -15,6 +15,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTranslation } from 'react-i18next';
 
 interface ClassReportViewProps {
   classId: string;
@@ -43,6 +44,7 @@ export function ClassReportView({
   showEditButton = false 
 }: ClassReportViewProps) {
   const { profile, isProfessor } = useAuth();
+  const { t, i18n } = useTranslation('reports');
   
   const [report, setReport] = useState<ClassReport | null>(null);
   const [feedbacks, setFeedbacks] = useState<StudentFeedback[]>([]);
@@ -69,7 +71,7 @@ export function ClassReportView({
 
       if (reportError) {
         if (reportError.code === 'PGRST116') {
-          setError('Nenhum relato encontrado para esta aula');
+          setError(t('view.error'));
         } else {
           throw reportError;
         }
@@ -105,7 +107,7 @@ export function ClassReportView({
         const mappedFeedbacks = feedbackData?.map(f => ({
           student_id: f.student_id,
           feedback: f.feedback,
-          student_name: studentNames[f.student_id] || 'Aluno'
+          student_name: studentNames[f.student_id] || t('view.studentLabel')
         })) || [];
 
         // Filter feedbacks based on user permissions
@@ -123,7 +125,7 @@ export function ClassReportView({
 
     } catch (err: any) {
       console.error('Error loading report:', err);
-      setError(err.message || 'Erro ao carregar relato');
+      setError(err.message || t('common:error'));
     } finally {
       setLoading(false);
     }
@@ -173,12 +175,12 @@ export function ClassReportView({
           <div className="text-center">
             <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
             <h3 className="text-lg font-medium mb-2">
-              Nenhum relato disponível
+              {t('view.empty.title')}
             </h3>
             <p className="text-muted-foreground">
               {isProfessor 
-                ? "O relato da aula será exibido aqui após ser criado"
-                : "O professor ainda não criou um relato para esta aula"
+                ? t('view.empty.descriptionProfessor')
+                : t('view.empty.descriptionStudent')
               }
             </p>
           </div>
@@ -195,12 +197,12 @@ export function ClassReportView({
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <FileText className="h-5 w-5" />
-              Relato da Aula
+              {t('view.title')}
             </CardTitle>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {new Date(report.created_at).toLocaleDateString('pt-BR')}
+                {new Date(report.created_at).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'pt-BR')}
               </Badge>
               {showEditButton && isProfessor && onEditReport && (
                 <Button
@@ -210,7 +212,7 @@ export function ClassReportView({
                   className="flex items-center gap-1"
                 >
                   <Edit3 className="h-3 w-3" />
-                  Editar
+                  {t('view.actions.edit')}
                 </Button>
               )}
             </div>
@@ -221,7 +223,7 @@ export function ClassReportView({
           <div className="space-y-2">
             <h4 className="font-medium flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
-              Resumo da Aula
+              {t('view.sections.lessonSummary')}
             </h4>
             <p className="text-sm bg-muted/50 p-3 rounded-lg whitespace-pre-wrap">
               {report.lesson_summary}
@@ -233,7 +235,7 @@ export function ClassReportView({
             <div className="space-y-2">
               <h4 className="font-medium flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
-                Tarefas
+                {t('view.sections.homework')}
               </h4>
               <p className="text-sm bg-muted/50 p-3 rounded-lg whitespace-pre-wrap">
                 {report.homework}
@@ -246,7 +248,7 @@ export function ClassReportView({
             <div className="space-y-2">
               <h4 className="font-medium flex items-center gap-2">
                 <LinkIcon className="h-4 w-4" />
-                Materiais e Links
+                {t('view.sections.materials')}
               </h4>
               <div className="text-sm bg-muted/50 p-3 rounded-lg whitespace-pre-wrap">
                 {formatLinks(report.extra_materials)}
@@ -257,7 +259,9 @@ export function ClassReportView({
           {/* Updated timestamp */}
           {report.updated_at !== report.created_at && (
             <div className="text-xs text-muted-foreground">
-              Atualizado em {new Date(report.updated_at).toLocaleString('pt-BR')}
+              {t('view.updatedAt', { 
+                date: new Date(report.updated_at).toLocaleString(i18n.language === 'en' ? 'en-US' : 'pt-BR') 
+              })}
             </div>
           )}
         </CardContent>
@@ -269,7 +273,7 @@ export function ClassReportView({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageSquare className="h-5 w-5" />
-              {isProfessor ? 'Feedbacks Individuais' : 'Seu Feedback'}
+              {isProfessor ? t('view.sections.feedback.title') : t('view.sections.feedback.titleStudent')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

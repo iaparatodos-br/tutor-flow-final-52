@@ -935,6 +935,18 @@ export default function Agenda() {
         status: 'concluida'
       }).eq('id', classId);
       if (error) throw error;
+
+      // Atualizar status de TODOS os participantes da aula em grupo
+      const { error: participantsError } = await supabase
+        .from('class_participants')
+        .update({ status: 'concluida' })
+        .eq('class_id', classId);
+      
+      if (participantsError) {
+        console.error('Erro ao atualizar participantes:', participantsError);
+        // Não lançar erro aqui para não bloquear o fluxo principal
+      }
+
       toast({
         title: t('messages.classCompleted'),
         description: t('messages.classCompletedDescription')

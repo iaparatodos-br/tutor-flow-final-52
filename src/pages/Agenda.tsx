@@ -210,7 +210,8 @@ export default function Agenda() {
       isVirtual: true,
       is_template: false,
       class_template_id: templateClass.id,
-      status: 'confirmada' as const
+      status: 'confirmada' as const,
+      participants: templateClass.participants || [] // Garantir array vazio se undefined
     }));
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
@@ -413,17 +414,39 @@ export default function Agenda() {
       // Generate virtual instances for infinite recurrences from TEMPLATES (only for professors)
       const allClasses: ClassWithParticipants[] = [...classesWithDetails];
       if (isProfessor) {
-        // Process each template to generate virtual instances
-        for (const template of templates) {
-          // Check if recurrence is still active
-          if (template.recurrence_end_date) {
-            const templateEndDate = new Date(template.recurrence_end_date);
-            if (templateEndDate < startDate) {
-              continue; // Template already ended
-            }
+      // Process each template to generate virtual instances
+      for (const template of templates) {
+        // Check if recurrence is still active
+        if (template.recurrence_end_date) {
+          const templateEndDate = new Date(template.recurrence_end_date);
+          if (templateEndDate < startDate) {
+            continue; // Template already ended
           }
+        }
 
-          const virtualInstances = generateVirtualInstances(template, startDate, endDate);
+        // Buscar participantes do template antes de gerar instâncias virtuais
+        const templateWithParticipants = template.is_group_class 
+          ? await (async () => {
+              const { data: participantsData } = await supabase
+                .from('class_participants')
+                .select(`
+                  student_id,
+                  profiles!class_participants_student_id_fkey (
+                    id, name, email
+                  )
+                `)
+                .eq('class_id', template.id);
+              
+              const participants = (participantsData || []).map((p: any) => ({
+                student_id: p.student_id,
+                student: p.profiles
+              }));
+              
+              return { ...template, participants };
+            })()
+          : { ...template, participants: [] };
+
+        const virtualInstances = generateVirtualInstances(templateWithParticipants, startDate, endDate);
           
           // Filter out virtual instances that conflict with materialized classes
           const materializedDates = new Set(

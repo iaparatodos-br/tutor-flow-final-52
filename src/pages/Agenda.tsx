@@ -200,10 +200,8 @@ export default function Agenda() {
     // Generate occurrences only within the visible range
     const occurrences = rule.between(startDate, effectiveEndDate, true);
 
-    // Filter out the original template date if it's in range
-    const templateDate = new Date(templateClass.class_date);
-    const filteredOccurrences = occurrences.filter(date => date.getTime() !== templateDate.getTime());
-    return filteredOccurrences.map(date => ({
+    // Incluir a data do template nas instâncias virtuais
+    return occurrences.map(date => ({
       ...templateClass,
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),

@@ -19,6 +19,7 @@ interface VirtualClassData {
   service_price: number | null;
   class_template_id: string;
   duration_minutes: number;
+  student_id: string | null;
 }
 
 interface CancellationModalProps {
@@ -196,6 +197,7 @@ export function CancellationModal({
           .from('classes')
           .insert({
             teacher_id: virtualClassData.teacher_id,
+            student_id: virtualClassData.student_id,
             class_date: virtualClassData.class_date,
             duration_minutes: virtualClassData.duration_minutes,
             service_id: virtualClassData.service_id,

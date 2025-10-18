@@ -110,6 +110,7 @@ export default function Agenda() {
       service_price: number | null;
       class_template_id: string;
       duration_minutes: number;
+      student_id: string | null;
     };
   }>({
     isOpen: false,
@@ -993,7 +994,8 @@ export default function Agenda() {
       is_group_class: fullClassData.is_group_class || false,
       service_price: null, // Will be fetched from service if needed
       class_template_id: fullClassData.class_template_id || '',
-      duration_minutes: fullClassData.duration_minutes || 60
+      duration_minutes: fullClassData.duration_minutes || 60,
+      student_id: fullClassData.student_id || null
     } : undefined;
     
     setCancellationModal({

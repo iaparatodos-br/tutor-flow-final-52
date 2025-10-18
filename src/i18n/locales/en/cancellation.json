@@ -1,59 +1,112 @@
 {
-  "title": "Cancellation Policy",
-  "rules": {
-    "title": "Cancellation Rules",
-    "description": "Define the terms for cancellations of your classes",
-    "deadline": {
-      "label": "Minimum Cancellation Notice",
-      "description": "Minimum time the student must cancel before the class",
-      "hours": "{{count}}h ({{days}} days)"
-    },
-    "charge": {
-      "label": "Late Cancellation Fee",
-      "description": "Percentage to be charged if canceled after deadline"
-    },
-    "amnesty": {
-      "label": "Allow Amnesty",
-      "description": "Allows canceling charges case by case"
-    },
-    "saveButton": "Save Policy",
-    "updateButton": "Update Policy",
-    "createButton": "Create Policy",
-    "saving": "Saving..."
+  "title": "Cancel Class",
+  "at": "at",
+  "timezone": "(Brasília time)",
+  "status": {
+    "hoursUntil": "{{hours}} hours until class"
   },
-  "summary": {
-    "title": "Policy Summary",
-    "description": "How your students will see your rules",
-    "heading": "Cancellation Policy:",
-    "deadline": "Notice: {{hours}} hours before class",
-    "charge": "Late fee: {{percentage}}% of value",
-    "amnestyAllowed": "Amnesty allowed",
-    "amnestyNotAllowed": "Amnesty not allowed",
-    "teacherFree": "Teacher cancellation always free",
-    "created": "Created:",
-    "updated": "Updated:",
-    "active": "✓ Active Policy",
-    "inactive": "○ Inactive Policy"
+  "policy": {
+    "title": "Cancellation Policy:",
+    "freeDeadline": "Free cancellation",
+    "hours": "{{hours}} hours",
+    "beforeClass": "before class",
+    "lateCharge": "Late cancellation",
+    "percentage": "{{percentage}}%",
+    "ofValue": "of class value",
+    "amnestyAvailable": "Amnesty available (at teacher's discretion)"
   },
-  "document": {
-    "title": "Full Policy Document",
-    "description": "Upload a PDF with your detailed class policy (optional)",
-    "fileName": "policy.pdf",
-    "available": "Document available to students",
-    "remove": "Remove",
-    "selectFile": "Select PDF file (max. 5MB)",
-    "upload": "Upload Document",
-    "uploading": "Uploading..."
+  "alert": {
+    "withCharge": {
+      "title": "⚠️ Cancellation with Charge",
+      "deadlinePassed": "The {{hours}} hour deadline has passed.",
+      "chargeAmount": "Charge amount: R$ {{amount}}",
+      "nextInvoice": "The charge will be included in the next invoice."
+    },
+    "free": {
+      "title": "✓ Free Cancellation",
+      "professor": "As a teacher, you can cancel at any time without cost.",
+      "withinDeadline": "You are within the {{hours}} hour deadline. There will be no charge.",
+      "systemUnavailable": "The billing system is not active for this teacher. There will be no charge."
+    },
+    "groupClass": {
+      "title": "Group Class",
+      "description": "By canceling, you will be removed from this group class.",
+      "chargeApplied": "The charge will be applied normally."
+    }
+  },
+  "fields": {
+    "reason": "Cancellation reason",
+    "reasonPlaceholder": "Ex: Personal emergency, unexpected commitment...",
+    "reasonRequired": "Please provide the cancellation reason."
+  },
+  "actions": {
+    "back": "Back",
+    "cancel": "Cancel Class",
+    "canceling": "Canceling...",
+    "cancelWithCharge": "Cancel and Accept Charge"
   },
   "messages": {
-    "saveSuccess": "Cancellation policy saved successfully.",
-    "saveError": "Could not save cancellation policy.",
-    "loadError": "Could not load cancellation policy.",
-    "uploadSuccess": "Policy document uploaded successfully.",
-    "uploadError": "Could not upload document.",
-    "removeSuccess": "Document removed successfully.",
-    "removeError": "Could not remove document.",
-    "fileTooLarge": "Maximum file size is 5MB.",
-    "invalidFileType": "Only PDF files are accepted."
+    "success": "Class canceled successfully",
+    "error": "Error canceling class",
+    "errorDescription": "Could not cancel the class. Please try again."
+  },
+  "settings": {
+    "title": "Cancellation Policy",
+    "rules": {
+      "title": "Cancellation Rules",
+      "description": "Define the terms for cancellations of your classes",
+      "deadline": {
+        "label": "Minimum Cancellation Notice",
+        "description": "Minimum time the student must cancel before the class",
+        "hours": "{{count}}h ({{days}} days)"
+      },
+      "charge": {
+        "label": "Late Cancellation Fee",
+        "description": "Percentage to be charged if canceled after deadline"
+      },
+      "amnesty": {
+        "label": "Allow Amnesty",
+        "description": "Allows canceling charges case by case"
+      },
+      "saveButton": "Save Policy",
+      "updateButton": "Update Policy",
+      "createButton": "Create Policy",
+      "saving": "Saving..."
+    },
+    "summary": {
+      "title": "Policy Summary",
+      "description": "How your students will see your rules",
+      "heading": "Cancellation Policy:",
+      "deadline": "Notice: {{hours}} hours before class",
+      "charge": "Late fee: {{percentage}}% of value",
+      "amnestyAllowed": "Amnesty allowed",
+      "amnestyNotAllowed": "Amnesty not allowed",
+      "teacherFree": "Teacher cancellation always free",
+      "created": "Created:",
+      "updated": "Updated:",
+      "active": "✓ Active Policy",
+      "inactive": "○ Inactive Policy"
+    },
+    "document": {
+      "title": "Full Policy Document",
+      "description": "Upload a PDF with your detailed class policy (optional)",
+      "fileName": "policy.pdf",
+      "available": "Document available to students",
+      "remove": "Remove",
+      "selectFile": "Select PDF file (max. 5MB)",
+      "upload": "Upload Document",
+      "uploading": "Uploading..."
+    },
+    "messages": {
+      "saveSuccess": "Cancellation policy saved successfully.",
+      "saveError": "Could not save cancellation policy.",
+      "loadError": "Could not load cancellation policy.",
+      "uploadSuccess": "Policy document uploaded successfully.",
+      "uploadError": "Could not upload document.",
+      "removeSuccess": "Document removed successfully.",
+      "removeError": "Could not remove document.",
+      "fileTooLarge": "Maximum file size is 5MB.",
+      "invalidFileType": "Only PDF files are accepted."
+    }
   }
 }

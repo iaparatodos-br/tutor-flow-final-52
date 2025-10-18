@@ -22,7 +22,10 @@
     "description": "Personalize sua experiência no Tutor Flow",
     "theme": {
       "title": "Tema",
-      "description": "Escolha o tema da interface"
+      "description": "Escolha o tema da interface",
+      "dark": "Escuro",
+      "light": "Claro",
+      "system": "Sistema"
     },
     "language": {
       "title": "Idioma",

@@ -56,7 +56,7 @@
     "date": "Date",
     "time": "Time",
     "event": "Event",
-    "showMore": "+{count} more",
+    "showMore": "+{{count}} more",
     "noEventsInRange": "No events in this period",
     "loadingCalendar": "Loading calendar...",
     "noClassesScheduled": "No classes scheduled",
@@ -75,8 +75,8 @@
     "notes": "Notes",
     "participants": "Participants",
     "student": "Student",
-    "groupWithCount": "Group Class ({count} students)",
-    "groupShort": "Group ({count})"
+    "groupWithCount": "Group Class ({{count}} students)",
+    "groupShort": "Group ({{count}})"
   },
   "fields": {
     "student": "Student",

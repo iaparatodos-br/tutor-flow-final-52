@@ -56,7 +56,7 @@
     "date": "Data",
     "time": "Hora",
     "event": "Evento",
-    "showMore": "+{count} mais",
+    "showMore": "+{{count}} mais",
     "noEventsInRange": "Não há eventos neste período",
     "loadingCalendar": "Carregando calendário...",
     "noClassesScheduled": "Nenhuma aula agendada",
@@ -75,8 +75,8 @@
     "notes": "Observações",
     "participants": "Participantes",
     "student": "Aluno",
-    "groupWithCount": "Aula em Grupo ({count} alunos)",
-    "groupShort": "Grupo ({count})"
+    "groupWithCount": "Aula em Grupo ({{count}} alunos)",
+    "groupShort": "Grupo ({{count}})"
   },
   "fields": {
     "student": "Aluno",

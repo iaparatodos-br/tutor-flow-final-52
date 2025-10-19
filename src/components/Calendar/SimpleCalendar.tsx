@@ -444,11 +444,12 @@ export function SimpleCalendar({
                   })()}
 
                   {/* Action Buttons */}
-                  <div className="flex justify-end gap-3 pt-4 border-t">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 sm:gap-3 pt-4 border-t">
                     {/* Cancel Button - Only for pending/confirmed classes */}
                     {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
                       <Button
                         variant="outline"
+                        className="w-full sm:w-auto"
                         onClick={() => {
                           const classEvent = selectedEvent as CalendarClass;
                           onCancelClass(
@@ -472,7 +473,7 @@ export function SimpleCalendar({
                           setSelectedEvent(null);
                         }}
                         variant="outline"
-                        className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                        className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-primary-foreground"
                       >
                         <FileText className="h-4 w-4 mr-2" />
                         {(selectedEvent as CalendarClass).status === 'concluida' ? t('actions.editReport') : t('actions.createReport')}
@@ -486,7 +487,7 @@ export function SimpleCalendar({
                           onCompleteClass(selectedEvent as CalendarClass);
                           setSelectedEvent(null);
                         }}
-                        className="bg-gradient-primary"
+                        className="w-full sm:w-auto bg-gradient-primary"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         {t('actions.markAsCompleted')}
@@ -500,7 +501,7 @@ export function SimpleCalendar({
                           onConfirmClass((selectedEvent as CalendarClass).id);
                           setSelectedEvent(null);
                         }}
-                        className="bg-gradient-success"
+                        className="w-full sm:w-auto bg-gradient-success"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
                         {t('actions.confirmClass')}
@@ -522,6 +523,7 @@ export function SimpleCalendar({
                     })() && (
                       <Button
                         variant="destructive"
+                        className="w-full sm:w-auto"
                         disabled={isProcessing}
                         onClick={() => {
                           const classEvent = selectedEvent as CalendarClass;

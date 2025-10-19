@@ -574,6 +574,7 @@ export default function Agenda() {
           start: calendarStartDate,
           end: calendarEndDate,
           status: displayStatus,
+          student_id: cls.student_id,
           student: cls.participants[0]?.student || {
             name: 'Sem aluno',
             email: ''

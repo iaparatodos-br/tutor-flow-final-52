@@ -147,8 +147,8 @@ export default function Auth() {
       });
     } else {
       toast({
-        title: t('messages.registerSuccess'),
-        description: "Você já pode fazer login",
+        title: t('messages.emailVerificationRequired'),
+        description: t('messages.emailVerificationDescription'),
       });
     }
     

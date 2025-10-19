@@ -443,10 +443,10 @@ export function SimpleCalendar({
                     );
                   })()}
 
-                  {/* Action Buttons */}
-                  <div className="pt-4 border-t space-y-3">
-                    {/* Primary Action Row - Main CTA */}
-                    <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Action Buttons - Redesigned for better UX */}
+                  <div className="space-y-4 pt-6">
+                    {/* Primary Actions */}
+                    <div className="space-y-2">
                       {/* Confirm Button - Only for pending classes */}
                       {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
                         <Button
@@ -454,9 +454,10 @@ export function SimpleCalendar({
                             onConfirmClass((selectedEvent as CalendarClass).id);
                             setSelectedEvent(null);
                           }}
-                          className="flex-1 bg-gradient-success"
+                          className="w-full h-12 bg-gradient-success text-base font-semibold"
+                          size="lg"
                         >
-                          <CheckCircle className="h-4 w-4 mr-2" />
+                          <CheckCircle className="h-5 w-5 mr-2" />
                           {t('actions.confirmClass')}
                         </Button>
                       )}
@@ -468,14 +469,15 @@ export function SimpleCalendar({
                             onCompleteClass(selectedEvent as CalendarClass);
                             setSelectedEvent(null);
                           }}
-                          className="flex-1 bg-gradient-primary"
+                          className="w-full h-12 bg-gradient-primary text-base font-semibold"
+                          size="lg"
                         >
-                          <CheckCircle className="h-4 w-4 mr-2" />
+                          <CheckCircle className="h-5 w-5 mr-2" />
                           {t('actions.markAsCompleted')}
                         </Button>
                       )}
                       
-                      {/* Manage Report Button - Available for all class statuses for professors */}
+                      {/* Manage Report Button */}
                       {isProfessor && onManageReport && (
                         <Button
                           onClick={() => {
@@ -483,15 +485,16 @@ export function SimpleCalendar({
                             setSelectedEvent(null);
                           }}
                           variant="outline"
-                          className="flex-1 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                          className="w-full h-12 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground text-base font-semibold"
+                          size="lg"
                         >
-                          <FileText className="h-4 w-4 mr-2" />
+                          <FileText className="h-5 w-5 mr-2" />
                           {(selectedEvent as CalendarClass).status === 'concluida' ? t('actions.editReport') : t('actions.createReport')}
                         </Button>
                       )}
                     </div>
 
-                    {/* Secondary Actions Row - Destructive actions */}
+                    {/* Secondary Actions - Destructive */}
                     {(
                       (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass) ||
                       (isProfessor && onEndRecurrence && (() => {
@@ -503,12 +506,16 @@ export function SimpleCalendar({
                         return isVirtual || (hasTemplate && isRecurrenceActive);
                       })())
                     ) && (
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        {/* Cancel Button - Only for pending/confirmed classes */}
+                      <div className="pt-2 border-t space-y-2">
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                          Ações Secundárias
+                        </p>
+                        
+                        {/* Cancel Button */}
                         {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
                           <Button
                             variant="outline"
-                            className="flex-1"
+                            className="w-full h-11 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
                             onClick={() => {
                               const classEvent = selectedEvent as CalendarClass;
                               onCancelClass(
@@ -524,7 +531,7 @@ export function SimpleCalendar({
                           </Button>
                         )}
                         
-                        {/* End Recurrence Button - For recurring classes */}
+                        {/* End Recurrence Button */}
                         {isProfessor && onEndRecurrence && (() => {
                           const classEvent = selectedEvent as CalendarClass;
                           const isVirtual = classEvent.isVirtual;
@@ -536,7 +543,7 @@ export function SimpleCalendar({
                         })() && (
                           <Button
                             variant="destructive"
-                            className="flex-1"
+                            className="w-full h-11"
                             disabled={isProcessing}
                             onClick={() => {
                               const classEvent = selectedEvent as CalendarClass;
@@ -553,9 +560,11 @@ export function SimpleCalendar({
                                 Processando...
                               </>
                             ) : (
-                              <>🛑 Encerrar Recorrência</>
+                              <>
+                                🛑 <span className="ml-2">Encerrar Recorrência</span>
+                              </>
                             )}
-                          </Button>
+                           </Button>
                         )}
                       </div>
                     )}

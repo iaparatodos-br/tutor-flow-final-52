@@ -358,17 +358,17 @@ export function ClassReportModal({
                 {participants.map((participant, index) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
                   return (
-                    <div key={participant.student_id} className="space-y-2">
-                      <Label className="text-sm font-medium">
-                        {participant.student.name}
-                      </Label>
-                      <Textarea
-                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
-                        value={feedback?.feedback || ''}
-                        onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
-                        className="min-h-[80px]"
-                      />
-                    </div>
+                  <div key={participant.student_id} className="space-y-2 pointer-events-auto">
+                    <Label className="text-sm font-medium">
+                      {participant.student.name}
+                    </Label>
+                    <Textarea
+                      placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
+                      value={feedback?.feedback || ''}
+                      onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
+                      className="min-h-[80px] pointer-events-auto"
+                    />
+                  </div>
                   );
                 })}
               </div>

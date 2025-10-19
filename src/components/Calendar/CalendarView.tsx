@@ -35,6 +35,7 @@ export interface CalendarClass {
   start: Date;
   end: Date;
   status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  student_id?: string;
   student: {
     name: string;
     email: string;

@@ -116,11 +116,21 @@ export function ClassReportModal({
   const initializeFeedbacks = () => {
     if (!classData) return;
 
-    // Initialize feedback array for each participant
-    const participants = classData.participants || [{ 
-      student_id: classData.student?.name || '', 
-      student: classData.student 
-    }];
+    let participants;
+    
+    if (classData.participants && classData.participants.length > 0) {
+      // Aula em grupo - usa participants
+      participants = classData.participants;
+    } else if (classData.student_id) {
+      // Aula individual - cria participant com o UUID correto
+      participants = [{
+        student_id: classData.student_id,
+        student: classData.student
+      }];
+    } else {
+      // Sem alunos
+      participants = [];
+    }
 
     const initialFeedbacks = participants.map(p => ({
       student_id: p.student_id,
@@ -250,10 +260,14 @@ export function ClassReportModal({
 
   if (!classData) return null;
 
-  const participants = classData.participants || [{ 
-    student_id: classData.student?.name || '', 
-    student: classData.student 
-  }];
+  const participants = classData.participants && classData.participants.length > 0
+    ? classData.participants
+    : classData.student_id
+      ? [{
+          student_id: classData.student_id,
+          student: classData.student
+        }]
+      : [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -358,7 +372,7 @@ export function ClassReportModal({
                 {participants.map((participant, index) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
                   return (
-                    <div key={participant.student_id} className="space-y-2">
+                    <div key={participant.student_id} className="space-y-2 pointer-events-auto">
                       <Label className="text-sm font-medium">
                         {participant.student.name}
                       </Label>
@@ -366,7 +380,7 @@ export function ClassReportModal({
                         placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
-                        className="min-h-[80px]"
+                        className="min-h-[80px] pointer-events-auto"
                       />
                     </div>
                   );

@@ -114,9 +114,15 @@ export function ClassReportModal({
   };
 
   const initializeFeedbacks = () => {
-    if (!classData || !classData.participants || classData.participants.length === 0) return;
+    if (!classData) return;
 
-    const initialFeedbacks = classData.participants.map(p => ({
+    // Initialize feedback array for each participant
+    const participants = classData.participants || [{ 
+      student_id: classData.student?.name || '', 
+      student: classData.student 
+    }];
+
+    const initialFeedbacks = participants.map(p => ({
       student_id: p.student_id,
       feedback: ''
     }));
@@ -244,7 +250,10 @@ export function ClassReportModal({
 
   if (!classData) return null;
 
-  const participants = classData.participants || [];
+  const participants = classData.participants || [{ 
+    student_id: classData.student?.name || '', 
+    student: classData.student 
+  }];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -349,17 +358,17 @@ export function ClassReportModal({
                 {participants.map((participant, index) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
                   return (
-                  <div key={participant.student_id} className="space-y-2 pointer-events-auto">
-                    <Label className="text-sm font-medium">
-                      {participant.student.name}
-                    </Label>
-                    <Textarea
-                      placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
-                      value={feedback?.feedback || ''}
-                      onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
-                      className="min-h-[80px] pointer-events-auto"
-                    />
-                  </div>
+                    <div key={participant.student_id} className="space-y-2">
+                      <Label className="text-sm font-medium">
+                        {participant.student.name}
+                      </Label>
+                      <Textarea
+                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
+                        value={feedback?.feedback || ''}
+                        onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
+                        className="min-h-[80px]"
+                      />
+                    </div>
                   );
                 })}
               </div>

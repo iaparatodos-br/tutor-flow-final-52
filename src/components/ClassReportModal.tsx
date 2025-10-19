@@ -114,15 +114,9 @@ export function ClassReportModal({
   };
 
   const initializeFeedbacks = () => {
-    if (!classData) return;
+    if (!classData || !classData.participants || classData.participants.length === 0) return;
 
-    // Initialize feedback array for each participant
-    const participants = classData.participants || [{ 
-      student_id: classData.student?.name || '', 
-      student: classData.student 
-    }];
-
-    const initialFeedbacks = participants.map(p => ({
+    const initialFeedbacks = classData.participants.map(p => ({
       student_id: p.student_id,
       feedback: ''
     }));
@@ -250,10 +244,7 @@ export function ClassReportModal({
 
   if (!classData) return null;
 
-  const participants = classData.participants || [{ 
-    student_id: classData.student?.name || '', 
-    student: classData.student 
-  }];
+  const participants = classData.participants || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

@@ -444,105 +444,120 @@ export function SimpleCalendar({
                   })()}
 
                   {/* Action Buttons */}
-                  <div className="flex flex-col sm:flex-row sm:flex-wrap justify-end gap-2 sm:gap-3 pt-4 border-t">
-                    {/* Cancel Button - Only for pending/confirmed classes */}
-                    {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
-                      <Button
-                        variant="outline"
-                        className="w-full sm:w-auto"
-                        onClick={() => {
-                          const classEvent = selectedEvent as CalendarClass;
-                          onCancelClass(
-                            classEvent.id, 
-                            classEvent.title, 
-                            classEvent.start.toISOString()
-                          );
-                          setSelectedEvent(null);
-                        }}
-                      >
-                        <X className="h-4 w-4 mr-2" />
-                        {t('actions.cancelClass')}
-                      </Button>
-                    )}
-                    
-                    {/* Manage Report Button - Available for all class statuses for professors */}
-                    {isProfessor && onManageReport && (
-                      <Button
-                        onClick={() => {
-                          onManageReport(selectedEvent as CalendarClass);
-                          setSelectedEvent(null);
-                        }}
-                        variant="outline"
-                        className="w-full sm:w-auto border-primary text-primary hover:bg-primary hover:text-primary-foreground"
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        {(selectedEvent as CalendarClass).status === 'concluida' ? t('actions.editReport') : t('actions.createReport')}
-                      </Button>
-                    )}
-                    
-                    {/* Complete Class Button - Only for confirmed classes without report */}
-                    {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
-                      <Button
-                        onClick={() => {
-                          onCompleteClass(selectedEvent as CalendarClass);
-                          setSelectedEvent(null);
-                        }}
-                        className="w-full sm:w-auto bg-gradient-primary"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        {t('actions.markAsCompleted')}
-                      </Button>
-                    )}
-                    
-                    {/* Confirm Button - Only for pending classes */}
-                    {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
-                      <Button
-                        onClick={() => {
-                          onConfirmClass((selectedEvent as CalendarClass).id);
-                          setSelectedEvent(null);
-                        }}
-                        className="w-full sm:w-auto bg-gradient-success"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        {t('actions.confirmClass')}
-                      </Button>
-                    )}
-                    
-                    {/* End Recurrence Button - For recurring classes */}
-                    {isProfessor && onEndRecurrence && (() => {
-                      const classEvent = selectedEvent as CalendarClass;
-                      // Show button only if:
-                      // 1. It's a virtual class (always part of active recurrence), OR
-                      // 2. It's materialized with class_template_id AND recurrence hasn't ended
-                      const isVirtual = classEvent.isVirtual;
-                      const hasTemplate = classEvent.class_template_id;
-                      const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                      const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                  <div className="pt-4 border-t space-y-3">
+                    {/* Primary Action Row - Main CTA */}
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {/* Confirm Button - Only for pending classes */}
+                      {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
+                        <Button
+                          onClick={() => {
+                            onConfirmClass((selectedEvent as CalendarClass).id);
+                            setSelectedEvent(null);
+                          }}
+                          className="flex-1 bg-gradient-success"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          {t('actions.confirmClass')}
+                        </Button>
+                      )}
                       
-                      return isVirtual || (hasTemplate && isRecurrenceActive);
-                    })() && (
-                      <Button
-                        variant="destructive"
-                        className="w-full sm:w-auto"
-                        disabled={isProcessing}
-                        onClick={() => {
-                          const classEvent = selectedEvent as CalendarClass;
-                          const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
-                          const endDate = classEvent.start.toISOString();
-                          
-                          setEndRecurrenceData({ templateId, endDate });
-                          setShowEndRecurrenceDialog(true);
-                        }}
-                      >
-                        {isProcessing ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Processando...
-                          </>
-                        ) : (
-                          <>🛑 Encerrar Recorrência</>
+                      {/* Complete Class Button - Only for confirmed classes */}
+                      {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
+                        <Button
+                          onClick={() => {
+                            onCompleteClass(selectedEvent as CalendarClass);
+                            setSelectedEvent(null);
+                          }}
+                          className="flex-1 bg-gradient-primary"
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          {t('actions.markAsCompleted')}
+                        </Button>
+                      )}
+                      
+                      {/* Manage Report Button - Available for all class statuses for professors */}
+                      {isProfessor && onManageReport && (
+                        <Button
+                          onClick={() => {
+                            onManageReport(selectedEvent as CalendarClass);
+                            setSelectedEvent(null);
+                          }}
+                          variant="outline"
+                          className="flex-1 border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                        >
+                          <FileText className="h-4 w-4 mr-2" />
+                          {(selectedEvent as CalendarClass).status === 'concluida' ? t('actions.editReport') : t('actions.createReport')}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Secondary Actions Row - Destructive actions */}
+                    {(
+                      (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass) ||
+                      (isProfessor && onEndRecurrence && (() => {
+                        const classEvent = selectedEvent as CalendarClass;
+                        const isVirtual = classEvent.isVirtual;
+                        const hasTemplate = classEvent.class_template_id;
+                        const recurrenceEndDate = (classEvent as any).recurrence_end_date;
+                        const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                        return isVirtual || (hasTemplate && isRecurrenceActive);
+                      })())
+                    ) && (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {/* Cancel Button - Only for pending/confirmed classes */}
+                        {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => {
+                              const classEvent = selectedEvent as CalendarClass;
+                              onCancelClass(
+                                classEvent.id, 
+                                classEvent.title, 
+                                classEvent.start.toISOString()
+                              );
+                              setSelectedEvent(null);
+                            }}
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            {t('actions.cancelClass')}
+                          </Button>
                         )}
-                      </Button>
+                        
+                        {/* End Recurrence Button - For recurring classes */}
+                        {isProfessor && onEndRecurrence && (() => {
+                          const classEvent = selectedEvent as CalendarClass;
+                          const isVirtual = classEvent.isVirtual;
+                          const hasTemplate = classEvent.class_template_id;
+                          const recurrenceEndDate = (classEvent as any).recurrence_end_date;
+                          const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                          
+                          return isVirtual || (hasTemplate && isRecurrenceActive);
+                        })() && (
+                          <Button
+                            variant="destructive"
+                            className="flex-1"
+                            disabled={isProcessing}
+                            onClick={() => {
+                              const classEvent = selectedEvent as CalendarClass;
+                              const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
+                              const endDate = classEvent.start.toISOString();
+                              
+                              setEndRecurrenceData({ templateId, endDate });
+                              setShowEndRecurrenceDialog(true);
+                            }}
+                          >
+                            {isProcessing ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Processando...
+                              </>
+                            ) : (
+                              <>🛑 Encerrar Recorrência</>
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

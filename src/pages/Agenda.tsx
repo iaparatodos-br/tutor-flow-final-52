@@ -690,7 +690,7 @@ export default function Agenda() {
       });
     }
   };
-  const materializeVirtualClass = async (virtualId: string, targetStatus: 'confirmada' | 'concluida' = 'confirmada'): Promise<string> => {
+  const materializeVirtualClass = async (virtualId: string, targetStatus: 'confirmada' | 'concluida' = 'confirmada', silent: boolean = false): Promise<string> => {
     // Verificar se já está sendo materializada
     if (materializingClasses.has(virtualId)) {
       throw new Error('Esta aula já está sendo processada');
@@ -752,7 +752,9 @@ export default function Agenda() {
         }
       };
 
-      toast(statusMessages[targetStatus]);
+      if (!silent) {
+        toast(statusMessages[targetStatus]);
+      }
 
       if (visibleRange) {
         loadClasses(visibleRange.start, visibleRange.end);
@@ -1013,31 +1015,45 @@ export default function Agenda() {
 
   // Nova função para gerenciar relatórios
   const handleManageReport = async (classData: CalendarClass) => {
-    let finalClassId = classData.id;
-    let finalClassData = classData;
+    // Simplesmente abrir o modal, SEM materializar a aula virtual
+    setReportModal({ 
+      isOpen: true, 
+      classData: classData // Passar a aula como está (virtual ou não)
+    });
+  };
 
-    // Se for virtual, materializar primeiro
+  const handleReportCreated = async () => {
+    // Verificar se a aula do modal é virtual
+    const classData = reportModal.classData;
+    
+    if (!classData) return;
+    
+    // Se for virtual, materializar AGORA (no momento do salvamento)
     if (classData.isVirtual && classData.id.includes('_virtual_')) {
       try {
-        // Materializar com status 'concluida' se já estiver concluída, senão 'confirmada'
-        const materializedStatus: 'confirmada' | 'concluida' = classData.status === 'concluida' ? 'concluida' : 'confirmada';
-        finalClassId = await materializeVirtualClass(classData.id, materializedStatus);
-        // Atualizar dados da classe com o novo ID
-        finalClassData = {
-          ...classData,
-          id: finalClassId,
-          isVirtual: false
-        };
+        const materializedStatus: 'confirmada' | 'concluida' = 
+          classData.status === 'concluida' ? 'concluida' : 'confirmada';
+        
+        // Materializar silenciosamente (sem toast de confirmação)
+        await materializeVirtualClass(
+          classData.id, 
+          materializedStatus,
+          true // silent = true
+        );
+        
+        // Recarregar as aulas para refletir a materialização
+        if (visibleRange) {
+          await loadClasses(visibleRange.start, visibleRange.end);
+        }
+        
       } catch (error) {
-        // Erro já tratado em materializeVirtualClass
-        return;
+        console.error('Erro ao materializar aula após criar relatório:', error);
+        // Não falhar a operação do relatório por causa disso
       }
     }
-
-    setReportModal({
-      isOpen: true,
-      classData: finalClassData
-    });
+    
+    // Fechar o modal
+    setReportModal({ isOpen: false, classData: null });
   };
 
   // Handle recurring class actions
@@ -1172,7 +1188,7 @@ export default function Agenda() {
         <ClassReportModal isOpen={reportModal.isOpen} onOpenChange={open => setReportModal({
         isOpen: open,
         classData: open ? reportModal.classData : null
-      })} classData={reportModal.classData} onReportCreated={loadClasses} />
+      })} classData={reportModal.classData} onReportCreated={handleReportCreated} />
       </div>
     </Layout>;
 }

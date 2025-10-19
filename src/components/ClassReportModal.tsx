@@ -229,8 +229,12 @@ export function ClassReportModal({
           : t('modal.messages.createSuccess'),
       });
 
-      onReportCreated?.();
-      onOpenChange(false);
+      // Chamar callback se fornecido (para materializar aula virtual)
+      if (onReportCreated) {
+        onReportCreated();
+      } else {
+        onOpenChange(false);
+      }
 
     } catch (error: any) {
       console.error('Error saving report:', error);

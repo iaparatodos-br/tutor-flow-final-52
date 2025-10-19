@@ -6,7 +6,7 @@ import { CancellationPolicySettings } from "@/components/Settings/CancellationPo
 import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
-import { Settings, User, Bell, Clock, Palette } from "lucide-react";
+import { Settings, User, Bell, FileText, Palette } from "lucide-react";
 import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { useTranslation } from "react-i18next";
 
@@ -56,7 +56,7 @@ export default function Configuracoes() {
             )}
             {showCancellationTab && (
               <TabsTrigger value="cancellation" className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
+                <FileText className="h-4 w-4" />
                 {t('tabs.cancellation')}
               </TabsTrigger>
             )}

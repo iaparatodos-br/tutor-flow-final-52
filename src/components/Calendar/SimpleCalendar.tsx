@@ -262,7 +262,16 @@ export function SimpleCalendar({
                   {day.events.slice(0, 2).map((event, eventIndex) => (
                     <div
                       key={event.id}
-                      onClick={() => setSelectedEvent(event)}
+                      onClick={() => {
+                        console.log('🔍 [DEBUG - Click no Evento]', {
+                          eventId: event.id,
+                          eventTitle: event.title,
+                          hasRecurrenceEndDate: !!(event as any).recurrence_end_date,
+                          recurrenceEndDate: (event as any).recurrence_end_date,
+                          fullEvent: event
+                        });
+                        setSelectedEvent(event);
+                      }}
                       className={cn(
                         "p-2 rounded text-xs cursor-pointer transition-all hover:scale-105",
                         getStatusColor(event.status)

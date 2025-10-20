@@ -208,7 +208,7 @@ export default function Agenda() {
     const occurrences = rule.between(startDate, effectiveEndDate, true);
 
     // Incluir a data do template nas instâncias virtuais
-    return occurrences.map(date => ({
+    const instances = occurrences.map(date => ({
       ...templateClass,
       id: `${templateClass.id}_virtual_${date.getTime()}`,
       class_date: date.toISOString(),
@@ -219,6 +219,25 @@ export default function Agenda() {
       participants: templateClass.participants || [], // Garantir array vazio se undefined
       recurrence_end_date: templateClass.recurrence_end_date
     }));
+    
+    // 🔍 DEBUG LOG - Verificar se instâncias virtuais têm recurrence_end_date
+    if (instances.length > 0) {
+      const novemberInstances = instances.filter(i => new Date(i.class_date).getMonth() === 10);
+      if (novemberInstances.length > 0) {
+        console.log('🔍 [DEBUG - Instâncias Virtuais de Novembro Geradas]', {
+          count: novemberInstances.length,
+          templateId: templateClass.id,
+          templateRecurrenceEndDate: templateClass.recurrence_end_date,
+          firstInstance: {
+            id: novemberInstances[0].id,
+            date: novemberInstances[0].class_date,
+            recurrence_end_date: novemberInstances[0].recurrence_end_date
+          }
+        });
+      }
+    }
+    
+    return instances;
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
     if (!profile?.id) return;

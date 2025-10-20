@@ -53,6 +53,14 @@ export function ClassReportModal({
 
   // Reset form when modal opens/closes
   useEffect(() => {
+    console.log('🚪 [Modal useEffect]', { 
+      isOpen, 
+      hasClassData: !!classData,
+      classId: classData?.id,
+      student_id: classData?.student_id,
+      participants: classData?.participants
+    });
+    
     if (isOpen && classData) {
       loadExistingReport();
       initializeFeedbacks();
@@ -114,21 +122,31 @@ export function ClassReportModal({
   };
 
   const initializeFeedbacks = () => {
+    console.log('🔍 [initializeFeedbacks] INICIO', { 
+      hasClassData: !!classData,
+      student_id: classData?.student_id,
+      hasParticipants: classData?.participants?.length > 0,
+      participants: classData?.participants
+    });
+    
     if (!classData) return;
 
     let participants;
     
     if (classData.participants && classData.participants.length > 0) {
-      // Aula em grupo - usa participants
+      console.log('✅ [initializeFeedbacks] Usando participants (aula em grupo)');
       participants = classData.participants;
     } else if (classData.student_id) {
-      // Aula individual - cria participant com o UUID correto
+      console.log('✅ [initializeFeedbacks] Criando participant único (aula individual)', {
+        student_id: classData.student_id,
+        student: classData.student
+      });
       participants = [{
         student_id: classData.student_id,
         student: classData.student
       }];
     } else {
-      // Sem alunos
+      console.log('⚠️ [initializeFeedbacks] SEM PARTICIPANTES!');
       participants = [];
     }
 
@@ -136,14 +154,26 @@ export function ClassReportModal({
       student_id: p.student_id,
       feedback: ''
     }));
+    
+    console.log('📋 [initializeFeedbacks] Feedbacks inicializados:', initialFeedbacks);
 
     setFeedbacks(initialFeedbacks);
   };
 
   const updateFeedback = (studentId: string, feedback: string) => {
-    setFeedbacks(prev => prev.map(f => 
-      f.student_id === studentId ? { ...f, feedback } : f
-    ));
+    console.log('✏️ [updateFeedback] CHAMADO', { 
+      studentId, 
+      feedback,
+      feedbacksAtual: feedbacks 
+    });
+    
+    setFeedbacks(prev => {
+      const updated = prev.map(f => 
+        f.student_id === studentId ? { ...f, feedback } : f
+      );
+      console.log('📝 [updateFeedback] Novo estado:', updated);
+      return updated;
+    });
   };
 
   const handleSubmit = async () => {
@@ -371,6 +401,15 @@ export function ClassReportModal({
                 
                 {participants.map((participant, index) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
+                  
+                  console.log('🎨 [RENDER Feedback]', {
+                    participantId: participant.student_id,
+                    participantName: participant.student.name,
+                    feedbackEncontrado: !!feedback,
+                    feedbackValue: feedback?.feedback,
+                    allFeedbacks: feedbacks
+                  });
+                  
                   return (
                     <div key={participant.student_id} className="space-y-2 pointer-events-auto">
                       <Label className="text-sm font-medium">
@@ -379,7 +418,13 @@ export function ClassReportModal({
                       <Textarea
                         placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
                         value={feedback?.feedback || ''}
-                        onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
+                        onChange={(e) => {
+                          console.log('⌨️ [TEXTAREA onChange] DISPARADO', {
+                            participantId: participant.student_id,
+                            novoValor: e.target.value
+                          });
+                          updateFeedback(participant.student_id, e.target.value);
+                        }}
                         className="min-h-[80px] pointer-events-auto"
                       />
                     </div>

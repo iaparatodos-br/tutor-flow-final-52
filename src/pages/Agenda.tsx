@@ -568,6 +568,14 @@ export default function Agenda() {
           const myParticipation = cls.participants.find(p => p.student_id === profile.id);
           displayStatus = myParticipation?.status || cls.status;
         }
+        console.log('📅 [CalendarClass Mapping]', {
+          id: cls.id,
+          isGroupClass: cls.is_group_class,
+          student_id: cls.student_id,
+          participantsCount: cls.participants.length,
+          firstParticipant: cls.participants[0]
+        });
+
         return {
           id: cls.id,
           title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,

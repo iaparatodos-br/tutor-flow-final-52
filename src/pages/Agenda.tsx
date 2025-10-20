@@ -216,7 +216,8 @@ export default function Agenda() {
       is_template: false,
       class_template_id: templateClass.id,
       status: 'confirmada' as const,
-      participants: templateClass.participants || [] // Garantir array vazio se undefined
+      participants: templateClass.participants || [], // Garantir array vazio se undefined
+      recurrence_end_date: templateClass.recurrence_end_date
     }));
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {

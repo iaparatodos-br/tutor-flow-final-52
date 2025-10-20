@@ -60,6 +60,13 @@ export function SimpleCalendar({
   const [endRecurrenceData, setEndRecurrenceData] = useState<{ templateId: string; endDate: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Helper para comparar apenas datas (sem horas)
+  const isSameOrBeforeDate = (date1: Date, date2: Date): boolean => {
+    const d1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate());
+    const d2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate());
+    return d1 <= d2;
+  };
+
   const DAYS_OF_WEEK = [
     t('daysOfWeek.sun'), 
     t('daysOfWeek.mon'), 
@@ -502,7 +509,7 @@ export function SimpleCalendar({
                         const isVirtual = classEvent.isVirtual;
                         const hasTemplate = classEvent.class_template_id;
                         const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                        const isRecurrenceActive = !recurrenceEndDate || classEvent.start < new Date(recurrenceEndDate);
+                        const isRecurrenceActive = !recurrenceEndDate || isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate));
                         return isVirtual || (hasTemplate && isRecurrenceActive);
                       })())
                     ) && (
@@ -537,7 +544,7 @@ export function SimpleCalendar({
                           const isVirtual = classEvent.isVirtual;
                           const hasTemplate = classEvent.class_template_id;
                           const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                          const isRecurrenceActive = !recurrenceEndDate || classEvent.start < new Date(recurrenceEndDate);
+                          const isRecurrenceActive = !recurrenceEndDate || isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate));
                           
                           return (isVirtual || hasTemplate) && isRecurrenceActive;
                         })() && (

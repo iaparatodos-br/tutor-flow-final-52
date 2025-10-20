@@ -794,12 +794,13 @@ export default function Agenda() {
   ): string => {
     const endDate = new Date(startDate);
     
+    // Subtrair 1 porque a primeira ocorrência é a própria startDate
     if (frequency === 'weekly') {
-      endDate.setDate(endDate.getDate() + (occurrences * 7));
+      endDate.setDate(endDate.getDate() + ((occurrences - 1) * 7));
     } else if (frequency === 'biweekly') {
-      endDate.setDate(endDate.getDate() + (occurrences * 14));
+      endDate.setDate(endDate.getDate() + ((occurrences - 1) * 14));
     } else if (frequency === 'monthly') {
-      endDate.setMonth(endDate.getMonth() + occurrences);
+      endDate.setMonth(endDate.getMonth() + (occurrences - 1));
     }
     
     return endDate.toISOString();

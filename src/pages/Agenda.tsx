@@ -187,10 +187,11 @@ export default function Agenda() {
         ))
       : maxEndDate;
     
-    // Ajustar para o final do dia (23:59:59) para incluir a última aula na data limite
+    // Ajustar para o próximo dia após a data limite para garantir que a última aula seja incluída
     if (templateClass.recurrence_end_date) {
       recurrenceEndDate = new Date(recurrenceEndDate);
-      recurrenceEndDate.setHours(23, 59, 59, 999);
+      recurrenceEndDate.setDate(recurrenceEndDate.getDate() + 1);
+      recurrenceEndDate.setHours(0, 0, 0, 0);
     }
     
     const pattern = templateClass.recurrence_pattern;

@@ -220,23 +220,6 @@ export default function Agenda() {
       recurrence_end_date: templateClass.recurrence_end_date
     }));
     
-    // 🔍 DEBUG LOG - Verificar se instâncias virtuais têm recurrence_end_date
-    if (instances.length > 0) {
-      const novemberInstances = instances.filter(i => new Date(i.class_date).getMonth() === 10);
-      if (novemberInstances.length > 0) {
-        console.log('🔍 [DEBUG - Instâncias Virtuais de Novembro Geradas]', {
-          count: novemberInstances.length,
-          templateId: templateClass.id,
-          templateRecurrenceEndDate: templateClass.recurrence_end_date,
-          firstInstance: {
-            id: novemberInstances[0].id,
-            date: novemberInstances[0].class_date,
-            recurrence_end_date: novemberInstances[0].recurrence_end_date
-          }
-        });
-      }
-    }
-    
     return instances;
   };
   const loadClasses = async (rangeStart?: Date, rangeEnd?: Date) => {
@@ -521,17 +504,6 @@ export default function Agenda() {
           if (cls.class_template_id && !cls.recurrence_end_date) {
             const endDate = templateEndDates.get(cls.class_template_id);
             
-            // 🔍 DEBUG LOG
-            console.log('🔍 [DEBUG - Enriquecendo Aula Materializada]', {
-              classId: cls.id,
-              classDate: cls.class_date,
-              classDateParsed: new Date(cls.class_date).toLocaleString('pt-BR'),
-              templateId: cls.class_template_id,
-              recurrenceEndDateFromTemplate: endDate,
-              endDateParsed: endDate ? new Date(endDate).toLocaleString('pt-BR') : null,
-              hadEndDateBefore: !!cls.recurrence_end_date
-            });
-            
             return {
               ...cls,
               recurrence_end_date: endDate || null
@@ -635,31 +607,7 @@ export default function Agenda() {
           const myParticipation = cls.participants.find(p => p.student_id === profile.id);
           displayStatus = myParticipation?.status || cls.status;
         }
-        console.log('📅 [CalendarClass Mapping]', {
-          id: cls.id,
-          isGroupClass: cls.is_group_class,
-          student_id: cls.student_id,
-          participantsCount: cls.participants.length,
-          firstParticipant: cls.participants[0]
-        });
-
-      // 🔍 DEBUG LOG para aulas de novembro
-      const classMonth = calendarStartDate.getMonth(); // 10 = novembro
-      if (classMonth === 10) { // Novembro
-        console.log('🔍 [DEBUG - Aula de Novembro → CalendarClass]', {
-          classId: cls.id,
-          classDate: calendarStartDate.toISOString(),
-          classDateLocal: calendarStartDate.toLocaleString('pt-BR'),
-          day: calendarStartDate.getDate(),
-          isVirtual: cls.isVirtual,
-          templateId: cls.class_template_id,
-          recurrenceEndDate: cls.recurrence_end_date,
-          recurrenceEndDateParsed: cls.recurrence_end_date ? new Date(cls.recurrence_end_date).toLocaleString('pt-BR') : null,
-          status: displayStatus
-        });
-      }
-
-      return {
+        return {
         id: cls.id,
         title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
         start: calendarStartDate,

@@ -480,6 +480,34 @@ export default function Agenda() {
         });
       }
 
+      // Enriquecer aulas materializadas com recurrence_end_date do template
+      const materializedWithTemplateIds = classesWithDetails.filter((cls: any) => 
+        cls.class_template_id && !cls.recurrence_end_date
+      );
+
+      if (materializedWithTemplateIds.length > 0) {
+        const templateIds = [...new Set(materializedWithTemplateIds.map((cls: any) => cls.class_template_id))] as string[];
+        const { data: templatesData } = await supabase
+          .from('classes')
+          .select('id, recurrence_end_date')
+          .in('id', templateIds)
+          .eq('is_template', true);
+        
+        const templateEndDates = new Map(
+          (templatesData || []).map(t => [t.id, t.recurrence_end_date])
+        );
+        
+        classesWithDetails = classesWithDetails.map((cls: any) => {
+          if (cls.class_template_id && !cls.recurrence_end_date) {
+            return {
+              ...cls,
+              recurrence_end_date: templateEndDates.get(cls.class_template_id) || null
+            };
+          }
+          return cls;
+        });
+      }
+
       // Generate virtual instances for infinite recurrences from TEMPLATES
       const allClasses: ClassWithParticipants[] = [...classesWithDetails];
       

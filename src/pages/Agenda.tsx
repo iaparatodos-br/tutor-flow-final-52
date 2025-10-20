@@ -180,12 +180,18 @@ export default function Agenda() {
     maxEndDate.setMonth(maxEndDate.getMonth() + 3);
     
     // Determinar data final: menor entre recurrence_end_date, maxEndDate
-    const recurrenceEndDate = templateClass.recurrence_end_date
+    let recurrenceEndDate = templateClass.recurrence_end_date
       ? new Date(Math.min(
           new Date(templateClass.recurrence_end_date).getTime(),
           maxEndDate.getTime()
         ))
       : maxEndDate;
+    
+    // Ajustar para o final do dia (23:59:59) para incluir a última aula na data limite
+    if (templateClass.recurrence_end_date) {
+      recurrenceEndDate = new Date(recurrenceEndDate);
+      recurrenceEndDate.setHours(23, 59, 59, 999);
+    }
     
     const pattern = templateClass.recurrence_pattern;
     const effectiveEndDate = recurrenceEndDate;

@@ -46,6 +46,7 @@ export interface CalendarClass {
   is_group_class?: boolean;
   isVirtual?: boolean;
   class_template_id?: string;
+  recurrence_end_date?: string | null;
 }
 
 export interface AvailabilityBlock {

@@ -626,7 +626,8 @@ export default function Agenda() {
           is_experimental: cls.is_experimental,
           is_group_class: cls.is_group_class,
           isVirtual: cls.isVirtual,
-          class_template_id: cls.class_template_id
+          class_template_id: cls.class_template_id,
+          recurrence_end_date: cls.recurrence_end_date
         };
       });
       setCalendarClasses(calendarEvents);

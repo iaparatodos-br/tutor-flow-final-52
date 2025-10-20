@@ -187,11 +187,10 @@ export default function Agenda() {
         ))
       : maxEndDate;
     
-    // Ajustar para o próximo dia após a data limite para garantir que a última aula seja incluída
+    // Ajustar para o final do dia para garantir que a última aula na data limite seja incluída
     if (templateClass.recurrence_end_date) {
       recurrenceEndDate = new Date(recurrenceEndDate);
-      recurrenceEndDate.setDate(recurrenceEndDate.getDate() + 1);
-      recurrenceEndDate.setHours(0, 0, 0, 0);
+      recurrenceEndDate.setHours(23, 59, 59, 999);
     }
     
     const pattern = templateClass.recurrence_pattern;
@@ -869,7 +868,10 @@ export default function Agenda() {
         let recurrenceEndDate = null;
         if (!formData.recurrence.is_infinite) {
           if (formData.recurrence.end_date) {
-            recurrenceEndDate = new Date(formData.recurrence.end_date).toISOString();
+            // Ajustar para o final do dia para incluir todas as aulas na data limite
+            const endDate = new Date(formData.recurrence.end_date);
+            endDate.setHours(23, 59, 59, 999);
+            recurrenceEndDate = endDate.toISOString();
           } else if (formData.recurrence.occurrences) {
             // Calculate end date based on number of occurrences
             recurrenceEndDate = calculateEndDateFromOccurrences(

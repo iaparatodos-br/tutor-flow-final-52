@@ -539,7 +539,7 @@ export function SimpleCalendar({
                           const recurrenceEndDate = (classEvent as any).recurrence_end_date;
                           const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
                           
-                          return isVirtual || (hasTemplate && isRecurrenceActive);
+                          return (isVirtual || hasTemplate) && isRecurrenceActive;
                         })() && (
                           <Button
                             variant="destructive"

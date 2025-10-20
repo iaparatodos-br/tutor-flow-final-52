@@ -502,7 +502,7 @@ export function SimpleCalendar({
                         const isVirtual = classEvent.isVirtual;
                         const hasTemplate = classEvent.class_template_id;
                         const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                        const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                        const isRecurrenceActive = !recurrenceEndDate || classEvent.start < new Date(recurrenceEndDate);
                         return isVirtual || (hasTemplate && isRecurrenceActive);
                       })())
                     ) && (
@@ -537,7 +537,7 @@ export function SimpleCalendar({
                           const isVirtual = classEvent.isVirtual;
                           const hasTemplate = classEvent.class_template_id;
                           const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                          const isRecurrenceActive = !recurrenceEndDate || new Date(recurrenceEndDate) > new Date();
+                          const isRecurrenceActive = !recurrenceEndDate || classEvent.start < new Date(recurrenceEndDate);
                           
                           return (isVirtual || hasTemplate) && isRecurrenceActive;
                         })() && (

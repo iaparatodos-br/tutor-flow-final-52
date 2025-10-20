@@ -510,6 +510,28 @@ export function SimpleCalendar({
                         const hasTemplate = classEvent.class_template_id;
                         const recurrenceEndDate = (classEvent as any).recurrence_end_date;
                         const isRecurrenceActive = !recurrenceEndDate || isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate));
+                        
+                        // 🔍 DEBUG LOG
+                        console.log('🔍 [DEBUG - Botão Encerrar Recorrência]', {
+                          classId: classEvent.id,
+                          classDateISO: classEvent.start.toISOString(),
+                          classDateLocal: classEvent.start.toLocaleString('pt-BR'),
+                          classDateOnly: `${classEvent.start.getDate()}/${classEvent.start.getMonth() + 1}/${classEvent.start.getFullYear()}`,
+                          isVirtual,
+                          hasTemplate,
+                          templateId: classEvent.class_template_id,
+                          recurrenceEndDate,
+                          recurrenceEndDateParsed: recurrenceEndDate ? new Date(recurrenceEndDate).toISOString() : null,
+                          recurrenceEndDateLocal: recurrenceEndDate ? new Date(recurrenceEndDate).toLocaleString('pt-BR') : null,
+                          isRecurrenceActive,
+                          shouldShowButton: (isVirtual || hasTemplate) && isRecurrenceActive,
+                          comparisonResult: recurrenceEndDate ? {
+                            classDateObj: classEvent.start,
+                            endDateObj: new Date(recurrenceEndDate),
+                            isSameOrBefore: isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate))
+                          } : 'No end date'
+                        });
+                        
                         return isVirtual || (hasTemplate && isRecurrenceActive);
                       })())
                     ) && (
@@ -545,6 +567,27 @@ export function SimpleCalendar({
                           const hasTemplate = classEvent.class_template_id;
                           const recurrenceEndDate = (classEvent as any).recurrence_end_date;
                           const isRecurrenceActive = !recurrenceEndDate || isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate));
+                          
+                          // 🔍 DEBUG LOG (Modal Detalhado)
+                          console.log('🔍 [DEBUG - Modal Botão Encerrar Recorrência]', {
+                            classId: classEvent.id,
+                            classDateISO: classEvent.start.toISOString(),
+                            classDateLocal: classEvent.start.toLocaleString('pt-BR'),
+                            classDateOnly: `${classEvent.start.getDate()}/${classEvent.start.getMonth() + 1}/${classEvent.start.getFullYear()}`,
+                            isVirtual,
+                            hasTemplate,
+                            templateId: classEvent.class_template_id,
+                            recurrenceEndDate,
+                            recurrenceEndDateParsed: recurrenceEndDate ? new Date(recurrenceEndDate).toISOString() : null,
+                            recurrenceEndDateLocal: recurrenceEndDate ? new Date(recurrenceEndDate).toLocaleString('pt-BR') : null,
+                            isRecurrenceActive,
+                            shouldShowButton: (isVirtual || hasTemplate) && isRecurrenceActive,
+                            comparisonResult: recurrenceEndDate ? {
+                              classDateObj: classEvent.start,
+                              endDateObj: new Date(recurrenceEndDate),
+                              isSameOrBefore: isSameOrBeforeDate(classEvent.start, new Date(recurrenceEndDate))
+                            } : 'No end date'
+                          });
                           
                           return (isVirtual || hasTemplate) && isRecurrenceActive;
                         })() && (

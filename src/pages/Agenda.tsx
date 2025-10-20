@@ -500,9 +500,22 @@ export default function Agenda() {
         
         classesWithDetails = classesWithDetails.map((cls: any) => {
           if (cls.class_template_id && !cls.recurrence_end_date) {
+            const endDate = templateEndDates.get(cls.class_template_id);
+            
+            // 🔍 DEBUG LOG
+            console.log('🔍 [DEBUG - Enriquecendo Aula Materializada]', {
+              classId: cls.id,
+              classDate: cls.class_date,
+              classDateParsed: new Date(cls.class_date).toLocaleString('pt-BR'),
+              templateId: cls.class_template_id,
+              recurrenceEndDateFromTemplate: endDate,
+              endDateParsed: endDate ? new Date(endDate).toLocaleString('pt-BR') : null,
+              hadEndDateBefore: !!cls.recurrence_end_date
+            });
+            
             return {
               ...cls,
-              recurrence_end_date: templateEndDates.get(cls.class_template_id) || null
+              recurrence_end_date: endDate || null
             };
           }
           return cls;
@@ -611,25 +624,41 @@ export default function Agenda() {
           firstParticipant: cls.participants[0]
         });
 
-        return {
-          id: cls.id,
-          title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
-          start: calendarStartDate,
-          end: calendarEndDate,
-          status: displayStatus,
-          student_id: cls.student_id,
-          student: cls.participants[0]?.student || {
-            name: 'Sem aluno',
-            email: ''
-          },
-          participants: cls.participants,
-          notes: cls.notes || undefined,
-          is_experimental: cls.is_experimental,
-          is_group_class: cls.is_group_class,
+      // 🔍 DEBUG LOG para aulas de novembro
+      const classMonth = calendarStartDate.getMonth(); // 10 = novembro
+      if (classMonth === 10) { // Novembro
+        console.log('🔍 [DEBUG - Aula de Novembro → CalendarClass]', {
+          classId: cls.id,
+          classDate: calendarStartDate.toISOString(),
+          classDateLocal: calendarStartDate.toLocaleString('pt-BR'),
+          day: calendarStartDate.getDate(),
           isVirtual: cls.isVirtual,
-          class_template_id: cls.class_template_id,
-          recurrence_end_date: cls.recurrence_end_date
-        };
+          templateId: cls.class_template_id,
+          recurrenceEndDate: cls.recurrence_end_date,
+          recurrenceEndDateParsed: cls.recurrence_end_date ? new Date(cls.recurrence_end_date).toLocaleString('pt-BR') : null,
+          status: displayStatus
+        });
+      }
+
+      return {
+        id: cls.id,
+        title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
+        start: calendarStartDate,
+        end: calendarEndDate,
+        status: displayStatus,
+        student_id: cls.student_id,
+        student: cls.participants[0]?.student || {
+          name: 'Sem aluno',
+          email: ''
+        },
+        participants: cls.participants,
+        notes: cls.notes || undefined,
+        is_experimental: cls.is_experimental,
+        is_group_class: cls.is_group_class,
+        isVirtual: cls.isVirtual,
+        class_template_id: cls.class_template_id,
+        recurrence_end_date: cls.recurrence_end_date
+      };
       });
       setCalendarClasses(calendarEvents);
     } catch (error) {

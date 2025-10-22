@@ -233,14 +233,14 @@ export default function Agenda() {
         return end;
       })();
 
-      // Use RPC to get optimized data for professors
+      // Use optimized RPC to get classes with participants in single query
       let data;
       let error;
       if (isProfessor) {
         ({
           data,
           error
-        } = await supabase.rpc('get_calendar_events', {
+        } = await supabase.rpc('get_classes_with_participants', {
           p_teacher_id: profile.id,
           p_start_date: startDate.toISOString(),
           p_end_date: endDate.toISOString()
@@ -279,93 +279,61 @@ export default function Agenda() {
             )
           `).eq('class_participants.student_id', profile.id).in('class_participants.status', ['pendente', 'confirmada', 'concluida']).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
 
-        // Execute two separate queries to avoid PostgREST or() limitations with joins
-        const [individualClassesResult, groupClassesResult] = await Promise.all([
-        // Query 1: Individual classes where student_id matches
-        (() => {
-          let individualQuery = supabase.from('classes').select(`
-                id,
-                class_date,
-                duration_minutes,
-                status,
-                notes,
-                is_experimental,
-                is_group_class,
-                student_id,
-                service_id,
-                teacher_id,
-                recurrence_pattern,
-                is_template,
-                recurrence_end_date,
-                class_template_id,
-                profiles!classes_student_id_fkey (
-                  name,
-                  email
-                ),
-                class_participants (
-                  student_id,
-                  profiles!class_participants_student_id_fkey (
-                    name,
-                    email
-                  )
-                )
-              `).eq('student_id', profile.id).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
-          if (selectedTeacherId) {
-            individualQuery = individualQuery.eq('teacher_id', selectedTeacherId);
-          }
-          return individualQuery;
-        })(),
-        // Query 2: Group classes where user is a participant
-        (() => {
-          let groupQuery = supabase.from('classes').select(`
-                id,
-                class_date,
-                duration_minutes,
-                status,
-                notes,
-                is_experimental,
-                is_group_class,
-                student_id,
-                service_id,
-                teacher_id,
-                recurrence_pattern,
-                is_template,
-                recurrence_end_date,
-                class_template_id,
-                profiles!classes_student_id_fkey (
-                  name,
-                  email
-                ),
-                class_participants!inner (
-                  student_id,
-                  profiles!class_participants_student_id_fkey (
-                    name,
-                    email
-                  )
-                )
-              `).eq('class_participants.student_id', profile.id).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
-          if (selectedTeacherId) {
-            groupQuery = groupQuery.eq('teacher_id', selectedTeacherId);
-          }
-          return groupQuery;
-        })()]);
+        // Optimized single query with OR condition to get both individual and group classes
+        let studentQuery = supabase
+          .from('classes')
+          .select(`
+            id,
+            class_date,
+            duration_minutes,
+            status,
+            notes,
+            is_experimental,
+            is_group_class,
+            student_id,
+            service_id,
+            teacher_id,
+            recurrence_pattern,
+            is_template,
+            recurrence_end_date,
+            class_template_id,
+            profiles!classes_student_id_fkey (
+              name,
+              email
+            ),
+            class_participants (
+              student_id,
+              status,
+              cancelled_at,
+              charge_applied,
+              confirmed_at,
+              completed_at,
+              cancellation_reason,
+              billed,
+              profiles!class_participants_student_id_fkey (
+                name,
+                email
+              )
+            )
+          `)
+          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('class_date');
 
-        // Handle errors from either query
-        if (individualClassesResult.error) {
-          console.error('Error loading individual classes:', individualClassesResult.error);
-          throw individualClassesResult.error;
-        }
-        if (groupClassesResult.error) {
-          console.error('Error loading group classes:', groupClassesResult.error);
-          throw groupClassesResult.error;
+        if (selectedTeacherId) {
+          studentQuery = studentQuery.eq('teacher_id', selectedTeacherId);
         }
 
-        // Combine results and remove duplicates
-        const allClasses = [...(individualClassesResult.data || []), ...(groupClassesResult.data || [])];
+        // Use OR to get classes where student is either the main student or a participant
+        studentQuery = studentQuery.or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
 
-        // Remove duplicates based on class id
-        const uniqueClasses = allClasses.filter((cls, index, arr) => arr.findIndex(c => c.id === cls.id) === index);
-        data = uniqueClasses;
+        const { data: studentData, error: studentError } = await studentQuery;
+
+        if (studentError) {
+          console.error('Error loading student classes:', studentError);
+          throw studentError;
+        }
+
+        data = studentData || [];
         error = null;
 
         // Para alunos, buscar TODOS os participantes das aulas em grupo (não apenas o aluno logado)
@@ -436,36 +404,22 @@ export default function Agenda() {
       const templates = (data || []).filter((c: any) => c.is_template === true);
       const materializedClasses = (data || []).filter((c: any) => c.is_template !== true);
 
-      // Fetch related data for each materialized class (only for RPC results)
+      // Process participants data from RPC response
       let classesWithDetails;
       if (isProfessor) {
-        classesWithDetails = await Promise.all(materializedClasses.map(async (cls: any) => {
-          const [studentsData, participantsData] = await Promise.all([
-          // Get student data for individual classes
-          cls.student_id ? supabase.from('profiles').select('id, name, email').eq('id', cls.student_id).maybeSingle() : Promise.resolve({
-            data: null
-          }),
-          // Get participants for group classes
-          cls.is_group_class ? supabase.from('class_participants').select(`
-                student_id,
-                profiles!class_participants_student_id_fkey (
-                  id, name, email
-                )
-              `).eq('class_id', cls.id) : Promise.resolve({
-            data: []
-          })]);
-          const participants = cls.is_group_class ? (participantsData.data || []).map((p: any) => ({
-            student_id: p.student_id,
-            student: p.profiles
-          })) : studentsData.data ? [{
-            student_id: studentsData.data.id,
-            student: studentsData.data
-          }] : [];
+        // RPC already returns participants as JSONB array, just parse it
+        classesWithDetails = materializedClasses.map((cls: any) => {
+          const participants = Array.isArray(cls.participants) 
+            ? cls.participants.map((p: any) => ({
+                student_id: p.student_id,
+                student: p.profiles
+              }))
+            : [];
           return {
             ...cls,
             participants
           };
-        }));
+        });
       } else {
         // For students, data already comes with relations
         classesWithDetails = materializedClasses.map((item: any) => {

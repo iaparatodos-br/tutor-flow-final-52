@@ -1675,6 +1675,37 @@ export type Database = {
           updated_at: string | null
         }[]
       }
+      get_classes_with_participants: {
+        Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
+        Returns: {
+          amnesty_granted: boolean
+          amnesty_granted_at: string
+          amnesty_granted_by: string
+          billed: boolean
+          cancellation_reason: string
+          cancelled_at: string
+          cancelled_by: string
+          charge_applied: boolean
+          class_date: string
+          class_template_id: string
+          created_at: string
+          duration_minutes: number
+          id: string
+          is_experimental: boolean
+          is_group_class: boolean
+          is_template: boolean
+          notes: string
+          parent_class_id: string
+          participants: Json
+          recurrence_end_date: string
+          recurrence_pattern: Json
+          service_id: string
+          status: string
+          student_id: string
+          teacher_id: string
+          updated_at: string
+        }[]
+      }
       get_current_user_role_safe: {
         Args: Record<PropertyKey, never>
         Returns: string

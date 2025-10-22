@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDebouncedCallback } from 'use-debounce';
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -128,6 +129,22 @@ export default function Agenda() {
 
   const [showBillingAlert, setShowBillingAlert] = useState(true);
   const [materializingClasses, setMaterializingClasses] = useState<Set<string>>(new Set());
+  
+  // ✅ OTIMIZAÇÃO FASE 4.1: Debounce para navegação de meses (300ms delay)
+  const debouncedLoadClasses = useDebouncedCallback(
+    (start: Date, end: Date) => {
+      loadClasses(start, end);
+    },
+    300
+  );
+
+  // Cleanup: Cancelar debounce ao desmontar
+  useEffect(() => {
+    return () => {
+      debouncedLoadClasses.cancel();
+    };
+  }, [debouncedLoadClasses]);
+  
   useEffect(() => {
     if (!authLoading && profile) {
       // Initial load with default range (current month)
@@ -160,12 +177,12 @@ export default function Agenda() {
     }
   }, [selectedTeacherId, isAluno]);
 
-  // Load classes when visible range changes
+  // Load classes when visible range changes (with debounce)
   useEffect(() => {
     if (visibleRange && profile) {
-      loadClasses(visibleRange.start, visibleRange.end);
+      debouncedLoadClasses(visibleRange.start, visibleRange.end);
     }
-  }, [visibleRange]);
+  }, [visibleRange, profile, debouncedLoadClasses]);
   const handleVisibleRangeChange = (start: Date, end: Date) => {
     setVisibleRange({
       start,
@@ -175,9 +192,9 @@ export default function Agenda() {
 
   // Helper function to generate virtual recurring instances for visible range
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
-    // OTIMIZAÇÃO: Limitar geração a 3 meses além da janela visível para performance
+    // ✅ OTIMIZAÇÃO FASE 3.1: Reduzir buffer de +3 meses para +7 dias
     const maxEndDate = new Date(endDate);
-    maxEndDate.setMonth(maxEndDate.getMonth() + 3);
+    maxEndDate.setDate(maxEndDate.getDate() + 7); // Buffer de +7 dias garante navegação suave
     
     // Determinar data final: menor entre recurrence_end_date, maxEndDate
     let recurrenceEndDate = templateClass.recurrence_end_date

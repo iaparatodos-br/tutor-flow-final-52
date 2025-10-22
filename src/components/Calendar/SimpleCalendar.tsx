@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +59,19 @@ export function SimpleCalendar({
   const [showEndRecurrenceDialog, setShowEndRecurrenceDialog] = useState(false);
   const [endRecurrenceData, setEndRecurrenceData] = useState<{ templateId: string; endDate: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // ✅ OTIMIZAÇÃO FASE 2.2: Memoizar callbacks para prevenir re-criações
+  const handleEventClick = useCallback((event: CalendarClass | AvailabilityBlock) => {
+    setSelectedEvent(event);
+  }, []);
+
+  const handleDayEventsClick = useCallback((
+    date: Date, 
+    events: CalendarClass[], 
+    blocks: AvailabilityBlock[]
+  ) => {
+    setSelectedDayEvents({ date, events, blocks });
+  }, []);
 
   // Helper para comparar apenas datas (sem horas)
   const isSameOrBeforeDate = (date1: Date, date2: Date): boolean => {
@@ -283,7 +296,7 @@ export function SimpleCalendar({
                   {day.events.slice(0, 2).map((event, eventIndex) => (
                     <div
                       key={event.id}
-                      onClick={() => setSelectedEvent(event)}
+                      onClick={() => handleEventClick(event)}
                       className={cn(
                         "p-2 rounded text-xs cursor-pointer transition-all hover:scale-105",
                         getStatusColor(event.status)
@@ -305,11 +318,7 @@ export function SimpleCalendar({
                   {day.events.length > 2 && (
                     <div 
                       className="text-xs text-muted-foreground text-center py-1 cursor-pointer hover:text-primary transition-colors"
-                      onClick={() => setSelectedDayEvents({
-                        date: day.date,
-                        events: day.events,
-                        blocks: day.blocks
-                      })}
+                      onClick={() => handleDayEventsClick(day.date, day.events, day.blocks)}
                     >
                       {t('calendar.showMore', { count: day.events.length - 2 })}
                     </div>

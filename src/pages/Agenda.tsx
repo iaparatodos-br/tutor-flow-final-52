@@ -480,45 +480,18 @@ export default function Agenda() {
           }
         }
 
-        // Buscar participantes do template antes de gerar instâncias virtuais
-        const templateWithParticipants = template.is_group_class 
-          ? await (async () => {
-              const { data: participantsData } = await supabase
-                .from('class_participants')
-                .select(`
-                  student_id,
-                  profiles!class_participants_student_id_fkey (
-                    id, name, email
-                  )
-                `)
-                .eq('class_id', template.id);
-              
-              const participants = (participantsData || []).map((p: any) => ({
-                student_id: p.student_id,
-                student: p.profiles
-              }));
-              
-              return { ...template, participants };
-            })()
-          : await (async () => {
-              // AULAS INDIVIDUAIS: buscar o aluno pelo student_id
-              if (!template.student_id) {
-                return { ...template, participants: [] };
-              }
-              
-              const { data: studentData } = await supabase
-                .from('profiles')
-                .select('id, name, email')
-                .eq('id', template.student_id)
-                .maybeSingle();
-              
-              const participants = studentData ? [{
-                student_id: studentData.id,
-                student: studentData
-              }] : [];
-              
-              return { ...template, participants };
-            })();
+        // ✅ OTIMIZAÇÃO FASE 1.1: Participantes já vêm do RPC, apenas formatamos
+        const participantsFormatted = Array.isArray(template.participants)
+          ? template.participants.map((p: any) => ({
+              student_id: p.student_id,
+              student: p.profiles
+            }))
+          : [];
+        
+        const templateWithParticipants = {
+          ...template,
+          participants: participantsFormatted
+        };
 
         const virtualInstances = generateVirtualInstances(templateWithParticipants, startDate, endDate);
           

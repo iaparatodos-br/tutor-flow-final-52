@@ -83,6 +83,34 @@ export function SimpleCalendar({
     t('months.september'), t('months.october'), t('months.november'), t('months.december')
   ];
 
+  // ✅ OTIMIZAÇÃO FASE 2.1: Memoizar mapeamento de eventos por data
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, { 
+      events: CalendarClass[]; 
+      blocks: AvailabilityBlock[] 
+    }>();
+    
+    // Pré-processar eventos
+    classes.forEach(event => {
+      const key = new Date(event.start).toDateString();
+      if (!map.has(key)) {
+        map.set(key, { events: [], blocks: [] });
+      }
+      map.get(key)!.events.push(event);
+    });
+    
+    // Pré-processar blocos
+    availabilityBlocks.forEach(block => {
+      const key = new Date(block.start).toDateString();
+      if (!map.has(key)) {
+        map.set(key, { events: [], blocks: [] });
+      }
+      map.get(key)!.blocks.push(block);
+    });
+    
+    return map;
+  }, [classes, availabilityBlocks]);
+
   // Gerar os dias do mês atual
   const calendarData = useMemo(() => {
     const year = currentDate.getFullYear();
@@ -106,20 +134,13 @@ export function SimpleCalendar({
     const current = new Date(startDate);
     
     for (let i = 0; i < 42; i++) {
-      const dayEvents = classes.filter(event => {
-        const eventDate = new Date(event.start);
-        return eventDate.toDateString() === current.toDateString();
-      });
-      
-      const dayBlocks = availabilityBlocks.filter(block => {
-        const blockDate = new Date(block.start);
-        return blockDate.toDateString() === current.toDateString();
-      });
+      const key = current.toDateString();
+      const dayData = eventsByDate.get(key) || { events: [], blocks: [] };
       
       days.push({
         date: new Date(current),
-        events: dayEvents,
-        blocks: dayBlocks,
+        events: dayData.events,
+        blocks: dayData.blocks,
         isCurrentMonth: current.getMonth() === month,
         isToday: current.toDateString() === new Date().toDateString()
       });

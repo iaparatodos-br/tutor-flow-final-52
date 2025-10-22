@@ -132,5 +132,16 @@
     },
     "open_dashboard": "Abrir Stripe",
     "function_disabled": "Esta funcionalidade está temporariamente desabilitada até a regularização da conta."
+  },
+  "fees": {
+    "alertTitle": "Transparência de Taxas Stripe",
+    "alertDescription": "Os boletos gerados possuem uma taxa fixa do Stripe de R$ 3,49 por transação.",
+    "boletoFee": "Taxa Stripe (boleto)",
+    "youWillReceive": "Você receberá",
+    "chargedAmount": "Valor cobrado",
+    "exampleTitle": "Exemplo de cálculo",
+    "previewTitle": "Previsão de Recebimento",
+    "invoiceAmount": "Valor da fatura",
+    "deducted": "Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá."
   }
 }

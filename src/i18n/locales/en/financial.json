@@ -130,5 +130,16 @@
     },
     "open_dashboard": "Open Stripe",
     "function_disabled": "This functionality is temporarily disabled until account regularization."
+  },
+  "fees": {
+    "alertTitle": "Stripe Fee Transparency",
+    "alertDescription": "Generated bank slips have a fixed Stripe fee of R$ 3.49 per transaction.",
+    "boletoFee": "Stripe fee (boleto)",
+    "youWillReceive": "You will receive",
+    "chargedAmount": "Charged amount",
+    "exampleTitle": "Calculation example",
+    "previewTitle": "Receipt Preview",
+    "invoiceAmount": "Invoice amount",
+    "deducted": "This fee is automatically deducted and is already reflected in the amounts you will receive."
   }
 }

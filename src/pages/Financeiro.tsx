@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 interface InvoiceWithStudent {
   id: string;
@@ -310,6 +310,26 @@ export default function Financeiro() {
         <FeatureGate feature="financial_module">
           <StripeAccountGuard requireChargesEnabled={true}>
             <div className="space-y-6">
+
+        {/* Fee Transparency Alert - Only for Professors */}
+        {isProfessor && (
+          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertTitle className="text-blue-900 dark:text-blue-100">Transparência de Taxas Stripe</AlertTitle>
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              <p className="mb-2">
+                Os boletos gerados possuem uma taxa fixa do Stripe de <strong>R$ 3,49</strong> por transação.
+                Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá.
+              </p>
+              <div className="bg-white dark:bg-gray-900 p-3 rounded-md text-sm border border-blue-100 dark:border-blue-900">
+                <p className="font-medium mb-1 text-blue-900 dark:text-blue-100">Exemplo de cálculo:</p>
+                <p className="text-blue-800 dark:text-blue-300">• Valor cobrado do aluno: R$ 100,00</p>
+                <p className="text-blue-800 dark:text-blue-300">• Taxa Stripe (boleto): -R$ 3,49</p>
+                <p className="font-bold text-green-600 dark:text-green-400">• Você receberá: R$ 96,51</p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Summary Cards */}
         {isProfessor && <div className="grid gap-4 md:grid-cols-4">

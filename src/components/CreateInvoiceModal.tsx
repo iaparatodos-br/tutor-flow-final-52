@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { DollarSign, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { DollarSign, AlertTriangle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { calculateBoletoFees, formatCurrency } from "@/utils/stripe-fees";
 
 interface Student {
   id: string;
@@ -147,6 +148,28 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
                 required
               />
             </div>
+
+            {/* Fee Breakdown */}
+            {formData.amount && parseFloat(formData.amount) > 0 && (
+              <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
+                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <AlertTitle className="text-sm text-amber-900 dark:text-amber-100">Previsão de Recebimento</AlertTitle>
+                <AlertDescription className="text-sm space-y-1">
+                  <div className="flex justify-between text-amber-800 dark:text-amber-300">
+                    <span>Valor da fatura:</span>
+                    <span className="font-medium">{formatCurrency(parseFloat(formData.amount))}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-700 dark:text-amber-400">
+                    <span>Taxa Stripe (boleto):</span>
+                    <span>-R$ 3,49</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-green-600 dark:text-green-400 pt-1 border-t border-amber-200 dark:border-amber-800">
+                    <span>Você receberá:</span>
+                    <span>{formatCurrency(calculateBoletoFees(parseFloat(formData.amount)).netAmount)}</span>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="description">Descrição</Label>

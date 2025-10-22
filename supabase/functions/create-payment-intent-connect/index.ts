@@ -278,7 +278,6 @@ serve(async (req) => {
           transfer_data: {
             destination: stripeConnectAccountId,
           },
-          application_fee_amount: Math.round(amountInCents * 0.03),
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
           metadata: {
             invoice_id: invoice_id,
@@ -343,7 +342,6 @@ serve(async (req) => {
           customer: connectedCustomerId,
           payment_method_types: ["pix"],
           payment_method_options: { pix: { expires_after_seconds: 86400 } },
-          application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
           metadata: {
             invoice_id: invoice_id,
@@ -428,7 +426,6 @@ serve(async (req) => {
           transfer_data: {
             destination: stripeConnectAccountId,
           },
-          application_fee_amount: Math.round(amountInCents * 0.03), // 3% platform fee
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
           metadata: {
             invoice_id: invoice_id,

@@ -514,25 +514,20 @@ export function SimpleCalendar({
                         </Button>
                       )}
                       
-                      {/* Manage Report Button - Only show if class doesn't have a report yet or to edit existing report */}
-                      {isProfessor && onManageReport && (
-                        // Show button only if:
-                        // 1. Class has no report yet (create report)
-                        // 2. Class has report (edit report)
-                        (!(selectedEvent as CalendarClass).has_report) && (
-                          <Button
-                            onClick={() => {
-                              onManageReport(selectedEvent as CalendarClass);
-                              setSelectedEvent(null);
-                            }}
-                            variant="outline"
-                            className="w-full h-12 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground text-base font-semibold"
-                            size="lg"
-                          >
-                            <FileText className="h-5 w-5 mr-2" />
-                            { t('actions.createReport')}
-                          </Button>
-                        )
+                      {/* Create Report Button - Only show when no report exists */}
+                      {isProfessor && onManageReport && !(selectedEvent as CalendarClass).has_report && (
+                        <Button
+                          onClick={() => {
+                            onManageReport(selectedEvent as CalendarClass);
+                            setSelectedEvent(null);
+                          }}
+                          variant="outline"
+                          className="w-full h-12 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground text-base font-semibold"
+                          size="lg"
+                        >
+                          <FileText className="h-5 w-5 mr-2" />
+                          {t('actions.createReport')}
+                        </Button>
                       )}
                     </div>
 

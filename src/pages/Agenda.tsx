@@ -29,6 +29,7 @@ interface ClassWithParticipants {
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
+  has_report?: boolean;
   
   recurrence_pattern?: any;
   student_id?: string;
@@ -600,7 +601,8 @@ export default function Agenda() {
         is_group_class: cls.is_group_class,
         isVirtual: cls.isVirtual,
         class_template_id: cls.class_template_id,
-        recurrence_end_date: cls.recurrence_end_date
+        recurrence_end_date: cls.recurrence_end_date,
+        has_report: !!cls.has_report
       };
       });
       setCalendarClasses(calendarEvents);
@@ -1044,7 +1046,6 @@ export default function Agenda() {
   };
 
   const handleReportCreated = async () => {
-    // Verificar se a aula do modal é virtual
     const classData = reportModal.classData;
     
     if (!classData) return;
@@ -1061,16 +1062,15 @@ export default function Agenda() {
           materializedStatus,
           true // silent = true
         );
-        
-        // Recarregar as aulas para refletir a materialização
-        if (visibleRange) {
-          await loadClasses(visibleRange.start, visibleRange.end);
-        }
-        
       } catch (error) {
         console.error('Erro ao materializar aula após criar relatório:', error);
         // Não falhar a operação do relatório por causa disso
       }
+    }
+    
+    // Sempre recarregar para refletir has_report = true
+    if (visibleRange) {
+      await loadClasses(visibleRange.start, visibleRange.end);
     }
     
     // Fechar o modal

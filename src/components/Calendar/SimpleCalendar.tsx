@@ -464,6 +464,11 @@ export function SimpleCalendar({
                   {(() => {
                     const classEvent = selectedEvent as CalendarClass;
                     
+                    // Don't show report section for virtual classes
+                    if (classEvent.id?.includes('_virtual_')) {
+                      return null;
+                    }
+                    
                     // Always show report section - ClassReportView handles its own loading/empty states
                     return (
                       <div className="pt-4 border-t">

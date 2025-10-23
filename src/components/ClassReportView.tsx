@@ -58,6 +58,12 @@ export function ClassReportView({
   const loadReport = async () => {
     if (!classId) return;
 
+    // Se for virtual, não tem relatório no banco ainda
+    if (classId.includes('_virtual_')) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

@@ -71,6 +71,12 @@ export function ClassReportModal({
   const loadExistingReport = async () => {
     if (!classData?.id) return;
 
+    // Se for virtual, não consultar banco (ainda não existe relatório)
+    if (classData.id.includes('_virtual_')) {
+      initializeFeedbacks();
+      return;
+    }
+
     try {
       const { data: report, error } = await supabase
         .from('class_reports')
@@ -166,6 +172,62 @@ export function ClassReportModal({
     setLoading(true);
     
     try {
+      let finalClassId = classData.id;
+      
+      // PASSO 1: Se for virtual, materializar AGORA
+      if (classData.id.includes('_virtual_')) {
+        const targetStatus: 'confirmada' | 'concluida' = 
+          classData.status === 'concluida' ? 'concluida' : 'confirmada';
+        
+        const templateId = classData.class_template_id || classData.id.split('_virtual_')[0];
+        
+        // Calcular duração em minutos a partir do start/end
+        const durationMinutes = Math.round(
+          (classData.end.getTime() - classData.start.getTime()) / (1000 * 60)
+        );
+        
+        const realClassData = {
+          teacher_id: profile.id,
+          student_id: classData.student_id || null,
+          service_id: (classData as any).service_id || null,
+          class_date: classData.start.toISOString(),
+          duration_minutes: durationMinutes,
+          notes: classData.notes || null,
+          status: targetStatus,
+          is_experimental: classData.is_experimental || false,
+          is_group_class: classData.is_group_class || false,
+          is_template: false,
+          class_template_id: templateId
+        };
+        
+        const { data: newClass, error: materializeError } = await supabase
+          .from('classes')
+          .insert([realClassData])
+          .select()
+          .single();
+        
+        if (materializeError) throw materializeError;
+        
+        // Inserir participantes se for aula em grupo
+        if (classData.is_group_class && classData.participants?.length > 0) {
+          const participantInserts = classData.participants.map((p: any) => ({
+            class_id: newClass.id,
+            student_id: p.student_id,
+            status: targetStatus
+          }));
+          
+          const { error: participantError } = await supabase
+            .from('class_participants')
+            .insert(participantInserts);
+          
+          if (participantError) throw participantError;
+        }
+        
+        // Usar o ID real daqui pra frente
+        finalClassId = newClass.id;
+      }
+      
+      // PASSO 2: Salvar relatório com ID real
       let reportId = existingReport?.id;
 
       if (existingReport) {
@@ -181,11 +243,11 @@ export function ClassReportModal({
 
         if (updateError) throw updateError;
       } else {
-        // Create new report
+        // Create new report - usar finalClassId (real)
         const { data: newReport, error: insertError } = await supabase
           .from('class_reports')
           .insert({
-            class_id: classData.id,
+            class_id: finalClassId,
             teacher_id: profile.id,
             lesson_summary: lessonSummary,
             homework: homework || null,
@@ -224,11 +286,11 @@ export function ClassReportModal({
         if (feedbackError) throw feedbackError;
       }
 
-      // Send notifications (call edge function)
+      // Send notifications (call edge function) - usar finalClassId
       try {
         await supabase.functions.invoke('send-class-report-notification', {
           body: { 
-            classId: classData.id,
+            classId: finalClassId,
             reportId: reportId!
           }
         });

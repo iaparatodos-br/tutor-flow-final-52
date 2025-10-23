@@ -1,4 +1,6 @@
 {
+  "error": "Erro",
+  "success": "Sucesso",
   "buttons": {
     "save": "Salvar",
     "cancel": "Cancelar",

@@ -234,7 +234,8 @@ export default function Agenda() {
       class_template_id: templateClass.id,
       status: 'confirmada' as const,
       participants: templateClass.participants || [], // Garantir array vazio se undefined
-      recurrence_end_date: templateClass.recurrence_end_date
+      recurrence_end_date: templateClass.recurrence_end_date,
+      has_report: false // Virtual instances never have reports
     }));
     
     return instances;
@@ -262,6 +263,21 @@ export default function Agenda() {
           p_start_date: startDate.toISOString(),
           p_end_date: endDate.toISOString()
         }));
+        
+        // Add has_report information
+        if (data) {
+          const classIds = data.map(c => c.id);
+          const { data: reportsData } = await supabase
+            .from('class_reports')
+            .select('class_id')
+            .in('class_id', classIds);
+          
+          const classesWithReports = new Set(reportsData?.map(r => r.class_id) || []);
+          data = data.map(c => ({
+            ...c,
+            has_report: classesWithReports.has(c.id)
+          }));
+        }
       } else {
         // For students, get classes where they are active participants
         let query = supabase.from('classes').select(`
@@ -349,8 +365,24 @@ export default function Agenda() {
           console.error('Error loading student classes:', studentError);
           throw studentError;
         }
-
-        data = studentData || [];
+        
+        // Add has_report information for students
+        if (studentData) {
+          const classIds = studentData.map(c => c.id);
+          const { data: reportsData } = await supabase
+            .from('class_reports')
+            .select('class_id')
+            .in('class_id', classIds);
+          
+          const classesWithReports = new Set(reportsData?.map(r => r.class_id) || []);
+          
+          data = studentData.map(c => ({
+            ...c,
+            has_report: classesWithReports.has(c.id)
+          }));
+        } else {
+          data = studentData || [];
+        }
         error = null;
 
         // Para alunos, buscar TODOS os participantes das aulas em grupo (não apenas o aluno logado)

@@ -47,6 +47,7 @@ export interface CalendarClass {
   isVirtual?: boolean;
   class_template_id?: string;
   recurrence_end_date?: string | null;
+  has_report?: boolean;
 }
 
 export interface AvailabilityBlock {

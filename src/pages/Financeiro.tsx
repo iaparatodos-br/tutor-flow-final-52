@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 interface InvoiceWithStudent {
   id: string;
@@ -80,6 +80,7 @@ export default function Financeiro() {
   const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<string | null>(null);
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
+  const [showFeeAlert, setShowFeeAlert] = useState(true);
   useEffect(() => {
     if (profile?.id) {
       loadInvoices();
@@ -312,10 +313,20 @@ export default function Financeiro() {
             <div className="space-y-6">
 
         {/* Fee Transparency Alert - Only for Professors */}
-        {isProfessor && (
-          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+        {isProfessor && showFeeAlert && (
+          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 relative">
             <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <AlertTitle className="text-blue-900 dark:text-blue-100">Transparência de Taxas Stripe</AlertTitle>
+            <AlertTitle className="text-blue-900 dark:text-blue-100 pr-8">
+              Transparência de Taxas Stripe
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900"
+                onClick={() => setShowFeeAlert(false)}
+              >
+                <X className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </Button>
+            </AlertTitle>
             <AlertDescription className="text-blue-800 dark:text-blue-200">
               <p className="mb-2">
                 Os boletos gerados possuem uma taxa fixa do Stripe de <strong>R$ 3,49</strong> por transação.

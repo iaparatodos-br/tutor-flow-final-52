@@ -17,11 +17,11 @@ export default function Auth() {
   const { t } = useTranslation('auth');
   
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
-  const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "" });
+  const [signupForm, setSignupForm] = useState({ name: "", email: "", password: "", termsAccepted: false });
   const [resetForm, setResetForm] = useState({ email: "" });
   const [loading, setLoading] = useState(false);
   const [loginErrors, setLoginErrors] = useState({ email: false, password: false });
-  const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false });
+  const [signupErrors, setSignupErrors] = useState({ name: false, email: false, password: false, termsAccepted: false });
   const [resetErrors, setResetErrors] = useState({ email: false });
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
@@ -123,6 +123,7 @@ export default function Auth() {
       password: !signupForm.password || 
                 signupForm.password.length < 8 ||
                 !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(signupForm.password),
+      termsAccepted: !signupForm.termsAccepted
     };
     setSignupErrors(errors);
     
@@ -132,8 +133,23 @@ export default function Auth() {
     
     setLoading(true);
     
-    // Chama signUp SEM passar role (AuthContext já define o default como 'professor')
-    const { error } = await signUp(signupForm.email, signupForm.password, signupForm.name);
+    // Capturar informações para auditoria legal
+    const userAgent = navigator.userAgent;
+    const termsVersion = "v1.0-2025-10-25";
+    const privacyVersion = "v1.0-2025-10-25";
+    
+    const { error } = await signUp(
+      signupForm.email, 
+      signupForm.password, 
+      signupForm.name,
+      undefined,
+      {
+        terms_version: termsVersion,
+        privacy_policy_version: privacyVersion,
+        user_agent: userAgent,
+        ip_address: null
+      }
+    );
     
     if (error) {
       toast({
@@ -442,6 +458,50 @@ export default function Auth() {
                         )}
                       </Button>
                     </div>
+                  </div>
+                  
+                  {/* Checkbox de aceite de termos */}
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        id="terms-acceptance"
+                        checked={signupForm.termsAccepted}
+                        onChange={(e) => {
+                          setSignupForm(prev => ({ ...prev, termsAccepted: e.target.checked }));
+                          setSignupErrors(prev => ({ ...prev, termsAccepted: false }));
+                        }}
+                        className={`mt-0.5 h-4 w-4 rounded border ${signupErrors.termsAccepted ? 'border-destructive' : 'border-input'}`}
+                      />
+                      <Label 
+                        htmlFor="terms-acceptance" 
+                        className="text-sm leading-tight cursor-pointer"
+                      >
+                        {t('terms.checkboxLabel').split('{{')[0]}
+                        <a 
+                          href="/termos-de-uso" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline font-medium"
+                        >
+                          {t('terms.termsOfService')}
+                        </a>
+                        {' '}{t('terms.checkboxLabel').includes('{{privacyLink}}') ? 'e a' : 'and'}{' '}
+                        <a 
+                          href="/politica-de-privacidade" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline font-medium"
+                        >
+                          {t('terms.privacyPolicy')}
+                        </a>
+                      </Label>
+                    </div>
+                    {signupErrors.termsAccepted && (
+                      <p className="text-sm text-destructive">
+                        {t('terms.required')}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
                 <CardFooter>

@@ -27,7 +27,18 @@ interface AuthContextType {
   isAluno: boolean;
   needsPasswordChange: boolean;
   needsAddressInfo: boolean;
-  signUp: (email: string, password: string, name: string, role?: 'professor' | 'aluno') => Promise<{ error: any }>;
+  signUp: (
+    email: string, 
+    password: string, 
+    name: string, 
+    role?: 'professor' | 'aluno',
+    termsMetadata?: {
+      terms_version: string;
+      privacy_policy_version: string;
+      user_agent: string;
+      ip_address: string | null;
+    }
+  ) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
@@ -340,7 +351,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [loadProfile]);
 
-  const signUp = async (email: string, password: string, name: string, role: 'professor' | 'aluno' = 'professor') => {
+  const signUp = async (
+    email: string, 
+    password: string, 
+    name: string, 
+    role: 'professor' | 'aluno' = 'professor',
+    termsMetadata?: {
+      terms_version: string;
+      privacy_policy_version: string;
+      user_agent: string;
+      ip_address: string | null;
+    }
+  ) => {
     try {
       setLoading(true);
       
@@ -360,15 +382,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const redirectUrl = `${window.location.origin}/`;
       
+      // Mesclar metadados de termos com dados do usuário
+      const userData = {
+        name,
+        role,
+        ...(termsMetadata || {})
+      };
+      
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: redirectUrl,
-          data: {
-            name,
-            role
-          }
+          data: userData
         }
       });
       

@@ -784,7 +784,7 @@ export type Database = {
         Row: {
           attempted_at: string | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           success: boolean | null
           user_agent: string | null
           user_id: string | null
@@ -792,7 +792,7 @@ export type Database = {
         Insert: {
           attempted_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           success?: boolean | null
           user_agent?: string | null
           user_id?: string | null
@@ -800,7 +800,7 @@ export type Database = {
         Update: {
           attempted_at?: string | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           success?: boolean | null
           user_agent?: string | null
           user_id?: string | null
@@ -1224,7 +1224,7 @@ export type Database = {
           created_at: string | null
           details: Json | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           resource_id: string | null
           resource_type: string
           security_level: string
@@ -1236,7 +1236,7 @@ export type Database = {
           created_at?: string | null
           details?: Json | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resource_id?: string | null
           resource_type: string
           security_level?: string
@@ -1248,7 +1248,7 @@ export type Database = {
           created_at?: string | null
           details?: Json | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resource_id?: string | null
           resource_type?: string
           security_level?: string
@@ -1519,6 +1519,39 @@ export type Database = {
           },
         ]
       }
+      term_acceptances: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          id: string
+          ip_address: unknown
+          privacy_policy_version: string
+          terms_version: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          privacy_policy_version: string
+          terms_version: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          privacy_policy_version?: string
+          terms_version?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_subscriptions: {
         Row: {
           cancel_at_period_end: boolean
@@ -1613,22 +1646,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      archive_old_stripe_events: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      cleanup_expired_pending_profiles: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      cleanup_old_login_attempts: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      cleanup_orphaned_stripe_events: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
+      archive_old_stripe_events: { Args: never; Returns: number }
+      cleanup_expired_pending_profiles: { Args: never; Returns: number }
+      cleanup_old_login_attempts: { Args: never; Returns: undefined }
+      cleanup_orphaned_stripe_events: { Args: never; Returns: number }
       complete_stripe_event_processing: {
         Args: {
           p_error_message?: string
@@ -1674,6 +1695,12 @@ export type Database = {
           teacher_id: string
           updated_at: string | null
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "classes"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_classes_with_participants: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
@@ -1706,10 +1733,7 @@ export type Database = {
           updated_at: string
         }[]
       }
-      get_current_user_role_safe: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      get_current_user_role_safe: { Args: never; Returns: string }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {
@@ -1749,22 +1773,13 @@ export type Database = {
           class_id: string
         }[]
       }
-      has_overdue_invoices: {
-        Args: { p_student_id: string }
-        Returns: boolean
-      }
-      is_ip_blocked: {
-        Args: { p_ip_address: unknown }
-        Returns: boolean
-      }
+      has_overdue_invoices: { Args: { p_student_id: string }; Returns: boolean }
+      is_ip_blocked: { Args: { p_ip_address: unknown }; Returns: boolean }
       is_material_shared_with_user: {
         Args: { p_material_id: string }
         Returns: boolean
       }
-      is_professor: {
-        Args: { _user_id: string }
-        Returns: boolean
-      }
+      is_professor: { Args: { _user_id: string }; Returns: boolean }
       is_student_in_class: {
         Args: { p_class_id: string; p_student_id: string }
         Returns: boolean
@@ -1812,20 +1827,14 @@ export type Database = {
         Args: { teacher_id: string }
         Returns: boolean
       }
-      user_owns_material: {
-        Args: { p_material_id: string }
-        Returns: boolean
-      }
-      validate_cpf: {
-        Args: { cpf_input: string }
-        Returns: boolean
-      }
+      user_owns_material: { Args: { p_material_id: string }; Returns: boolean }
+      validate_cpf: { Args: { cpf_input: string }; Returns: boolean }
       validate_password_strength: {
         Args: { password: string }
         Returns: boolean
       }
       validate_rls_policies: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           has_delete_policy: boolean
           has_insert_policy: boolean
@@ -1836,10 +1845,7 @@ export type Database = {
           table_name: string
         }[]
       }
-      validate_security_context: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      validate_security_context: { Args: never; Returns: boolean }
       write_audit_log: {
         Args: {
           p_new_data: Json

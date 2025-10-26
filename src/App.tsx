@@ -38,6 +38,7 @@ import PainelNegocios from "./pages/PainelNegocios";
 import Seguranca from "./pages/Seguranca";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
@@ -105,6 +106,7 @@ const AppWithProviders = () => {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/termos-de-uso" element={<TermsOfService />} />
             <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
+            <Route path="/legal" element={<Legal />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/alunos" element={<Alunos />} />
             <Route path="/alunos/:id" element={<PerfilAluno />} />

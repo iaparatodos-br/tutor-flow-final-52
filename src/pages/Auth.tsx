@@ -479,7 +479,7 @@ export default function Auth() {
                       >
                         {t('terms.checkboxLabel').split('{{')[0]}
                         <a 
-                          href="/termos-de-uso" 
+                          href="/legal" 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-primary hover:underline font-medium"
@@ -488,7 +488,7 @@ export default function Auth() {
                         </a>
                         {' '}{t('terms.checkboxLabel').includes('{{privacyLink}}') ? 'e a' : 'and'}{' '}
                         <a 
-                          href="/politica-de-privacidade" 
+                          href="/legal" 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-primary hover:underline font-medium"

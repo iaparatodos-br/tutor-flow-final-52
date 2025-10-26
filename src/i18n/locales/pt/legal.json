@@ -1,0 +1,15 @@
+{
+  "pageTitle": "Documentos Legais",
+  "pageDescription": "Acesse e faça o download de todos os nossos documentos legais e políticas da plataforma",
+  "downloadPdf": "Baixar PDF",
+  "version": "Versão",
+  "publishedOn": "Publicado em",
+  "contact": {
+    "title": "Dúvidas sobre nossos documentos legais?",
+    "description": "Entre em contato conosco através do email: legal@tutorflow.com.br"
+  },
+  "toast": {
+    "opening": "Abrindo: {{title}}",
+    "error": "Erro ao carregar documentos legais"
+  }
+}

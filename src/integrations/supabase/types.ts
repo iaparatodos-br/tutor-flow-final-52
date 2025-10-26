@@ -780,6 +780,48 @@ export type Database = {
           },
         ]
       }
+      legal_documents: {
+        Row: {
+          created_at: string
+          description: string
+          display_order: number
+          document_type: string
+          file_name: string
+          id: string
+          is_active: boolean
+          published_at: string
+          title: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          display_order?: number
+          document_type: string
+          file_name: string
+          id?: string
+          is_active?: boolean
+          published_at?: string
+          title: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          display_order?: number
+          document_type?: string
+          file_name?: string
+          id?: string
+          is_active?: boolean
+          published_at?: string
+          title?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
       login_attempts: {
         Row: {
           attempted_at: string | null

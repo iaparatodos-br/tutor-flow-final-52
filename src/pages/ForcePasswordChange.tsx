@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -11,6 +12,7 @@ export default function ForcePasswordChange() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -93,6 +95,27 @@ export default function ForcePasswordChange() {
       }
       
       console.log('ForcePasswordChange: Profile updated successfully');
+
+      // Registrar aceite de termos se for aluno convidado
+      if (isInvitedUser && termsAccepted && profile?.role === 'aluno') {
+        console.log('ForcePasswordChange: Registrando aceite de termos para aluno');
+        
+        const { error: termsError } = await supabase
+          .from('term_acceptances')
+          .insert({
+            user_id: profile.id,
+            terms_version: 'v1.0-2025-10-25',
+            privacy_policy_version: 'v1.0-2025-10-25',
+            ip_address: null,
+            user_agent: navigator.userAgent
+          });
+
+        if (termsError) {
+          console.error('ForcePasswordChange: Erro ao registrar aceite de termos:', termsError);
+        } else {
+          console.log('ForcePasswordChange: Aceite de termos registrado com sucesso');
+        }
+      }
 
       toast({
         title: "Sucesso",
@@ -181,10 +204,51 @@ export default function ForcePasswordChange() {
               />
             </div>
 
+            {isInvitedUser && (
+              <div className="flex items-start space-x-2 p-4 bg-muted/50 rounded-lg border">
+                <Checkbox
+                  id="terms-acceptance"
+                  checked={termsAccepted}
+                  onCheckedChange={(checked) => setTermsAccepted(checked as boolean)}
+                  required
+                />
+                <Label 
+                  htmlFor="terms-acceptance" 
+                  className="text-sm leading-tight cursor-pointer"
+                >
+                  Li e concordo com os{' '}
+                  <a 
+                    href="/legal" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Termos de Uso
+                  </a>
+                  {' '}e{' '}
+                  <a 
+                    href="/legal" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline font-medium"
+                  >
+                    Política de Privacidade
+                  </a>
+                  {' '}da plataforma
+                </Label>
+              </div>
+            )}
+
             <Button 
               type="submit" 
               className="w-full"
-              disabled={isLoading || (!isInvitedUser && !currentPassword) || !newPassword || !confirmPassword}
+              disabled={
+                isLoading || 
+                (!isInvitedUser && !currentPassword) || 
+                !newPassword || 
+                !confirmPassword ||
+                (isInvitedUser && !termsAccepted)
+              }
             >
               {isLoading ? 
                 (isInvitedUser ? "Criando..." : "Alterando...") : 

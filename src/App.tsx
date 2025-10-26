@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -42,10 +41,6 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
-
-// Cookie Consent
-import * as CookieConsent from "vanilla-cookieconsent";
-import { cookieConsentConfig } from "./config/cookieConsent.config";
 
 const queryClient = new QueryClient();
 
@@ -176,44 +171,19 @@ const AppWithProviders = () => {
   );
 };
 
-const App = () => {
-  // Inicializar Cookie Consent seguindo a documentação oficial
-  // https://cookieconsent.orestbida.com/essential/getting-started.html#react
-  useEffect(() => {
-    try {
-      // Prevenir múltiplas inicializações (React StrictMode)
-      if ((window as any).__cc_initialized) {
-        return;
-      }
-      (window as any).__cc_initialized = true;
-
-      // Executar a configuração diretamente
-      CookieConsent.run(cookieConsentConfig as any);
-
-      // Expor a API globalmente para uso em CookieSettings
-      (window as any).CookieConsent = CookieConsent;
-
-      console.info("CookieConsent inicializado com sucesso");
-    } catch (err) {
-      console.error("Falha ao inicializar CookieConsent", err);
-      (window as any).__cc_initialized = false;
-    }
-  }, []);
-
-  return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="light"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <AppWithProviders />
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
-  );
-};
+const App = () => (
+  <ThemeProvider
+    attribute="class"
+    defaultTheme="light"
+    enableSystem
+    disableTransitionOnChange
+  >
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AppWithProviders />
+      </AuthProvider>
+    </QueryClientProvider>
+  </ThemeProvider>
+);
 
 export default App;

@@ -4,7 +4,6 @@
   "tabs": {
     "profile": "Profile",
     "preferences": "Preferences",
-    "privacy": "Privacy",
     "billing": "Billing",
     "cancellation": "Rules",
     "notifications": "Notifications"
@@ -100,12 +99,6 @@
       "heading": "Notifications Coming Soon",
       "message": "We're working on notification settings. Soon you'll be able to customize how you receive alerts and updates."
     }
-  },
-  "cookies": {
-    "title": "Cookie Management",
-    "description": "Control your privacy preferences",
-    "info": "You can review and change your cookie choices at any time.",
-    "manage": "Manage cookies"
   },
   "accessDenied": "Access restricted to professors."
 }

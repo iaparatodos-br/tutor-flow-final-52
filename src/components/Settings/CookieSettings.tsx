@@ -10,8 +10,8 @@ export const CookieSettings = () => {
   const handleOpenCookieSettings = () => {
     // A biblioteca expõe a API globalmente
     const cookieConsentAPI = (window as any).CookieConsent;
-    if (cookieConsentAPI && typeof cookieConsentAPI.showSettings === 'function') {
-      cookieConsentAPI.showSettings();
+    if (cookieConsentAPI && typeof cookieConsentAPI.showPreferences === 'function') {
+      cookieConsentAPI.showPreferences();
     } else {
       console.error('CookieConsent não está inicializado');
       toast.error('Aguarde um momento e tente novamente. O sistema de cookies ainda está carregando.');

@@ -44,7 +44,7 @@ import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
 // Cookie Consent
-import "vanilla-cookieconsent";
+import * as CookieConsent from "vanilla-cookieconsent";
 import { cookieConsentConfig } from "./config/cookieConsent.config";
 
 const queryClient = new QueryClient();
@@ -187,22 +187,11 @@ const App = () => {
       }
       (window as any).__cc_initialized = true;
 
-      // A biblioteca expõe CookieConsent globalmente após o import
-      const CookieConsent = (window as any).initCookieConsent;
-      
-      if (!CookieConsent) {
-        console.error("CookieConsent não está disponível globalmente");
-        return;
-      }
+      // Executar a configuração diretamente
+      CookieConsent.run(cookieConsentConfig as any);
 
-      // Instanciar
-      const cc = CookieConsent();
-      
-      // Expor instância globalmente para uso em CookieSettings
-      (window as any).CookieConsent = cc;
-
-      // Executar a configuração
-      cc.run(cookieConsentConfig);
+      // Expor a API globalmente para uso em CookieSettings
+      (window as any).CookieConsent = CookieConsent;
 
       console.info("CookieConsent inicializado com sucesso");
     } catch (err) {

@@ -44,7 +44,7 @@ import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
 // Cookie Consent
-import * as CookieConsent from "vanilla-cookieconsent";
+import "vanilla-cookieconsent";
 import { cookieConsentConfig } from "./config/cookieConsent.config";
 
 const queryClient = new QueryClient();
@@ -180,7 +180,35 @@ const App = () => {
   // Inicializar Cookie Consent seguindo a documentação oficial
   // https://cookieconsent.orestbida.com/essential/getting-started.html#react
   useEffect(() => {
-    (CookieConsent.run as any)(cookieConsentConfig);
+    try {
+      // Prevenir múltiplas inicializações (React StrictMode)
+      if ((window as any).__cc_initialized) {
+        return;
+      }
+      (window as any).__cc_initialized = true;
+
+      // A biblioteca expõe CookieConsent globalmente após o import
+      const CookieConsent = (window as any).initCookieConsent;
+      
+      if (!CookieConsent) {
+        console.error("CookieConsent não está disponível globalmente");
+        return;
+      }
+
+      // Instanciar
+      const cc = CookieConsent();
+      
+      // Expor instância globalmente para uso em CookieSettings
+      (window as any).CookieConsent = cc;
+
+      // Executar a configuração
+      cc.run(cookieConsentConfig);
+
+      console.info("CookieConsent inicializado com sucesso");
+    } catch (err) {
+      console.error("Falha ao inicializar CookieConsent", err);
+      (window as any).__cc_initialized = false;
+    }
   }, []);
 
   return (

@@ -2,16 +2,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Cookie } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 
 export const CookieSettings = () => {
   const { t } = useTranslation('settings');
 
   const handleOpenCookieSettings = () => {
     // A biblioteca expõe a API globalmente
-    if (window.CookieConsent) {
-      window.CookieConsent.showSettings();
+    const cookieConsentAPI = (window as any).CookieConsent;
+    if (cookieConsentAPI && typeof cookieConsentAPI.showSettings === 'function') {
+      cookieConsentAPI.showSettings();
     } else {
       console.error('CookieConsent não está inicializado');
+      toast.error('Aguarde um momento e tente novamente. O sistema de cookies ainda está carregando.');
     }
   };
 

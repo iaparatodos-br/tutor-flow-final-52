@@ -130,7 +130,7 @@ export default function Legal() {
                 {t("contact.description", {
                   email: (
                     <a href="mailto:tutorflowsite@gmail.com" className="text-primary hover:underline font-medium">
-                      legal@tutorflow.com.br
+                      tutorflowsite@gmail.com
                     </a>
                   ),
                 })}

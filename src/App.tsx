@@ -71,8 +71,26 @@ const AppWithProviders = () => {
 
   // If authenticated but needs password change (but allow reset-password with tokens)
   if (isAuthenticated && needsPasswordChange && !isResetPasswordWithTokens()) {
+    // Lista de rotas públicas que podem ser acessadas mesmo precisando trocar senha
+    const publicRoutes = ['/legal', '/termos-de-uso', '/politica-de-privacidade'];
+    const currentPath = window.location.pathname;
+    
+    // Se não estiver em uma rota pública, redirecionar para ForcePasswordChange
+    if (!publicRoutes.includes(currentPath)) {
+      return (
+        <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<ForcePasswordChange />} />
+        </Routes>
+      );
+    }
+    
+    // Se estiver em rota pública, permitir acesso
     return (
       <Routes>
+        <Route path="/legal" element={<Legal />} />
+        <Route path="/termos-de-uso" element={<TermsOfService />} />
+        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<ForcePasswordChange />} />
       </Routes>
@@ -81,8 +99,23 @@ const AppWithProviders = () => {
 
   // If authenticated but needs address info (but allow reset-password with tokens)
   if (isAuthenticated && needsAddressInfo && !isResetPasswordWithTokens()) {
+    const publicRoutes = ['/legal', '/termos-de-uso', '/politica-de-privacidade'];
+    const currentPath = window.location.pathname;
+    
+    if (!publicRoutes.includes(currentPath)) {
+      return (
+        <Routes>
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="*" element={<ProfileSetupPage />} />
+        </Routes>
+      );
+    }
+    
     return (
       <Routes>
+        <Route path="/legal" element={<Legal />} />
+        <Route path="/termos-de-uso" element={<TermsOfService />} />
+        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<ProfileSetupPage />} />
       </Routes>

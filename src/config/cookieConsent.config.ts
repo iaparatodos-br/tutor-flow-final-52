@@ -46,13 +46,12 @@ export const cookieConsentConfig: CookieConsentConfig = {
       'pt-BR': {
         consentModal: {
           title: '🍪 Nós usamos cookies',
-          description: 'Utilizamos cookies para melhorar sua experiência, analisar o tráfego do site e personalizar conteúdo. Você pode escolher quais categorias deseja aceitar. Para mais informações, consulte nossa <a href="/politica-de-privacidade" class="cc-link">Política de Privacidade</a>.',
+          description: 'Utilizamos cookies para melhorar sua experiência, analisar o tráfego do site e personalizar conteúdo. Você pode escolher quais categorias deseja aceitar. Para mais informações, consulte nossos <a href="/legal" class="cc-link">Documentos Legais</a>.',
           acceptAllBtn: 'Aceitar todos',
           acceptNecessaryBtn: 'Rejeitar todos',
           showPreferencesBtn: 'Gerenciar preferências',
           footer: `
-            <a href="/termos-de-uso" class="cc-link">Termos de Uso</a>
-            <a href="/politica-de-privacidade" class="cc-link">Política de Privacidade</a>
+            <a href="/legal" class="cc-link">Documentos Legais</a>
           `
         },
         preferencesModal: {
@@ -136,13 +135,12 @@ export const cookieConsentConfig: CookieConsentConfig = {
       'en': {
         consentModal: {
           title: '🍪 We use cookies',
-          description: 'We use cookies to enhance your experience, analyze site traffic, and personalize content. You can choose which categories to accept. For more information, see our <a href="/politica-de-privacidade" class="cc-link">Privacy Policy</a>.',
+          description: 'We use cookies to enhance your experience, analyze site traffic, and personalize content. You can choose which categories to accept. For more information, see our <a href="/legal" class="cc-link">Legal Documents</a>.',
           acceptAllBtn: 'Accept all',
           acceptNecessaryBtn: 'Reject all',
           showPreferencesBtn: 'Manage preferences',
           footer: `
-            <a href="/termos-de-uso" class="cc-link">Terms of Use</a>
-            <a href="/politica-de-privacidade" class="cc-link">Privacy Policy</a>
+            <a href="/legal" class="cc-link">Legal Documents</a>
           `
         },
         preferencesModal: {

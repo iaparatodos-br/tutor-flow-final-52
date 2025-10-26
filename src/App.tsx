@@ -36,8 +36,6 @@ import Faturas from "./pages/Faturas";
 import Recibo from "./pages/Recibo";
 import PainelNegocios from "./pages/PainelNegocios";
 import Seguranca from "./pages/Seguranca";
-import TermsOfService from "./pages/TermsOfService";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
@@ -72,7 +70,7 @@ const AppWithProviders = () => {
   // If authenticated but needs password change (but allow reset-password with tokens)
   if (isAuthenticated && needsPasswordChange && !isResetPasswordWithTokens()) {
     // Lista de rotas públicas que podem ser acessadas mesmo precisando trocar senha
-    const publicRoutes = ['/legal', '/termos-de-uso', '/politica-de-privacidade'];
+    const publicRoutes = ['/legal'];
     const currentPath = window.location.pathname;
     
     // Se não estiver em uma rota pública, redirecionar para ForcePasswordChange
@@ -89,8 +87,6 @@ const AppWithProviders = () => {
     return (
       <Routes>
         <Route path="/legal" element={<Legal />} />
-        <Route path="/termos-de-uso" element={<TermsOfService />} />
-        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<ForcePasswordChange />} />
       </Routes>
@@ -99,7 +95,7 @@ const AppWithProviders = () => {
 
   // If authenticated but needs address info (but allow reset-password with tokens)
   if (isAuthenticated && needsAddressInfo && !isResetPasswordWithTokens()) {
-    const publicRoutes = ['/legal', '/termos-de-uso', '/politica-de-privacidade'];
+    const publicRoutes = ['/legal'];
     const currentPath = window.location.pathname;
     
     if (!publicRoutes.includes(currentPath)) {
@@ -114,8 +110,6 @@ const AppWithProviders = () => {
     return (
       <Routes>
         <Route path="/legal" element={<Legal />} />
-        <Route path="/termos-de-uso" element={<TermsOfService />} />
-        <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<ProfileSetupPage />} />
       </Routes>
@@ -137,8 +131,6 @@ const AppWithProviders = () => {
             <Route path="/auth" element={<Auth />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/termos-de-uso" element={<TermsOfService />} />
-            <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
             <Route path="/legal" element={<Legal />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/alunos" element={<Alunos />} />

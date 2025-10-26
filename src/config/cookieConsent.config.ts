@@ -126,7 +126,7 @@ export const cookieConsentConfig: CookieConsentConfig = {
             },
             {
               title: 'Mais informações',
-              description: `Para dúvidas sobre nossa política de cookies, entre em contato através do email <a href="mailto:contato@tutor-flow.app" class="cc-link">contato@tutor-flow.app</a>.`
+              description: `Para dúvidas sobre nossa política de cookies, entre em contato através do email <a href="mailto:tutorflowsite@gmail.com" class="cc-link">tutorflowsite@gmail.com</a>.`
             }
           ]
         }
@@ -215,7 +215,7 @@ export const cookieConsentConfig: CookieConsentConfig = {
             },
             {
               title: 'More information',
-              description: `For questions about our cookie policy, contact us at <a href="mailto:contact@tutor-flow.app" class="cc-link">contact@tutor-flow.app</a>.`
+              description: `For questions about our cookie policy, contact us at <a href="mailto:tutorflowsite@gmail.com" class="cc-link">tutorflowsite@gmail.com</a>.`
             }
           ]
         }

@@ -174,3 +174,39 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================ */
+/* Customização do Cookie Consent (vanilla-cookieconsent) */
+/* ============================================ */
+:root {
+  --cc-bg: hsl(var(--background));
+  --cc-text: hsl(var(--foreground));
+  --cc-btn-primary-bg: hsl(var(--primary));
+  --cc-btn-primary-text: hsl(var(--primary-foreground));
+  --cc-btn-primary-hover-bg: hsl(var(--primary-hover));
+  --cc-btn-secondary-bg: hsl(var(--secondary));
+  --cc-btn-secondary-text: hsl(var(--secondary-foreground));
+  --cc-toggle-on-bg: hsl(var(--primary));
+  --cc-toggle-off-bg: hsl(var(--muted));
+  --cc-toggle-on-knob-bg: hsl(var(--primary-foreground));
+  --cc-toggle-off-knob-bg: hsl(var(--muted-foreground));
+  --cc-separator-border-color: hsl(var(--border));
+  --cc-cookie-table-border: hsl(var(--border));
+  --cc-overlay-bg: hsl(var(--background) / 0.9);
+  --cc-modal-border-radius: var(--radius);
+}
+
+.cc-link {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  transition: opacity 0.2s;
+}
+
+.cc-link:hover {
+  opacity: 0.8;
+}
+
+/* Ajuste de z-index para não conflitar com modais */
+#cc-main {
+  z-index: 9999 !important;
+}

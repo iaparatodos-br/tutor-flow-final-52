@@ -6,7 +6,8 @@
     "preferences": "Preferências",
     "billing": "Cobrança",
     "cancellation": "Regras",
-    "notifications": "Notificações"
+    "notifications": "Notificações",
+    "privacy": "Privacidade"
   },
   "profile": {
     "title": "Informações Pessoais",
@@ -99,6 +100,17 @@
       "heading": "Notificações em Breve",
       "message": "Estamos trabalhando nas configurações de notificação. Em breve você poderá personalizar como recebe alertas e atualizações."
     }
+  },
+  "cookies": {
+    "title": "Gerenciamento de Cookies",
+    "description": "Gerencie suas preferências de cookies e privacidade",
+    "manage": "Gerenciar Preferências de Cookies",
+    "lgpd": {
+      "title": "Conformidade LGPD",
+      "description": "Este site está em conformidade com a Lei Geral de Proteção de Dados (LGPD). Você tem controle total sobre quais cookies aceitar."
+    },
+    "info": "Alterações entrarão em vigor imediatamente. Alguns cookies são essenciais para o funcionamento do site.",
+    "unavailable": "Sistema de cookies não disponível no momento"
   },
   "accessDenied": "Acesso restrito a professores."
 }

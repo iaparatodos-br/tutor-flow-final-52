@@ -6,7 +6,8 @@ import { CancellationPolicySettings } from "@/components/Settings/CancellationPo
 import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
-import { Settings, User, Bell, FileText, Palette } from "lucide-react";
+import { CookieSettings } from "@/components/Settings/CookieSettings";
+import { Settings, User, Bell, FileText, Palette, Shield } from "lucide-react";
 import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { useTranslation } from "react-i18next";
 
@@ -21,8 +22,8 @@ export default function Configuracoes() {
   
   // Use explicit grid classes that Tailwind can detect
   const getGridClass = () => {
-    if (!isProfessor) return 'grid-cols-3';
-    return showBillingTab ? 'grid-cols-5' : 'grid-cols-4';
+    if (!isProfessor) return 'grid-cols-4'; // +1 para cookies
+    return showBillingTab ? 'grid-cols-6' : 'grid-cols-5'; // +1 para cookies
   };
 
   return (
@@ -64,6 +65,10 @@ export default function Configuracoes() {
               <Bell className="h-4 w-4" />
               {t('tabs.notifications')}
             </TabsTrigger>
+            <TabsTrigger value="privacy" className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              {t('tabs.privacy')}
+            </TabsTrigger>
           </TabsList>
 
           <div className="mt-8">
@@ -90,6 +95,10 @@ export default function Configuracoes() {
                 <CancellationPolicySettings />
               </TabsContent>
             )}
+
+            <TabsContent value="privacy" className="space-y-6">
+              <CookieSettings />
+            </TabsContent>
           </div>
         </Tabs>
       </div>

@@ -6,7 +6,8 @@
     "preferences": "Preferences",
     "billing": "Billing",
     "cancellation": "Rules",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "privacy": "Privacy"
   },
   "profile": {
     "title": "Personal Information",
@@ -99,6 +100,17 @@
       "heading": "Notifications Coming Soon",
       "message": "We're working on notification settings. Soon you'll be able to customize how you receive alerts and updates."
     }
+  },
+  "cookies": {
+    "title": "Cookie Management",
+    "description": "Manage your cookie preferences and privacy",
+    "manage": "Manage Cookie Preferences",
+    "lgpd": {
+      "title": "LGPD Compliance",
+      "description": "This site complies with Brazil's General Data Protection Law (LGPD). You have full control over which cookies to accept."
+    },
+    "info": "Changes will take effect immediately. Some cookies are essential for the site to function.",
+    "unavailable": "Cookie system currently unavailable"
   },
   "accessDenied": "Access restricted to professors."
 }

@@ -4,6 +4,7 @@
   "tabs": {
     "profile": "Perfil",
     "preferences": "Preferências",
+    "privacy": "Privacidade",
     "billing": "Cobrança",
     "cancellation": "Regras",
     "notifications": "Notificações"
@@ -99,6 +100,12 @@
       "heading": "Notificações em Breve",
       "message": "Estamos trabalhando nas configurações de notificação. Em breve você poderá personalizar como recebe alertas e atualizações."
     }
+  },
+  "cookies": {
+    "title": "Gerenciamento de Cookies",
+    "description": "Controle suas preferências de privacidade",
+    "info": "Você pode revisar e alterar suas escolhas de cookies a qualquer momento.",
+    "manage": "Gerenciar cookies"
   },
   "accessDenied": "Acesso restrito a professores."
 }

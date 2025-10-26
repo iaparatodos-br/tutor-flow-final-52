@@ -1,0 +1,18 @@
+{
+  "title": "Cookie Preferences",
+  "description": "Manage how we use cookies and similar technologies",
+  "info": "You can change your cookie preferences at any time. Changes take effect immediately.",
+  "manage": "Manage preferences",
+  "necessary": {
+    "title": "Essential Cookies",
+    "description": "Required for authentication, payments, and security. Cannot be disabled."
+  },
+  "analytics": {
+    "title": "Analytics Cookies",
+    "description": "Help us understand how you use the platform to improve your experience."
+  },
+  "marketing": {
+    "title": "Marketing Cookies",
+    "description": "Allow us to show relevant ads and measure campaign effectiveness."
+  }
+}

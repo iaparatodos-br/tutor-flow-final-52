@@ -6,7 +6,8 @@ import { CancellationPolicySettings } from "@/components/Settings/CancellationPo
 import { ProfileSettings } from "@/components/Settings/ProfileSettings";
 import { NotificationSettings } from "@/components/Settings/NotificationSettings";
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
-import { Settings, User, Bell, FileText, Palette } from "lucide-react";
+import { CookieSettings } from "@/components/Settings/CookieSettings";
+import { Settings, User, Bell, FileText, Palette, Cookie } from "lucide-react";
 import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { useTranslation } from "react-i18next";
 
@@ -21,8 +22,8 @@ export default function Configuracoes() {
   
   // Use explicit grid classes that Tailwind can detect
   const getGridClass = () => {
-    if (!isProfessor) return 'grid-cols-3';
-    return showBillingTab ? 'grid-cols-5' : 'grid-cols-4';
+    if (!isProfessor) return 'grid-cols-4'; // Profile, Preferences, Privacy, Notifications
+    return showBillingTab ? 'grid-cols-6' : 'grid-cols-5'; // +Privacy +Cancellation
   };
 
   return (
@@ -47,6 +48,10 @@ export default function Configuracoes() {
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Palette className="h-4 w-4" />
               {t('tabs.preferences')}
+            </TabsTrigger>
+            <TabsTrigger value="privacy" className="flex items-center gap-2">
+              <Cookie className="h-4 w-4" />
+              {t('tabs.privacy')}
             </TabsTrigger>
             {showBillingTab && (
               <TabsTrigger value="billing" className="flex items-center gap-2">
@@ -73,6 +78,10 @@ export default function Configuracoes() {
 
             <TabsContent value="preferences" className="space-y-6">
               <PreferencesSettings />
+            </TabsContent>
+
+            <TabsContent value="privacy" className="space-y-6">
+              <CookieSettings />
             </TabsContent>
 
             <TabsContent value="notifications" className="space-y-6">

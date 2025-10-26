@@ -1,0 +1,18 @@
+{
+  "title": "Preferências de Cookies",
+  "description": "Gerencie como usamos cookies e tecnologias similares",
+  "info": "Você pode alterar suas preferências de cookies a qualquer momento. As alterações entram em vigor imediatamente.",
+  "manage": "Gerenciar preferências",
+  "necessary": {
+    "title": "Cookies Essenciais",
+    "description": "Necessários para autenticação, pagamentos e segurança. Não podem ser desabilitados."
+  },
+  "analytics": {
+    "title": "Cookies de Análise",
+    "description": "Nos ajudam a entender como você usa a plataforma para melhorar sua experiência."
+  },
+  "marketing": {
+    "title": "Cookies de Marketing",
+    "description": "Permitem exibir anúncios relevantes e medir a efetividade de campanhas."
+  }
+}

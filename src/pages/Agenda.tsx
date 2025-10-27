@@ -1177,6 +1177,7 @@ export default function Agenda() {
           onConfirmClass={handleConfirmClass} 
           onCancelClass={handleRecurringClassCancel} 
           onCompleteClass={(classData: CalendarClass) => handleCompleteClass(classData.id)} 
+          onEditReport={handleManageReport}
           onManageReport={handleManageReport} 
           onEndRecurrence={handleEndRecurrence}
           isProfessor={isProfessor} 

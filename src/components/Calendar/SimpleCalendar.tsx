@@ -28,6 +28,7 @@ interface SimpleCalendarProps {
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onManageReport?: (classData: CalendarClass) => void;
+  onEditReport?: (classData: CalendarClass) => void;
   onEndRecurrence?: (templateId: string, endDate: string) => void;
   loading?: boolean;
   onScheduleClass?: () => void;
@@ -43,6 +44,7 @@ export function SimpleCalendar({
   onCancelClass,
   onCompleteClass,
   onManageReport,
+  onEditReport,
   onEndRecurrence,
   loading,
   onScheduleClass,
@@ -475,8 +477,9 @@ export function SimpleCalendar({
                         <ClassReportView
                           classId={classEvent.id}
                           onEditReport={() => {
-                            if (onManageReport) {
-                              onManageReport(classEvent);
+                            setSelectedEvent(null);
+                            if (onEditReport) {
+                              onEditReport(classEvent);
                             }
                           }}
                           showEditButton={isProfessor}

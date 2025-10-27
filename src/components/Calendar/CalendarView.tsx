@@ -65,10 +65,11 @@ interface CalendarViewProps {
   onConfirmClass?: (classId: string) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
+  onEditReport?: (classData: CalendarClass) => void;
   loading?: boolean;
 }
 
-export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const { t } = useTranslation('classes');
   const [view, setView] = useState<View>('month');
@@ -363,8 +364,9 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                         <ClassReportView
                           classId={classEvent.id}
                           onEditReport={() => {
-                            if (onCompleteClass) {
-                              onCompleteClass(classEvent);
+                            setSelectedEvent(null);
+                            if (onEditReport) {
+                              onEditReport(classEvent);
                             }
                           }}
                           showEditButton={isProfessor}

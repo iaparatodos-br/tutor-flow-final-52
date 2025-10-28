@@ -313,8 +313,8 @@ export default function Agenda() {
             )
           `).eq('class_participants.student_id', profile.id).in('class_participants.status', ['pendente', 'confirmada', 'concluida']).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
 
-        // Optimized single query with OR condition to get both individual and group classes
-        let studentQuery = supabase
+        // Query 1: Aulas individuais onde o aluno é o student_id
+        let individualQuery = supabase
           .from('classes')
           .select(`
             id,
@@ -350,22 +350,78 @@ export default function Agenda() {
               )
             )
           `)
+          .eq('student_id', profile.id)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
 
         if (selectedTeacherId) {
-          studentQuery = studentQuery.eq('teacher_id', selectedTeacherId);
+          individualQuery = individualQuery.eq('teacher_id', selectedTeacherId);
         }
 
-        // Use OR to get classes where student is either the main student or a participant
-        studentQuery = studentQuery.or(`student_id.eq.${profile.id},class_participants.student_id.eq.${profile.id}`);
+        const { data: individualClasses, error: individualError } = await individualQuery;
 
-        const { data: studentData, error: studentError } = await studentQuery;
-
-        if (studentError) {
-          console.error('Error loading student classes:', studentError);
-          throw studentError;
+        if (individualError) {
+          console.error('Error loading individual classes:', individualError);
+          throw individualError;
         }
+
+        // Query 2: Aulas em grupo onde o aluno é participante
+        let groupQuery = supabase
+          .from('classes')
+          .select(`
+            id,
+            class_date,
+            duration_minutes,
+            status,
+            notes,
+            is_experimental,
+            is_group_class,
+            student_id,
+            service_id,
+            teacher_id,
+            recurrence_pattern,
+            is_template,
+            recurrence_end_date,
+            class_template_id,
+            profiles!classes_student_id_fkey (
+              name,
+              email
+            ),
+            class_participants!inner (
+              student_id,
+              status,
+              cancelled_at,
+              charge_applied,
+              confirmed_at,
+              completed_at,
+              cancellation_reason,
+              billed,
+              profiles!class_participants_student_id_fkey (
+                name,
+                email
+              )
+            )
+          `)
+          .eq('class_participants.student_id', profile.id)
+          .eq('is_group_class', true)
+          .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('class_date');
+
+        if (selectedTeacherId) {
+          groupQuery = groupQuery.eq('teacher_id', selectedTeacherId);
+        }
+
+        const { data: groupClasses, error: groupError } = await groupQuery;
+
+        if (groupError) {
+          console.error('Error loading group classes:', groupError);
+          throw groupError;
+        }
+
+        // Consolidar resultados e remover duplicatas
+        const allClasses = [...(individualClasses || []), ...(groupClasses || [])];
+        const uniqueClassesMap = new Map(allClasses.map(c => [c.id, c]));
+        const studentData = Array.from(uniqueClassesMap.values());
         
         // Add has_report information for students
         if (studentData) {

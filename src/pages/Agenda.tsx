@@ -814,6 +814,23 @@ export default function Agenda() {
           error: participantError
         } = await supabase.from('class_participants').insert(participantInserts);
         if (participantError) throw participantError;
+      } else if (!virtualClass.is_group_class && virtualClass.student_id) {
+        // FASE 2.1: Criar participante para aula individual materializada
+        const { error: participantError } = await supabase
+          .from('class_participants')
+          .insert({
+            class_id: newClass.id,
+            student_id: virtualClass.student_id,
+            status: targetStatus,
+            confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' ? new Date().toISOString() : null,
+            completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null,
+            billed: false
+          });
+        
+        if (participantError) {
+          console.error('Error creating participant for materialized individual class:', participantError);
+          throw participantError;
+        }
       }
 
       const statusMessages = {
@@ -990,6 +1007,32 @@ export default function Agenda() {
           await supabase.from('classes').delete().in('id', classIds);
           
           throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
+        }
+      } else if (!formData.is_group_class && !formData.recurrence && baseClassData.student_id) {
+        // FASE 2.2: Criar participante para aula individual única (não-recorrente)
+        try {
+          for (const classInstance of insertedClasses) {
+            const { error: participantError } = await supabase
+              .from('class_participants')
+              .insert({
+                class_id: classInstance.id,
+                student_id: baseClassData.student_id,
+                status: 'confirmada',
+                billed: false
+              });
+            
+            if (participantError) {
+              throw participantError;
+            }
+          }
+        } catch (participantError: any) {
+          console.error('Error inserting participant for individual class, rolling back:', participantError);
+          
+          // ROLLBACK: Delete created classes
+          const classIds = insertedClasses.map(c => c.id);
+          await supabase.from('classes').delete().in('id', classIds);
+          
+          throw new Error('Erro ao adicionar participante. A aula não foi criada.');
         }
       }
       if (formData.recurrence) {

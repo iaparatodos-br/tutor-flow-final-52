@@ -130,20 +130,28 @@ serve(async (req) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         
-        const { data: oldConfirmedClasses, error: oldClassesError } = await supabaseAdmin
-          .from('classes')
-          .select('id, class_date, status')
+        const { data: oldConfirmedParticipations, error: oldClassesError } = await supabaseAdmin
+          .from('class_participants')
+          .select(`
+            id,
+            classes!inner (
+              id,
+              class_date,
+              status,
+              teacher_id
+            )
+          `)
           .eq('student_id', studentInfo.student_id)
-          .eq('teacher_id', studentInfo.teacher_id)
+          .eq('classes.teacher_id', studentInfo.teacher_id)
           .eq('status', 'confirmada')
-          .lt('class_date', thirtyDaysAgo.toISOString());
+          .lt('classes.class_date', thirtyDaysAgo.toISOString());
         
-        if (!oldClassesError && oldConfirmedClasses && oldConfirmedClasses.length > 0) {
-          logStep(`⚠️ ALERTA: ${oldConfirmedClasses.length} aulas confirmadas com mais de 30 dias não foram marcadas como concluídas`, {
+        if (!oldClassesError && oldConfirmedParticipations && oldConfirmedParticipations.length > 0) {
+          logStep(`⚠️ ALERTA: ${oldConfirmedParticipations.length} aulas confirmadas com mais de 30 dias não foram marcadas como concluídas`, {
             student: studentInfo.student_name,
             teacher: studentInfo.teacher_name,
-            oldClassCount: oldConfirmedClasses.length,
-            oldestClass: oldConfirmedClasses[0]?.class_date
+            oldClassCount: oldConfirmedParticipations.length,
+            oldestClass: oldConfirmedParticipations[0]?.classes?.class_date
           });
         }
         

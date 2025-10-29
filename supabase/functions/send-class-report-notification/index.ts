@@ -33,7 +33,6 @@ serve(async (req) => {
         class_date,
         duration_minutes,
         is_group_class,
-        student_id,
         profiles!classes_teacher_id_fkey (
           id,
           name,
@@ -99,26 +98,13 @@ serve(async (req) => {
       console.error('Error fetching feedbacks:', feedbackError);
     }
 
-    // Prepare list of students to notify
-    let studentsToNotify = [];
+    // Prepare list of students to notify (for both individual and group classes)
+    const studentsToNotify = classData.class_participants
+      .map(p => p.profiles)
+      .filter(profile => profile !== null);
 
-    if (classData.is_group_class) {
-      // Group class - notify all participants
-      studentsToNotify = classData.class_participants.map(p => p.profiles);
-    } else {
-      // Individual class - get the student
-      const { data: student, error: studentError } = await supabaseAdmin
-        .from('profiles')
-        .select('*')
-        .eq('id', classData.student_id)
-        .single();
-
-      if (studentError) {
-        console.error('Error fetching student data:', studentError);
-        throw studentError;
-      }
-
-      studentsToNotify = [student];
+    if (studentsToNotify.length === 0) {
+      throw new Error('No students found in class participants');
     }
 
     console.log(`Notifying ${studentsToNotify.length} students`);

@@ -37,22 +37,19 @@ serve(async (req) => {
       throw new Error('Aula não encontrada');
     }
 
-    // Fetch participants if it's a group class
-    let participants: any[] = [];
-    if (classData.is_group_class) {
-      const { data: participantsData, error: participantsError } = await supabaseClient
-        .from('class_participants')
-        .select('student_id, profiles!class_participants_student_id_fkey(name, email, guardian_email)')
-        .eq('class_id', class_id);
+    // Fetch participants (for both individual and group classes)
+    const { data: participantsData, error: participantsError } = await supabaseClient
+      .from('class_participants')
+      .select('student_id, profiles!class_participants_student_id_fkey(name, email, guardian_email)')
+      .eq('class_id', class_id);
 
-      if (participantsError) {
-        console.error('Error fetching participants:', participantsError);
-      } else {
-        participants = participantsData || [];
-      }
-      
-      console.log(`Group class with ${participants.length} participants`);
+    if (participantsError) {
+      console.error('Error fetching participants:', participantsError);
+      throw new Error('Erro ao buscar participantes da aula');
     }
+
+    const participants = participantsData || [];
+    console.log(`Class has ${participants.length} participants (group: ${classData.is_group_class})`);
 
     // VALIDAÇÃO 1: Verificar se a aula já foi cancelada
     if (classData.status === 'cancelada') {
@@ -74,21 +71,16 @@ serve(async (req) => {
         throw new Error('Você não tem permissão para cancelar esta aula');
       }
     } else if (cancelled_by_type === 'student') {
-      // Para aulas individuais
-      if (classData.student_id === cancelled_by) {
-        // OK, aluno pode cancelar sua própria aula
-      } else {
-        // Para aulas em grupo, verificar se é participante
-        const { data: participation, error: participationError } = await supabaseClient
-          .from('class_participants')
-          .select('id')
-          .eq('class_id', class_id)
-          .eq('student_id', cancelled_by)
-          .maybeSingle();
+      // Verificar se é participante (tanto para aulas individuais quanto em grupo)
+      const { data: participation, error: participationError } = await supabaseClient
+        .from('class_participants')
+        .select('id')
+        .eq('class_id', class_id)
+        .eq('student_id', cancelled_by)
+        .maybeSingle();
 
-        if (participationError || !participation) {
-          throw new Error('Você não tem permissão para cancelar esta aula');
-        }
+      if (participationError || !participation) {
+        throw new Error('Você não tem permissão para cancelar esta aula');
       }
     }
 
@@ -213,9 +205,8 @@ serve(async (req) => {
         .eq('id', class_id);
 
       // Create notification records for all affected students
-      const studentsToNotify = classData.is_group_class 
-        ? participants.map(p => p.student_id)
-        : [classData.student_id];
+      // Always use participants array for both individual and group classes
+      const studentsToNotify = participants.map(p => p.student_id);
 
       const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
       for (const studentId of studentsToNotify) {

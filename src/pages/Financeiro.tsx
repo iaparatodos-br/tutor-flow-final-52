@@ -81,6 +81,10 @@ export default function Financeiro() {
   const [paymentNotes, setPaymentNotes] = useState('');
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [showFeeAlert, setShowFeeAlert] = useState(true);
+  const [invoiceDetailsOpen, setInvoiceDetailsOpen] = useState(false);
+  const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   useEffect(() => {
     if (profile?.id) {
       loadInvoices();
@@ -198,6 +202,47 @@ export default function Financeiro() {
     setInvoiceToMarkPaid(invoiceId);
     setPaymentNotes('');
     setMarkAsPaidDialogOpen(true);
+  };
+
+  const loadInvoiceDetails = async (invoice: InvoiceWithStudent) => {
+    setSelectedInvoice(invoice);
+    setLoadingDetails(true);
+    setInvoiceDetailsOpen(true);
+    
+    try {
+      const { data, error } = await supabase
+        .from('invoice_classes')
+        .select(`
+          id,
+          item_type,
+          amount,
+          description,
+          charge_percentage,
+          classes!inner (
+            id,
+            class_date,
+            duration_minutes
+          ),
+          class_participants!inner (
+            profiles!inner (name)
+          )
+        `)
+        .eq('invoice_id', invoice.id)
+        .order('created_at', { ascending: true });
+      
+      if (error) throw error;
+      setInvoiceItems(data || []);
+    } catch (error) {
+      console.error('Error loading invoice details:', error);
+      toast({
+        title: "Erro ao carregar detalhes",
+        description: "Não foi possível carregar os detalhes da fatura",
+        variant: "destructive"
+      });
+      setInvoiceItems([]);
+    } finally {
+      setLoadingDetails(false);
+    }
   };
   const handleMarkAsPaid = async () => {
     if (!invoiceToMarkPaid) return;
@@ -495,6 +540,10 @@ export default function Financeiro() {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => loadInvoiceDetails(invoice)}>
+                                        <Receipt className="mr-2 h-4 w-4" />
+                                        Ver Detalhes
+                                      </DropdownMenuItem>
                                       <AlertDialog>
                                         <AlertDialogTrigger asChild>
                                           <DropdownMenuItem onSelect={e => e.preventDefault()}>
@@ -684,6 +733,99 @@ export default function Financeiro() {
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Invoice Details Modal */}
+        <Dialog open={invoiceDetailsOpen} onOpenChange={setInvoiceDetailsOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Detalhes da Fatura</DialogTitle>
+            </DialogHeader>
+            
+            {selectedInvoice && (
+              <div className="space-y-4">
+                <div className="bg-muted p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Aluno</p>
+                      <p className="font-medium">{selectedInvoice.student.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Vencimento</p>
+                      <p className="font-medium">{formatDate(selectedInvoice.due_date)}</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Status</p>
+                      {getStatusBadge(selectedInvoice.status)}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Total</p>
+                      <p className="font-bold text-lg">{formatCurrency(selectedInvoice.amount)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {loadingDetails ? (
+                  <div className="text-center py-8">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+                    <p className="text-muted-foreground">Carregando detalhes...</p>
+                  </div>
+                ) : invoiceItems.length === 0 ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <h3 className="text-lg font-medium mb-2">Nenhum detalhe disponível</h3>
+                    <p className="text-muted-foreground text-sm">
+                      Esta fatura foi criada antes da implementação do rastreamento detalhado.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-sm text-muted-foreground">Itens da Fatura</h3>
+                    {invoiceItems.map((item) => (
+                      <Card key={item.id}>
+                        <CardContent className="pt-4">
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                              <Badge variant={item.item_type === 'completed_class' ? 'default' : 'secondary'} className="mb-2">
+                                {item.item_type === 'completed_class' ? 'Aula Concluída' : 'Cancelamento'}
+                              </Badge>
+                              <p className="text-sm mb-1">{item.description}</p>
+                              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {new Date(item.classes.class_date).toLocaleDateString('pt-BR')}
+                                </span>
+                                <span>{item.classes.duration_minutes} min</span>
+                              </div>
+                              {item.charge_percentage && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Cobrança de {item.charge_percentage}%
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">
+                                {formatCurrency(item.amount)}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                    
+                    <div className="pt-4 border-t">
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-lg">Total</span>
+                        <span className="font-bold text-lg">{formatCurrency(selectedInvoice.amount)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </DialogContent>
         </Dialog>
             </div>

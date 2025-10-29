@@ -305,17 +305,55 @@ serve(async (req) => {
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        // Consolidar IDs dos participantes (para marcar como faturados)
-        const participantIds = [
-          ...unbilledClasses.map(c => c.participant_id),
-          ...cancelledChargeable.map(c => c.participant_id)
-        ];
-        
-        // IDs das classes (para criar relação na fatura se necessário)
-        const classIds = [
-          ...unbilledClasses.map(c => c.id),
-          ...cancelledChargeable.map(c => c.id)
-        ];
+        // Preparar itens detalhados para invoice_classes
+        const invoiceItems = [];
+
+        // Adicionar aulas concluídas
+        for (const classItem of unbilledClasses) {
+          const service = Array.isArray(classItem.class_services) 
+            ? classItem.class_services[0] 
+            : classItem.class_services;
+          const amount = service?.price || defaultServicePrice || 100;
+          
+          invoiceItems.push({
+            class_id: classItem.id,
+            participant_id: classItem.participant_id,
+            item_type: 'completed_class',
+            amount: amount,
+            description: `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`,
+            cancellation_policy_id: null,
+            charge_percentage: null
+          });
+        }
+
+        // Adicionar cobranças de cancelamento
+        for (const cancelledClass of cancelledChargeable) {
+          const service = Array.isArray(cancelledClass.class_services) 
+            ? cancelledClass.class_services[0] 
+            : cancelledClass.class_services;
+          const baseAmount = service?.price || defaultServicePrice || 100;
+          
+          // Buscar política de cancelamento
+          const { data: policy } = await supabaseAdmin
+            .from('cancellation_policies')
+            .select('id, charge_percentage')
+            .eq('teacher_id', studentInfo.teacher_id)
+            .eq('is_active', true)
+            .maybeSingle();
+          
+          const chargePercentage = policy?.charge_percentage || 50;
+          const chargeAmount = (baseAmount * chargePercentage) / 100;
+          
+          invoiceItems.push({
+            class_id: cancelledClass.id,
+            participant_id: cancelledClass.participant_id,
+            item_type: 'cancellation_charge',
+            amount: chargeAmount,
+            description: `Cancelamento - ${service?.name || 'serviço padrão'} (${chargePercentage}%)`,
+            cancellation_policy_id: policy?.id || null,
+            charge_percentage: chargePercentage
+          });
+        }
         
         // Criar descrição detalhada
         let descriptionParts = [];
@@ -338,11 +376,11 @@ serve(async (req) => {
           business_profile_id: studentInfo.business_profile_id,
         };
 
-        // Usar função atômica para criar fatura e marcar classes
+        // Usar função atômica para criar fatura e marcar classes (agora com itens detalhados)
         const { data: transactionResult, error: transactionError } = await supabaseAdmin
           .rpc('create_invoice_and_mark_classes_billed', {
             p_invoice_data: invoiceData,
-            p_class_ids: classIds
+            p_class_items: invoiceItems
           });
 
         if (transactionError || !transactionResult?.success) {
@@ -356,18 +394,13 @@ serve(async (req) => {
 
         const invoiceId = transactionResult.invoice_id;
         
-        // Marcar participantes como faturados
-        await supabaseAdmin
-          .from('class_participants')
-          .update({ billed: true })
-          .in('id', participantIds);
-        
-        logStep(`Invoice created atomically`, { 
+        logStep(`Invoice created atomically with invoice_classes`, { 
           invoiceId,
           amount: totalAmount,
           businessProfileId: studentInfo.business_profile_id,
+          itemsCreated: transactionResult.items_created,
           classesMarked: transactionResult.classes_updated,
-          participantsMarked: participantIds.length
+          participantsMarked: transactionResult.participants_updated
         });
 
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)

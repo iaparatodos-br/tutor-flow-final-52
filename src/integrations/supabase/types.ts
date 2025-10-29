@@ -636,6 +636,74 @@ export type Database = {
         }
         Relationships: []
       }
+      invoice_classes: {
+        Row: {
+          amount: number
+          cancellation_policy_id: string | null
+          charge_percentage: number | null
+          class_id: string
+          created_at: string
+          description: string | null
+          id: string
+          invoice_id: string
+          item_type: string
+          participant_id: string
+        }
+        Insert: {
+          amount: number
+          cancellation_policy_id?: string | null
+          charge_percentage?: number | null
+          class_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          invoice_id: string
+          item_type: string
+          participant_id: string
+        }
+        Update: {
+          amount?: number
+          cancellation_policy_id?: string | null
+          charge_percentage?: number | null
+          class_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          invoice_id?: string
+          item_type?: string
+          participant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_classes_cancellation_policy_id_fkey"
+            columns: ["cancellation_policy_id"]
+            isOneToOne: false
+            referencedRelation: "cancellation_policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "class_participants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           amount: number
@@ -1690,10 +1758,12 @@ export type Database = {
         }
         Returns: boolean
       }
-      create_invoice_and_mark_classes_billed: {
-        Args: { p_class_ids: string[]; p_invoice_data: Json }
-        Returns: Json
-      }
+      create_invoice_and_mark_classes_billed:
+        | {
+            Args: { p_class_ids: string[]; p_invoice_data: Json }
+            Returns: Json
+          }
+        | { Args: { p_class_items: Json; p_invoice_data: Json }; Returns: Json }
       generate_stripe_fingerprint: {
         Args: { event_data: Json }
         Returns: string

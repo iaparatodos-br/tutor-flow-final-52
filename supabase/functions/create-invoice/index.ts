@@ -122,30 +122,65 @@ serve(async (req) => {
 
     // Update classes if class_ids provided
     if (body.class_ids && body.class_ids.length > 0) {
-      const { error: updateClassesError } = await supabaseClient
-        .from('classes')
-        .update({ invoice_id: newInvoice.id })
-        .in('id', body.class_ids);
-
-    if (updateClassesError) {
-      logStep("Warning: Could not update classes", { error: updateClassesError });
-    } else {
-      logStep("Classes updated with invoice_id", { classIds: body.class_ids });
-      
-      // CRITICAL: Mark participants as billed
-      const { error: updateParticipantsError } = await supabaseClient
+      // Buscar dados das aulas e participantes
+      const { data: classData, error: classDataError } = await supabaseClient
         .from('class_participants')
-        .update({ billed: true })
-        .in('class_id', body.class_ids);
-      
-      if (updateParticipantsError) {
-        logStep("Warning: Could not mark participants as billed", { 
-          error: updateParticipantsError 
-        });
+        .select(`
+          id,
+          class_id,
+          classes!inner (
+            id,
+            class_date,
+            service_id,
+            class_services (name, price)
+          )
+        `)
+        .in('class_id', body.class_ids)
+        .eq('student_id', body.student_id);
+
+      if (!classDataError && classData) {
+        // Preparar itens para invoice_classes
+        const invoiceItems = [];
+        
+        for (const cp of classData) {
+          const classInfo = Array.isArray(cp.classes) ? cp.classes[0] : cp.classes;
+          const service = Array.isArray(classInfo.class_services) 
+            ? classInfo.class_services[0] 
+            : classInfo.class_services;
+          
+          invoiceItems.push({
+            invoice_id: newInvoice.id,
+            class_id: cp.class_id,
+            participant_id: cp.id,
+            item_type: body.invoice_type === 'cancellation' ? 'cancellation_charge' : 'completed_class',
+            amount: service?.price || body.amount / body.class_ids.length,
+            description: `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
+            cancellation_policy_id: body.cancellation_policy_id || null,
+            charge_percentage: body.invoice_type === 'cancellation' && body.original_amount 
+              ? ((body.amount / body.original_amount) * 100) 
+              : null
+          });
+        }
+        
+        // Inserir itens em invoice_classes
+        const { error: itemsError } = await supabaseClient
+          .from('invoice_classes')
+          .insert(invoiceItems);
+        
+        if (itemsError) {
+          logStep("Warning: Could not create invoice items", { error: itemsError });
+        } else {
+          logStep("Invoice items created", { itemCount: invoiceItems.length });
+        }
+        
+        // Marcar classes e participantes como faturados
+        await supabaseClient.from('classes').update({ billed: true }).in('id', body.class_ids);
+        await supabaseClient.from('class_participants').update({ billed: true }).in('class_id', body.class_ids);
+        
+        logStep("Classes and participants marked as billed", { classIds: body.class_ids });
       } else {
-        logStep("Participants marked as billed", { classIds: body.class_ids });
+        logStep("Warning: Could not fetch class data for invoice_classes", { error: classDataError });
       }
-    }
     }
 
     // Generate payment URL automatically

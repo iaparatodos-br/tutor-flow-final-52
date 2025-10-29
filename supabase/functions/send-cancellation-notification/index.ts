@@ -53,8 +53,16 @@ serve(async (req) => {
         id,
         class_date,
         teacher:profiles!classes_teacher_id_fkey(name, email),
-        student:profiles!classes_student_id_fkey(name, email, guardian_email),
-        service:class_services(name, price)
+        service:class_services(name, price),
+        class_participants!inner (
+          student_id,
+          profiles!class_participants_student_id_fkey (
+            id,
+            name,
+            email,
+            guardian_email
+          )
+        )
       `)
       .eq('id', class_id)
       .maybeSingle();
@@ -64,8 +72,11 @@ serve(async (req) => {
     }
 
     const teacher = Array.isArray(classData.teacher) ? classData.teacher[0] : classData.teacher;
-    const student = Array.isArray(classData.student) ? classData.student[0] : classData.student;
     const service = Array.isArray(classData.service) ? classData.service[0] : classData.service;
+    
+    // Buscar student do primeiro participante (para compatibilidade com lógica existente)
+    const firstParticipant = classData.class_participants?.[0];
+    const student = firstParticipant?.profiles;
 
     const classDateFormatted = new Date(classData.class_date).toLocaleString('pt-BR', {
       dateStyle: 'long',
@@ -196,7 +207,12 @@ serve(async (req) => {
       }
     } else {
       // Notificar aluno(s) que professor cancelou
-      const studentsToNotify = is_group_class ? participants : [{ student_id: student?.id, profile: student }];
+      const studentsToNotify = is_group_class 
+        ? participants 
+        : classData.class_participants.map(p => ({
+            student_id: p.student_id,
+            profile: p.profiles
+          }));
 
       for (const participantData of studentsToNotify) {
         const studentProfile = participantData.profile;

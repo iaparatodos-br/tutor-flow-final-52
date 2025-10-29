@@ -484,8 +484,6 @@ export type Database = {
           recurrence_pattern: Json | null
           service_id: string | null
           status: string
-          student_id: string | null
-          student_id_legacy: string | null
           teacher_id: string
           updated_at: string | null
         }
@@ -512,8 +510,6 @@ export type Database = {
           recurrence_pattern?: Json | null
           service_id?: string | null
           status?: string
-          student_id?: string | null
-          student_id_legacy?: string | null
           teacher_id: string
           updated_at?: string | null
         }
@@ -540,8 +536,6 @@ export type Database = {
           recurrence_pattern?: Json | null
           service_id?: string | null
           status?: string
-          student_id?: string | null
-          student_id_legacy?: string | null
           teacher_id?: string
           updated_at?: string | null
         }
@@ -565,20 +559,6 @@ export type Database = {
             columns: ["service_id"]
             isOneToOne: false
             referencedRelation: "class_services"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "classes_student_id_fkey"
-            columns: ["student_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "classes_student_id_legacy_fkey"
-            columns: ["student_id_legacy"]
-            isOneToOne: false
-            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1743,8 +1723,6 @@ export type Database = {
           recurrence_pattern: Json | null
           service_id: string | null
           status: string
-          student_id: string | null
-          student_id_legacy: string | null
           teacher_id: string
           updated_at: string | null
         }[]
@@ -1775,8 +1753,8 @@ export type Database = {
           is_group_class: boolean
           is_template: boolean
           notes: string
-          parent_class_id: string
           participants: Json
+          profiles: Json
           recurrence_end_date: string
           recurrence_pattern: Json
           service_id: string

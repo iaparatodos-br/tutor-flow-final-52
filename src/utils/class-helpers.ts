@@ -1,6 +1,8 @@
 /**
  * Utility functions for handling class-student relationships
  * Centralizes logic for extracting student information from class_participants
+ * 
+ * After full refactoring: All classes use class_participants exclusively
  */
 
 interface ClassParticipant {
@@ -16,11 +18,7 @@ interface ClassWithParticipants {
   id: string;
   is_group_class: boolean;
   participants?: ClassParticipant[];
-  student_id?: string | null; // Legacy - will be removed
-  student?: {
-    name: string;
-    email: string;
-  };
+  // Legacy student_id field completely removed
 }
 
 /**
@@ -29,17 +27,7 @@ interface ClassWithParticipants {
  * @returns Array of student IDs
  */
 export function getClassStudentIds(classData: ClassWithParticipants): string[] {
-  // Priority 1: Use participants (correct pattern)
-  if (classData.participants && classData.participants.length > 0) {
-    return classData.participants.map(p => p.student_id);
-  }
-  
-  // Legacy fallback (temporary - will be removed after refactoring)
-  if (classData.student_id) {
-    return [classData.student_id];
-  }
-  
-  return [];
+  return classData.participants?.map(p => p.student_id) || [];
 }
 
 /**
@@ -61,19 +49,7 @@ export function getPrimaryStudentId(classData: ClassWithParticipants): string | 
  * Gets complete list of participants (with profile data if available)
  */
 export function getClassParticipants(classData: ClassWithParticipants): ClassParticipant[] {
-  if (classData.participants && classData.participants.length > 0) {
-    return classData.participants;
-  }
-  
-  // Legacy fallback (temporary)
-  if (classData.student_id && classData.student) {
-    return [{
-      student_id: classData.student_id,
-      student: classData.student
-    }];
-  }
-  
-  return [];
+  return classData.participants || [];
 }
 
 /**

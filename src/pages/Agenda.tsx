@@ -280,8 +280,10 @@ export default function Agenda() {
           }));
         }
       } else {
-        // For students, get classes where they are active participants
-        let query = supabase.from('classes').select(`
+        // For students, get classes where they are active participants (via class_participants)
+        let individualQuery = supabase
+          .from('classes')
+          .select(`
             id,
             class_date,
             duration_minutes,
@@ -289,14 +291,12 @@ export default function Agenda() {
             notes,
             is_experimental,
             is_group_class,
-            student_id,
             service_id,
             teacher_id,
             recurrence_pattern,
-            profiles!classes_student_id_fkey (
-              name,
-              email
-            ),
+            is_template,
+            recurrence_end_date,
+            class_template_id,
             class_participants!inner (
               student_id,
               status,
@@ -311,46 +311,9 @@ export default function Agenda() {
                 email
               )
             )
-          `).eq('class_participants.student_id', profile.id).in('class_participants.status', ['pendente', 'confirmada', 'concluida']).gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('class_date');
-
-        // Query 1: Aulas individuais onde o aluno é o student_id
-        let individualQuery = supabase
-          .from('classes')
-          .select(`
-            id,
-            class_date,
-            duration_minutes,
-            status,
-            notes,
-            is_experimental,
-            is_group_class,
-            student_id,
-            service_id,
-            teacher_id,
-            recurrence_pattern,
-            is_template,
-            recurrence_end_date,
-            class_template_id,
-            profiles!classes_student_id_fkey (
-              name,
-              email
-            ),
-            class_participants (
-              student_id,
-              status,
-              cancelled_at,
-              charge_applied,
-              confirmed_at,
-              completed_at,
-              cancellation_reason,
-              billed,
-              profiles!class_participants_student_id_fkey (
-                name,
-                email
-              )
-            )
           `)
-          .eq('student_id', profile.id)
+          .eq('class_participants.student_id', profile.id)
+          .eq('is_group_class', false)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
 
@@ -376,17 +339,12 @@ export default function Agenda() {
             notes,
             is_experimental,
             is_group_class,
-            student_id,
             service_id,
             teacher_id,
             recurrence_pattern,
             is_template,
             recurrence_end_date,
             class_template_id,
-            profiles!classes_student_id_fkey (
-              name,
-              email
-            ),
             class_participants!inner (
               student_id,
               status,
@@ -927,7 +885,6 @@ export default function Agenda() {
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
-        student_id: formData.is_group_class ? null : formData.selectedStudents[0] || null,
         service_id: formData.service_id || null,
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,

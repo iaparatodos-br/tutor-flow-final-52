@@ -32,7 +32,7 @@ interface ClassWithParticipants {
   has_report?: boolean;
   
   recurrence_pattern?: any;
-  student_id?: string;
+  // student_id REMOVED - use participants array instead
   service_id?: string;
   teacher_id?: string;
   isVirtual?: boolean;
@@ -112,7 +112,7 @@ export default function Agenda() {
       service_price: number | null;
       class_template_id: string;
       duration_minutes: number;
-      student_id: string | null;
+      // student_id REMOVED
     };
   }>({
     isOpen: false,
@@ -529,13 +529,12 @@ export default function Agenda() {
       } else {
         // For students, data already comes with relations
         classesWithDetails = materializedClasses.map((item: any) => {
-          const participants = item.is_group_class ? item.class_participants.map((p: any) => ({
+          // For students: Get participants from class_participants (no legacy fallback)
+          const participants = item.class_participants?.map((p: any) => ({
             student_id: p.student_id,
             student: p.profiles
-          })) : item.student_id && item.profiles ? [{
-            student_id: item.student_id,
-            student: item.profiles
-          }] : [];
+          })) || [];
+          
           return {
             ...item,
             participants
@@ -646,7 +645,7 @@ export default function Agenda() {
         start: calendarStartDate,
         end: calendarEndDate,
         status: displayStatus,
-        student_id: cls.student_id,
+        // student_id REMOVED - use participants array
         student: cls.participants[0]?.student || {
           name: 'Sem aluno',
           email: ''
@@ -786,7 +785,7 @@ export default function Agenda() {
       // Create real class from virtual instance with specified status
       const realClassData = {
         teacher_id: profile?.id,
-        student_id: virtualClass.student_id,
+        // student_id REMOVED - use class_participants instead
         service_id: virtualClass.service_id,
         class_date: virtualClass.class_date,
         duration_minutes: virtualClass.duration_minutes,
@@ -814,13 +813,13 @@ export default function Agenda() {
           error: participantError
         } = await supabase.from('class_participants').insert(participantInserts);
         if (participantError) throw participantError;
-      } else if (!virtualClass.is_group_class && virtualClass.student_id) {
-        // FASE 2.1: Criar participante para aula individual materializada
+      } else if (!virtualClass.is_group_class && virtualClass.participants?.length === 1) {
+        // Create participant for individual class
         const { error: participantError } = await supabase
           .from('class_participants')
           .insert({
             class_id: newClass.id,
-            student_id: virtualClass.student_id,
+            student_id: virtualClass.participants[0].student_id,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' ? new Date().toISOString() : null,
             completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null,
@@ -1008,33 +1007,9 @@ export default function Agenda() {
           
           throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
         }
-      } else if (!formData.is_group_class && !formData.recurrence && baseClassData.student_id) {
-        // FASE 2.2: Criar participante para aula individual única (não-recorrente)
-        try {
-          for (const classInstance of insertedClasses) {
-            const { error: participantError } = await supabase
-              .from('class_participants')
-              .insert({
-                class_id: classInstance.id,
-                student_id: baseClassData.student_id,
-                status: 'confirmada',
-                billed: false
-              });
-            
-            if (participantError) {
-              throw participantError;
-            }
-          }
-        } catch (participantError: any) {
-          console.error('Error inserting participant for individual class, rolling back:', participantError);
-          
-          // ROLLBACK: Delete created classes
-          const classIds = insertedClasses.map(c => c.id);
-          await supabase.from('classes').delete().in('id', classIds);
-          
-          throw new Error('Erro ao adicionar participante. A aula não foi criada.');
-        }
       }
+      // Note: Individual classes without selectedStudents are now handled 
+      // by the selectedStudents array above (no separate logic needed)
       if (formData.recurrence) {
         toast({
           title: t('messages.recurringConfirmed'),
@@ -1205,8 +1180,8 @@ export default function Agenda() {
       is_group_class: fullClassData.is_group_class || false,
       service_price: null, // Will be fetched from service if needed
       class_template_id: fullClassData.class_template_id || '',
-      duration_minutes: fullClassData.duration_minutes || 60,
-      student_id: fullClassData.student_id || null
+      duration_minutes: fullClassData.duration_minutes || 60
+      // student_id REMOVED - no longer needed
     } : undefined;
     
     setCancellationModal({

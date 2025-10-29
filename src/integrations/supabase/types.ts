@@ -485,6 +485,7 @@ export type Database = {
           service_id: string | null
           status: string
           student_id: string | null
+          student_id_legacy: string | null
           teacher_id: string
           updated_at: string | null
         }
@@ -512,6 +513,7 @@ export type Database = {
           service_id?: string | null
           status?: string
           student_id?: string | null
+          student_id_legacy?: string | null
           teacher_id: string
           updated_at?: string | null
         }
@@ -539,6 +541,7 @@ export type Database = {
           service_id?: string | null
           status?: string
           student_id?: string | null
+          student_id_legacy?: string | null
           teacher_id?: string
           updated_at?: string | null
         }
@@ -567,6 +570,13 @@ export type Database = {
           {
             foreignKeyName: "classes_student_id_fkey"
             columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "classes_student_id_legacy_fkey"
+            columns: ["student_id_legacy"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1734,6 +1744,7 @@ export type Database = {
           service_id: string | null
           status: string
           student_id: string | null
+          student_id_legacy: string | null
           teacher_id: string
           updated_at: string | null
         }[]

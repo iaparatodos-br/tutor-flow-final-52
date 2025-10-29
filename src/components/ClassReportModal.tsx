@@ -128,18 +128,8 @@ export function ClassReportModal({
   const initializeFeedbacks = () => {
     if (!classData) return;
 
-    let participants;
-    
-    if (classData.participants && classData.participants.length > 0) {
-      participants = classData.participants;
-    } else if (classData.student_id) {
-      participants = [{
-        student_id: classData.student_id,
-        student: classData.student
-      }];
-    } else {
-      participants = [];
-    }
+    // Use only participants array (no legacy fallback)
+    const participants = classData.participants || [];
 
     const initialFeedbacks = participants.map(p => ({
       student_id: p.student_id,
@@ -188,7 +178,7 @@ export function ClassReportModal({
         
         const realClassData = {
           teacher_id: profile.id,
-          student_id: classData.student_id || null,
+          // student_id REMOVED - use class_participants instead
           service_id: (classData as any).service_id || null,
           class_date: classData.start.toISOString(),
           duration_minutes: durationMinutes,
@@ -327,14 +317,8 @@ export function ClassReportModal({
 
   if (!classData) return null;
 
-  const participants = classData.participants && classData.participants.length > 0
-    ? classData.participants
-    : classData.student_id
-      ? [{
-          student_id: classData.student_id,
-          student: classData.student
-        }]
-      : [];
+  // Use only participants array (no legacy fallback)
+  const participants = classData.participants || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

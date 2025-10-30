@@ -1933,6 +1933,12 @@ export type Database = {
         }[]
       }
       get_current_user_role_safe: { Args: never; Returns: string }
+      get_group_class_classmates: {
+        Args: { _user_id: string }
+        Returns: {
+          classmate_id: string
+        }[]
+      }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {

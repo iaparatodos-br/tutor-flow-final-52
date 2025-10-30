@@ -119,7 +119,7 @@ serve(async (req) => {
         // Remover cobrança se não tem módulo financeiro
         await supabaseAdmin
           .from('class_participants')
-          .update({ charge_applied: false, billed: true })
+          .update({ charge_applied: false })
           .eq('id', participant.id);
         continue;
       }

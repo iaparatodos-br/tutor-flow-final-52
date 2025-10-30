@@ -208,27 +208,6 @@ serve(async (req) => {
       }
       
       logStep("Invoice items created successfully", { itemCount: invoiceItems.length });
-      
-      // Marcar classes e participantes como faturados
-      const { error: classUpdateError } = await supabaseClient
-        .from('classes')
-        .update({ billed: true })
-        .in('id', body.class_ids);
-      
-      if (classUpdateError) {
-        logStep("WARNING: Could not mark classes as billed", { error: classUpdateError });
-      }
-      
-      const { error: participantUpdateError } = await supabaseClient
-        .from('class_participants')
-        .update({ billed: true })
-        .in('class_id', body.class_ids);
-      
-      if (participantUpdateError) {
-        logStep("WARNING: Could not mark participants as billed", { error: participantUpdateError });
-      }
-      
-      logStep("Classes and participants marked as billed", { classIds: body.class_ids });
     }
 
     // Generate payment URL automatically

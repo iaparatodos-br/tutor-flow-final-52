@@ -1991,6 +1991,10 @@ export type Database = {
         }[]
       }
       has_overdue_invoices: { Args: { p_student_id: string }; Returns: boolean }
+      is_class_owned_by_teacher: {
+        Args: { p_class_id: string; p_teacher_id: string }
+        Returns: boolean
+      }
       is_ip_blocked: { Args: { p_ip_address: unknown }; Returns: boolean }
       is_material_shared_with_user: {
         Args: { p_material_id: string }

@@ -146,8 +146,8 @@ export function CancellationModal({
       console.log('Loaded policy:', currentPolicy);
       setPolicy(currentPolicy);
 
-      // Calculate charge
-      const classDateTime = new Date(classData.class_date);
+      // Calculate charge - using fetchedClassData instead of classData to avoid null reference
+      const classDateTime = new Date(fetchedClassData.class_date);
       const now = new Date();
       const hoursUntil = (classDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
       
@@ -157,7 +157,7 @@ export function CancellationModal({
       if (!isProfessor && teacherHasFinancialModule && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
         setWillBeCharged(true);
         // Use actual service price or default to 100
-        const baseAmount = classData.class_services?.price || 100;
+        const baseAmount = fetchedClassData.class_services?.price || 100;
         setChargeAmount((Number(baseAmount) * currentPolicy.charge_percentage) / 100);
       } else {
         setWillBeCharged(false);

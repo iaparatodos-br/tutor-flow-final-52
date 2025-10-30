@@ -218,26 +218,35 @@ export function CancellationModal({
         
         finalClassId = materializedClass.id;
         
-        // If it's a group class, copy participants from template
-        if (virtualClassData.is_group_class) {
-          const { data: templateParticipants, error: participantsError } = await supabase
+        // Copy participants from template (both group and individual classes)
+        const { data: templateParticipants, error: participantsError } = await supabase
+          .from('class_participants')
+          .select('student_id')
+          .eq('class_id', virtualClassData.class_template_id);
+          
+        if (!participantsError && templateParticipants && templateParticipants.length > 0) {
+          const participantsToInsert = templateParticipants.map(p => ({
+            class_id: finalClassId,
+            student_id: p.student_id,
+            status: 'confirmada',
+            confirmed_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }));
+          
+          const { error: insertError } = await supabase
             .from('class_participants')
-            .select('student_id')
-            .eq('class_id', virtualClassData.class_template_id);
+            .insert(participantsToInsert);
             
-          if (!participantsError && templateParticipants) {
-            const participantsToInsert = templateParticipants.map(p => ({
-              class_id: finalClassId,
-              student_id: p.student_id,
-              status: 'confirmada',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }));
-            
-            await supabase
-              .from('class_participants')
-              .insert(participantsToInsert);
+          if (insertError) {
+            console.error('Error creating participants for materialized class:', insertError);
+            throw new Error('Failed to create participants for materialized class');
           }
+          
+          console.log(`Created ${participantsToInsert.length} participant(s) for materialized class`);
+        } else {
+          console.error('No participants found in template class');
+          throw new Error('Template class has no participants');
         }
         
         console.log('Virtual class materialized with ID:', finalClassId);

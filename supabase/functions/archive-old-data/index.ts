@@ -127,8 +127,7 @@ serve(async (req) => {
           charge_applied,
           cancellation_reason,
           confirmed_at,
-          completed_at,
-          billed
+          completed_at
         ),
         class_reports (
           id,

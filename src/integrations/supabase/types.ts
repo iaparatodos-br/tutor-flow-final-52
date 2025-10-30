@@ -241,6 +241,13 @@ export type Database = {
             foreignKeyName: "class_exceptions_original_class_id_fkey"
             columns: ["original_class_id"]
             isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
+          },
+          {
+            foreignKeyName: "class_exceptions_original_class_id_fkey"
+            columns: ["original_class_id"]
+            isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
           },
@@ -275,6 +282,13 @@ export type Database = {
           student_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "class_notifications_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
+          },
           {
             foreignKeyName: "class_notifications_class_id_fkey"
             columns: ["class_id"]
@@ -344,6 +358,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_participants_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
           },
           {
             foreignKeyName: "class_participants_class_id_fkey"
@@ -544,8 +565,22 @@ export type Database = {
             foreignKeyName: "classes_class_template_id_fkey"
             columns: ["class_template_id"]
             isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
+          },
+          {
+            foreignKeyName: "classes_class_template_id_fkey"
+            columns: ["class_template_id"]
+            isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "classes_parent_class_id_fkey"
+            columns: ["parent_class_id"]
+            isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
           },
           {
             foreignKeyName: "classes_parent_class_id_fkey"
@@ -685,6 +720,13 @@ export type Database = {
             foreignKeyName: "invoice_classes_class_id_fkey"
             columns: ["class_id"]
             isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
             referencedRelation: "classes"
             referencedColumns: ["id"]
           },
@@ -701,6 +743,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "class_participants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_participant_id_fkey"
+            columns: ["participant_id"]
+            isOneToOne: false
+            referencedRelation: "participant_billing_status"
+            referencedColumns: ["participant_id"]
           },
         ]
       }
@@ -1743,7 +1792,66 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      class_billing_status: {
+        Row: {
+          billed_participants: number | null
+          class_id: string | null
+          fully_billed: boolean | null
+          has_billed_items: boolean | null
+          teacher_id: string | null
+          total_participants: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classes_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      participant_billing_status: {
+        Row: {
+          billed_at: string | null
+          class_id: string | null
+          invoice_id: string | null
+          is_billed: boolean | null
+          item_type: string | null
+          participant_id: string | null
+          student_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_participants_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "class_billing_status"
+            referencedColumns: ["class_id"]
+          },
+          {
+            foreignKeyName: "class_participants_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_participants_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       archive_old_stripe_events: { Args: never; Returns: number }
@@ -1866,6 +1974,18 @@ export type Database = {
           student_id: string
           student_name: string
           student_role: string
+        }[]
+      }
+      get_unbilled_participants: {
+        Args: { p_status?: string; p_student_id?: string; p_teacher_id: string }
+        Returns: {
+          charge_applied: boolean
+          class_date: string
+          class_id: string
+          class_services: Json
+          participant_id: string
+          service_id: string
+          student_id: string
         }[]
       }
       get_user_class_ids: {

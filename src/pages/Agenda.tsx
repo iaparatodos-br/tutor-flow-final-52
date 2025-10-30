@@ -47,7 +47,6 @@ interface ClassWithParticipants {
     confirmed_at?: string;
     completed_at?: string;
     cancellation_reason?: string;
-    billed?: boolean;
     student: {
       name: string;
       email: string;
@@ -305,7 +304,6 @@ export default function Agenda() {
               confirmed_at,
               completed_at,
               cancellation_reason,
-              billed,
               profiles!class_participants_student_id_fkey (
                 name,
                 email
@@ -345,20 +343,19 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
-            class_participants!inner (
-              student_id,
-              status,
-              cancelled_at,
-              charge_applied,
-              confirmed_at,
-              completed_at,
-              cancellation_reason,
-              billed,
-              profiles!class_participants_student_id_fkey (
-                name,
-                email
-              )
+          class_participants!inner (
+            student_id,
+            status,
+            cancelled_at,
+            charge_applied,
+            confirmed_at,
+            completed_at,
+            cancellation_reason,
+            profiles!class_participants_student_id_fkey (
+              name,
+              email
             )
+          )
           `)
           .eq('class_participants.student_id', profile.id)
           .eq('is_group_class', true)
@@ -780,8 +777,7 @@ export default function Agenda() {
             student_id: virtualClass.participants[0].student_id,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' ? new Date().toISOString() : null,
-            completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null,
-            billed: false
+            completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null
           });
         
         if (participantError) {

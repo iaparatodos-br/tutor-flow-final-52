@@ -155,36 +155,22 @@ serve(async (req) => {
           });
         }
         
-        // NOVA LÓGICA: Buscar aulas concluídas via class_participants
+        // NOVA LÓGICA: Buscar aulas concluídas usando RPC helper
         const { data: completedParticipations, error: classesError } = await supabaseAdmin
-          .from('class_participants')
-          .select(`
-            id,
-            class_id,
-            student_id,
-            billed,
-            classes!inner (
-              id,
-              class_date,
-              service_id,
-              teacher_id,
-              class_services (
-                id,
-                name,
-                price,
-                description
-              )
-            )
-          `)
-          .eq('student_id', studentInfo.student_id)
-          .eq('status', 'concluida')
-          .eq('billed', false);
+          .rpc('get_unbilled_participants', {
+            p_teacher_id: studentInfo.teacher_id,
+            p_student_id: studentInfo.student_id,
+            p_status: 'concluida'
+          });
         
         // Transform to match expected structure
         const classesToInvoice = completedParticipations?.map(cp => ({
           id: cp.class_id,
-          participant_id: cp.id,
-          ...(Array.isArray(cp.classes) ? cp.classes[0] : cp.classes)
+          participant_id: cp.participant_id,
+          class_date: cp.class_date,
+          service_id: cp.service_id,
+          teacher_id: studentInfo.teacher_id,
+          class_services: cp.class_services
         })) || [];
 
         logStep(`Query result - Unbilled classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
@@ -195,41 +181,26 @@ serve(async (req) => {
           continue;
         }
 
-        // 2.1. Encontrar cancelamentos com cobrança pendente via class_participants
+        // 2.1. Encontrar cancelamentos com cobrança pendente usando RPC helper
         const { data: cancelledParticipations, error: cancelledError } = await supabaseAdmin
-          .from('class_participants')
-          .select(`
-            id,
-            class_id,
-            student_id,
-            charge_applied,
-            billed,
-            cancellation_reason,
-            classes!inner (
-              id,
-              class_date,
-              service_id,
-              teacher_id,
-              class_services (
-                id,
-                name,
-                price,
-                description
-              )
-            )
-          `)
-          .eq('student_id', studentInfo.student_id)
-          .eq('status', 'cancelada')
-          .eq('charge_applied', true)
-          .eq('billed', false);
+          .rpc('get_unbilled_participants', {
+            p_teacher_id: studentInfo.teacher_id,
+            p_student_id: studentInfo.student_id,
+            p_status: 'cancelada'
+          });
         
-        // Transform to match expected structure
-        const cancelledClassesWithCharge = cancelledParticipations?.map(cp => ({
-          id: cp.class_id,
-          participant_id: cp.id,
-          ...(Array.isArray(cp.classes) ? cp.classes[0] : cp.classes),
-          is_cancellation_charge: true
-        })) || [];
+        // Filtrar apenas os que têm charge_applied
+        const cancelledClassesWithCharge = (cancelledParticipations || [])
+          .filter(cp => cp.charge_applied)
+          .map(cp => ({
+            id: cp.class_id,
+            participant_id: cp.participant_id,
+            class_date: cp.class_date,
+            service_id: cp.service_id,
+            teacher_id: studentInfo.teacher_id,
+            class_services: cp.class_services,
+            is_cancellation_charge: true
+          }));
 
         logStep(`Query result - Cancelled classes with charge: ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
 

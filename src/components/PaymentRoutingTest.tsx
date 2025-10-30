@@ -8,57 +8,62 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2 } from "lucide-react";
-
 interface TestResult {
   test_name: string;
   status: 'success' | 'error' | 'warning';
   message: string;
   details?: any;
 }
-
 interface Student {
   student_id: string;
   student_name: string;
   business_profile_id: string | null;
   relationship_id: string;
 }
-
 export function PaymentRoutingTest() {
-  const { profile } = useProfile();
+  const {
+    profile
+  } = useProfile();
   const [selectedStudent, setSelectedStudent] = useState<string>("");
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
 
   // Buscar alunos
-  const { data: students } = useQuery({
+  const {
+    data: students
+  } = useQuery({
     queryKey: ["students-test"],
     queryFn: async () => {
-      const { data } = await supabase.rpc('get_teacher_students', { 
-        teacher_user_id: profile?.id 
+      const {
+        data
+      } = await supabase.rpc('get_teacher_students', {
+        teacher_user_id: profile?.id
       });
       return data as Student[];
     },
-    enabled: !!profile?.id,
+    enabled: !!profile?.id
   });
 
   // Executar testes de roteamento usando a edge function
   const runTestsMutation = useMutation({
     mutationFn: async (studentId: string) => {
-      const { data, error } = await supabase.functions.invoke('validate-payment-routing', {
-        body: { student_id: studentId }
+      const {
+        data,
+        error
+      } = await supabase.functions.invoke('validate-payment-routing', {
+        body: {
+          student_id: studentId
+        }
       });
-
       if (error) {
         throw new Error(error.message);
       }
-
       return data.results as TestResult[];
     },
-    onSuccess: (results) => {
+    onSuccess: results => {
       setTestResults(results);
       const hasErrors = results.some(r => r.status === 'error');
       const hasWarnings = results.some(r => r.status === 'warning');
-      
       if (hasErrors) {
         toast.error("Testes concluídos com erros");
       } else if (hasWarnings) {
@@ -74,18 +79,15 @@ export function PaymentRoutingTest() {
       setIsRunning(false);
     }
   });
-
   const handleRunTests = () => {
     if (!selectedStudent) {
       toast.error("Selecione um aluno para executar os testes");
       return;
     }
-    
     setIsRunning(true);
     setTestResults([]);
     runTestsMutation.mutate(selectedStudent);
   };
-
   const getStatusIcon = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -98,7 +100,6 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
-
   const getStatusBadge = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -111,107 +112,5 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <PlayCircle className="h-5 w-5" />
-          Teste de Roteamento de Pagamentos
-        </CardTitle>
-        <CardDescription>
-          Execute testes integrados para validar o roteamento correto de pagamentos entre alunos e business profiles
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Seleção de Aluno */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Selecionar Aluno para Teste</label>
-          <Select value={selectedStudent} onValueChange={setSelectedStudent}>
-            <SelectTrigger>
-              <SelectValue placeholder="Escolha um aluno..." />
-            </SelectTrigger>
-            <SelectContent>
-              {students?.map((student) => (
-                <SelectItem key={student.student_id} value={student.student_id}>
-                  {student.student_name}
-                  {student.business_profile_id && " (Vinculado)"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Botão de Execução */}
-        <Button 
-          onClick={handleRunTests} 
-          disabled={!selectedStudent || isRunning}
-          className="w-full"
-        >
-          {isRunning ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Executando Testes...
-            </>
-          ) : (
-            <>
-              <PlayCircle className="h-4 w-4 mr-2" />
-              Executar Testes de Roteamento
-            </>
-          )}
-        </Button>
-
-        {/* Resultados dos Testes */}
-        {testResults.length > 0 && (
-          <div className="space-y-3">
-            <h4 className="font-semibold">Resultados dos Testes</h4>
-            <div className="space-y-2">
-              {testResults.map((result, index) => (
-                <div key={index} className="flex items-start gap-3 p-3 border rounded-lg">
-                  <div className="flex-shrink-0 mt-0.5">
-                    {getStatusIcon(result.status)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h5 className="font-medium text-sm">{result.test_name}</h5>
-                      {getStatusBadge(result.status)}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1">{result.message}</p>
-                    {result.details && (
-                      <details className="mt-2">
-                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                          Ver detalhes
-                        </summary>
-                        <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-x-auto">
-                          {JSON.stringify(result.details, null, 2)}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            {/* Resumo */}
-            <div className="pt-3 border-t">
-              <div className="flex gap-4 text-sm">
-                <span className="flex items-center gap-1">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  {testResults.filter(r => r.status === 'success').length} sucessos
-                </span>
-                <span className="flex items-center gap-1">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                  {testResults.filter(r => r.status === 'warning').length} avisos
-                </span>
-                <span className="flex items-center gap-1">
-                  <XCircle className="h-4 w-4 text-red-600" />
-                  {testResults.filter(r => r.status === 'error').length} erros
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+  return;
 }

@@ -40,7 +40,7 @@ serve(async (req) => {
     // Fetch participants (for both individual and group classes)
     const { data: participantsData, error: participantsError } = await supabaseClient
       .from('class_participants')
-      .select('student_id, profiles!class_participants_student_id_fkey(name, email, guardian_email)')
+      .select('student_id, profiles!class_participants_student_id_fkey(name, email)')
       .eq('class_id', class_id);
 
     if (participantsError) {

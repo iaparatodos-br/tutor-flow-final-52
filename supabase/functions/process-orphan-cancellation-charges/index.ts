@@ -148,9 +148,9 @@ serve(async (req) => {
         }
 
         let totalAmount = 0;
-        const participantIds = [];
+        const invoiceItems = [];
 
-        // Calcular valor total das cobranças
+        // Calcular valor total e preparar itens para invoice_classes
         for (const participant of group.participants) {
           const service = Array.isArray(participant.classData.class_services) 
             ? participant.classData.class_services[0] 
@@ -161,7 +161,7 @@ serve(async (req) => {
           // Buscar política de cancelamento
           const { data: policy } = await supabaseAdmin
             .from('cancellation_policies')
-            .select('charge_percentage')
+            .select('id, charge_percentage')
             .eq('teacher_id', group.teacher_id)
             .eq('is_active', true)
             .maybeSingle();
@@ -170,56 +170,48 @@ serve(async (req) => {
           const chargeAmount = (baseAmount * chargePercentage) / 100;
           
           totalAmount += chargeAmount;
-          participantIds.push(participant.id);
+          
+          // Preparar item para invoice_classes
+          invoiceItems.push({
+            class_id: participant.class_id,
+            participant_id: participant.id,
+            item_type: 'cancellation_charge',
+            amount: chargeAmount,
+            description: `Cancelamento - ${service?.name || 'Aula'} - ${new Date(participant.classData.class_date).toLocaleDateString('pt-BR')}`,
+            cancellation_policy_id: policy?.id || null,
+            charge_percentage: chargePercentage
+          });
         }
 
-        logStep(`Total orphan charges: R$ ${totalAmount.toFixed(2)} for ${participantIds.length} cancellations`);
+        logStep(`Total orphan charges: R$ ${totalAmount.toFixed(2)} for ${invoiceItems.length} cancellations`);
 
         const now = new Date();
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + group.payment_due_days);
 
-        const invoiceData = {
-          student_id: group.student_id,
-          teacher_id: group.teacher_id,
-          amount: totalAmount,
-          description: `Cobrança de cancelamentos pendentes - ${group.participants.length} cancelamento${group.participants.length > 1 ? 's' : ''}`,
-          due_date: dueDate.toISOString().split('T')[0],
-          status: 'pendente' as const,
-          invoice_type: 'orphan_charges',
-          business_profile_id: group.business_profile_id,
-        };
+        // Usar a RPC para criar fatura e marcar como faturado atomicamente
+        const { data: rpcResult, error: rpcError } = await supabaseAdmin
+          .rpc('create_invoice_and_mark_classes_billed', {
+            p_student_id: group.student_id,
+            p_teacher_id: group.teacher_id,
+            p_amount: totalAmount,
+            p_description: `Cobrança de cancelamentos pendentes - ${group.participants.length} cancelamento${group.participants.length > 1 ? 's' : ''}`,
+            p_due_date: dueDate.toISOString().split('T')[0],
+            p_invoice_type: 'orphan_charges',
+            p_business_profile_id: group.business_profile_id,
+            p_class_items: invoiceItems
+          });
 
-        // Criar fatura
-        const { data: invoiceResult, error: invoiceError } = await supabaseAdmin
-          .from('invoices')
-          .insert(invoiceData)
-          .select()
-          .single();
-
-        if (invoiceError) {
-          logStep(`Error creating invoice`, invoiceError);
+        if (rpcError) {
+          logStep(`Error creating invoice via RPC`, rpcError);
           errorCount++;
           continue;
         }
-
-        // Marcar participantes como faturados
-        const { error: updateError } = await supabaseAdmin
-          .from('class_participants')
-          .update({ billed: true })
-          .in('id', participantIds);
-
-        if (updateError) {
-          logStep(`Error marking participants as billed`, updateError);
-          errorCount++;
-          continue;
-        }
-
-        const transactionResult = { success: true, invoice_id: invoiceResult.id };
 
         logStep(`Orphan charges invoice created`, { 
-          invoiceId: transactionResult.invoice_id,
-          amount: totalAmount
+          invoiceId: rpcResult,
+          amount: totalAmount,
+          itemCount: invoiceItems.length
         });
 
         processedCount++;

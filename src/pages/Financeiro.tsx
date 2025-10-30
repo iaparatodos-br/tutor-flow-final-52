@@ -205,6 +205,16 @@ export default function Financeiro() {
   };
 
   const loadInvoiceDetails = async (invoice: InvoiceWithStudent) => {
+    // Validação básica de entrada
+    if (!invoice?.id) {
+      toast({
+        title: "Erro",
+        description: "Fatura inválida",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setSelectedInvoice(invoice);
     setLoadingDetails(true);
     setInvoiceDetailsOpen(true);
@@ -230,13 +240,22 @@ export default function Financeiro() {
         .eq('invoice_id', invoice.id)
         .order('created_at', { ascending: true });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error loading invoice details:', error);
+        throw error;
+      }
+      
+      // Se não retornou dados, pode ser por falta de permissão (RLS) ou fatura sem itens
+      if (!data || data.length === 0) {
+        console.warn('No invoice items found - this could be due to RLS restrictions or empty invoice');
+      }
+      
       setInvoiceItems(data || []);
     } catch (error) {
       console.error('Error loading invoice details:', error);
       toast({
         title: "Erro ao carregar detalhes",
-        description: "Não foi possível carregar os detalhes da fatura",
+        description: error instanceof Error ? error.message : "Não foi possível carregar os detalhes da fatura",
         variant: "destructive"
       });
       setInvoiceItems([]);

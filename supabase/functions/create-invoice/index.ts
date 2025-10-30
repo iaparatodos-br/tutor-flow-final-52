@@ -138,49 +138,97 @@ serve(async (req) => {
         .in('class_id', body.class_ids)
         .eq('student_id', body.student_id);
 
-      if (!classDataError && classData) {
-        // Preparar itens para invoice_classes
-        const invoiceItems = [];
-        
-        for (const cp of classData) {
-          const classInfo = Array.isArray(cp.classes) ? cp.classes[0] : cp.classes;
-          const service = Array.isArray(classInfo.class_services) 
-            ? classInfo.class_services[0] 
-            : classInfo.class_services;
-          
-          invoiceItems.push({
-            invoice_id: newInvoice.id,
-            class_id: cp.class_id,
-            participant_id: cp.id,
-            item_type: body.invoice_type === 'cancellation' ? 'cancellation_charge' : 'completed_class',
-            amount: service?.price || body.amount / body.class_ids.length,
-            description: `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
-            cancellation_policy_id: body.cancellation_policy_id || null,
-            charge_percentage: body.invoice_type === 'cancellation' && body.original_amount 
-              ? ((body.amount / body.original_amount) * 100) 
-              : null
-          });
-        }
-        
-        // Inserir itens em invoice_classes
-        const { error: itemsError } = await supabaseClient
-          .from('invoice_classes')
-          .insert(invoiceItems);
-        
-        if (itemsError) {
-          logStep("Warning: Could not create invoice items", { error: itemsError });
-        } else {
-          logStep("Invoice items created", { itemCount: invoiceItems.length });
-        }
-        
-        // Marcar classes e participantes como faturados
-        await supabaseClient.from('classes').update({ billed: true }).in('id', body.class_ids);
-        await supabaseClient.from('class_participants').update({ billed: true }).in('class_id', body.class_ids);
-        
-        logStep("Classes and participants marked as billed", { classIds: body.class_ids });
-      } else {
-        logStep("Warning: Could not fetch class data for invoice_classes", { error: classDataError });
+      if (classDataError) {
+        logStep("ERROR: Failed to fetch class data for invoice_classes", { error: classDataError });
+        // Rollback: delete the invoice that was just created
+        await supabaseClient.from('invoices').delete().eq('id', newInvoice.id);
+        throw new Error(`Erro ao buscar dados das aulas: ${classDataError.message}`);
       }
+
+      if (!classData || classData.length === 0) {
+        logStep("ERROR: No class data found for the provided class_ids");
+        // Rollback: delete the invoice that was just created
+        await supabaseClient.from('invoices').delete().eq('id', newInvoice.id);
+        throw new Error('Nenhuma aula encontrada para os IDs fornecidos');
+      }
+
+      // Preparar itens para invoice_classes
+      const invoiceItems = [];
+      let calculatedTotal = 0;
+      
+      for (const cp of classData) {
+        const classInfo = Array.isArray(cp.classes) ? cp.classes[0] : cp.classes;
+        const service = Array.isArray(classInfo.class_services) 
+          ? classInfo.class_services[0] 
+          : classInfo.class_services;
+        
+        // Calcular valor proporcional
+        let itemAmount: number;
+        if (service?.price) {
+          // Se tem preço do serviço, usar ele
+          itemAmount = Number(service.price);
+        } else {
+          // Se não tem preço, dividir proporcionalmente
+          itemAmount = body.amount / classData.length;
+        }
+        
+        calculatedTotal += itemAmount;
+        
+        invoiceItems.push({
+          invoice_id: newInvoice.id,
+          class_id: cp.class_id,
+          participant_id: cp.id,
+          item_type: body.invoice_type === 'cancellation' ? 'cancellation_charge' : 'completed_class',
+          amount: itemAmount,
+          description: `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
+          cancellation_policy_id: body.cancellation_policy_id || null,
+          charge_percentage: body.invoice_type === 'cancellation' && body.original_amount 
+            ? ((body.amount / body.original_amount) * 100) 
+            : null
+        });
+      }
+      
+      // Ajustar o último item se houver diferença de arredondamento
+      if (Math.abs(calculatedTotal - body.amount) > 0.01) {
+        const diff = body.amount - calculatedTotal;
+        invoiceItems[invoiceItems.length - 1].amount += diff;
+        logStep("Adjusted last item amount for rounding", { diff });
+      }
+      
+      // Inserir itens em invoice_classes
+      const { error: itemsError } = await supabaseClient
+        .from('invoice_classes')
+        .insert(invoiceItems);
+      
+      if (itemsError) {
+        logStep("ERROR: Failed to create invoice items", { error: itemsError });
+        // Rollback: delete the invoice that was just created
+        await supabaseClient.from('invoices').delete().eq('id', newInvoice.id);
+        throw new Error(`Erro ao criar itens da fatura: ${itemsError.message}`);
+      }
+      
+      logStep("Invoice items created successfully", { itemCount: invoiceItems.length });
+      
+      // Marcar classes e participantes como faturados
+      const { error: classUpdateError } = await supabaseClient
+        .from('classes')
+        .update({ billed: true })
+        .in('id', body.class_ids);
+      
+      if (classUpdateError) {
+        logStep("WARNING: Could not mark classes as billed", { error: classUpdateError });
+      }
+      
+      const { error: participantUpdateError } = await supabaseClient
+        .from('class_participants')
+        .update({ billed: true })
+        .in('class_id', body.class_ids);
+      
+      if (participantUpdateError) {
+        logStep("WARNING: Could not mark participants as billed", { error: participantUpdateError });
+      }
+      
+      logStep("Classes and participants marked as billed", { classIds: body.class_ids });
     }
 
     // Generate payment URL automatically

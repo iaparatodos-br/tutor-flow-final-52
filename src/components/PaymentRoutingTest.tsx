@@ -112,5 +112,78 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
-  return;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Teste de Roteamento de Pagamentos</CardTitle>
+        <CardDescription>
+          Valide a configuração de pagamentos e perfis de negócio
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-4 items-end">
+          <div className="flex-1">
+            <label className="text-sm font-medium mb-2 block">
+              Selecione um Aluno
+            </label>
+            <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+              <SelectTrigger>
+                <SelectValue placeholder="Escolha um aluno para testar" />
+              </SelectTrigger>
+              <SelectContent>
+                {students?.map((student) => (
+                  <SelectItem key={student.student_id} value={student.student_id}>
+                    {student.student_name}
+                    {student.business_profile_id && " (Com negócio)"}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button 
+            onClick={handleRunTests} 
+            disabled={!selectedStudent || isRunning}
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Executando...
+              </>
+            ) : (
+              <>
+                <PlayCircle className="mr-2 h-4 w-4" />
+                Executar Testes
+              </>
+            )}
+          </Button>
+        </div>
+
+        {testResults.length > 0 && (
+          <div className="space-y-3 mt-6">
+            <h3 className="font-semibold">Resultados dos Testes</h3>
+            {testResults.map((result, index) => (
+              <div 
+                key={index} 
+                className="flex items-start gap-3 p-4 border rounded-lg"
+              >
+                <div className="mt-0.5">{getStatusIcon(result.status)}</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-medium">{result.test_name}</p>
+                    {getStatusBadge(result.status)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{result.message}</p>
+                  {result.details && (
+                    <pre className="text-xs bg-muted p-2 rounded mt-2 overflow-x-auto">
+                      {JSON.stringify(result.details, null, 2)}
+                    </pre>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

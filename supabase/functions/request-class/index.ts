@@ -89,7 +89,7 @@ serve(async (req) => {
       .from('classes')
       .insert({
         teacher_id: teacherId,
-        student_id: user.id,
+        // student_id removed - use class_participants instead
         class_date: new Date(datetime).toISOString(),
         duration_minutes: service.duration_minutes,
         service_id: serviceId,

@@ -198,19 +198,31 @@ export function ClassReportModal({
         
         if (materializeError) throw materializeError;
         
-        // Inserir participantes se for aula em grupo
-        if (classData.is_group_class && classData.participants?.length > 0) {
+        // ALWAYS create participants (both group and individual classes)
+        if (classData.participants?.length > 0) {
           const participantInserts = classData.participants.map((p: any) => ({
             class_id: newClass.id,
             student_id: p.student_id,
-            status: targetStatus
+            status: targetStatus,
+            confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' 
+              ? new Date().toISOString() 
+              : null,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           }));
           
           const { error: participantError } = await supabase
             .from('class_participants')
             .insert(participantInserts);
           
-          if (participantError) throw participantError;
+          if (participantError) {
+            console.error('Error creating participants for materialized class:', participantError);
+            throw participantError;
+          }
+          
+          console.log(`Created ${participantInserts.length} participant(s) for materialized class`);
+        } else {
+          console.warn('No participants found in virtual class data');
         }
         
         // Usar o ID real daqui pra frente

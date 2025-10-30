@@ -1866,12 +1866,10 @@ export type Database = {
         }
         Returns: boolean
       }
-      create_invoice_and_mark_classes_billed:
-        | {
-            Args: { p_class_ids: string[]; p_invoice_data: Json }
-            Returns: Json
-          }
-        | { Args: { p_class_items: Json; p_invoice_data: Json }; Returns: Json }
+      create_invoice_and_mark_classes_billed: {
+        Args: { p_class_items: Json; p_invoice_data: Json }
+        Returns: Json
+      }
       generate_stripe_fingerprint: {
         Args: { event_data: Json }
         Returns: string

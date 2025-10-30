@@ -414,7 +414,6 @@ export default function Agenda() {
               confirmed_at,
               completed_at,
               cancellation_reason,
-              billed,
               profiles!class_participants_student_id_fkey (
                 name,
                 email
@@ -438,7 +437,6 @@ export default function Agenda() {
             confirmed_at: p.confirmed_at,
             completed_at: p.completed_at,
             cancellation_reason: p.cancellation_reason,
-            billed: p.billed,
             profiles: p.profiles // Mantém a estrutura aninhada
           });
         });

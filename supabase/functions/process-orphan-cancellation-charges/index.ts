@@ -29,7 +29,8 @@ serve(async (req) => {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - 45);
 
-    const { data: orphanParticipants, error: orphanError } = await supabaseAdmin
+    // Buscar participantes órfãos não faturados via LEFT JOIN com invoice_classes
+    let { data: orphanParticipants, error: orphanError } = await supabaseAdmin
       .from('class_participants')
       .select(`
         id,
@@ -56,8 +57,19 @@ serve(async (req) => {
       `)
       .eq('status', 'cancelada')
       .eq('charge_applied', true)
-      .eq('billed', false)
       .lt('cancelled_at', cutoffDate.toISOString());
+    
+    // Filtrar apenas os não faturados (sem invoice_classes)
+    if (orphanParticipants) {
+      const participantIds = orphanParticipants.map(p => p.id);
+      const { data: billedParticipants } = await supabaseAdmin
+        .from('invoice_classes')
+        .select('participant_id')
+        .in('participant_id', participantIds);
+      
+      const billedIds = new Set(billedParticipants?.map(b => b.participant_id) || []);
+      orphanParticipants = orphanParticipants.filter(p => !billedIds.has(p.id));
+    }
 
     if (orphanError) {
       logStep("Error fetching orphan participants", orphanError);

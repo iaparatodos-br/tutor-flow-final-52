@@ -1908,7 +1908,6 @@ export type Database = {
           amnesty_granted: boolean
           amnesty_granted_at: string
           amnesty_granted_by: string
-          billed: boolean
           cancellation_reason: string
           cancelled_at: string
           cancelled_by: string

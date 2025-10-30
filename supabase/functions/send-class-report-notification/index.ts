@@ -43,9 +43,7 @@ serve(async (req) => {
           profiles!class_participants_student_id_fkey (
             id,
             name,
-            email,
-            guardian_name,
-            guardian_email
+            email
           )
         )
       `)
@@ -87,9 +85,7 @@ serve(async (req) => {
         feedback,
         profiles!class_report_feedbacks_student_id_fkey (
           name,
-          email,
-          guardian_name,
-          guardian_email
+          email
         )
       `)
       .eq('report_id', reportId);
@@ -200,23 +196,7 @@ serve(async (req) => {
           console.log(`Email sent to student: ${student.email}`);
         }
 
-        // Send to guardian if exists and is different from student email
-        if (student.guardian_email && student.guardian_email !== student.email) {
-          const guardianEmailContent = emailContent.replace(
-            `<p style="margin: 5px 0; color: #666;"><strong>Aluno:</strong> ${student.name}</p>`,
-            `<p style="margin: 5px 0; color: #666;"><strong>Aluno:</strong> ${student.name}</p>
-             <p style="margin: 5px 0; color: #666;"><strong>Responsável:</strong> ${student.guardian_name || 'Responsável'}</p>`
-          );
-
-          await resend.emails.send({
-            from: `${teacher?.name} <noreply@resend.dev>`,
-            to: [student.guardian_email],
-            subject: emailSubject,
-            html: guardianEmailContent
-          });
-
-          console.log(`Email sent to guardian: ${student.guardian_email}`);
-        }
+        // Note: Guardian email functionality removed as guardian data is not in profiles table
 
         // Record notification in database
         await supabaseAdmin

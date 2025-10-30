@@ -1071,34 +1071,13 @@ export default function Agenda() {
   };
 
   const handleReportCreated = async () => {
-    const classData = reportModal.classData;
+    // ClassReportModal já materializou a aula virtual se necessário
+    // Apenas recarregar classes para refletir has_report = true
     
-    if (!classData) return;
-    
-    // Se for virtual, materializar AGORA (no momento do salvamento)
-    if (classData.isVirtual && classData.id.includes('_virtual_')) {
-      try {
-        const materializedStatus: 'confirmada' | 'concluida' = 
-          classData.status === 'concluida' ? 'concluida' : 'confirmada';
-        
-        // Materializar silenciosamente (sem toast de confirmação)
-        await materializeVirtualClass(
-          classData.id, 
-          materializedStatus,
-          true // silent = true
-        );
-      } catch (error) {
-        console.error('Erro ao materializar aula após criar relatório:', error);
-        // Não falhar a operação do relatório por causa disso
-      }
-    }
-    
-    // Sempre recarregar para refletir has_report = true
     if (visibleRange) {
       await loadClasses(visibleRange.start, visibleRange.end);
     }
     
-    // Fechar o modal
     setReportModal({ isOpen: false, classData: null });
   };
 

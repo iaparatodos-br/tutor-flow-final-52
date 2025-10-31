@@ -49,7 +49,28 @@ serve(async (req) => {
     }
 
     const participants = participantsData || [];
-    console.log(`Class has ${participants.length} participants (group: ${classData.is_group_class})`);
+    
+    // ✅ DIAGNÓSTICO: Log detalhado da aula e participantes
+    console.log('🔍 DEBUG - Cancellation request data:', {
+      class_id,
+      is_group_class: classData.is_group_class,
+      participants_count: participants.length,
+      participants_ids: participants.map(p => p.student_id),
+      cancelled_by,
+      cancelled_by_type,
+      class_date: classData.class_date,
+      class_status: classData.status
+    });
+
+    // ⚠️ VALIDAÇÃO: Detectar inconsistência entre is_group_class e número de participantes
+    if (participants.length > 1 && !classData.is_group_class) {
+      console.error('⚠️ INCONSISTÊNCIA DETECTADA: Múltiplos participantes mas is_group_class=false', {
+        class_id,
+        participants_count: participants.length,
+        is_group_class: classData.is_group_class,
+        participants: participants.map(p => ({ student_id: p.student_id }))
+      });
+    }
 
     // VALIDAÇÃO 1: Verificar se a aula já foi cancelada
     if (classData.status === 'cancelada') {

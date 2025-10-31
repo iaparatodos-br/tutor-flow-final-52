@@ -471,6 +471,13 @@ export default function Agenda() {
           const participants = Array.isArray(cls.participants) 
             ? cls.participants.map((p: any) => ({
                 student_id: p.student_id,
+                status: p.status,
+                cancelled_at: p.cancelled_at,
+                cancelled_by: p.cancelled_by,
+                charge_applied: p.charge_applied,
+                confirmed_at: p.confirmed_at,
+                completed_at: p.completed_at,
+                cancellation_reason: p.cancellation_reason,
                 student: p.profiles
               }))
             : [];
@@ -485,6 +492,13 @@ export default function Agenda() {
           // For students: Get participants from class_participants (no legacy fallback)
           const participants = item.class_participants?.map((p: any) => ({
             student_id: p.student_id,
+            status: p.status,
+            cancelled_at: p.cancelled_at,
+            cancelled_by: p.cancelled_by,
+            charge_applied: p.charge_applied,
+            confirmed_at: p.confirmed_at,
+            completed_at: p.completed_at,
+            cancellation_reason: p.cancellation_reason,
             student: p.profiles
           })) || [];
           

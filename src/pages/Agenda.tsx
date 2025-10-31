@@ -582,51 +582,82 @@ export default function Agenda() {
         }
       setClasses(allClasses);
 
+      // Build a per-student participation map to ensure correct status rendering for students
+      let myParticipationByClassId: Map<string, { status: string | null; cancelled_at: string | null }> = new Map();
+      if (!isProfessor) {
+        const classIds = allClasses.filter(c => !c.isVirtual).map(c => c.id);
+        if (classIds.length > 0) {
+          const { data: myParts } = await supabase
+            .from('class_participants')
+            .select('class_id, status, cancelled_at')
+            .eq('student_id', profile.id)
+            .in('class_id', classIds);
+
+          (myParts || []).forEach((row: any) => {
+            myParticipationByClassId.set(row.class_id, { status: row.status, cancelled_at: row.cancelled_at });
+          });
+        }
+      }
+
       // Transform for calendar view
       const calendarEvents: CalendarClass[] = allClasses
         .filter(cls => !cls.is_template) // Não mostrar templates na agenda
         .filter(cls => {
-        // For students, show only classes with active participation
-        if (!isProfessor && cls.participants.length > 0) {
-          const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-          return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myParticipation.status || cls.status);
-        }
-        return true;
-      }).map(cls => {
-        const calendarStartDate = new Date(cls.class_date);
-        const calendarEndDate = new Date(calendarStartDate.getTime() + cls.duration_minutes * 60 * 1000);
-        const participantNames = cls.participants.map(p => p.student?.name || 'Nome não disponível').join(', ');
-        const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
-        const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
-        const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
+          // For students, show only classes with active participation
+          if (!isProfessor) {
+            const myStatus = myParticipationByClassId.get(cls.id)?.status;
+            if (myStatus) {
+              return ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myStatus);
+            }
+            if (cls.participants.length > 0) {
+              const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+              return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myParticipation.status || cls.status);
+            }
+          }
+          return true;
+        })
+        .map(cls => {
+          const calendarStartDate = new Date(cls.class_date);
+          const calendarEndDate = new Date(calendarStartDate.getTime() + cls.duration_minutes * 60 * 1000);
+          const participantNames = cls.participants.map(p => p.student?.name || 'Nome não disponível').join(', ');
+          const titleSuffix = cls.is_experimental ? ' (Experimental)' : '';
+          const groupIndicator = cls.is_group_class ? ` [${cls.participants.length} alunos]` : '';
+          const virtualSuffix = cls.isVirtual ? ' (Recorrente)' : '';
 
-        // Determine display status for students
-        let displayStatus = cls.status;
-        if (!isProfessor && cls.participants.length > 0) {
-          const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-          displayStatus = myParticipation?.status || cls.status;
-        }
-        return {
-        id: cls.id,
-        title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
-        start: calendarStartDate,
-        end: calendarEndDate,
-        status: displayStatus,
-        // student_id REMOVED - use participants array
-        student: cls.participants[0]?.student || {
-          name: 'Sem aluno',
-          email: ''
-        },
-        participants: cls.participants,
-        notes: cls.notes || undefined,
-        is_experimental: cls.is_experimental,
-        is_group_class: cls.is_group_class,
-        isVirtual: cls.isVirtual,
-        class_template_id: cls.class_template_id,
-        recurrence_end_date: cls.recurrence_end_date,
-        has_report: !!cls.has_report
-      };
-      });
+          // Determine display status for students
+          let displayStatus = cls.status;
+          if (!isProfessor) {
+            const myStatus = myParticipationByClassId.get(cls.id)?.status;
+            if (myStatus) {
+              displayStatus = myStatus as any;
+            } else if (cls.participants.length > 0) {
+              const myParticipation = cls.participants.find(p => p.student_id === profile.id);
+              displayStatus = (myParticipation?.status as any) || cls.status;
+            }
+          }
+
+          return {
+            id: cls.id,
+            title: `${participantNames}${groupIndicator} - ${cls.duration_minutes}min${titleSuffix}${virtualSuffix}`,
+            start: calendarStartDate,
+            end: calendarEndDate,
+            status: displayStatus,
+            // student_id REMOVED - use participants array
+            student: cls.participants[0]?.student || {
+              name: 'Sem aluno',
+              email: ''
+            },
+            participants: cls.participants,
+            notes: cls.notes || undefined,
+            is_experimental: cls.is_experimental,
+            is_group_class: cls.is_group_class,
+            isVirtual: cls.isVirtual,
+            class_template_id: cls.class_template_id,
+            recurrence_end_date: cls.recurrence_end_date,
+            has_report: !!cls.has_report
+          };
+        });
+
       setCalendarClasses(calendarEvents);
     } catch (error) {
       console.error('Erro ao carregar aulas:', error);

@@ -2000,6 +2000,10 @@ export type Database = {
         Args: { p_material_id: string }
         Returns: boolean
       }
+      is_participant_in_group_class: {
+        Args: { _class_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_professor: { Args: { _user_id: string }; Returns: boolean }
       is_student_in_class: {
         Args: { p_class_id: string; p_student_id: string }

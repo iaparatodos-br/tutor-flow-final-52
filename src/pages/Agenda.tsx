@@ -466,6 +466,68 @@ export default function Agenda() {
             });
           }
         }
+
+        // Buscar todos os participantes dos templates para alunos
+        if (!isProfessor && data && data.length > 0) {
+          const templateIds = data
+            .filter((cls: any) => cls.is_template === true)
+            .map((cls: any) => cls.id);
+
+          if (templateIds.length > 0) {
+            // Buscar TODOS os participantes desses templates (sem filtro de student_id)
+            const { data: allTemplateParticipants } = await supabase
+              .from('class_participants')
+              .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+              .in('class_id', templateIds);
+
+            // Extrair student_ids únicos
+            const uniqueStudentIds = [...new Set(allTemplateParticipants?.map(p => p.student_id) || [])];
+
+            // Buscar perfis separadamente (RLS permite ver perfis de colegas)
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, name, email')
+              .in('id', uniqueStudentIds);
+
+            // Criar mapa de perfis
+            const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+            // Combinar participantes com perfis
+            const participantsWithProfiles = allTemplateParticipants?.map(p => ({
+              ...p,
+              profiles: profilesMap.get(p.student_id) || null
+            }));
+
+            // Criar mapa class_id -> participantes completos
+            const templateParticipantsMap = new Map<string, any[]>();
+            participantsWithProfiles?.forEach((p: any) => {
+              if (!templateParticipantsMap.has(p.class_id)) {
+                templateParticipantsMap.set(p.class_id, []);
+              }
+              templateParticipantsMap.get(p.class_id)!.push({
+                student_id: p.student_id,
+                status: p.status,
+                cancelled_at: p.cancelled_at,
+                charge_applied: p.charge_applied,
+                confirmed_at: p.confirmed_at,
+                completed_at: p.completed_at,
+                cancellation_reason: p.cancellation_reason,
+                profiles: p.profiles
+              });
+            });
+
+            // Enriquecer templates com participantes completos
+            data = data.map((cls: any) => {
+              if (cls.is_template && templateParticipantsMap.has(cls.id)) {
+                return {
+                  ...cls,
+                  class_participants: templateParticipantsMap.get(cls.id)
+                };
+              }
+              return cls;
+            });
+          }
+        }
       }
       if (error) {
         console.error('Error loading classes:', error);
@@ -565,13 +627,20 @@ export default function Agenda() {
           }
         }
 
-        // ✅ OTIMIZAÇÃO FASE 1.1: Participantes já vêm do RPC, apenas formatamos
-        const participantsFormatted = Array.isArray(template.participants)
-          ? template.participants.map((p: any) => ({
-              student_id: p.student_id,
-              student: p.profiles
-            }))
-          : [];
+        // ✅ OTIMIZAÇÃO FASE 1.1: Participantes já vêm do RPC (professor) ou class_participants (aluno)
+        const participantsFormatted = isProfessor
+          ? (Array.isArray(template.participants)
+              ? template.participants.map((p: any) => ({
+                  student_id: p.student_id,
+                  student: p.profiles
+                }))
+              : [])
+          : (Array.isArray(template.class_participants)
+              ? template.class_participants.map((p: any) => ({
+                  student_id: p.student_id,
+                  student: p.profiles
+                }))
+              : []);
         
         const templateWithParticipants = {
           ...template,

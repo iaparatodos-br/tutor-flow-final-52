@@ -166,7 +166,7 @@ serve(async (req) => {
         teacher_id: template.teacher_id,
         class_date: class_date,
         duration_minutes: template.duration_minutes,
-        status: 'pendente',
+        status: template.status, // Herdar status do template original
         is_experimental: template.is_experimental,
         is_group_class: template.is_group_class,
         service_id: template.service_id,
@@ -187,11 +187,21 @@ serve(async (req) => {
 
     console.log('✅ Materialized class created:', materializedClass.id);
 
-    // Copy all participants to the materialized class
+    // Log inherited statuses for debugging
+    console.log('🔍 Materializing with inherited status:', {
+      template_status: template.status,
+      materialized_status: template.status,
+      participants_statuses: templateParticipants.map(p => ({ 
+        student_id: p.student_id, 
+        status: p.status 
+      }))
+    });
+
+    // Copy all participants to the materialized class (preserving their status)
     const participantsToInsert = templateParticipants.map(p => ({
       class_id: materializedClass.id,
       student_id: p.student_id,
-      status: 'pendente',
+      status: p.status, // Preservar status original de cada participante
     }));
 
     const { error: participantInsertError } = await supabaseClient

@@ -441,12 +441,47 @@ export function SimpleCalendar({
                       {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
                     </p>
                     <div className="space-y-2">
-                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
-                        <div key={index} className="bg-muted p-3 rounded-lg">
-                          <div className="font-medium">{participant.profiles?.name || participant.student?.name || 'Nome não disponível'}</div>
-                          <div className="text-sm text-muted-foreground">{participant.profiles?.email || participant.student?.email || 'Email não disponível'}</div>
-                        </div>
-                      )) || (
+                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => {
+                        const isCancelled = participant.status === 'cancelada' || participant.status === 'removida';
+                        
+                        return (
+                          <div 
+                            key={index} 
+                            className={cn(
+                              "p-3 rounded-lg flex items-center justify-between",
+                              isCancelled ? "bg-destructive/10 line-through opacity-60" : "bg-muted"
+                            )}
+                          >
+                            <div>
+                              <div className={cn("font-medium", isCancelled && "text-destructive")}>
+                                {participant.profiles?.name || participant.student?.name || 'Nome não disponível'}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {participant.profiles?.email || participant.student?.email || 'Email não disponível'}
+                              </div>
+                            </div>
+                            
+                            {/* Status Badge */}
+                            <div>
+                              {isCancelled && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {t('status.cancelled')}
+                                </Badge>
+                              )}
+                              {participant.status === 'confirmada' && (
+                                <Badge variant="default" className="text-xs">
+                                  {t('status.confirmed')}
+                                </Badge>
+                              )}
+                              {participant.status === 'concluida' && (
+                                <Badge variant="outline" className="text-xs">
+                                  {t('status.completed')}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }) || (
                         <div className="bg-muted p-3 rounded-lg">
                           <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
                           <div className="text-sm text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>

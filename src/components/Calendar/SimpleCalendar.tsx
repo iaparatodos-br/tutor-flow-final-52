@@ -443,8 +443,8 @@ export function SimpleCalendar({
                     <div className="space-y-2">
                       {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
                         <div key={index} className="bg-muted p-3 rounded-lg">
-                          <div className="font-medium">{participant.student.name}</div>
-                          <div className="text-sm text-muted-foreground">{participant.student.email}</div>
+                          <div className="font-medium">{participant.profiles?.name || participant.student?.name || 'Nome não disponível'}</div>
+                          <div className="text-sm text-muted-foreground">{participant.profiles?.email || participant.student?.email || 'Email não disponível'}</div>
                         </div>
                       )) || (
                         <div className="bg-muted p-3 rounded-lg">

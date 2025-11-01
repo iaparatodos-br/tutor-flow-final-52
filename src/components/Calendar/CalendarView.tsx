@@ -27,6 +27,10 @@ export interface ClassParticipant {
     name: string;
     email: string;
   };
+  profiles?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface CalendarClass {

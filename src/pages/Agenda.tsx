@@ -403,43 +403,56 @@ export default function Agenda() {
           .map((cls: any) => cls.id);
 
         if (groupClassIds.length > 0) {
+          // Buscar participantes de aulas em grupo (sem perfis)
           const { data: allParticipants, error: participantsError } = await supabase
             .from('class_participants')
-            .select(`
-              class_id,
-              student_id,
-              status,
-              cancelled_at,
-              charge_applied,
-              confirmed_at,
-              completed_at,
-              cancellation_reason,
-              profiles!class_participants_student_id_fkey (
-                name,
-                email
-              )
-            `)
+            .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
             .in('class_id', groupClassIds);
 
-          if (!participantsError && allParticipants) {
+          if (participantsError) {
+            console.error('Erro ao buscar participantes:', participantsError);
+          }
+
+          // Extrair student_ids únicos
+          const uniqueStudentIds = [...new Set(allParticipants?.map(p => p.student_id) || [])];
+
+          // Buscar perfis separadamente (RLS funcionará corretamente aqui)
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, name, email')
+            .in('id', uniqueStudentIds);
+
+          if (profilesError) {
+            console.error('Erro ao buscar perfis:', profilesError);
+          }
+
+          // Criar mapa de perfis
+          const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+
+          // Combinar participantes com perfis
+          const participantsWithProfiles = allParticipants?.map(p => ({
+            ...p,
+            profiles: profilesMap.get(p.student_id) || null
+          }));
+
+          if (!participantsError && participantsWithProfiles) {
             // Criar um mapa de class_id -> participantes
             const participantsMap = new Map<string, any[]>();
-        allParticipants.forEach((p: any) => {
-          if (!participantsMap.has(p.class_id)) {
-            participantsMap.set(p.class_id, []);
-          }
-          // Normalizar a estrutura para o formato esperado
-          participantsMap.get(p.class_id)!.push({
-            student_id: p.student_id,
-            status: p.status,
-            cancelled_at: p.cancelled_at,
-            charge_applied: p.charge_applied,
-            confirmed_at: p.confirmed_at,
-            completed_at: p.completed_at,
-            cancellation_reason: p.cancellation_reason,
-            profiles: p.profiles // Mantém a estrutura aninhada
-          });
-        });
+            participantsWithProfiles.forEach((p: any) => {
+              if (!participantsMap.has(p.class_id)) {
+                participantsMap.set(p.class_id, []);
+              }
+              participantsMap.get(p.class_id)!.push({
+                student_id: p.student_id,
+                status: p.status,
+                cancelled_at: p.cancelled_at,
+                charge_applied: p.charge_applied,
+                confirmed_at: p.confirmed_at,
+                completed_at: p.completed_at,
+                cancellation_reason: p.cancellation_reason,
+                profiles: p.profiles
+              });
+            });
 
             // Atualizar as aulas em grupo com TODOS os participantes
             data = data.map((cls: any) => {

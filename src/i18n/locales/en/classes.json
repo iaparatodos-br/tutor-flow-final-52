@@ -76,7 +76,10 @@
     "participants": "Participants",
     "student": "Student",
     "groupWithCount": "Group Class ({{count}} students)",
-    "groupShort": "Group ({{count}})"
+    "groupShort": "Group ({{count}})",
+    "partialCancellation": "Partial Cancellation",
+    "activeParticipants": "Active Participants",
+    "cancelledParticipants": "Cancelled Participants"
   },
   "fields": {
     "student": "Student",

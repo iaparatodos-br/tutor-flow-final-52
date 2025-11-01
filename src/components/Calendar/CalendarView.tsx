@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +61,17 @@ export interface AvailabilityBlock {
   end: Date;
   type: 'block';
 }
+
+// Helper function to detect partial cancellations in group classes
+const hasPartialCancellations = (classEvent: CalendarClass): boolean => {
+  if (!classEvent.is_group_class || !classEvent.participants) return false;
+  
+  const cancelledCount = classEvent.participants.filter(
+    p => p.status === 'cancelada' || p.status === 'removida'
+  ).length;
+  
+  return cancelledCount > 0 && cancelledCount < classEvent.participants.length;
+};
 
 interface CalendarViewProps {
   classes: CalendarClass[];
@@ -128,11 +139,14 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
     };
 
     let backgroundColor = statusColors[classEvent.status];
-    let borderLeft = 'none';
+    let borderStyle = 'none';
     
-    // Special styling for experimental classes
-    if (classEvent.is_experimental) {
-      borderLeft = '4px solid hsl(var(--warning))';
+    // Add yellow border for partial cancellations
+    if (hasPartialCancellations(classEvent)) {
+      borderStyle = '3px solid hsl(var(--warning))';
+    } else if (classEvent.is_experimental) {
+      // Special styling for experimental classes
+      borderStyle = '4px solid hsl(var(--warning))';
     }
     
     // Special styling for group classes
@@ -143,8 +157,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
     return {
       style: {
         background: backgroundColor,
-        border: 'none',
-        borderLeft,
+        border: borderStyle,
         borderRadius: '0.375rem',
         color: 'white',
         fontWeight: '500',
@@ -299,6 +312,15 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     </div>
                     <div className="flex gap-2">
                       {getStatusBadge((selectedEvent as CalendarClass).status)}
+                      
+                      {/* Partial Cancellation Badge */}
+                      {hasPartialCancellations(selectedEvent as CalendarClass) && (
+                        <Badge variant="outline" className="border-warning text-warning">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          {t('calendar.partialCancellation')}
+                        </Badge>
+                      )}
+                      
                       {(selectedEvent as CalendarClass).is_experimental && (
                         <Badge variant="outline" className="border-warning text-warning">
                           {t('experimental')}
@@ -325,12 +347,41 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                       {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
                     </p>
                     <div className="space-y-2">
-                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => (
-                        <div key={index} className="bg-muted p-2 rounded text-sm">
-                          <div className="font-medium">{participant.student.name}</div>
-                          <div className="text-muted-foreground">{participant.student.email}</div>
-                        </div>
-                      )) || (
+                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => {
+                        const isCancelled = participant.status === 'cancelada' || participant.status === 'removida';
+                        
+                        return (
+                          <div 
+                            key={index} 
+                            className={cn(
+                              "p-2 rounded text-sm flex items-center justify-between",
+                              isCancelled ? "bg-destructive/10 line-through opacity-60" : "bg-muted"
+                            )}
+                          >
+                            <div>
+                              <div className="font-medium">{participant.student.name}</div>
+                              <div className="text-muted-foreground text-xs">{participant.student.email}</div>
+                            </div>
+                            
+                            {/* Status Badge */}
+                            {isCancelled && (
+                              <Badge variant="destructive" className="text-xs">
+                                {t('status.cancelled')}
+                              </Badge>
+                            )}
+                            {participant.status === 'confirmada' && (
+                              <Badge variant="default" className="text-xs">
+                                {t('status.confirmed')}
+                              </Badge>
+                            )}
+                            {participant.status === 'concluida' && (
+                              <Badge variant="outline" className="text-xs">
+                                {t('status.completed')}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      }) || (
                         <div className="bg-muted p-2 rounded text-sm">
                           <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
                           <div className="text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>

@@ -76,7 +76,10 @@
     "participants": "Participantes",
     "student": "Aluno",
     "groupWithCount": "Aula em Grupo ({{count}} alunos)",
-    "groupShort": "Grupo ({{count}})"
+    "groupShort": "Grupo ({{count}})",
+    "partialCancellation": "Cancelamento Parcial",
+    "activeParticipants": "Participantes Ativos",
+    "cancelledParticipants": "Participantes Cancelados"
   },
   "fields": {
     "student": "Aluno",

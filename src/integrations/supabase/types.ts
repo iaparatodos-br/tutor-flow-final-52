@@ -1849,6 +1849,10 @@ export type Database = {
     }
     Functions: {
       archive_old_stripe_events: { Args: never; Returns: number }
+      can_student_materialize_class: {
+        Args: { p_class_template_id: string; p_student_id: string }
+        Returns: boolean
+      }
       cleanup_expired_pending_profiles: { Args: never; Returns: number }
       cleanup_old_login_attempts: { Args: never; Returns: undefined }
       cleanup_orphaned_stripe_events: { Args: never; Returns: number }

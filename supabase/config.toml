@@ -24,3 +24,6 @@ verify_jwt = false
 [functions.end-recurrence]
 verify_jwt = true
 
+[functions.materialize-virtual-class]
+verify_jwt = true
+

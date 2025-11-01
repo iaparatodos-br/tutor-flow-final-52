@@ -188,68 +188,39 @@ export function CancellationModal({
     try {
       let finalClassId = classId;
       
-      // If it's a virtual class, materialize it first
+      // If it's a virtual class, materialize it first via Edge Function
       if (virtualClassData) {
         console.log('Materializing virtual class before cancellation...');
         
-        // Insert the materialized class
-        const { data: materializedClass, error: materializeError } = await supabase
-          .from('classes')
-          .insert({
-            teacher_id: virtualClassData.teacher_id,
-            // student_id REMOVED - use class_participants instead
-            class_date: virtualClassData.class_date,
-            duration_minutes: virtualClassData.duration_minutes,
-            service_id: virtualClassData.service_id,
-            is_group_class: virtualClassData.is_group_class,
-            class_template_id: virtualClassData.class_template_id,
-            is_template: false,
-            status: 'confirmada', // Materialize as confirmed before cancellation
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-          
-        if (materializeError) {
-          console.error('Error materializing class:', materializeError);
-          throw new Error('Failed to materialize virtual class');
-        }
-        
-        finalClassId = materializedClass.id;
-        
-        // Copy participants from template (both group and individual classes)
-        const { data: templateParticipants, error: participantsError } = await supabase
-          .from('class_participants')
-          .select('student_id')
-          .eq('class_id', virtualClassData.class_template_id);
-          
-        if (!participantsError && templateParticipants && templateParticipants.length > 0) {
-          const participantsToInsert = templateParticipants.map(p => ({
-            class_id: finalClassId,
-            student_id: p.student_id,
-            status: 'confirmada',
-            confirmed_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }));
-          
-          const { error: insertError } = await supabase
-            .from('class_participants')
-            .insert(participantsToInsert);
-            
-          if (insertError) {
-            console.error('Error creating participants for materialized class:', insertError);
-            throw new Error('Failed to create participants for materialized class');
+        try {
+          const { data: materializationResult, error: materializeError } = await supabase.functions.invoke(
+            'materialize-virtual-class',
+            {
+              body: {
+                template_id: virtualClassData.class_template_id,
+                class_date: virtualClassData.class_date,
+                cancellation_reason: reason.trim()
+              }
+            }
+          );
+
+          if (materializeError || !materializationResult?.success) {
+            console.error('Error materializing class:', materializeError);
+            throw new Error('Failed to materialize virtual class');
           }
-          
-          console.log(`Created ${participantsToInsert.length} participant(s) for materialized class`);
-        } else {
-          console.error('No participants found in template class');
-          throw new Error('Template class has no participants');
+
+          finalClassId = materializationResult.materialized_class_id;
+          console.log('Virtual class materialized via Edge Function:', finalClassId, 'Participants:', materializationResult.participants_count);
+        } catch (error) {
+          console.error('Error materializing class:', error);
+          toast({
+            title: t('messages.error'),
+            description: t('cancellation.feedback.error'),
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
         }
-        
-        console.log('Virtual class materialized with ID:', finalClassId);
       }
       
       // Now call the edge function with the materialized class ID

@@ -822,12 +822,28 @@ export default function Agenda() {
         await materializeVirtualClass(classId);
         return;
       }
-      const {
-        error
-      } = await supabase.from('classes').update({
-        status: 'confirmada'
-      }).eq('id', classId);
+      // Atualizar status da aula
+      const { error } = await supabase
+        .from('classes')
+        .update({ status: 'confirmada' })
+        .eq('id', classId);
+
       if (error) throw error;
+
+      // Atualizar status dos participantes (exceto cancelados)
+      const { error: participantsError } = await supabase
+        .from('class_participants')
+        .update({ 
+          status: 'confirmada',
+          confirmed_at: new Date().toISOString()
+        })
+        .eq('class_id', classId)
+        .neq('status', 'cancelada'); // Preservar cancelamentos individuais
+
+      if (participantsError) {
+        console.error('Erro ao atualizar participantes:', participantsError);
+        throw participantsError;
+      }
       toast({
         title: t('messages.classConfirmed'),
         description: t('messages.classConfirmedDescription')

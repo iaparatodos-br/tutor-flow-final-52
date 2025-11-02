@@ -324,8 +324,14 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                     setFormData(prev => ({ 
                       ...prev, 
                       is_experimental: checked as boolean,
-                      service_id: checked ? '' : prev.service_id // Clear service if experimental
+                      service_id: checked ? '' : prev.service_id, // Clear service if experimental
+                      recurrence: checked ? undefined : prev.recurrence // Clear recurrence if experimental
                     }));
+                    // Reset recurrence UI state when marking as experimental
+                    if (checked) {
+                      setShowRecurrence(false);
+                      setRecurrenceType('date');
+                    }
                   }}
                 />
                 <Label htmlFor="experimental" className="flex items-center gap-2 cursor-pointer">
@@ -482,150 +488,152 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
 
           {/* Recurrence */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Repeat className="h-4 w-4" />
-                    {t('recurrence')}
-                  </CardTitle>
-                  <CardDescription>
-                    {t('recurrenceDescription')}
-                  </CardDescription>
-                </div>
-                <Checkbox
-                  checked={showRecurrence}
-                  onCheckedChange={(checked) => {
-                    setShowRecurrence(checked as boolean);
-                    // Initialize recurrence with default frequency when enabling
-                    if (checked && !formData.recurrence?.frequency) {
-                      setFormData(prev => ({
-                        ...prev,
-                        recurrence: {
-                          frequency: 'weekly',
-                          is_infinite: false
-                        }
-                      }));
-                    }
-                  }}
-                />
-              </div>
-            </CardHeader>
-            {showRecurrence && (
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>{t('frequency')}</Label>
-                  <Select
-                    value={formData.recurrence?.frequency || 'weekly'}
-                    onValueChange={(value: 'weekly' | 'biweekly' | 'monthly') =>
-                      setFormData(prev => ({
-                        ...prev,
-                        recurrence: { ...prev.recurrence, frequency: value }
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="weekly">{t('weekly')}</SelectItem>
-                      <SelectItem value="biweekly">{t('biweekly')}</SelectItem>
-                      <SelectItem value="monthly">{t('monthly')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="infinite-recurrence">{t('infiniteRecurrence')}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t('infiniteRecurrenceDescription')}
-                    </p>
+          {!formData.is_experimental && (
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Repeat className="h-4 w-4" />
+                      {t('recurrence')}
+                    </CardTitle>
+                    <CardDescription>
+                      {t('recurrenceDescription')}
+                    </CardDescription>
                   </div>
-                  <Switch
-                    id="infinite-recurrence"
-                    checked={recurrenceType === 'infinite'}
+                  <Checkbox
+                    checked={showRecurrence}
                     onCheckedChange={(checked) => {
-                      setRecurrenceType(checked ? 'infinite' : 'date');
-                      setFormData(prev => ({
-                        ...prev,
-                        recurrence: { 
-                          ...prev.recurrence, 
-                          is_infinite: checked,
-                          end_date: checked ? undefined : prev.recurrence?.end_date,
-                          occurrences: checked ? undefined : prev.recurrence?.occurrences
-                        }
-                      }));
+                      setShowRecurrence(checked as boolean);
+                      // Initialize recurrence with default frequency when enabling
+                      if (checked && !formData.recurrence?.frequency) {
+                        setFormData(prev => ({
+                          ...prev,
+                          recurrence: {
+                            frequency: 'weekly',
+                            is_infinite: false
+                          }
+                        }));
+                      }
                     }}
                   />
                 </div>
-
-                {recurrenceType !== 'infinite' && (
+              </CardHeader>
+              {showRecurrence && (
+                <CardContent className="space-y-4">
                   <div>
-                    <Label>{t('endRecurrence')}</Label>
-                    <Select value={recurrenceType} onValueChange={(value: "date" | "count") => setRecurrenceType(value as "date" | "count")}>
+                    <Label>{t('frequency')}</Label>
+                    <Select
+                      value={formData.recurrence?.frequency || 'weekly'}
+                      onValueChange={(value: 'weekly' | 'biweekly' | 'monthly') =>
+                        setFormData(prev => ({
+                          ...prev,
+                          recurrence: { ...prev.recurrence, frequency: value }
+                        }))
+                      }
+                    >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="date">{t('endDateOption')}</SelectItem>
-                        <SelectItem value="count">{t('countOption')}</SelectItem>
+                        <SelectItem value="weekly">{t('weekly')}</SelectItem>
+                        <SelectItem value="biweekly">{t('biweekly')}</SelectItem>
+                        <SelectItem value="monthly">{t('monthly')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
 
-                {recurrenceType === 'date' && (
-                  <div>
-                    <Label htmlFor="end_date">{t('fields.endDate')}</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={formData.recurrence?.end_date || ''}
-                      onChange={(e) =>
-                        setFormData(prev => ({
-                          ...prev,
-                          recurrence: { ...prev.recurrence, end_date: e.target.value }
-                        }))
-                      }
-                    />
-                  </div>
-                )}
-
-                {recurrenceType === 'count' && (
-                  <div>
-                    <Label htmlFor="occurrences">{t('fields.occurrences')}</Label>
-                    <Input
-                      id="occurrences"
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={formData.recurrence?.occurrences || ''}
-                      onChange={(e) =>
-                        setFormData(prev => ({
-                          ...prev,
-                          recurrence: { ...prev.recurrence, occurrences: parseInt(e.target.value) || undefined }
-                        }))
-                      }
-                    />
-                  </div>
-                )}
-
-                {recurrenceType === 'infinite' && (
-                  <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
-                      <Repeat className="h-4 w-4" />
-                      <span className="font-medium">{t('infiniteRecurrence')}</span>
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="infinite-recurrence">{t('infiniteRecurrence')}</Label>
+                      <p className="text-sm text-muted-foreground">
+                        {t('infiniteRecurrenceDescription')}
+                      </p>
                     </div>
-                    <p className="text-sm text-blue-600/80 dark:text-blue-400/80">
-                      {t('infiniteRecurrenceNote')}
-                    </p>
+                    <Switch
+                      id="infinite-recurrence"
+                      checked={recurrenceType === 'infinite'}
+                      onCheckedChange={(checked) => {
+                        setRecurrenceType(checked ? 'infinite' : 'date');
+                        setFormData(prev => ({
+                          ...prev,
+                          recurrence: { 
+                            ...prev.recurrence, 
+                            is_infinite: checked,
+                            end_date: checked ? undefined : prev.recurrence?.end_date,
+                            occurrences: checked ? undefined : prev.recurrence?.occurrences
+                          }
+                        }));
+                      }}
+                    />
                   </div>
-                )}
-              </CardContent>
-            )}
-          </Card>
+
+                  {recurrenceType !== 'infinite' && (
+                    <div>
+                      <Label>{t('endRecurrence')}</Label>
+                      <Select value={recurrenceType} onValueChange={(value: "date" | "count") => setRecurrenceType(value as "date" | "count")}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="date">{t('endDateOption')}</SelectItem>
+                          <SelectItem value="count">{t('countOption')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {recurrenceType === 'date' && (
+                    <div>
+                      <Label htmlFor="end_date">{t('fields.endDate')}</Label>
+                      <Input
+                        id="end_date"
+                        type="date"
+                        value={formData.recurrence?.end_date || ''}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            recurrence: { ...prev.recurrence, end_date: e.target.value }
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {recurrenceType === 'count' && (
+                    <div>
+                      <Label htmlFor="occurrences">{t('fields.occurrences')}</Label>
+                      <Input
+                        id="occurrences"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={formData.recurrence?.occurrences || ''}
+                        onChange={(e) =>
+                          setFormData(prev => ({
+                            ...prev,
+                            recurrence: { ...prev.recurrence, occurrences: parseInt(e.target.value) || undefined }
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {recurrenceType === 'infinite' && (
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
+                        <Repeat className="h-4 w-4" />
+                        <span className="font-medium">{t('infiniteRecurrence')}</span>
+                      </div>
+                      <p className="text-sm text-blue-600/80 dark:text-blue-400/80">
+                        {t('infiniteRecurrenceNote')}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          )}
 
           {/* Notes */}
           <div>

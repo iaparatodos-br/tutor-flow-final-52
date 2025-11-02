@@ -1128,11 +1128,15 @@ export default function Agenda() {
       }).eq('id', classId);
       if (error) throw error;
 
-      // Atualizar status de TODOS os participantes da aula em grupo
+      // Atualizar status dos participantes (exceto os que estão cancelados)
       const { error: participantsError } = await supabase
         .from('class_participants')
-        .update({ status: 'concluida' })
-        .eq('class_id', classId);
+        .update({ 
+          status: 'concluida',
+          completed_at: new Date().toISOString()
+        })
+        .eq('class_id', classId)
+        .neq('status', 'cancelada');
       
       if (participantsError) {
         console.error('Erro ao atualizar participantes:', participantsError);

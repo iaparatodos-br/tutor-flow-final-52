@@ -50,20 +50,22 @@ serve(async (req) => {
     const user = userData.user;
     console.log('✅ Authenticated user:', user.id);
 
-    // Verify user is a student
+    // Get user profile to check role
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (profileError || profile.role !== 'aluno') {
-      console.error('❌ User is not a student:', profile?.role);
+    if (profileError || !profile) {
+      console.error('❌ Profile not found:', profileError);
       return new Response(
-        JSON.stringify({ error: 'Only students can materialize classes' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'User profile not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log('✅ User role:', profile.role);
 
     // Parse request body
     const body: MaterializeRequest = await req.json();
@@ -105,6 +107,57 @@ serve(async (req) => {
 
     console.log('✅ Template found:', template.id);
 
+    // Authorization check based on user role
+    if (profile.role === 'aluno') {
+      // Students must be participants of the template
+      const { data: participation, error: participationError } = await supabaseClient
+        .from('class_participants')
+        .select('id')
+        .eq('class_id', template_id)
+        .eq('student_id', user.id)
+        .maybeSingle();
+
+      if (participationError) {
+        console.error('❌ Error checking participation:', participationError);
+        return new Response(
+          JSON.stringify({ error: 'Error checking participation' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (!participation) {
+        console.error('❌ Student is not a participant of this template');
+        return new Response(
+          JSON.stringify({ error: 'Student is not a participant of this template' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('✅ Student participation verified');
+      
+    } else if (profile.role === 'professor') {
+      // Professors must be the owner of the template
+      if (template.teacher_id !== user.id) {
+        console.error('❌ Professor does not own this template:', {
+          template_teacher_id: template.teacher_id,
+          user_id: user.id
+        });
+        return new Response(
+          JSON.stringify({ error: 'You can only materialize your own classes' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('✅ Professor ownership verified');
+      
+    } else {
+      console.error('❌ Invalid user role:', profile.role);
+      return new Response(
+        JSON.stringify({ error: 'Invalid user role' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Check if template has expired
     if (template.recurrence_end_date) {
       const endDate = new Date(template.recurrence_end_date);
@@ -116,32 +169,6 @@ serve(async (req) => {
         );
       }
     }
-
-    // Verify student is a participant of the template
-    const { data: participation, error: participationError } = await supabaseClient
-      .from('class_participants')
-      .select('id')
-      .eq('class_id', template_id)
-      .eq('student_id', user.id)
-      .maybeSingle();
-
-    if (participationError) {
-      console.error('❌ Error checking participation:', participationError);
-      return new Response(
-        JSON.stringify({ error: 'Error checking participation' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!participation) {
-      console.error('❌ Student is not a participant of this template');
-      return new Response(
-        JSON.stringify({ error: 'Student is not a participant of this template' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('✅ Student participation verified');
 
     // Get all participants from the template
     const { data: templateParticipants, error: participantsError } = await supabaseClient

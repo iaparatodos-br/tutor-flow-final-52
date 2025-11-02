@@ -150,8 +150,11 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
         errors.pastDateTime = true;
       }
 
-      // Get duration from selected service or use default for experimental classes
-      let duration = 60; // Default for experimental classes
+      // Get duration from selected service or use form value for experimental classes
+      let duration = formData.is_experimental 
+        ? formData.duration_minutes 
+        : 60; // Default fallback
+      
       if (!formData.is_experimental && formData.service_id) {
         const selectedService = services.find(s => s.id === formData.service_id);
         if (selectedService) {
@@ -196,8 +199,11 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
       return;
     }
 
-    // Get duration from selected service or use default for experimental classes
-    let finalDuration = 60; // Default for experimental classes
+    // Get duration from selected service or use form value for experimental classes
+    let finalDuration = formData.is_experimental 
+      ? formData.duration_minutes 
+      : 60; // Default fallback
+    
     if (!formData.is_experimental && formData.service_id) {
       const selectedService = services.find(s => s.id === formData.service_id);
       if (selectedService) {
@@ -325,7 +331,8 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       ...prev, 
                       is_experimental: checked as boolean,
                       service_id: checked ? '' : prev.service_id, // Clear service if experimental
-                      recurrence: checked ? undefined : prev.recurrence // Clear recurrence if experimental
+                      recurrence: checked ? undefined : prev.recurrence, // Clear recurrence if experimental
+                      duration_minutes: checked ? 60 : prev.duration_minutes // Reset to default when experimental
                     }));
                     // Reset recurrence UI state when marking as experimental
                     if (checked) {
@@ -340,9 +347,39 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 </Label>
               </div>
               {formData.is_experimental && (
-                <p className="text-sm text-muted-foreground ml-6">
-                  {t('experimentalNote')}
-                </p>
+                <>
+                  <p className="text-sm text-muted-foreground ml-6">
+                    {t('experimentalNote')}
+                  </p>
+                  <Separator className="my-4" />
+                  <div className="space-y-2">
+                    <Label htmlFor="experimental-duration">
+                      {t('fields.duration')} *
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="experimental-duration"
+                        type="number"
+                        min="15"
+                        max="480"
+                        step="15"
+                        value={formData.duration_minutes}
+                        onChange={(e) => {
+                          const value = Math.max(15, Math.min(480, parseInt(e.target.value) || 60));
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            duration_minutes: value
+                          }));
+                        }}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-muted-foreground">minutos</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Duração entre 15 e 480 minutos
+                    </p>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>

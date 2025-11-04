@@ -85,6 +85,22 @@ export default function Financeiro() {
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // Verifica se a fatura está vencida
+  const isOverdue = (dueDate: string, status: string): boolean => {
+    // Não considerar vencida se já foi paga ou cancelada
+    if (['paga', 'paid', 'void', 'cancelada'].includes(status)) {
+      return false;
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Zerar horas para comparar apenas datas
+    
+    const due = new Date(dueDate);
+    due.setHours(0, 0, 0, 0);
+    
+    return due < today;
+  };
+
   useEffect(() => {
     if (profile?.id) {
       loadInvoices();
@@ -538,8 +554,16 @@ export default function Financeiro() {
                               {formatCurrency(Number(invoice.amount))}
                             </TableCell>
                             <TableCell>
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <div className={`flex items-center gap-2 ${
+                                isOverdue(invoice.due_date, invoice.status) 
+                                  ? 'text-destructive font-semibold' 
+                                  : ''
+                              }`}>
+                                <Calendar className={`h-4 w-4 ${
+                                  isOverdue(invoice.due_date, invoice.status)
+                                    ? 'text-destructive'
+                                    : 'text-muted-foreground'
+                                }`} />
                                 {formatDate(invoice.due_date)}
                               </div>
                             </TableCell>
@@ -671,8 +695,16 @@ export default function Financeiro() {
                           {formatCurrency(Number(invoice.amount))}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                          <div className={`flex items-center gap-2 ${
+                            isOverdue(invoice.due_date, invoice.status) 
+                              ? 'text-destructive font-semibold' 
+                              : ''
+                          }`}>
+                            <Calendar className={`h-4 w-4 ${
+                              isOverdue(invoice.due_date, invoice.status)
+                                ? 'text-destructive'
+                                : 'text-muted-foreground'
+                            }`} />
                             {formatDate(invoice.due_date)}
                           </div>
                         </TableCell>

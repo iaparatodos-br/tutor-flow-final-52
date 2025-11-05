@@ -450,7 +450,7 @@ export default function Agenda() {
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
-                profiles: p.profiles
+                student: p.profiles
               });
             });
 
@@ -512,7 +512,7 @@ export default function Agenda() {
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
-                profiles: p.profiles
+                student: p.profiles
               });
             });
 

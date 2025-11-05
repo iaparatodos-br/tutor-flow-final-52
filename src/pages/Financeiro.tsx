@@ -369,10 +369,12 @@ export default function Financeiro() {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
   const totalPendente = invoices.filter(invoice => ['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status)).reduce((sum, invoice) => sum + Number(invoice.amount), 0);
-  const totalPago = invoices.filter(invoice => ['paga', 'paid'].includes(invoice.status)).reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+  const paidInvoices = invoices.filter(invoice => ['paga', 'paid'].includes(invoice.status));
+  const totalPago = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
+  const stripeFees = paidInvoices.length * 3.49; // Taxa fixa do Stripe por boleto
 
-  // Calculate net profit (only for professors)
-  const netProfit = isProfessor ? totalPago - expenseSummary.total : 0;
+  // Calculate net profit (only for professors): Revenue - Stripe Fees - Expenses
+  const netProfit = isProfessor ? totalPago - stripeFees - expenseSummary.total : 0;
   return <Layout>
       <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
         {/* Header */}

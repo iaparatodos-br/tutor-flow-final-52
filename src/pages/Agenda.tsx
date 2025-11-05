@@ -416,9 +416,9 @@ export default function Agenda() {
           // Extrair student_ids únicos
           const uniqueStudentIds = [...new Set(allParticipants?.map(p => p.student_id) || [])];
 
-          // Buscar perfis separadamente usando VIEW segura (protege dados sensíveis)
+          // Buscar perfis separadamente (RLS funcionará corretamente aqui)
           const { data: profilesData, error: profilesError } = await supabase
-            .from('safe_classmate_profiles')
+            .from('profiles')
             .select('id, name, email')
             .in('id', uniqueStudentIds);
 
@@ -450,7 +450,7 @@ export default function Agenda() {
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
-                student: p.profiles
+                profiles: p.profiles
               });
             });
 
@@ -483,9 +483,9 @@ export default function Agenda() {
             // Extrair student_ids únicos
             const uniqueStudentIds = [...new Set(allTemplateParticipants?.map(p => p.student_id) || [])];
 
-            // Buscar perfis separadamente usando VIEW segura (protege dados sensíveis)
+            // Buscar perfis separadamente (RLS permite ver perfis de colegas)
             const { data: profilesData } = await supabase
-              .from('safe_classmate_profiles')
+              .from('profiles')
               .select('id, name, email')
               .in('id', uniqueStudentIds);
 
@@ -512,7 +512,7 @@ export default function Agenda() {
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
-                student: p.profiles
+                profiles: p.profiles
               });
             });
 

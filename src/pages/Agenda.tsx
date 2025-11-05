@@ -416,9 +416,9 @@ export default function Agenda() {
           // Extrair student_ids únicos
           const uniqueStudentIds = [...new Set(allParticipants?.map(p => p.student_id) || [])];
 
-          // Buscar perfis separadamente (RLS funcionará corretamente aqui)
+          // Buscar perfis separadamente usando VIEW segura (protege dados sensíveis)
           const { data: profilesData, error: profilesError } = await supabase
-            .from('profiles')
+            .from('safe_classmate_profiles')
             .select('id, name, email')
             .in('id', uniqueStudentIds);
 
@@ -483,9 +483,9 @@ export default function Agenda() {
             // Extrair student_ids únicos
             const uniqueStudentIds = [...new Set(allTemplateParticipants?.map(p => p.student_id) || [])];
 
-            // Buscar perfis separadamente (RLS permite ver perfis de colegas)
+            // Buscar perfis separadamente usando VIEW segura (protege dados sensíveis)
             const { data: profilesData } = await supabase
-              .from('profiles')
+              .from('safe_classmate_profiles')
               .select('id, name, email')
               .in('id', uniqueStudentIds);
 

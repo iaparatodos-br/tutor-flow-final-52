@@ -280,6 +280,7 @@ export default function Agenda() {
         }
       } else {
         // For students, get classes where they are active participants (via class_participants)
+        // Query 1: Aulas materializadas individuais (com filtro de 30 dias)
         let individualQuery = supabase
           .from('classes')
           .select(`
@@ -312,6 +313,7 @@ export default function Agenda() {
           `)
           .eq('class_participants.student_id', profile.id)
           .eq('is_group_class', false)
+          .eq('is_template', false)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
 
@@ -326,7 +328,7 @@ export default function Agenda() {
           throw individualError;
         }
 
-        // Query 2: Aulas em grupo onde o aluno é participante
+        // Query 2: Aulas materializadas em grupo (com filtro de 30 dias)
         let groupQuery = supabase
           .from('classes')
           .select(`
@@ -359,6 +361,7 @@ export default function Agenda() {
           `)
           .eq('class_participants.student_id', profile.id)
           .eq('is_group_class', true)
+          .eq('is_template', false)
           .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
           .order('class_date');
 
@@ -373,8 +376,107 @@ export default function Agenda() {
           throw groupError;
         }
 
-        // Consolidar resultados e remover duplicatas
-        const allClasses = [...(individualClasses || []), ...(groupClasses || [])];
+        // Query 3: Templates individuais (SEM filtro de 30 dias na class_date)
+        let individualTemplatesQuery = supabase
+          .from('classes')
+          .select(`
+            id,
+            class_date,
+            duration_minutes,
+            status,
+            notes,
+            is_experimental,
+            is_group_class,
+            service_id,
+            teacher_id,
+            recurrence_pattern,
+            is_template,
+            recurrence_end_date,
+            class_template_id,
+            class_participants!inner (
+              student_id,
+              status,
+              cancelled_at,
+              charge_applied,
+              confirmed_at,
+              completed_at,
+              cancellation_reason,
+              profiles!class_participants_student_id_fkey (
+                name,
+                email
+              )
+            )
+          `)
+          .eq('class_participants.student_id', profile.id)
+          .eq('is_group_class', false)
+          .eq('is_template', true)
+          .order('class_date');
+
+        if (selectedTeacherId) {
+          individualTemplatesQuery = individualTemplatesQuery.eq('teacher_id', selectedTeacherId);
+        }
+
+        const { data: individualTemplates, error: individualTemplatesError } = await individualTemplatesQuery;
+
+        if (individualTemplatesError) {
+          console.error('Error loading individual templates:', individualTemplatesError);
+          throw individualTemplatesError;
+        }
+
+        // Query 4: Templates em grupo (SEM filtro de 30 dias na class_date)
+        let groupTemplatesQuery = supabase
+          .from('classes')
+          .select(`
+            id,
+            class_date,
+            duration_minutes,
+            status,
+            notes,
+            is_experimental,
+            is_group_class,
+            service_id,
+            teacher_id,
+            recurrence_pattern,
+            is_template,
+            recurrence_end_date,
+            class_template_id,
+          class_participants!inner (
+            student_id,
+            status,
+            cancelled_at,
+            charge_applied,
+            confirmed_at,
+            completed_at,
+            cancellation_reason,
+            profiles!class_participants_student_id_fkey (
+              name,
+              email
+            )
+          )
+          `)
+          .eq('class_participants.student_id', profile.id)
+          .eq('is_group_class', true)
+          .eq('is_template', true)
+          .order('class_date');
+
+        if (selectedTeacherId) {
+          groupTemplatesQuery = groupTemplatesQuery.eq('teacher_id', selectedTeacherId);
+        }
+
+        const { data: groupTemplates, error: groupTemplatesError } = await groupTemplatesQuery;
+
+        if (groupTemplatesError) {
+          console.error('Error loading group templates:', groupTemplatesError);
+          throw groupTemplatesError;
+        }
+
+        // Consolidar todos os resultados (aulas materializadas + templates)
+        const allClasses = [
+          ...(individualClasses || []),
+          ...(groupClasses || []),
+          ...(individualTemplates || []),
+          ...(groupTemplates || [])
+        ];
         const uniqueClassesMap = new Map(allClasses.map(c => [c.id, c]));
         const studentData = Array.from(uniqueClassesMap.values());
         

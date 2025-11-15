@@ -286,7 +286,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 {t('workingHours.configure')}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('workingHours.dialogTitle')}</DialogTitle>
                 <p className="text-sm text-muted-foreground">{t('workingHours.dialogDescription')}</p>

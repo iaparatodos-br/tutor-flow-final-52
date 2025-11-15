@@ -386,6 +386,12 @@ export function ClassReportModal({
               onChange={(e) => setLessonSummary(e.target.value)}
               className="min-h-[100px]"
               required
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -401,6 +407,12 @@ export function ClassReportModal({
               value={homework}
               onChange={(e) => setHomework(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -416,6 +428,12 @@ export function ClassReportModal({
               value={extraMaterials}
               onChange={(e) => setExtraMaterials(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -445,6 +463,12 @@ export function ClassReportModal({
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
                         className="min-h-[80px]"
+                        style={{
+                          scrollBehavior: 'auto',
+                          pointerEvents: 'auto',
+                          userSelect: 'text',
+                          WebkitUserSelect: 'text'
+                        }}
                       />
                     </div>
                   );

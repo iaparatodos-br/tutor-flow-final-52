@@ -334,7 +334,10 @@ export function ClassReportModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        key={`report-${classData.id}-${existingReport?.id || 'new'}`}
+        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {existingReport ? t('modal.title.edit') : t('modal.title.create')}

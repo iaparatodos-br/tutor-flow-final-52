@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,8 +53,25 @@ export default function ResetPassword() {
 
   const { accessToken, refreshToken, type } = getTokensFromUrl();
   
+  // Garantir que não há sessão ativa ao entrar na página de reset
+  useEffect(() => {
+    const clearSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log('🔑 ResetPassword: Limpando sessão ativa antes de resetar senha');
+          await supabase.auth.signOut();
+        }
+      } catch (error) {
+        console.error('❌ ResetPassword: Erro ao limpar sessão:', error);
+      }
+    };
+    
+    clearSession();
+  }, []);
+  
   // If no recovery tokens, redirect to auth with error message
-  if (!accessToken || !refreshToken || type !== 'recovery') {
+  if (!accessToken || !refreshToken) {
     console.error('❌ ResetPassword: Tokens inválidos ou ausentes');
     
     toast({
@@ -85,17 +102,22 @@ export default function ResetPassword() {
     setLoading(true);
     
     try {
-      console.log('ResetPassword: Setting session and updating password');
+      console.log('🔑 ResetPassword: Configurando sessão com tokens de recuperação');
+      console.log('🔑 ResetPassword: Access token presente:', !!accessToken);
+      console.log('🔑 ResetPassword: Refresh token presente:', !!refreshToken);
       
       // Set session with recovery tokens first
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken
+      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken!,
+        refresh_token: refreshToken!
       });
       
       if (sessionError) {
+        console.error('❌ ResetPassword: Erro ao configurar sessão:', sessionError);
         throw new Error(sessionError.message);
       }
+      
+      console.log('✅ ResetPassword: Sessão configurada, atualizando senha');
       
       // Now update the password
       const { error: updateError } = await supabase.auth.updateUser({
@@ -103,8 +125,11 @@ export default function ResetPassword() {
       });
       
       if (updateError) {
+        console.error('❌ ResetPassword: Erro ao atualizar senha:', updateError);
         throw new Error(updateError.message);
       }
+      
+      console.log('✅ ResetPassword: Senha atualizada com sucesso!');
       
       toast({
         title: "Senha redefinida!",
@@ -118,7 +143,7 @@ export default function ResetPassword() {
       }, 2000);
       
     } catch (error: any) {
-      console.error('ResetPassword: Error updating password:', error);
+      console.error('❌ ResetPassword: Erro no processo:', error);
       toast({
         title: "Erro ao redefinir senha",
         description: error.message?.includes("expired") 

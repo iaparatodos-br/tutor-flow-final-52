@@ -242,10 +242,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Handle password recovery flow - MUST be first to prevent auto-login
       if (event === 'PASSWORD_RECOVERY') {
-        console.log('AuthProvider: Password recovery detected, handling special flow');
+        console.log('🔑 AuthProvider: PASSWORD_RECOVERY event detected');
         
         // Get the recovery tokens from URL before they get cleared
-        const url = window.location.href;
         let accessToken = null;
         let refreshToken = null;
         let type = null;
@@ -258,23 +257,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
         type = searchParams.get('type') || hashParams.get('type');
         
-        console.log('AuthProvider: Recovery tokens found', { 
-          hasAccessToken: !!accessToken, 
-          hasRefreshToken: !!refreshToken, 
-          type 
+        console.log('🔑 AuthProvider: URL atual:', window.location.href);
+        console.log('🔑 AuthProvider: Tokens extraídos:', { 
+          accessToken: !!accessToken, 
+          refreshToken: !!refreshToken, 
+          type,
+          typeFromSearch: searchParams.get('type'),
+          typeFromHash: hashParams.get('type')
         });
         
-        // Force logout to prevent auto-login and redirect with tokens
-        if (accessToken && refreshToken && type === 'recovery') {
-          console.log('AuthProvider: Forcing logout and redirecting to reset page');
+        // CORREÇÃO: Relaxar a condição - se temos tokens e é um evento PASSWORD_RECOVERY,
+        // assumir que é recuperação mesmo sem type explícito
+        if (accessToken && refreshToken) {
+          console.log('🔑 AuthProvider: Redirecionando IMEDIATAMENTE para reset-password');
           
-          // Clear the session immediately to prevent auto-login
-          await supabase.auth.signOut();
-          
-          // Redirect to reset password page with tokens in URL params (not hash)
+          // Redirecionar IMEDIATAMENTE com window.location.replace para evitar histórico
+          // NÃO fazer logout aqui - pode causar race conditions
           const resetUrl = `/reset-password?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}&type=recovery`;
-          window.location.href = resetUrl;
-          return; // Exit early to prevent further processing
+          console.log('🔑 AuthProvider: URL de redirecionamento:', resetUrl);
+          window.location.replace(resetUrl);
+          
+          // Evitar qualquer processamento posterior
+          return;
+        } else {
+          console.error('❌ AuthProvider: Tokens incompletos, não redirecionando:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken
+          });
         }
       }
       

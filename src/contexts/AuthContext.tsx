@@ -58,7 +58,32 @@ const MAX_LOADING_ATTEMPTS = 3;
 const LOADING_TIMEOUT = 10000; // 10 segundos
 const RETRY_COOLDOWN = 5000; // 5 segundos entre tentativas
 
+// Capturar tokens de recuperação IMEDIATAMENTE antes do Supabase processá-los
+// Esta função DEVE executar ANTES do componente renderizar para interceptar tokens
+const captureRecoveryTokens = () => {
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  
+  const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+  const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+  const type = searchParams.get('type') || hashParams.get('type');
+  
+  if (accessToken && refreshToken) {
+    console.log('🔑 AuthProvider: Tokens de recuperação capturados ANTES do Supabase processar');
+    console.log('🔑 AuthProvider: URL original:', window.location.href);
+    // Armazenar temporariamente em sessionStorage
+    sessionStorage.setItem('recovery_access_token', accessToken);
+    sessionStorage.setItem('recovery_refresh_token', refreshToken);
+    sessionStorage.setItem('recovery_type', type || 'recovery');
+    return true;
+  }
+  return false;
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Executar captura de tokens IMEDIATAMENTE
+  const hasRecoveryTokens = captureRecoveryTokens();
+  
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -244,37 +269,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'PASSWORD_RECOVERY') {
         console.log('🔑 AuthProvider: PASSWORD_RECOVERY event detected');
         
-        // Get the recovery tokens from URL before they get cleared
-        let accessToken = null;
-        let refreshToken = null;
-        let type = null;
+        // Recuperar tokens do sessionStorage (capturados ANTES do Supabase processar)
+        const accessToken = sessionStorage.getItem('recovery_access_token');
+        const refreshToken = sessionStorage.getItem('recovery_refresh_token');
+        const type = sessionStorage.getItem('recovery_type');
         
-        // Check both search params and hash fragments
-        const searchParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        
-        accessToken = searchParams.get('access_token') || hashParams.get('access_token');
-        refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
-        type = searchParams.get('type') || hashParams.get('type');
-        
-        console.log('🔑 AuthProvider: URL atual:', window.location.href);
-        console.log('🔑 AuthProvider: Tokens extraídos:', { 
-          accessToken: !!accessToken, 
-          refreshToken: !!refreshToken, 
-          type,
-          typeFromSearch: searchParams.get('type'),
-          typeFromHash: hashParams.get('type')
+        console.log('🔑 AuthProvider: Tokens recuperados do sessionStorage:', {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type
         });
         
-        // CORREÇÃO: Relaxar a condição - se temos tokens e é um evento PASSWORD_RECOVERY,
-        // assumir que é recuperação mesmo sem type explícito
         if (accessToken && refreshToken) {
-          console.log('🔑 AuthProvider: Redirecionando IMEDIATAMENTE para reset-password');
+          console.log('🔑 AuthProvider: Tokens encontrados, fazendo logout explícito e redirecionando');
           
-          // Redirecionar IMEDIATAMENTE com window.location.replace para evitar histórico
-          // NÃO fazer logout aqui - pode causar race conditions
+          // CRÍTICO: Fazer logout da sessão criada automaticamente pelo Supabase
+          try {
+            await supabase.auth.signOut();
+            console.log('🔑 AuthProvider: Logout explícito realizado com sucesso');
+          } catch (logoutError) {
+            console.error('❌ AuthProvider: Erro ao fazer logout:', logoutError);
+          }
+          
+          // Limpar sessionStorage
+          sessionStorage.removeItem('recovery_access_token');
+          sessionStorage.removeItem('recovery_refresh_token');
+          sessionStorage.removeItem('recovery_type');
+          
+          // Redirecionar com tokens
           const resetUrl = `/reset-password?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}&type=recovery`;
-          console.log('🔑 AuthProvider: URL de redirecionamento:', resetUrl);
+          console.log('🔑 AuthProvider: Redirecionando para:', resetUrl);
           window.location.replace(resetUrl);
           
           // Evitar qualquer processamento posterior

@@ -20,35 +20,49 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // CORREÇÃO: Detectar tokens de ambos query params (?) e hash (#)
+  // PRIORIDADE 1: sessionStorage (salvos pelo script pre-init)
+  // PRIORIDADE 2: URL (fallback para casos edge)
   const getTokensFromUrl = () => {
-    console.log('🔑 ResetPassword: URL atual:', window.location.href);
-    console.log('🔑 ResetPassword: Query params:', window.location.search);
-    console.log('🔑 ResetPassword: Hash:', window.location.hash);
+    console.log('🔑 ResetPassword: Obtendo tokens');
     
-    // Tentar query params primeiro (?access_token=...)
-    let params = new URLSearchParams(window.location.search);
+    // PRIORIDADE 1: Tentar sessionStorage (salvos pelo script pre-init)
+    const storedAccessToken = sessionStorage.getItem('recovery_access_token');
+    const storedRefreshToken = sessionStorage.getItem('recovery_refresh_token');
+    const storedType = sessionStorage.getItem('recovery_type');
     
-    // Se não encontrar tokens, tentar hash (#access_token=...)
-    if (!params.get('access_token') && window.location.hash) {
-      const hash = window.location.hash.substring(1); // Remove o #
-      params = new URLSearchParams(hash);
-      console.log('🔑 ResetPassword: Usando tokens do hash');
+    if (storedAccessToken && storedRefreshToken) {
+      console.log('🔑 ResetPassword: Tokens encontrados no sessionStorage');
+      return {
+        accessToken: storedAccessToken,
+        refreshToken: storedRefreshToken,
+        type: storedType || 'recovery'
+      };
     }
     
-    const tokens = {
-      accessToken: params.get('access_token'),
-      refreshToken: params.get('refresh_token'),
-      type: params.get('type')
+    // PRIORIDADE 2: Tentar URL (fallback para casos edge)
+    console.log('🔑 ResetPassword: Tentando obter tokens da URL');
+    let params = new URLSearchParams(window.location.search);
+    
+    if (!params.get('access_token') && window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      params = new URLSearchParams(hash);
+    }
+    
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const type = params.get('type');
+    
+    if (accessToken && refreshToken) {
+      console.log('🔑 ResetPassword: Tokens encontrados na URL');
+    } else {
+      console.log('❌ ResetPassword: Nenhum token encontrado');
+    }
+    
+    return {
+      accessToken,
+      refreshToken,
+      type
     };
-    
-    console.log('🔑 ResetPassword: Tokens detectados:', { 
-      accessToken: !!tokens.accessToken, 
-      refreshToken: !!tokens.refreshToken, 
-      type: tokens.type 
-    });
-    
-    return tokens;
   };
 
   const { accessToken, refreshToken, type } = getTokensFromUrl();
@@ -130,6 +144,13 @@ export default function ResetPassword() {
       }
       
       console.log('✅ ResetPassword: Senha atualizada com sucesso!');
+      
+      // Limpar tokens do sessionStorage
+      sessionStorage.removeItem('recovery_access_token');
+      sessionStorage.removeItem('recovery_refresh_token');
+      sessionStorage.removeItem('recovery_type');
+      sessionStorage.removeItem('recovery_url');
+      console.log('✅ ResetPassword: Tokens limpos do sessionStorage');
       
       toast({
         title: "Senha redefinida!",

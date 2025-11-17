@@ -20,14 +20,49 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Check if we have recovery tokens in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const accessToken = urlParams.get('access_token');
-  const refreshToken = urlParams.get('refresh_token');
-  const type = urlParams.get('type');
+  // CORREÇÃO: Detectar tokens de ambos query params (?) e hash (#)
+  const getTokensFromUrl = () => {
+    console.log('🔑 ResetPassword: URL atual:', window.location.href);
+    console.log('🔑 ResetPassword: Query params:', window.location.search);
+    console.log('🔑 ResetPassword: Hash:', window.location.hash);
+    
+    // Tentar query params primeiro (?access_token=...)
+    let params = new URLSearchParams(window.location.search);
+    
+    // Se não encontrar tokens, tentar hash (#access_token=...)
+    if (!params.get('access_token') && window.location.hash) {
+      const hash = window.location.hash.substring(1); // Remove o #
+      params = new URLSearchParams(hash);
+      console.log('🔑 ResetPassword: Usando tokens do hash');
+    }
+    
+    const tokens = {
+      accessToken: params.get('access_token'),
+      refreshToken: params.get('refresh_token'),
+      type: params.get('type')
+    };
+    
+    console.log('🔑 ResetPassword: Tokens detectados:', { 
+      accessToken: !!tokens.accessToken, 
+      refreshToken: !!tokens.refreshToken, 
+      type: tokens.type 
+    });
+    
+    return tokens;
+  };
+
+  const { accessToken, refreshToken, type } = getTokensFromUrl();
   
-  // If no recovery tokens, redirect to auth
+  // If no recovery tokens, redirect to auth with error message
   if (!accessToken || !refreshToken || type !== 'recovery') {
+    console.error('❌ ResetPassword: Tokens inválidos ou ausentes');
+    
+    toast({
+      title: "Link inválido ou expirado",
+      description: "O link de recuperação pode ter expirado. Por favor, solicite um novo link.",
+      variant: "destructive"
+    });
+    
     return <Navigate to="/auth" replace />;
   }
 

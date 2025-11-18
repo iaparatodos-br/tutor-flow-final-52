@@ -45,3 +45,6 @@ verify_jwt = false
 [functions.check-overdue-invoices]
 verify_jwt = false
 
+[functions.send-material-shared-notification]
+verify_jwt = false
+

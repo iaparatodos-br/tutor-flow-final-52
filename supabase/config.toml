@@ -39,3 +39,9 @@ verify_jwt = false
 [functions.setup-class-reminders-automation]
 verify_jwt = false
 
+[functions.send-invoice-notification]
+verify_jwt = false
+
+[functions.check-overdue-invoices]
+verify_jwt = false
+

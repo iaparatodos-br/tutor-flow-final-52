@@ -292,6 +292,25 @@ serve(async (req) => {
       // Continue without failing the invoice creation
     }
 
+    // Enviar notificação de fatura criada (não-bloqueante)
+    supabaseClient.functions
+      .invoke('send-invoice-notification', {
+        body: {
+          invoice_id: newInvoice.id,
+          notification_type: 'invoice_created'
+        }
+      })
+      .then(({ error: notifError }) => {
+        if (notifError) {
+          console.error('Error sending invoice notification (non-critical):', notifError);
+        } else {
+          logStep('Invoice notification sent successfully');
+        }
+      })
+      .catch((err) => {
+        console.error('Error invoking notification function (non-critical):', err);
+      });
+
     return new Response(JSON.stringify({
       success: true,
       invoice: newInvoice,

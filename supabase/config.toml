@@ -33,3 +33,9 @@ verify_jwt = false
 [functions.send-class-confirmation-notification]
 verify_jwt = false
 
+[functions.send-class-reminders]
+verify_jwt = false
+
+[functions.setup-class-reminders-automation]
+verify_jwt = false
+

@@ -94,12 +94,36 @@
   "notifications": {
     "title": "Notifications",
     "description": "Configure your notification preferences",
-    "inDevelopment": {
-      "title": "In Development",
-      "subtitle": "This feature is under development",
-      "heading": "Notifications Coming Soon",
-      "message": "We're working on notification settings. Soon you'll be able to customize how you receive alerts and updates."
-    }
+    "emailNotifications": {
+      "title": "Email Notifications",
+      "description": "Choose which notifications you want to receive by email"
+    },
+    "types": {
+      "material_shared": {
+        "label": "Material Shared",
+        "description": "Receive notification when a teacher shares material with me"
+      },
+      "class_reminder": {
+        "label": "Class Reminders",
+        "description": "Receive reminders before scheduled classes"
+      },
+      "class_confirmed": {
+        "label": "Class Confirmed",
+        "description": "Receive notification when a class is confirmed"
+      },
+      "class_cancelled": {
+        "label": "Class Cancelled",
+        "description": "Receive notification when a class is cancelled"
+      },
+      "invoice_created": {
+        "label": "Invoice Created",
+        "description": "Receive notification when a new invoice is created"
+      }
+    },
+    "save": "Save Preferences",
+    "saving": "Saving...",
+    "success": "Notification preferences saved successfully!",
+    "error": "Error saving preferences"
   },
   "cookies": {
     "title": "Cookie Management",

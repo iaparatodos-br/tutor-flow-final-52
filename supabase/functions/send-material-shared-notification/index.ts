@@ -56,10 +56,10 @@ serve(async (req: Request) => {
 
     const teacher = material.profiles;
 
-    // Buscar informações dos alunos
+    // Buscar informações dos alunos com suas preferências de notificação
     const { data: students, error: studentsError } = await supabase
       .from('profiles')
-      .select('id, name, email')
+      .select('id, name, email, notification_preferences')
       .in('id', student_ids);
 
     if (studentsError) {
@@ -73,6 +73,19 @@ serve(async (req: Request) => {
     // Enviar email para cada aluno
     for (const student of students || []) {
       try {
+        // Verificar se o aluno deseja receber notificações de material compartilhado
+        const preferences = student.notification_preferences || {};
+        if (preferences.material_shared === false) {
+          console.log(`⏭️ Aluno ${student.email} optou por não receber notificações de material compartilhado`);
+          results.push({
+            student_id: student.id,
+            email: student.email,
+            status: 'skipped',
+            reason: 'User preference disabled'
+          });
+          continue;
+        }
+
         const emailHtml = `
           <!DOCTYPE html>
           <html>

@@ -14,7 +14,11 @@ interface NotificationPreferences {
   class_reminder: boolean;
   class_confirmed: boolean;
   class_cancelled: boolean;
+  class_report_created: boolean;
   invoice_created: boolean;
+  invoice_payment_reminder: boolean;
+  invoice_paid: boolean;
+  invoice_overdue: boolean;
 }
 
 const defaultPreferences: NotificationPreferences = {
@@ -22,7 +26,11 @@ const defaultPreferences: NotificationPreferences = {
   class_reminder: true,
   class_confirmed: true,
   class_cancelled: true,
+  class_report_created: true,
   invoice_created: true,
+  invoice_payment_reminder: true,
+  invoice_paid: true,
+  invoice_overdue: true,
 };
 
 export function NotificationSettings() {
@@ -99,13 +107,23 @@ export function NotificationSettings() {
     );
   }
 
-  const notificationTypes: Array<keyof NotificationPreferences> = [
-    'material_shared',
-    'class_reminder',
-    'class_confirmed',
-    'class_cancelled',
-    'invoice_created'
+  const notificationTypes: Array<{ key: keyof NotificationPreferences; section: 'classes' | 'invoices' | 'materials' }> = [
+    { key: 'class_reminder', section: 'classes' },
+    { key: 'class_confirmed', section: 'classes' },
+    { key: 'class_cancelled', section: 'classes' },
+    { key: 'class_report_created', section: 'classes' },
+    { key: 'invoice_created', section: 'invoices' },
+    { key: 'invoice_payment_reminder', section: 'invoices' },
+    { key: 'invoice_paid', section: 'invoices' },
+    { key: 'invoice_overdue', section: 'invoices' },
+    { key: 'material_shared', section: 'materials' },
   ];
+
+  const groupedTypes = {
+    classes: notificationTypes.filter(t => t.section === 'classes'),
+    invoices: notificationTypes.filter(t => t.section === 'invoices'),
+    materials: notificationTypes.filter(t => t.section === 'materials'),
+  };
 
   return (
     <div className="space-y-6">
@@ -124,23 +142,71 @@ export function NotificationSettings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {notificationTypes.map((type) => (
-            <div key={type} className="flex items-start justify-between space-x-4">
-              <div className="space-y-0.5 flex-1">
-                <Label htmlFor={type} className="text-base font-medium">
-                  {t(`notifications.types.${type}.label`)}
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {t(`notifications.types.${type}.description`)}
-                </p>
-              </div>
-              <Switch
-                id={type}
-                checked={preferences[type]}
-                onCheckedChange={() => handleToggle(type)}
-              />
+          {/* Seção: Aulas */}
+          <div>
+            <h3 className="text-sm font-medium mb-3 text-foreground">{t('notifications.section_classes')}</h3>
+            <div className="space-y-4">
+              {groupedTypes.classes.map(({ key }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={key}>{t(`notifications.types.${key}.label`)}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t(`notifications.types.${key}.description`)}
+                    </p>
+                  </div>
+                  <Switch
+                    id={key}
+                    checked={preferences[key]}
+                    onCheckedChange={() => handleToggle(key)}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+
+          {/* Seção: Faturas */}
+          <div>
+            <h3 className="text-sm font-medium mb-3 text-foreground">{t('notifications.section_invoices')}</h3>
+            <div className="space-y-4">
+              {groupedTypes.invoices.map(({ key }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={key}>{t(`notifications.types.${key}.label`)}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t(`notifications.types.${key}.description`)}
+                    </p>
+                  </div>
+                  <Switch
+                    id={key}
+                    checked={preferences[key]}
+                    onCheckedChange={() => handleToggle(key)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Seção: Materiais */}
+          <div>
+            <h3 className="text-sm font-medium mb-3 text-foreground">{t('notifications.section_materials')}</h3>
+            <div className="space-y-4">
+              {groupedTypes.materials.map(({ key }) => (
+                <div key={key} className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor={key}>{t(`notifications.types.${key}.label`)}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {t(`notifications.types.${key}.description`)}
+                    </p>
+                  </div>
+                  <Switch
+                    id={key}
+                    checked={preferences[key]}
+                    onCheckedChange={() => handleToggle(key)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="pt-4 border-t">
             <Button onClick={handleSave} disabled={saving}>

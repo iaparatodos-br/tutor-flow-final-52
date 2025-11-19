@@ -94,6 +94,9 @@
   "notifications": {
     "title": "Notificações",
     "description": "Configure suas preferências de notificação",
+    "section_classes": "Aulas",
+    "section_invoices": "Faturas",
+    "section_materials": "Materiais",
     "emailNotifications": {
       "title": "Notificações por E-mail",
       "description": "Escolha quais notificações você deseja receber por e-mail"
@@ -115,9 +118,25 @@
         "label": "Aula Cancelada",
         "description": "Receber notificação quando uma aula for cancelada"
       },
+      "class_report_created": {
+        "label": "Relatório de Aula",
+        "description": "Receber notificação quando um relatório de aula for criado"
+      },
       "invoice_created": {
         "label": "Fatura Criada",
         "description": "Receber notificação quando uma nova fatura for criada"
+      },
+      "invoice_payment_reminder": {
+        "label": "Lembrete de Pagamento",
+        "description": "Receber lembrete quando o vencimento da fatura estiver próximo"
+      },
+      "invoice_paid": {
+        "label": "Pagamento Confirmado",
+        "description": "Receber notificação quando o pagamento for confirmado"
+      },
+      "invoice_overdue": {
+        "label": "Fatura Vencida",
+        "description": "Receber notificação quando uma fatura estiver vencida"
       }
     },
     "save": "Salvar Preferências",

@@ -108,6 +108,20 @@ serve(async (req) => {
     // Send email to each student and their guardian
     for (const student of studentsToNotify) {
       try {
+        // Buscar preferências de notificação do aluno
+        const { data: studentProfile } = await supabaseAdmin
+          .from("profiles")
+          .select("notification_preferences")
+          .eq("id", student.id)
+          .single();
+
+        // Verificar se aluno quer receber relatórios
+        const preferences = studentProfile?.notification_preferences as any;
+        if (preferences?.class_report_created === false) {
+          console.log(`⏭️ Aluno ${student.id} desabilitou notificações de relatórios`);
+          continue;
+        }
+
         // Find individual feedback for this student
         const studentFeedback = feedbacks?.find(f => f.student_id === student.id);
         

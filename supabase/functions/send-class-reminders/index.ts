@@ -105,6 +105,20 @@ serve(async (req) => {
         // 3. Enviar lembrete para cada participante
         for (const participant of participants) {
           try {
+            // Buscar preferências de notificação do aluno
+            const { data: studentProfile } = await supabase
+              .from("profiles")
+              .select("notification_preferences")
+              .eq("id", participant.student_id)
+              .single();
+
+            // Verificar se aluno quer receber lembretes
+            const preferences = studentProfile?.notification_preferences as any;
+            if (preferences?.class_reminder === false) {
+              console.log(`⏭️ Aluno ${participant.student_id} desabilitou lembretes de aula`);
+              continue;
+            }
+
             // Verificar se já enviou lembrete para este aluno nesta aula
             const { data: existingNotification } = await supabase
               .from("class_notifications")

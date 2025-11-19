@@ -34,16 +34,26 @@ serve(async (req) => {
     const payload: ConfirmationNotificationPayload = await req.json();
     console.log("📬 Processing class confirmation notification:", payload);
 
-    // 1. Buscar dados do aluno
+    // 1. Buscar dados do aluno e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
-      .select("name, email")
+      .select("name, email, notification_preferences")
       .eq("id", payload.student_id)
       .single();
 
     if (studentError || !student?.email) {
       console.error("Student not found or no email:", studentError);
       throw new Error("Student not found or no email");
+    }
+
+    // Verificar se aluno quer receber notificações de confirmação
+    const preferences = student.notification_preferences as any;
+    if (preferences?.class_confirmed === false) {
+      console.log(`⏭️ Aluno ${payload.student_id} desabilitou notificações de confirmação`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "User preference disabled" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
     }
 
     // 2. Buscar dados do relacionamento para pegar email do responsável (se houver)

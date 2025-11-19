@@ -53,16 +53,34 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
-    // 2. Buscar dados do aluno
+    // 2. Buscar dados do aluno e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
-      .select("name, email")
+      .select("name, email, notification_preferences")
       .eq("id", invoice.student_id)
       .single();
 
     if (studentError || !student) {
       console.error("Student not found:", studentError);
       throw new Error("Student not found");
+    }
+
+    // Verificar preferências de notificação
+    const preferences = student.notification_preferences as any;
+    const preferenceMap: Record<string, string> = {
+      'invoice_created': 'invoice_created',
+      'invoice_payment_reminder': 'invoice_payment_reminder',
+      'invoice_paid': 'invoice_paid',
+      'invoice_overdue': 'invoice_overdue'
+    };
+
+    const preferenceKey = preferenceMap[payload.notification_type];
+    if (preferences?.[preferenceKey] === false) {
+      console.log(`⏭️ Aluno ${invoice.student_id} desabilitou notificações do tipo ${payload.notification_type}`);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, reason: "User preference disabled" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
     }
 
     // 3. Buscar dados do professor

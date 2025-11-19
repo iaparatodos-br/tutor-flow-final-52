@@ -108,6 +108,22 @@ serve(async (req) => {
         .eq('id', removed_student_id)
         .maybeSingle();
 
+      // Verificar preferências do professor
+      const { data: teacherPrefs } = await supabaseClient
+        .from('profiles')
+        .select('notification_preferences')
+        .eq('id', classData.teacher_id)
+        .maybeSingle();
+
+      const preferences = teacherPrefs?.notification_preferences || {};
+      if (preferences.class_cancelled === false) {
+        console.log('⏭️ Teacher has disabled class_cancelled notifications, skipping.');
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'preferences_disabled' }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       const recipientEmail = teacher?.email || '';
       const subject = `Aluno saiu da aula em grupo`;
       
@@ -155,6 +171,22 @@ serve(async (req) => {
         emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
       }
     } else if (cancelled_by_type === 'student') {
+      // Verificar preferências do professor
+      const { data: teacherPrefs } = await supabaseClient
+        .from('profiles')
+        .select('notification_preferences')
+        .eq('id', classData.teacher_id)
+        .maybeSingle();
+
+      const preferences = teacherPrefs?.notification_preferences || {};
+      if (preferences.class_cancelled === false) {
+        console.log('⏭️ Teacher has disabled class_cancelled notifications, skipping.');
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'preferences_disabled' }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       // Notificar professor que aluno cancelou
       const recipientEmail = teacher?.email || '';
       const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${student?.name || 'Aluno'}`;
@@ -217,6 +249,19 @@ serve(async (req) => {
       for (const participantData of studentsToNotify) {
         const studentProfile = participantData.profile;
         if (!studentProfile) continue;
+
+        // Verificar preferências do aluno
+        const { data: studentPrefs } = await supabaseClient
+          .from('profiles')
+          .select('notification_preferences')
+          .eq('id', participantData.student_id)
+          .maybeSingle();
+
+        const preferences = studentPrefs?.notification_preferences || {};
+        if (preferences.class_cancelled === false) {
+          console.log(`⏭️ Student ${participantData.student_id} has disabled class_cancelled notifications, skipping.`);
+          continue; // Pular este aluno
+        }
 
         const recipientEmail = studentProfile.guardian_email || studentProfile.email || '';
         if (!recipientEmail) continue;

@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "npm:resend@4.0.0";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -137,19 +135,18 @@ serve(async (req) => {
     `;
 
     // 5. Enviar email
-    const { data: emailData, error: emailError } = await resend.emails.send({
-      from: "Tutor Flow <noreply@tutor-flow.app>",
-      to: [recipientEmail],
+    const emailResult = await sendEmail({
+      to: recipientEmail,
       subject: `✅ Aula confirmada com ${payload.teacher_name}`,
       html: emailHtml,
     });
 
-    if (emailError) {
-      console.error("❌ Error sending email:", emailError);
-      throw emailError;
+    if (!emailResult.success) {
+      console.error("❌ Error sending email:", emailResult.error);
+      throw new Error(emailResult.error);
     }
 
-    console.log("✅ Email sent successfully:", emailData);
+    console.log("✅ Email sent successfully:", emailResult.messageId);
 
     // 6. Registrar notificação no histórico
     const { error: notificationError } = await supabase

@@ -11,6 +11,7 @@ import { StudentFormModal } from "@/components/StudentFormModal";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
 import { UpdatePaymentMethodModal } from "@/components/UpdatePaymentMethodModal";
+import { StudentImportDialog } from "@/components/students/StudentImportDialog";
 import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
@@ -178,7 +179,7 @@ export default function Alunos() {
       // Check if the function returned success: false
       if (data && !data.success) {
         console.log('Function returned success: false, error:', data.error);
-        
+
         // Check if it's a payment failure
         if (data.payment_failed) {
           console.log('Payment failed - showing payment update modal');
@@ -187,7 +188,7 @@ export default function Alunos() {
           setPaymentErrorModalOpen(true);
           return;
         }
-        
+
         toast({
           title: 'Erro ao cadastrar aluno',
           description: data.error || 'Este e-mail já está sendo utilizado por outro aluno ou professor',
@@ -197,16 +198,16 @@ export default function Alunos() {
       }
 
       // Success case - check if there's billing info or warning in the response
-      let successMessage = data?.is_new_student 
+      let successMessage = data?.is_new_student
         ? `${formData.name} receberá um e-mail para concluir o cadastro.`
         : `${formData.name} foi vinculado à sua conta.`;
-      
+
       if (data?.billing_warning) {
         successMessage += ` ⚠️ ${data.billing_warning}`;
       } else if (data?.billing?.message) {
         successMessage += ` ${data.billing.message}`;
       }
-      
+
       toast({
         title: 'Aluno convidado com sucesso!',
         description: successMessage,
@@ -385,7 +386,7 @@ export default function Alunos() {
         title: "Convite reenviado!",
         description: `${student.name} receberá um novo e-mail de confirmação.`
       });
-      
+
       // Reload students to update confirmation status
       loadStudents();
     } catch (error: any) {
@@ -399,20 +400,20 @@ export default function Alunos() {
   };
 
   return <Layout>
-      <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
-        <UpgradeBanner />
-        
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
-          <p className="text-muted-foreground">
-            Gerencie seus alunos cadastrados
-          </p>
-        </div>
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
+      <UpgradeBanner />
 
-        {/* Alerts stacked vertically below title */}
-        <div className="space-y-4">
-          {currentPlan && (() => {
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold">Gestão de Alunos</h1>
+        <p className="text-muted-foreground">
+          Gerencie seus alunos cadastrados
+        </p>
+      </div>
+
+      {/* Alerts stacked vertically below title */}
+      <div className="space-y-4">
+        {currentPlan && (() => {
           const {
             isOverLimit,
             additionalCost,
@@ -420,206 +421,208 @@ export default function Alunos() {
           } = getStudentOverageInfo(students.length);
           if (isOverLimit && currentPlan.slug !== 'free') {
             return <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1">
-                        Limite de Alunos Atingido
-                      </h4>
-                      <p className="text-sm text-amber-700 dark:text-amber-300">
-                        Você está com {students.length} alunos de {currentPlan?.student_limit ?? 0} incluídos no seu plano atual.
-                      </p>
-                    </div>
-                  </div>
-                </div>;
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1">
+                    Limite de Alunos Atingido
+                  </h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    Você está com {students.length} alunos de {currentPlan?.student_limit ?? 0} incluídos no seu plano atual.
+                  </p>
+                </div>
+              </div>
+            </div>;
           }
           if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
             return <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
-                      <AlertTriangle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
-                        Plano Gratuito
-                      </h4>
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        Você está usando {students.length} de {currentPlan?.student_limit ?? 0} alunos do plano gratuito.
-                      </p>
-                    </div>
-                  </div>
-                </div>;
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                    Plano Gratuito
+                  </h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                    Você está usando {students.length} de {currentPlan?.student_limit ?? 0} alunos do plano gratuito.
+                  </p>
+                </div>
+              </div>
+            </div>;
           }
           return null;
         })()}
-          
-          {hasFeature('financial_module') && studentsWithoutBusinessProfile.length > 0 && <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
-                  <DollarSign className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium text-orange-800 dark:text-orange-200 mb-1">
-                    Configuração de Pagamento Pendente
-                  </h4>
-                  <p className="text-sm text-orange-700 dark:text-orange-400 mb-0">
-                    <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado. 
-                    Configure para permitir faturamento e cobrança.
-                  </p>
-                  
-                </div>
-              </div>
-            </div>}
-        </div>
 
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-2">
-          {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
+        {hasFeature('financial_module') && studentsWithoutBusinessProfile.length > 0 && <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/20 dark:to-red-950/20 border border-orange-200 dark:border-orange-800 rounded-lg p-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center">
+              <DollarSign className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            </div>
+            <div className="flex-1">
+              <h4 className="font-medium text-orange-800 dark:text-orange-200 mb-1">
+                Configuração de Pagamento Pendente
+              </h4>
+              <p className="text-sm text-orange-700 dark:text-orange-400 mb-0">
+                <strong>{studentsWithoutBusinessProfile.length}</strong> aluno(s) sem negócio de recebimento configurado.
+                Configure para permitir faturamento e cobrança.
+              </p>
+
+            </div>
+          </div>
+        </div>}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-2">
+        <StudentImportDialog onSuccess={loadStudents} />
+
+        {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
           id: s.id,
           name: s.name,
           email: s.email
         }))} />}
-          <FeatureGate studentCount={students.length} showUpgrade={true}>
-            <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar Aluno
-            </Button>
-          </FeatureGate>
-        </div>
+        <FeatureGate studentCount={students.length} showUpgrade={true}>
+          <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar Aluno
+          </Button>
+        </FeatureGate>
+      </div>
 
-        {/* Students List */}
-        <Card className="shadow-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Lista de Alunos ({students.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? <div className="text-center py-8">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Carregando alunos...</p>
-              </div> : students.length === 0 ? <div className="text-center py-8">
-                <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-medium mb-2">Nenhum aluno cadastrado</h3>
-                <p className="text-muted-foreground mb-4">
-                  Comece adicionando seu primeiro aluno
-                </p>
-                <FeatureGate studentCount={students.length} showUpgrade={true}>
-                  <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar Primeiro Aluno
-                  </Button>
-                </FeatureGate>
-              </div> : <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nome</TableHead>
-                    <TableHead>E-mail</TableHead>
-                    <TableHead>Responsável</TableHead>
-                    {hasFeature('financial_module') && (
-                      <>
-                        <TableHead>Negócio Recebimento</TableHead>
-                        <TableHead>Dia Cobrança</TableHead>
-                      </>
+      {/* Students List */}
+      <Card className="shadow-card">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Lista de Alunos ({students.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? <div className="text-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Carregando alunos...</p>
+          </div> : students.length === 0 ? <div className="text-center py-8">
+            <User className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <h3 className="text-lg font-medium mb-2">Nenhum aluno cadastrado</h3>
+            <p className="text-muted-foreground mb-4">
+              Comece adicionando seu primeiro aluno
+            </p>
+            <FeatureGate studentCount={students.length} showUpgrade={true}>
+              <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary">
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Primeiro Aluno
+              </Button>
+            </FeatureGate>
+          </div> : <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nome</TableHead>
+                <TableHead>E-mail</TableHead>
+                <TableHead>Responsável</TableHead>
+                {hasFeature('financial_module') && (
+                  <>
+                    <TableHead>Negócio Recebimento</TableHead>
+                    <TableHead>Dia Cobrança</TableHead>
+                  </>
+                )}
+                <TableHead>Data de Cadastro</TableHead>
+                <TableHead className="w-[120px]">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {students.map(student => <TableRow key={student.id}>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
+                      <User className="h-4 w-4 text-primary" />
+                    </div>
+                    {student.name}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-4 w-4" />
+                    {student.email}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {student.guardian_name ? <>
+                      {student.guardian_name === student.name ? <Badge variant="outline" className="text-xs">
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Próprio aluno
+                      </Badge> : <div>
+                        <p className="text-sm font-medium">{student.guardian_name}</p>
+                        <p className="text-xs text-muted-foreground">{student.guardian_email}</p>
+                      </div>}
+                    </> : <Badge variant="secondary" className="text-xs">
+                      Não configurado
+                    </Badge>}
+                  </div>
+                </TableCell>
+                {hasFeature('financial_module') && (
+                  <>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                          Configurado
+                        </Badge> : <Badge variant="destructive" className="text-xs">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Não configurado
+                        </Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm">{student.billing_day || 15}</span>
+                      </div>
+                    </TableCell>
+                  </>
+                )}
+                <TableCell>
+                  {new Date(student.created_at).toLocaleDateString('pt-BR')}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title="Ver perfil completo">
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title="Editar aluno">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    {!student.email_confirmed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleResendInvitation(student)}
+                        title="Reenviar convite de confirmação"
+                        className="hover:bg-blue-50 dark:hover:bg-blue-950"
+                      >
+                        <RefreshCcw className="h-4 w-4" />
+                      </Button>
                     )}
-                    <TableHead>Data de Cadastro</TableHead>
-                    <TableHead className="w-[120px]">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {students.map(student => <TableRow key={student.id}>
-                      <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
-                            <User className="h-4 w-4 text-primary" />
-                          </div>
-                          {student.name}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Mail className="h-4 w-4" />
-                          {student.email}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {student.guardian_name ? <>
-                              {student.guardian_name === student.name ? <Badge variant="outline" className="text-xs">
-                                  <UserCheck className="h-3 w-3 mr-1" />
-                                  Próprio aluno
-                                </Badge> : <div>
-                                  <p className="text-sm font-medium">{student.guardian_name}</p>
-                                  <p className="text-xs text-muted-foreground">{student.guardian_email}</p>
-                                </div>}
-                            </> : <Badge variant="secondary" className="text-xs">
-                              Não configurado
-                            </Badge>}
-                        </div>
-                      </TableCell>
-                      {hasFeature('financial_module') && (
-                        <>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                  Configurado
-                                </Badge> : <Badge variant="destructive" className="text-xs">
-                                  <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Não configurado
-                                </Badge>}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              <Calendar className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm">{student.billing_day || 15}</span>
-                            </div>
-                          </TableCell>
-                        </>
-                      )}
-                      <TableCell>
-                        {new Date(student.created_at).toLocaleDateString('pt-BR')}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title="Ver perfil completo">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title="Editar aluno">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          {!student.email_confirmed && (
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleResendInvitation(student)} 
-                              title="Reenviar convite de confirmação"
-                              className="hover:bg-blue-50 dark:hover:bg-blue-950"
-                            >
-                              <RefreshCcw className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>)}
-                </TableBody>
-              </Table>}
-          </CardContent>
-        </Card>
+                    <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>)}
+            </TableBody>
+          </Table>}
+        </CardContent>
+      </Card>
 
-        {/* Student Form Modals */}
-        <StudentFormModal isOpen={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} onSubmit={handleAddStudent} isSubmitting={submitting} currentStudentCount={students.length} title="Adicionar Novo Aluno" description="Insira os dados do aluno e configurações de cobrança" />
+      {/* Student Form Modals */}
+      <StudentFormModal isOpen={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} onSubmit={handleAddStudent} isSubmitting={submitting} currentStudentCount={students.length} title="Adicionar Novo Aluno" description="Insira os dados do aluno e configurações de cobrança" />
 
-        <StudentFormModal isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSubmit={handleUpdateStudent} isSubmitting={submitting} currentStudentCount={students.length} student={editingStudent || undefined} title="Editar Aluno" description="Altere os dados do aluno e configurações de cobrança" />
+      <StudentFormModal isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSubmit={handleUpdateStudent} isSubmitting={submitting} currentStudentCount={students.length} student={editingStudent || undefined} title="Editar Aluno" description="Altere os dados do aluno e configurações de cobrança" />
 
-        {/* Business Profile Warning Modal */}
-        {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={student => {
+      {/* Business Profile Warning Modal */}
+      {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={student => {
         const full = students.find(st => st.id === student.id);
         if (full) {
           setEditingStudent(full);
@@ -634,17 +637,17 @@ export default function Alunos() {
         setIsEditDialogOpen(true);
       }} action={warningAction} />}
 
-        {/* Update Payment Method Modal */}
-        <UpdatePaymentMethodModal
-          open={paymentErrorModalOpen}
-          onOpenChange={setPaymentErrorModalOpen}
-          errorMessage={paymentErrorMessage}
-          onRetry={() => {
-            if (pendingStudentData) {
-              setIsAddDialogOpen(true);
-            }
-          }}
-        />
-      </div>
-    </Layout>;
+      {/* Update Payment Method Modal */}
+      <UpdatePaymentMethodModal
+        open={paymentErrorModalOpen}
+        onOpenChange={setPaymentErrorModalOpen}
+        errorMessage={paymentErrorMessage}
+        onRetry={() => {
+          if (pendingStudentData) {
+            setIsAddDialogOpen(true);
+          }
+        }}
+      />
+    </div>
+  </Layout>;
 }

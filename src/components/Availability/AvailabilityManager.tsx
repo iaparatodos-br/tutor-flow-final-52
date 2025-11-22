@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Clock, Plus, Settings, X, Calendar, Edit, Trash2 } from 'lucide-react';
+import { Clock, Plus, Settings, X, Calendar, Edit, Trash2, Info } from 'lucide-react';
 import moment from 'moment';
 import { useTranslation } from 'react-i18next';
 
@@ -285,11 +286,21 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 {t('workingHours.configure')}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('workingHours.dialogTitle')}</DialogTitle>
                 <p className="text-sm text-muted-foreground">{t('workingHours.dialogDescription')}</p>
               </DialogHeader>
+              
+              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertTitle className="text-blue-900 dark:text-blue-100">
+                  {t('workingHours.timeHint.title')}
+                </AlertTitle>
+                <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                  {t('workingHours.timeHint.description')}
+                </AlertDescription>
+              </Alert>
               
               <div className="space-y-4">
                 {DAYS_OF_WEEK.map((day) => {

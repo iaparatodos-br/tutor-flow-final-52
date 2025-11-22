@@ -108,11 +108,21 @@ export function ClassReportModal({
           return;
         }
 
+        // CORREÇÃO: Sempre mesclar feedbacks do banco com lista completa de participantes
+        const participants = classData.participants || [];
+        
         if (feedbackData && feedbackData.length > 0) {
-          setFeedbacks(feedbackData.map(f => ({
-            student_id: f.student_id,
-            feedback: f.feedback
-          })));
+          // Criar array mesclado: todos os participantes com feedbacks (existentes ou vazios)
+          const mergedFeedbacks = participants.map(p => {
+            const existingFeedback = feedbackData.find(f => f.student_id === p.student_id);
+            return {
+              student_id: p.student_id,
+              feedback: existingFeedback?.feedback || ''
+            };
+          });
+          
+          console.log('🔄 Merged feedbacks loaded:', mergedFeedbacks);
+          setFeedbacks(mergedFeedbacks);
         } else {
           initializeFeedbacks();
         }
@@ -140,6 +150,7 @@ export function ClassReportModal({
   };
 
   const updateFeedback = (studentId: string, feedback: string) => {
+    console.log('🔍 updateFeedback called:', { studentId, feedback, currentFeedbacksCount: feedbacks.length });
     setFeedbacks(prev => 
       prev.map(f => 
         f.student_id === studentId ? { ...f, feedback } : f
@@ -334,7 +345,10 @@ export function ClassReportModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        key={`report-${classData.id}-${existingReport?.id || 'new'}`}
+        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {existingReport ? t('modal.title.edit') : t('modal.title.create')}
@@ -386,6 +400,12 @@ export function ClassReportModal({
               onChange={(e) => setLessonSummary(e.target.value)}
               className="min-h-[100px]"
               required
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -401,6 +421,12 @@ export function ClassReportModal({
               value={homework}
               onChange={(e) => setHomework(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -416,6 +442,12 @@ export function ClassReportModal({
               value={extraMaterials}
               onChange={(e) => setExtraMaterials(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -434,6 +466,7 @@ export function ClassReportModal({
                 
                 {participants.map((participant) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
+                  console.log('🎨 Rendering feedback for:', participant.student.name, 'value:', feedback?.feedback || '(empty)', 'found:', !!feedback);
                   
                   return (
                     <div key={participant.student_id} className="space-y-2">
@@ -441,10 +474,17 @@ export function ClassReportModal({
                         {participant.student.name}
                       </Label>
                       <Textarea
+                        key={`feedback-${participant.student_id}-${existingReport?.id || 'new'}`}
                         placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
                         className="min-h-[80px]"
+                        style={{
+                          scrollBehavior: 'auto',
+                          pointerEvents: 'auto',
+                          userSelect: 'text',
+                          WebkitUserSelect: 'text'
+                        }}
                       />
                     </div>
                   );

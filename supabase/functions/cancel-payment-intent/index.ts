@@ -205,6 +205,25 @@ serve(async (req) => {
 
     logStep('Invoice updated successfully and audited', { invoice_id });
 
+    // Enviar notificação de fatura paga (não-bloqueante)
+    supabase.functions
+      .invoke('send-invoice-notification', {
+        body: {
+          invoice_id: invoice_id,
+          notification_type: 'invoice_paid'
+        }
+      })
+      .then(({ error: notifError }) => {
+        if (notifError) {
+          console.error('Error sending invoice paid notification (non-critical):', notifError);
+        } else {
+          logStep('Invoice paid notification sent successfully');
+        }
+      })
+      .catch((err) => {
+        console.error('Error invoking notification function (non-critical):', err);
+      });
+
     return new Response(
       JSON.stringify({ 
         success: true,

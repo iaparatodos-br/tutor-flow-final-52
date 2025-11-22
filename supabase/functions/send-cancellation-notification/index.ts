@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -108,6 +109,22 @@ serve(async (req) => {
         .eq('id', removed_student_id)
         .maybeSingle();
 
+      // Verificar preferências do professor
+      const { data: teacherPrefs } = await supabaseClient
+        .from('profiles')
+        .select('notification_preferences')
+        .eq('id', classData.teacher_id)
+        .maybeSingle();
+
+      const preferences = teacherPrefs?.notification_preferences || {};
+      if (preferences.class_cancelled === false) {
+        console.log('⏭️ Teacher has disabled class_cancelled notifications, skipping.');
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'preferences_disabled' }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       const recipientEmail = teacher?.email || '';
       const subject = `Aluno saiu da aula em grupo`;
       
@@ -155,6 +172,22 @@ serve(async (req) => {
         emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
       }
     } else if (cancelled_by_type === 'student') {
+      // Verificar preferências do professor
+      const { data: teacherPrefs } = await supabaseClient
+        .from('profiles')
+        .select('notification_preferences')
+        .eq('id', classData.teacher_id)
+        .maybeSingle();
+
+      const preferences = teacherPrefs?.notification_preferences || {};
+      if (preferences.class_cancelled === false) {
+        console.log('⏭️ Teacher has disabled class_cancelled notifications, skipping.');
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: 'preferences_disabled' }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       // Notificar professor que aluno cancelou
       const recipientEmail = teacher?.email || '';
       const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${student?.name || 'Aluno'}`;
@@ -218,6 +251,19 @@ serve(async (req) => {
         const studentProfile = participantData.profile;
         if (!studentProfile) continue;
 
+        // Verificar preferências do aluno
+        const { data: studentPrefs } = await supabaseClient
+          .from('profiles')
+          .select('notification_preferences')
+          .eq('id', participantData.student_id)
+          .maybeSingle();
+
+        const preferences = studentPrefs?.notification_preferences || {};
+        if (preferences.class_cancelled === false) {
+          console.log(`⏭️ Student ${participantData.student_id} has disabled class_cancelled notifications, skipping.`);
+          continue; // Pular este aluno
+        }
+
         const recipientEmail = studentProfile.guardian_email || studentProfile.email || '';
         if (!recipientEmail) continue;
 
@@ -254,7 +300,7 @@ serve(async (req) => {
       }
     }
 
-    // Enviar emails via Resend
+    // Enviar emails via AWS SES
     if (emailsToSend.length === 0) {
       console.warn('No valid email addresses to send notifications');
       return new Response(JSON.stringify({ 
@@ -266,46 +312,41 @@ serve(async (req) => {
       });
     }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      console.warn('RESEND_API_KEY not configured');
-      return new Response(JSON.stringify({ 
-        success: true,
-        message: 'Email notifications skipped (RESEND_API_KEY not configured)'
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
     const emailResults: Array<{ email: string; success: boolean; error?: string }> = [];
 
     for (const emailData of emailsToSend) {
       try {
-        const resendResponse = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: 'Tutor Flow <noreply@tutorflow.app>',
-            to: emailData.to,
-            subject: emailData.subject,
-            html: emailData.html,
-          }),
+        console.log(`📧 Enviando email para: ${emailData.to}`);
+        
+        const emailResult = await sendEmail({
+          to: emailData.to,
+          subject: emailData.subject,
+          html: emailData.html,
         });
 
-        if (!resendResponse.ok) {
-          const errorText = await resendResponse.text();
-          console.error(`Resend API error for ${emailData.to}:`, errorText);
-          emailResults.push({ email: emailData.to, success: false, error: errorText });
+        if (!emailResult.success) {
+          console.error(`❌ Erro ao enviar email para ${emailData.to}:`, emailResult.error);
+          emailResults.push({ email: emailData.to, success: false, error: emailResult.error });
         } else {
-          console.log(`Email sent successfully to ${emailData.to}`);
+          console.log(`✅ Email enviado com sucesso para ${emailData.to}`);
           emailResults.push({ email: emailData.to, success: true });
+          
+          // Registrar notificação no banco
+          await supabaseClient
+            .from('class_notifications')
+            .insert({
+              class_id: class_id,
+              student_id: notification_target === 'teacher' 
+                ? (classData.teacher_id || classData.profiles?.id) 
+                : emailData.to.includes(teacher?.email || '') 
+                  ? (classData.teacher_id || classData.profiles?.id)
+                  : (classData.class_participants?.[0]?.student_id || null),
+              notification_type: 'class_cancelled',
+              status: 'sent'
+            });
         }
       } catch (emailError) {
-        console.error(`Error sending email to ${emailData.to}:`, emailError);
+        console.error(`❌ Exceção ao enviar email para ${emailData.to}:`, emailError);
         emailResults.push({ 
           email: emailData.to, 
           success: false, 

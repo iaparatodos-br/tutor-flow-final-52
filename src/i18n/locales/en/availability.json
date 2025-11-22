@@ -8,7 +8,11 @@
     "done": "Done",
     "unavailable": "Unavailable",
     "save": "Save",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "timeHint": {
+      "title": "Important about end time",
+      "description": "Set the END time of your last class, not the START time. Example: if your last class is at 5 PM and lasts 1 hour, set 6:00 PM as end time."
+    }
   },
   "blocks": {
     "title": "Schedule Blocks",

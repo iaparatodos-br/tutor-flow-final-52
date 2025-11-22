@@ -1288,6 +1288,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          notification_preferences: Json | null
           password_changed: boolean
           payment_due_days: number
           policy_document_url: string | null
@@ -1311,6 +1312,7 @@ export type Database = {
           email: string
           id?: string
           name: string
+          notification_preferences?: Json | null
           password_changed?: boolean
           payment_due_days?: number
           policy_document_url?: string | null
@@ -1334,6 +1336,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          notification_preferences?: Json | null
           password_changed?: boolean
           payment_due_days?: number
           policy_document_url?: string | null

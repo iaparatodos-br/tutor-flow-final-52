@@ -94,12 +94,55 @@
   "notifications": {
     "title": "Notificações",
     "description": "Configure suas preferências de notificação",
-    "inDevelopment": {
-      "title": "Em Desenvolvimento",
-      "subtitle": "Este recurso está em desenvolvimento",
-      "heading": "Notificações em Breve",
-      "message": "Estamos trabalhando nas configurações de notificação. Em breve você poderá personalizar como recebe alertas e atualizações."
-    }
+    "section_classes": "Aulas",
+    "section_invoices": "Faturas",
+    "section_materials": "Materiais",
+    "emailNotifications": {
+      "title": "Notificações por E-mail",
+      "description": "Escolha quais notificações você deseja receber por e-mail"
+    },
+    "types": {
+      "material_shared": {
+        "label": "Material Compartilhado",
+        "description": "Receber notificação quando um professor compartilhar material comigo"
+      },
+      "class_reminder": {
+        "label": "Lembretes de Aula",
+        "description": "Receber lembretes antes das aulas agendadas"
+      },
+      "class_confirmed": {
+        "label": "Aula Confirmada",
+        "description": "Receber notificação quando uma aula for confirmada"
+      },
+      "class_cancelled": {
+        "label": "Aula Cancelada",
+        "description": "Receber notificação quando uma aula for cancelada"
+      },
+      "class_report_created": {
+        "label": "Relatório de Aula",
+        "description": "Receber notificação quando um relatório de aula for criado"
+      },
+      "invoice_created": {
+        "label": "Fatura Criada",
+        "description": "Receber notificação quando uma nova fatura for criada"
+      },
+      "invoice_payment_reminder": {
+        "label": "Lembrete de Pagamento",
+        "description": "Receber lembrete quando o vencimento da fatura estiver próximo"
+      },
+      "invoice_paid": {
+        "label": "Pagamento Confirmado",
+        "description": "Receber notificação quando o pagamento for confirmado"
+      },
+      "invoice_overdue": {
+        "label": "Fatura Vencida",
+        "description": "Receber notificação quando uma fatura estiver vencida"
+      }
+    },
+    "save": "Salvar Preferências",
+    "saving": "Salvando...",
+    "success": "Preferências de notificação salvas com sucesso!",
+    "error": "Erro ao salvar preferências"
   },
   "cookies": {
     "title": "Gerenciamento de Cookies",

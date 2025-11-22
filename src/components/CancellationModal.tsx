@@ -235,6 +235,23 @@ export function CancellationModal({
 
       if (error) throw error;
 
+      // Enviar notificação de cancelamento
+      try {
+        await supabase.functions.invoke('send-cancellation-notification', {
+          body: {
+            class_id: finalClassId,
+            cancelled_by_type: isProfessor ? 'teacher' : 'student',
+            cancellation_reason: reason.trim() || null,
+            charge_applied: data?.charge_applied || false,
+            is_group_class: classData?.is_group_class || false
+          }
+        });
+        console.log('📧 Cancellation notification sent');
+      } catch (notifError) {
+        console.error('❌ Failed to send cancellation notification:', notifError);
+        // Não falhar a operação se a notificação falhar
+      }
+
       toast({
         title: t('messages.success'),
         description: data.message,

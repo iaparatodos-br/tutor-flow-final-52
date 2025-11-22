@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -244,8 +244,6 @@ async function sendNotifications(
   paidInvoices: any[]
 ) {
   try {
-    const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
     // Get teacher info
     const { data: teacher } = await supabaseService
       .from('profiles')
@@ -266,9 +264,8 @@ async function sendNotifications(
 
     // Send notification to teacher
     if (teacher?.email) {
-      await resend.emails.send({
-        from: "Sistema de Ensino <noreply@sistema.com>",
-        to: [teacher.email],
+      await sendEmail({
+        to: teacher.email,
         subject: "Cobranças automaticamente suspensas",
         html: `
           <h2>Olá ${teacher.name},</h2>
@@ -287,9 +284,8 @@ async function sendNotifications(
     for (const student of students || []) {
       const emailTo = student.guardian_email || student.email;
       if (emailTo) {
-        await resend.emails.send({
-          from: "Sistema de Ensino <noreply@sistema.com>",
-          to: [emailTo],
+        await sendEmail({
+          to: emailTo,
           subject: "Cobranças suspensas temporariamente",
           html: `
             <h2>Olá ${student.name},</h2>

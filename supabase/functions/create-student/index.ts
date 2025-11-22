@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.54.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY") || "");
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -346,9 +344,8 @@ serve(async (req) => {
     // Send a confirmation email to the professor if provided
     if (body.notify_professor_email) {
       try {
-        await resend.emails.send({
-          from: `${body.professor_name || 'TutorFlow'} <noreply@resend.dev>`,
-          to: [body.notify_professor_email],
+        await sendEmail({
+          to: body.notify_professor_email,
           subject: isNewStudent ? `Aluno cadastrado: ${body.name}` : `Aluno vinculado: ${body.name}`,
           html: `
             <div style="font-family:Arial, sans-serif; max-width:600px; margin:0 auto;">

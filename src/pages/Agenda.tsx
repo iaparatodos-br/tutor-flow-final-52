@@ -946,6 +946,60 @@ export default function Agenda() {
         console.error('Erro ao atualizar participantes:', participantsError);
         throw participantsError;
       }
+
+      // Buscar dados da aula para enviar notificações
+      const { data: classData, error: classDataError } = await supabase
+        .from('classes')
+        .select(`
+          id,
+          class_date,
+          duration_minutes,
+          teacher_id,
+          service_id,
+          class_services (
+            name
+          )
+        `)
+        .eq('id', classId)
+        .single();
+
+      if (!classDataError && classData) {
+        // Buscar dados do professor
+        const { data: teacherData } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', classData.teacher_id)
+          .single();
+
+        // Buscar participantes confirmados
+        const { data: participants } = await supabase
+          .from('class_participants')
+          .select('student_id')
+          .eq('class_id', classId)
+          .eq('status', 'confirmada');
+
+        // Enviar notificação para cada aluno confirmado
+        if (participants && teacherData) {
+          participants.forEach(async (participant) => {
+            try {
+              await supabase.functions.invoke('send-class-confirmation-notification', {
+                body: {
+                  class_id: classData.id,
+                  teacher_id: classData.teacher_id,
+                  student_id: participant.student_id,
+                  service_name: (classData.class_services as any)?.name || 'Aula',
+                  class_date: classData.class_date,
+                  duration_minutes: classData.duration_minutes,
+                  teacher_name: teacherData.name
+                }
+              });
+            } catch (notifError) {
+              console.error('Erro ao enviar notificação (não crítico):', notifError);
+            }
+          });
+        }
+      }
+
       toast({
         title: t('messages.classConfirmed'),
         description: t('messages.classConfirmedDescription')

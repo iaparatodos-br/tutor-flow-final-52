@@ -161,6 +161,22 @@ export function ShareMaterialModal({
       const addedCount = toAdd.length;
       const removedCount = toRemove.length;
 
+      // Enviar notificações para novos compartilhamentos
+      if (addedCount > 0) {
+        try {
+          await supabase.functions.invoke('send-material-shared-notification', {
+            body: {
+              material_id: material.id,
+              student_ids: toAdd
+            }
+          });
+          console.log('✅ Notificações de material enviadas');
+        } catch (notifError) {
+          console.error('Erro ao enviar notificações:', notifError);
+          // Não bloqueia o fluxo se notificação falhar
+        }
+      }
+
       if (addedCount > 0 || removedCount > 0) {
         toast.success(
           `Material ${addedCount > 0 ? `compartilhado com ${addedCount} aluno${addedCount !== 1 ? 's' : ''}` : ''}${

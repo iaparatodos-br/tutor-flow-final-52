@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { Resend } from "npm:resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,10 +20,8 @@ serve(async (req: Request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const resendApiKey = Deno.env.get('RESEND_API_KEY')!;
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const resend = new Resend(resendApiKey);
 
     const { material_id, student_ids }: NotificationRequest = await req.json();
 
@@ -133,26 +131,25 @@ serve(async (req: Request) => {
           </html>
         `;
 
-        const { data: emailData, error: emailError } = await resend.emails.send({
-          from: 'TutorFlow <onboarding@resend.dev>',
-          to: [student.email],
+        const emailResult = await sendEmail({
+          to: student.email,
           subject: `📚 Novo material disponível: ${material.title}`,
           html: emailHtml,
         });
 
-        if (emailError) {
-          console.error(`❌ Erro ao enviar email para ${student.email}:`, emailError);
+        if (!emailResult.success) {
+          console.error(`❌ Erro ao enviar email para ${student.email}:`, emailResult.error);
           results.push({
             student_id: student.id,
             success: false,
-            error: emailError.message
+            error: emailResult.error
           });
         } else {
           console.log(`✅ Email enviado com sucesso para ${student.email}`);
           results.push({
             student_id: student.id,
             success: true,
-            email_id: emailData.id
+            email_id: emailResult.messageId
           });
         }
       } catch (error) {

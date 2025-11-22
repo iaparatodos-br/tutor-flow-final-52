@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "npm:resend@4.0.0";
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -220,15 +218,14 @@ serve(async (req) => {
             `;
 
             // Enviar email
-            const { error: emailError } = await resend.emails.send({
-              from: "Tutor Flow <noreply@tutor-flow.app>",
-              to: [recipientEmail],
+            const emailResult = await sendEmail({
+              to: recipientEmail,
               subject: `⏰ Lembrete: Aula com ${teacher.name} em ${hoursUntilClass}h`,
               html: emailHtml,
             });
 
-            if (emailError) {
-              console.error(`❌ Erro ao enviar email para ${recipientEmail}:`, emailError);
+            if (!emailResult.success) {
+              console.error(`❌ Erro ao enviar email para ${recipientEmail}:`, emailResult.error);
               errors++;
               continue;
             }

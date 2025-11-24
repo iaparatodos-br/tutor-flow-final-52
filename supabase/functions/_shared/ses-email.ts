@@ -1,4 +1,4 @@
-import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses@^3.0.0";
+import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses@3.654.0";
 
 interface EmailParams {
   to: string | string[];

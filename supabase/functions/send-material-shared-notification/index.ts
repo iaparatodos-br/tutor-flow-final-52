@@ -30,21 +30,10 @@ serve(async (req: Request) => {
       student_count: student_ids.length
     });
 
-    // Buscar informações do material e professor
+    // Buscar informações do material
     const { data: material, error: materialError } = await supabase
       .from('materials')
-      .select(`
-        id,
-        title,
-        description,
-        file_type,
-        teacher_id,
-        profiles!materials_teacher_id_fkey (
-          id,
-          name,
-          email
-        )
-      `)
+      .select('id, title, description, file_type, teacher_id')
       .eq('id', material_id)
       .single();
 
@@ -52,7 +41,16 @@ serve(async (req: Request) => {
       throw new Error(`Material não encontrado: ${materialError?.message}`);
     }
 
-    const teacher = material.profiles;
+    // Buscar informações do professor separadamente
+    const { data: teacher, error: teacherError } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .eq('id', material.teacher_id)
+      .single();
+
+    if (teacherError || !teacher) {
+      throw new Error(`Professor não encontrado: ${teacherError?.message}`);
+    }
 
     // Buscar informações dos alunos com suas preferências de notificação
     const { data: students, error: studentsError } = await supabase

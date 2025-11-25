@@ -11,6 +11,10 @@ interface CancellationRequest {
   cancelled_by: string;
   reason: string;
   cancelled_by_type: 'student' | 'teacher';
+  participants?: Array<{
+    student_id: string;
+    profile: { id: string; name: string; email: string; guardian_email?: string };
+  }>;
 }
 
 serve(async (req) => {
@@ -24,7 +28,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { class_id, cancelled_by, reason, cancelled_by_type }: CancellationRequest = await req.json();
+    const { class_id, cancelled_by, reason, cancelled_by_type, participants: requestParticipants }: CancellationRequest = await req.json();
 
     // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
@@ -48,20 +52,32 @@ serve(async (req) => {
       throw new Error('Erro ao buscar participantes da aula');
     }
 
-    // 3. Buscar perfis dos participantes separadamente
-    const participants = [];
-    for (const p of (participantsRaw || [])) {
-      const { data: profile } = await supabaseClient
-        .from('profiles')
-        .select('id, name, email, guardian_email')
-        .eq('id', p.student_id)
-        .maybeSingle();
-      
-      if (profile) {
-        participants.push({
-          student_id: p.student_id,
-          profiles: profile
-        });
+    // 3. Priorizar participantes da request (para aulas virtuais), ou buscar do banco (fallback)
+    let participants = [];
+    
+    if (requestParticipants && requestParticipants.length > 0) {
+      // Usar dados da request (mais confiáveis para aulas virtuais)
+      console.log('📊 Using participants from request:', requestParticipants.length);
+      participants = requestParticipants.map(p => ({
+        student_id: p.student_id,
+        profiles: p.profile
+      }));
+    } else {
+      // Fallback: buscar perfis dos participantes do banco (para aulas normais)
+      console.log('📊 Fetching participants from database');
+      for (const p of (participantsRaw || [])) {
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('id, name, email, guardian_email')
+          .eq('id', p.student_id)
+          .maybeSingle();
+        
+        if (profile) {
+          participants.push({
+            student_id: p.student_id,
+            profiles: profile
+          });
+        }
       }
     }
     

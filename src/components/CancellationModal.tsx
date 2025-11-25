@@ -187,6 +187,7 @@ export function CancellationModal({
     setLoading(true);
     try {
       let finalClassId = classId;
+      let materializedParticipants: Array<{ student_id: string; profile: any }> = [];
       
       // If it's a virtual class, materialize it first via Edge Function
       if (virtualClassData) {
@@ -210,7 +211,8 @@ export function CancellationModal({
           }
 
           finalClassId = materializationResult.materialized_class_id;
-          console.log('Virtual class materialized via Edge Function:', finalClassId, 'Participants:', materializationResult.participants_count);
+          materializedParticipants = materializationResult.participants || [];
+          console.log('Virtual class materialized via Edge Function:', finalClassId, 'Participants:', materializationResult.participants_count, 'Profiles:', materializedParticipants.length);
         } catch (error) {
           console.error('Error materializing class:', error);
           toast({
@@ -229,7 +231,8 @@ export function CancellationModal({
           class_id: finalClassId,
           cancelled_by: profile!.id,
           reason: reason.trim(),
-          cancelled_by_type: isProfessor ? 'teacher' : 'student'
+          cancelled_by_type: isProfessor ? 'teacher' : 'student',
+          participants: materializedParticipants.length > 0 ? materializedParticipants : undefined
         }
       });
 

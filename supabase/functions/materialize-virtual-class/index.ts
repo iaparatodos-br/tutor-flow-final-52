@@ -247,11 +247,31 @@ serve(async (req) => {
 
     console.log('✅ Copied participants:', participantsToInsert.length);
 
+    // Buscar perfis dos participantes para passar no retorno
+    const participantsWithProfiles = [];
+    for (const p of templateParticipants) {
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email, guardian_email')
+        .eq('id', p.student_id)
+        .maybeSingle();
+      
+      if (profile) {
+        participantsWithProfiles.push({
+          student_id: p.student_id,
+          profile: profile
+        });
+      }
+    }
+
+    console.log('✅ Fetched participant profiles:', participantsWithProfiles.length);
+
     return new Response(
       JSON.stringify({
         success: true,
         materialized_class_id: materializedClass.id,
         participants_count: participantsToInsert.length,
+        participants: participantsWithProfiles,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -13,7 +13,7 @@ interface CancellationRequest {
   cancelled_by_type: 'student' | 'teacher';
   participants?: Array<{
     student_id: string;
-    profile: { id: string; name: string; email: string; guardian_email?: string };
+    profile: { id: string; name: string; email: string };
   }>;
 }
 
@@ -68,7 +68,7 @@ serve(async (req) => {
       for (const p of (participantsRaw || [])) {
         const { data: profile } = await supabaseClient
           .from('profiles')
-          .select('id, name, email, guardian_email')
+          .select('id, name, email')
           .eq('id', p.student_id)
           .maybeSingle();
         

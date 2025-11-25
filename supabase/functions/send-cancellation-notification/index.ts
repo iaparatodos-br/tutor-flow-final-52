@@ -20,7 +20,6 @@ interface NotificationRequest {
     profile: {
       name: string;
       email: string;
-      guardian_email?: string;
     };
   }>;
 }
@@ -95,7 +94,7 @@ serve(async (req) => {
     for (const p of (participantsData || [])) {
       const { data: studentProfile } = await supabaseClient
         .from('profiles')
-        .select('id, name, email, guardian_email')
+        .select('id, name, email')
         .eq('id', p.student_id)
         .maybeSingle();
       
@@ -285,7 +284,7 @@ serve(async (req) => {
       console.log('📊 Students to notify:', {
         using_source: participants.length > 0 ? 'REQUEST' : 'DATABASE',
         count: studentsToNotify.length,
-        emails: studentsToNotify.map(s => s.profile?.email || s.profile?.guardian_email || 'NO_EMAIL')
+        emails: studentsToNotify.map(s => s.profile?.email || 'NO_EMAIL')
       });
 
       for (const participantData of studentsToNotify) {
@@ -305,7 +304,7 @@ serve(async (req) => {
           continue; // Pular este aluno
         }
 
-        const recipientEmail = studentProfile.guardian_email || studentProfile.email || '';
+        const recipientEmail = studentProfile.email || '';
         if (!recipientEmail) continue;
 
         const subject = `${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada - ${teacher?.name || 'Professor'}`;

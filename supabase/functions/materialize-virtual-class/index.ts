@@ -252,7 +252,7 @@ serve(async (req) => {
     for (const p of templateParticipants) {
       const { data: profile } = await supabaseClient
         .from('profiles')
-        .select('id, name, email, guardian_email')
+        .select('id, name, email')
         .eq('id', p.student_id)
         .maybeSingle();
       

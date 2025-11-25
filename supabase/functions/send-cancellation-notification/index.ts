@@ -117,14 +117,16 @@ serve(async (req) => {
       timeZone: 'America/Sao_Paulo'
     });
 
-    console.log('Sending cancellation notification:', {
+    console.log('🔍 NOTIFICATION DATA:', {
+      source: participants.length > 0 ? 'REQUEST' : 'DATABASE',
+      participants_from_request: participants.length,
+      participants_from_db: class_participants.length,
       class_id,
       cancelled_by_type,
       charge_applied,
       is_group_class,
       notification_target,
       removed_student_id,
-      participants_count: participants.length,
       teacher: teacher?.email,
       student: student?.email
     });
@@ -272,12 +274,19 @@ serve(async (req) => {
       }
     } else {
       // Notificar aluno(s) que professor cancelou
-      const studentsToNotify = is_group_class 
-        ? participants 
-        : class_participants.map(p => ({
+      // SEMPRE priorizar participants da request (para todos os tipos de aula)
+      const studentsToNotify = participants.length > 0
+        ? participants  // Usar dados da request (mais confiáveis)
+        : class_participants.map(p => ({  // Fallback: buscar do banco
             student_id: p.student_id,
             profile: p.profiles
           }));
+
+      console.log('📊 Students to notify:', {
+        using_source: participants.length > 0 ? 'REQUEST' : 'DATABASE',
+        count: studentsToNotify.length,
+        emails: studentsToNotify.map(s => s.profile?.email || s.profile?.guardian_email || 'NO_EMAIL')
+      });
 
       for (const participantData of studentsToNotify) {
         const studentProfile = participantData.profile;

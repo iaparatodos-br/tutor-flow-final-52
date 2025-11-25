@@ -282,7 +282,7 @@ async function sendNotifications(
 
     // Send notifications to students/guardians
     for (const student of students || []) {
-      const emailTo = student.guardian_email || student.email;
+      const emailTo = student.email;
       if (emailTo) {
         await sendEmail({
           to: emailTo,

@@ -220,12 +220,12 @@ serve(async (req) => {
       // Tentar acessar perfis de outros usuários
       const { data: allProfiles, error } = await supabaseClient
         .from('profiles')
-        .select('id, email, cpf, guardian_email')
+        .select('id, email, cpf')
         .neq('id', user.id)
         .limit(5);
 
       if (allProfiles && allProfiles.length > 0) {
-        const hasExposedPII = allProfiles.some(p => p.email || p.cpf || p.guardian_email);
+        const hasExposedPII = allProfiles.some(p => p.email || p.cpf);
         
         if (hasExposedPII) {
           tests.push({

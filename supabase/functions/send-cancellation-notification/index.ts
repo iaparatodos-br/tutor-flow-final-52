@@ -47,36 +47,68 @@ serve(async (req) => {
       participants = []
     }: NotificationRequest = await req.json();
 
-    // Buscar detalhes da aula
+    // 1. Buscar dados da aula
     const { data: classData, error: classError } = await supabaseClient
       .from('classes')
-      .select(`
-        id,
-        class_date,
-        teacher:profiles!classes_teacher_id_fkey(name, email),
-        service:class_services(name, price),
-        class_participants!inner (
-          student_id,
-          profiles!class_participants_student_id_fkey (
-            id,
-            name,
-            email,
-            guardian_email
-          )
-        )
-      `)
+      .select('id, class_date, teacher_id, service_id')
       .eq('id', class_id)
       .maybeSingle();
 
     if (classError || !classData) {
-      throw new Error('Aula não encontrada');
+      throw new Error(`Aula não encontrada: ${classError?.message || 'ID inválido'}`);
     }
 
-    const teacher = Array.isArray(classData.teacher) ? classData.teacher[0] : classData.teacher;
-    const service = Array.isArray(classData.service) ? classData.service[0] : classData.service;
-    
+    // 2. Buscar professor separadamente
+    const { data: teacher, error: teacherError } = await supabaseClient
+      .from('profiles')
+      .select('id, name, email')
+      .eq('id', classData.teacher_id)
+      .maybeSingle();
+
+    if (teacherError) {
+      console.error('Erro ao buscar professor:', teacherError);
+    }
+
+    // 3. Buscar serviço separadamente (se existir)
+    let service = null;
+    if (classData.service_id) {
+      const { data: serviceData } = await supabaseClient
+        .from('class_services')
+        .select('name, price')
+        .eq('id', classData.service_id)
+        .maybeSingle();
+      service = serviceData;
+    }
+
+    // 4. Buscar participantes separadamente
+    const { data: participantsData, error: participantsError } = await supabaseClient
+      .from('class_participants')
+      .select('student_id')
+      .eq('class_id', class_id);
+
+    if (participantsError) {
+      console.error('Erro ao buscar participantes:', participantsError);
+    }
+
+    // 5. Buscar perfis dos participantes
+    const class_participants = [];
+    for (const p of (participantsData || [])) {
+      const { data: studentProfile } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email, guardian_email')
+        .eq('id', p.student_id)
+        .maybeSingle();
+      
+      if (studentProfile) {
+        class_participants.push({
+          student_id: p.student_id,
+          profiles: studentProfile
+        });
+      }
+    }
+
     // Buscar student do primeiro participante (para compatibilidade com lógica existente)
-    const firstParticipant = classData.class_participants?.[0];
+    const firstParticipant = class_participants?.[0];
     const student = firstParticipant?.profiles;
 
     const classDateFormatted = new Date(classData.class_date).toLocaleString('pt-BR', {
@@ -242,7 +274,7 @@ serve(async (req) => {
       // Notificar aluno(s) que professor cancelou
       const studentsToNotify = is_group_class 
         ? participants 
-        : classData.class_participants.map(p => ({
+        : class_participants.map(p => ({
             student_id: p.student_id,
             profile: p.profiles
           }));
@@ -337,10 +369,10 @@ serve(async (req) => {
             .insert({
               class_id: class_id,
               student_id: notification_target === 'teacher' 
-                ? (classData.teacher_id || classData.profiles?.id) 
+                ? classData.teacher_id
                 : emailData.to.includes(teacher?.email || '') 
-                  ? (classData.teacher_id || classData.profiles?.id)
-                  : (classData.class_participants?.[0]?.student_id || null),
+                  ? classData.teacher_id
+                  : (class_participants?.[0]?.student_id || null),
               notification_type: 'class_cancelled',
               status: 'sent'
             });

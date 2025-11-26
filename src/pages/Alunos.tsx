@@ -477,7 +477,7 @@ export default function Alunos() {
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-2">
-        <StudentImportDialog onSuccess={loadStudents} />
+        <StudentImportDialog onSuccess={loadStudents} currentStudentCount={students.length} />
 
         {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
           id: s.id,

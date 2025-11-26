@@ -1,5 +1,3 @@
-import { createHmac } from "https://deno.land/std@0.190.0/node/crypto.ts";
-
 interface EmailParams {
   to: string | string[];
   subject: string;
@@ -20,26 +18,61 @@ const RETRY_DELAY_MS = 1000;
 // Sleep utility for retry delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Convert string to Uint8Array
+function stringToUint8Array(str: string): Uint8Array {
+  return new TextEncoder().encode(str);
+}
+
+// Convert ArrayBuffer to hex string
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// HMAC-SHA256 using Web Crypto API
+async function hmac(key: Uint8Array | string, data: string): Promise<Uint8Array> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    typeof key === "string" ? stringToUint8Array(key) : key,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    stringToUint8Array(data)
+  );
+  
+  return new Uint8Array(signature);
+}
+
+// SHA-256 using Web Crypto API
+async function sha256(data: string): Promise<string> {
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    stringToUint8Array(data)
+  );
+  return bufferToHex(hash);
+}
+
 // AWS SES API signature v4
-function createSignature(
+async function createSignature(
   secretAccessKey: string,
   dateStamp: string,
   region: string,
   service: string,
   stringToSign: string
-): string {
-  const kDate = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
-  const kRegion = createHmac("sha256", kDate).update(region).digest();
-  const kService = createHmac("sha256", kRegion).update(service).digest();
-  const kSigning = createHmac("sha256", kService).update("aws4_request").digest();
+): Promise<string> {
+  const kDate = await hmac(`AWS4${secretAccessKey}`, dateStamp);
+  const kRegion = await hmac(kDate, region);
+  const kService = await hmac(kRegion, service);
+  const kSigning = await hmac(kService, "aws4_request");
+  const signature = await hmac(kSigning, stringToSign);
   
-  return createHmac("sha256", kSigning).update(stringToSign).digest("hex");
-}
-
-function sha256(data: string): string {
-  const hash = createHmac("sha256", "");
-  hash.update(data);
-  return hash.digest("hex");
+  return bufferToHex(signature);
 }
 
 /**
@@ -98,7 +131,7 @@ export async function sendEmail(params: EmailParams): Promise<EmailResult> {
       const destinations = recipients.map(email => `<Destination><ToAddresses><member>${email}</member></ToAddresses></Destination>`).join("");
       const body = `Action=SendEmail&Source=${encodeURIComponent(fromAddress)}&Message.Subject.Data=${encodeURIComponent(params.subject)}&Message.Body.Html.Data=${encodeURIComponent(params.html)}${params.text ? `&Message.Body.Text.Data=${encodeURIComponent(params.text)}` : ""}${recipients.map((email, i) => `&Destination.ToAddresses.member.${i + 1}=${encodeURIComponent(email)}`).join("")}${params.replyTo ? `&ReplyToAddresses.member.1=${encodeURIComponent(params.replyTo)}` : ""}`;
 
-      const payloadHash = sha256(body);
+      const payloadHash = await sha256(body);
 
       // Create canonical request
       const canonicalHeaders = `content-type:application/x-www-form-urlencoded\nhost:${host}\nx-amz-date:${amzDate}\n`;
@@ -108,10 +141,11 @@ export async function sendEmail(params: EmailParams): Promise<EmailResult> {
       // Create string to sign
       const algorithm = "AWS4-HMAC-SHA256";
       const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-      const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${sha256(canonicalRequest)}`;
+      const canonicalRequestHash = await sha256(canonicalRequest);
+      const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
 
       // Calculate signature
-      const signature = createSignature(secretAccessKey, dateStamp, region, service, stringToSign);
+      const signature = await createSignature(secretAccessKey, dateStamp, region, service, stringToSign);
 
       // Create authorization header
       const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;

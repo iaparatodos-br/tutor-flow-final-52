@@ -1,4 +1,4 @@
-import { SESClient, SendEmailCommand } from "https://esm.sh/@aws-sdk/client-ses@3.654.0";
+import { createHmac } from "https://deno.land/std@0.190.0/node/crypto.ts";
 
 interface EmailParams {
   to: string | string[];
@@ -17,27 +17,30 @@ interface EmailResult {
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
-// Initialize SES client with credentials from environment
-function createSESClient(): SESClient {
-  const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
-  const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
-  const region = Deno.env.get("AWS_SES_REGION") || "us-east-1";
-
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error("AWS credentials not configured. Please set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY");
-  }
-
-  return new SESClient({
-    region,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
-  });
-}
-
 // Sleep utility for retry delays
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// AWS SES API signature v4
+function createSignature(
+  secretAccessKey: string,
+  dateStamp: string,
+  region: string,
+  service: string,
+  stringToSign: string
+): string {
+  const kDate = createHmac("sha256", `AWS4${secretAccessKey}`).update(dateStamp).digest();
+  const kRegion = createHmac("sha256", kDate).update(region).digest();
+  const kService = createHmac("sha256", kRegion).update(service).digest();
+  const kSigning = createHmac("sha256", kService).update("aws4_request").digest();
+  
+  return createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+}
+
+function sha256(data: string): string {
+  const hash = createHmac("sha256", "");
+  hash.update(data);
+  return hash.digest("hex");
+}
 
 /**
  * Send email using AWS SES with automatic retry logic
@@ -59,41 +62,18 @@ export async function sendEmail(params: EmailParams): Promise<EmailResult> {
     return { success: false, error: "HTML content is required" };
   }
 
+  const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
+  const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
+  const region = Deno.env.get("AWS_SES_REGION") || "us-east-1";
   const fromEmail = Deno.env.get("AWS_SES_FROM_EMAIL") || "noreply@tutor-flow.app";
   const fromName = Deno.env.get("AWS_SES_FROM_NAME") || "Tutor Flow";
+
+  if (!accessKeyId || !secretAccessKey) {
+    return { success: false, error: "AWS credentials not configured" };
+  }
+
   const fromAddress = `${fromName} <${fromEmail}>`;
-
-  // Normalize recipients to array
   const recipients = Array.isArray(params.to) ? params.to : [params.to];
-
-  // Prepare email command
-  const command = new SendEmailCommand({
-    Source: fromAddress,
-    Destination: {
-      ToAddresses: recipients,
-    },
-    Message: {
-      Subject: {
-        Data: params.subject,
-        Charset: "UTF-8",
-      },
-      Body: {
-        Html: {
-          Data: params.html,
-          Charset: "UTF-8",
-        },
-        ...(params.text && {
-          Text: {
-            Data: params.text,
-            Charset: "UTF-8",
-          },
-        }),
-      },
-    },
-    ...(params.replyTo && {
-      ReplyToAddresses: [params.replyTo],
-    }),
-  });
 
   // Retry logic
   let lastError: Error | null = null;
@@ -105,17 +85,67 @@ export async function sendEmail(params: EmailParams): Promise<EmailResult> {
         subject: params.subject,
       });
 
-      const client = createSESClient();
-      const response = await client.send(command);
+      // Prepare SES API request using AWS Signature V4
+      const service = "ses";
+      const host = `email.${region}.amazonaws.com`;
+      const endpoint = `https://${host}/`;
+      
+      const now = new Date();
+      const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+      const dateStamp = amzDate.substring(0, 8);
+
+      // Build the email body
+      const destinations = recipients.map(email => `<Destination><ToAddresses><member>${email}</member></ToAddresses></Destination>`).join("");
+      const body = `Action=SendEmail&Source=${encodeURIComponent(fromAddress)}&Message.Subject.Data=${encodeURIComponent(params.subject)}&Message.Body.Html.Data=${encodeURIComponent(params.html)}${params.text ? `&Message.Body.Text.Data=${encodeURIComponent(params.text)}` : ""}${recipients.map((email, i) => `&Destination.ToAddresses.member.${i + 1}=${encodeURIComponent(email)}`).join("")}${params.replyTo ? `&ReplyToAddresses.member.1=${encodeURIComponent(params.replyTo)}` : ""}`;
+
+      const payloadHash = sha256(body);
+
+      // Create canonical request
+      const canonicalHeaders = `content-type:application/x-www-form-urlencoded\nhost:${host}\nx-amz-date:${amzDate}\n`;
+      const signedHeaders = "content-type;host;x-amz-date";
+      const canonicalRequest = `POST\n/\n\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+
+      // Create string to sign
+      const algorithm = "AWS4-HMAC-SHA256";
+      const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+      const stringToSign = `${algorithm}\n${amzDate}\n${credentialScope}\n${sha256(canonicalRequest)}`;
+
+      // Calculate signature
+      const signature = createSignature(secretAccessKey, dateStamp, region, service, stringToSign);
+
+      // Create authorization header
+      const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+
+      // Make the request
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Amz-Date": amzDate,
+          "Authorization": authorizationHeader,
+        },
+        body: body,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`SES API error: ${response.status} - ${errorText}`);
+      }
+
+      const responseText = await response.text();
+      
+      // Extract MessageId from XML response
+      const messageIdMatch = responseText.match(/<MessageId>(.*?)<\/MessageId>/);
+      const messageId = messageIdMatch ? messageIdMatch[1] : "unknown";
 
       console.log(`✅ [SES] Email sent successfully`, {
-        messageId: response.MessageId,
+        messageId,
         to: recipients,
       });
 
       return {
         success: true,
-        messageId: response.MessageId,
+        messageId,
       };
       
     } catch (error) {

@@ -179,76 +179,108 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
     let successCount = 0;
     let failCount = 0;
 
-    for (let i = 0; i < rawData.length; i++) {
-      const row = rawData[i];
-      setProgress(prev => ({ ...prev, current: i + 1 }));
+    // Throttling configuration to prevent AWS SES rate limiting
+    const BATCH_SIZE = 10; // Process 10 students at a time
+    const DELAY_BETWEEN_BATCHES_MS = 2000; // 2 seconds delay between batches
 
-      try {
-        // Extract data using mapping
-        const name = row[mapping.name];
-        const email = row[mapping.email];
-        const phone = mapping.phone ? row[mapping.phone] : undefined;
+    const totalBatches = Math.ceil(rawData.length / BATCH_SIZE);
 
-        // Guardian logic: if guardian_name is missing, use student data (self-responsible)
-        const mappedGuardianName = mapping.guardian_name ? row[mapping.guardian_name] : undefined;
-        const isOwnResponsible = !mappedGuardianName;
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const batchStart = batchIndex * BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, rawData.length);
+      const batchData = rawData.slice(batchStart, batchEnd);
 
-        const guardian_name = isOwnResponsible ? name : mappedGuardianName;
-        const guardian_email = isOwnResponsible ? email : (mapping.guardian_email ? row[mapping.guardian_email] : undefined);
-        const guardian_phone = isOwnResponsible ? phone : (mapping.guardian_phone ? row[mapping.guardian_phone] : undefined);
+      console.log(`Processing batch ${batchIndex + 1}/${totalBatches} (${batchData.length} students)`);
 
-        // Billing day logic
-        let billing_day = 15; // Default
-        if (mapping.billing_day && row[mapping.billing_day]) {
-          const parsedDay = parseInt(row[mapping.billing_day]);
-          if (!isNaN(parsedDay) && parsedDay >= 1 && parsedDay <= 31) {
-            billing_day = parsedDay;
+      // Process batch in parallel
+      const batchPromises = batchData.map(async (row, localIndex) => {
+        const i = batchStart + localIndex;
+        setProgress(prev => ({ ...prev, current: i + 1 }));
+
+        try {
+          // Extract data using mapping
+          const name = row[mapping.name];
+          const email = row[mapping.email];
+          const phone = mapping.phone ? row[mapping.phone] : undefined;
+
+          // Guardian logic: if guardian_name is missing, use student data (self-responsible)
+          const mappedGuardianName = mapping.guardian_name ? row[mapping.guardian_name] : undefined;
+          const isOwnResponsible = !mappedGuardianName;
+
+          const guardian_name = isOwnResponsible ? name : mappedGuardianName;
+          const guardian_email = isOwnResponsible ? email : (mapping.guardian_email ? row[mapping.guardian_email] : undefined);
+          const guardian_phone = isOwnResponsible ? phone : (mapping.guardian_phone ? row[mapping.guardian_phone] : undefined);
+
+          // Billing day logic
+          let billing_day = 15; // Default
+          if (mapping.billing_day && row[mapping.billing_day]) {
+            const parsedDay = parseInt(row[mapping.billing_day]);
+            if (!isNaN(parsedDay) && parsedDay >= 1 && parsedDay <= 31) {
+              billing_day = parsedDay;
+            }
           }
+
+          const studentData = {
+            name,
+            email,
+            phone,
+            guardian_name,
+            guardian_email,
+            guardian_phone,
+            guardian_cpf: mapping.cpf ? row[mapping.cpf] : undefined,
+            guardian_address_street: mapping.guardian_address_street ? row[mapping.guardian_address_street] : undefined,
+            guardian_address_city: mapping.guardian_address_city ? row[mapping.guardian_address_city] : undefined,
+            guardian_address_state: mapping.guardian_address_state ? row[mapping.guardian_address_state] : undefined,
+            guardian_address_postal_code: mapping.guardian_address_postal_code ? row[mapping.guardian_address_postal_code] : undefined,
+
+            // Default values
+            teacher_id: profile.id,
+            redirect_url: window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`,
+            notify_professor_email: profile.email,
+            professor_name: profile.name,
+            billing_day
+          };
+
+          // Basic validation
+          if (!studentData.name || !studentData.email) {
+            console.error(`Error importing row ${i}: Missing name or email`);
+            return { success: false };
+          }
+
+          // Call Supabase function
+          const { data, error } = await supabase.functions.invoke('create-student', {
+            body: studentData
+          });
+
+          if (error || (data && !data.success)) {
+            console.error(`Error importing row ${i}:`, error || data?.error);
+            return { success: false };
+          }
+
+          return { success: true };
+
+        } catch (err) {
+          console.error(`Exception importing row ${i}:`, err);
+          return { success: false };
         }
+      });
 
-        const studentData = {
-          name,
-          email,
-          phone,
-          guardian_name,
-          guardian_email,
-          guardian_phone,
-          guardian_cpf: mapping.cpf ? row[mapping.cpf] : undefined,
-          guardian_address_street: mapping.guardian_address_street ? row[mapping.guardian_address_street] : undefined,
-          guardian_address_city: mapping.guardian_address_city ? row[mapping.guardian_address_city] : undefined,
-          guardian_address_state: mapping.guardian_address_state ? row[mapping.guardian_address_state] : undefined,
-          guardian_address_postal_code: mapping.guardian_address_postal_code ? row[mapping.guardian_address_postal_code] : undefined,
-
-          // Default values
-          teacher_id: profile.id,
-          redirect_url: window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`,
-          notify_professor_email: profile.email,
-          professor_name: profile.name,
-          billing_day
-        };
-
-        // Basic validation
-        if (!studentData.name || !studentData.email) {
-          console.warn(`Skipping row ${i}: Missing name or email`);
-          failCount++;
-          continue;
-        }
-
-        // Call Supabase function
-        const { data, error } = await supabase.functions.invoke('create-student', {
-          body: studentData
-        });
-
-        if (error || (data && !data.success)) {
-          console.error(`Error importing row ${i}:`, error || data?.error);
-          failCount++;
-        } else {
+      // Wait for batch to complete
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      // Count successes and failures
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled' && result.value.success) {
           successCount++;
+        } else {
+          failCount++;
         }
+      });
 
-      } catch (err) {
-        console.error(`Exception importing row ${i}:`, err);
-        failCount++;
+      // Add delay between batches (except for the last batch)
+      if (batchIndex < totalBatches - 1) {
+        console.log(`Waiting ${DELAY_BETWEEN_BATCHES_MS}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
       }
     }
 

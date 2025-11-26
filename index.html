@@ -43,9 +43,10 @@
           fromHash: !!hashParams.get('access_token')
         });
         
-        // Se encontramos tokens de recuperação, armazenar E redirecionar imediatamente
-        if (accessToken && refreshToken) {
-          console.log('🔑 [Pre-Init] TOKENS ENCONTRADOS! Salvando e redirecionando...');
+        // APENAS interceptar tokens de RECUPERAÇÃO DE SENHA
+        // Magic links de convite (type='magiclink') devem seguir o fluxo normal via AuthCallback
+        if (accessToken && refreshToken && type === 'recovery') {
+          console.log('🔑 [Pre-Init] TOKEN DE RECOVERY ENCONTRADO! Salvando e redirecionando...');
           
           // Salvar no sessionStorage
           sessionStorage.setItem('recovery_access_token', accessToken);
@@ -60,8 +61,10 @@
           
           // Usar replace para não adicionar ao histórico
           window.location.replace(resetUrl);
+        } else if (accessToken && refreshToken) {
+          console.log('🔑 [Pre-Init] Magic link detectado (type=' + type + '), deixando AuthCallback processar');
         } else {
-          console.log('🔑 [Pre-Init] Nenhum token de recuperação detectado, continuando normalmente');
+          console.log('🔑 [Pre-Init] Nenhum token detectado, continuando normalmente');
         }
       })();
     </script>

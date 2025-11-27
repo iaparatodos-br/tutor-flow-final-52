@@ -26,10 +26,32 @@ export default function AuthCallback() {
           return;
         }
 
-        // Verificar se há tokens de acesso na URL
-        const accessToken = searchParams.get('access_token');
-        const refreshToken = searchParams.get('refresh_token');
-        const type = searchParams.get('type');
+        // CORREÇÃO: Detectar tokens de query params e hash
+        let accessToken = searchParams.get('access_token');
+        let refreshToken = searchParams.get('refresh_token');
+        let type = searchParams.get('type');
+        
+        // Se não encontrar nos query params, tentar no hash
+        if (!accessToken && window.location.hash) {
+          const hash = window.location.hash.substring(1);
+          const hashParams = new URLSearchParams(hash);
+          accessToken = hashParams.get('access_token');
+          refreshToken = hashParams.get('refresh_token');
+          type = hashParams.get('type');
+          console.log('AuthCallback: Tokens encontrados no hash');
+        }
+
+        console.log('AuthCallback: Tipo de callback:', type);
+
+        // CORREÇÃO: Se for recuperação de senha, redirecionar para reset-password
+        if (type === 'recovery' && accessToken && refreshToken) {
+          console.log('🔑 AuthCallback: Redirecionando para reset-password com tokens');
+          
+          // Preservar todos os tokens na URL
+          const resetUrl = `/reset-password?access_token=${accessToken}&refresh_token=${refreshToken}&type=recovery`;
+          navigate(resetUrl, { replace: true });
+          return;
+        }
 
         if (accessToken && refreshToken) {
           console.log('AuthCallback: Tokens encontrados, configurando sessão');

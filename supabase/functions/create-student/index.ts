@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.54.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY") || "");
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -136,44 +134,81 @@ serve(async (req) => {
       console.log('Creating new student account');
       isNewStudent = true;
 
-      // Invite the student by email (Supabase sends the invite email)
-      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        body.email,
-        {
-          redirectTo,
-          data: {
-            name: body.name,
-            role: 'aluno',
-          },
-        }
-      );
+      // Create user without sending Supabase's default invite email
+      // Generate a temporary random password
+      const temporaryPassword = crypto.randomUUID();
+      
+      const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: body.email,
+        password: temporaryPassword,
+        email_confirm: false, // User needs to activate via magic link
+        user_metadata: {
+          name: body.name,
+          role: 'aluno',
+        },
+      });
 
-      if (inviteError || !inviteData?.user) {
-        console.error('Error inviting student:', inviteError);
-        console.log('InviteError details:', JSON.stringify(inviteError));
+      if (createError || !userData?.user) {
+        console.error('Error creating student:', createError);
+        console.log('CreateError details:', JSON.stringify(createError));
         
-        // Check for specific error types and return success response with error field
-        let errorMessage = 'Failed to invite student';
+        let errorMessage = 'Failed to create student';
         
-        if (inviteError?.message) {
-          // Handle email already exists error
-          if (inviteError.message.includes('User already registered') || 
-              inviteError.message.includes('already exists') ||
-              inviteError.message.includes('email address is already registered')) {
+        if (createError?.message) {
+          if (createError.message.includes('User already registered') || 
+              createError.message.includes('already exists') ||
+              createError.message.includes('email address is already registered')) {
             errorMessage = 'Este e-mail já está sendo utilizado por outro aluno ou professor';
           } else {
-            errorMessage = inviteError.message;
+            errorMessage = createError.message;
           }
         }
         
-        // Return 200 with error in response body instead of error status
         return new Response(
           JSON.stringify({ success: false, error: errorMessage }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
 
-      studentId = inviteData.user.id;
+      studentId = userData.user.id;
+
+      // Generate magic link for account activation
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: body.email,
+        options: { redirectTo }
+      });
+
+      if (linkError || !linkData?.properties?.action_link) {
+        console.error('Error generating magic link:', linkError);
+        // Rollback: delete the created user
+        await supabaseAdmin.auth.admin.deleteUser(studentId);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Erro ao gerar link de ativação' }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Send custom invitation email via AWS SES
+      const { data: emailResult, error: emailError } = await supabaseAdmin.functions.invoke(
+        'send-student-invitation',
+        {
+          body: {
+            email: body.email,
+            name: body.name,
+            teacher_name: body.professor_name || 'seu professor',
+            invitation_link: linkData.properties.action_link,
+          }
+        }
+      );
+
+      if (emailError || (emailResult && !emailResult.success)) {
+        console.error('Error sending invitation email:', emailError || emailResult?.error);
+        // Don't rollback - user is created, we can resend email later
+        console.warn('Student created but invitation email failed. User can request resend.');
+      } else {
+        console.log('Invitation email sent successfully via AWS SES');
+      }
 
       // Wait for trigger to create profile, then update additional fields
       let retries = 10;
@@ -346,9 +381,8 @@ serve(async (req) => {
     // Send a confirmation email to the professor if provided
     if (body.notify_professor_email) {
       try {
-        await resend.emails.send({
-          from: `${body.professor_name || 'TutorFlow'} <noreply@resend.dev>`,
-          to: [body.notify_professor_email],
+        await sendEmail({
+          to: body.notify_professor_email,
           subject: isNewStudent ? `Aluno cadastrado: ${body.name}` : `Aluno vinculado: ${body.name}`,
           html: `
             <div style="font-family:Arial, sans-serif; max-width:600px; margin:0 auto;">

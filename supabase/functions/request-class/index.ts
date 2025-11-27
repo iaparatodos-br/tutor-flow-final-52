@@ -73,10 +73,10 @@ serve(async (req) => {
       throw new Error("Student is not assigned to this teacher");
     }
 
-    // Load service to get duration
+    // Load service to get duration and name
     const { data: service, error: serviceError } = await supabase
       .from('class_services')
-      .select('id, duration_minutes')
+      .select('id, name, duration_minutes')
       .eq('id', serviceId)
       .eq('teacher_id', teacherId)
       .eq('is_active', true)
@@ -113,6 +113,30 @@ serve(async (req) => {
       });
 
     if (participantError) throw participantError;
+
+    // Enviar notificação ao professor (não-bloqueante)
+    supabase.functions
+      .invoke("send-class-request-notification", {
+        body: {
+          class_id: newClass.id,
+          teacher_id: teacherId,
+          student_id: user.id,
+          service_name: service.name || "Serviço",
+          class_date: newClass.class_date,
+          duration_minutes: service.duration_minutes,
+          notes: notes?.trim() || null,
+        },
+      })
+      .then(({ error: notifError }) => {
+        if (notifError) {
+          console.error("Error sending class request notification (non-critical):", notifError);
+        } else {
+          console.log("✅ Class request notification sent successfully");
+        }
+      })
+      .catch((err) => {
+        console.error("Error invoking notification function (non-critical):", err);
+      });
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

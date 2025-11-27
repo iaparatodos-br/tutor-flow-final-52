@@ -14,7 +14,6 @@ import ptSettings from './locales/pt/settings.json';
 import ptAuth from './locales/pt/auth.json';
 import ptSubscription from './locales/pt/subscription.json';
 import ptExpenses from './locales/pt/expenses.json';
-import ptNotifications from './locales/pt/notifications.json';
 import ptCancellation from './locales/pt/cancellation.json';
 import ptArchive from './locales/pt/archive.json';
 import ptBilling from './locales/pt/billing.json';
@@ -36,7 +35,6 @@ import enSettings from './locales/en/settings.json';
 import enAuth from './locales/en/auth.json';
 import enSubscription from './locales/en/subscription.json';
 import enExpenses from './locales/en/expenses.json';
-import enNotifications from './locales/en/notifications.json';
 import enCancellation from './locales/en/cancellation.json';
 import enArchive from './locales/en/archive.json';
 import enBilling from './locales/en/billing.json';
@@ -60,7 +58,6 @@ const resources = {
     auth: ptAuth,
     subscription: ptSubscription,
     expenses: ptExpenses,
-    notifications: ptNotifications,
     cancellation: ptCancellation,
     archive: ptArchive,
     billing: ptBilling,
@@ -83,7 +80,6 @@ const resources = {
     auth: enAuth,
     subscription: enSubscription,
     expenses: enExpenses,
-    notifications: enNotifications,
     cancellation: enCancellation,
     archive: enArchive,
     billing: enBilling,

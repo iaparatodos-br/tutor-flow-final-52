@@ -1,73 +1,89 @@
-# Welcome to your Lovable project
+# TutorFlow
 
-## Project info
+TutorFlow is a comprehensive SaaS platform designed for private tutors to manage their students, schedule, and finances. It offers a modern and intuitive interface to streamline the administrative tasks of teaching.
 
-**URL**: https://lovable.dev/projects/f6744f66-d8c3-4e9d-8030-023e3de73e8f
+## Features
 
-## How can I edit this code?
+- **Dashboard**: Overview of your business metrics.
+- **Student Management**: Manage student profiles and details.
+- **Scheduling**: Calendar view for classes and appointments.
+- **Financials**: Track earnings, invoices, and payments.
+- **Materials**: Organize and share teaching materials.
+- **Student Portal**: Dedicated area for students to access their information.
 
-There are several ways of editing your application.
+## Technology Stack
 
-**Use Lovable**
+- **Frontend**: React, Vite, TypeScript
+- **Styling**: TailwindCSS, Shadcn UI
+- **Backend/Database**: Supabase
+- **State Management**: React Query
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f6744f66-d8c3-4e9d-8030-023e3de73e8f) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js (v18 or higher)
+- npm or bun
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   ```
 
-Follow these steps:
+2. Navigate to the project directory:
+   ```bash
+   cd tutor-flow-final-52
+   ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+3. Install dependencies:
+   ```bash
+   npm install
+   # or
+   bun install
+   ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Running the Application
 
-# Step 3: Install the necessary dependencies.
-npm i
+To start the development server:
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```bash
 npm run dev
+# or
+bun dev
 ```
 
-**Edit a file directly in GitHub**
+The application will be available at `http://localhost:8080`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Building for Production
 
-**Use GitHub Codespaces**
+To build the application for production:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+npm run build
+# or
+bun run build
+```
 
-## What technologies are used for this project?
+## Project Structure
 
-This project is built with:
+- `src/`: Source code for the React application.
+  - `components/`: Reusable UI components.
+  - `pages/`: Application pages and routes.
+  - `contexts/`: React contexts for state management.
+  - `hooks/`: Custom React hooks.
+  - `lib/`: Utility functions and configurations.
+- `supabase/`: Supabase configuration and migrations.
+- `public/`: Static assets.
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Scripts
 
-## How can I deploy this project?
+- `dev`: Starts the development server.
+- `build`: Builds the application for production.
+- `lint`: Runs ESLint to check for code quality issues.
+- `preview`: Previews the production build locally.
 
-Simply open [Lovable](https://lovable.dev/projects/f6744f66-d8c3-4e9d-8030-023e3de73e8f) and click on Share -> Publish.
+## License
 
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+[Add License Information Here]

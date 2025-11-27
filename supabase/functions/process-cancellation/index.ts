@@ -11,6 +11,10 @@ interface CancellationRequest {
   cancelled_by: string;
   reason: string;
   cancelled_by_type: 'student' | 'teacher';
+  participants?: Array<{
+    student_id: string;
+    profile: { id: string; name: string; email: string };
+  }>;
 }
 
 serve(async (req) => {
@@ -24,12 +28,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { class_id, cancelled_by, reason, cancelled_by_type }: CancellationRequest = await req.json();
+    const { class_id, cancelled_by, reason, cancelled_by_type, participants: requestParticipants }: CancellationRequest = await req.json();
 
-    // Get class details (including is_group_class)
+    // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
       .from('classes')
-      .select('*, is_group_class, profiles!classes_teacher_id_fkey(name)')
+      .select('id, teacher_id, class_date, status, is_group_class, service_id')
       .eq('id', class_id)
       .maybeSingle();
 
@@ -37,10 +41,10 @@ serve(async (req) => {
       throw new Error('Aula não encontrada');
     }
 
-    // Fetch participants (for both individual and group classes)
-    const { data: participantsData, error: participantsError } = await supabaseClient
+    // 2. Buscar participantes sem FK
+    const { data: participantsRaw, error: participantsError } = await supabaseClient
       .from('class_participants')
-      .select('student_id, profiles!class_participants_student_id_fkey(name, email)')
+      .select('student_id')
       .eq('class_id', class_id);
 
     if (participantsError) {
@@ -48,7 +52,34 @@ serve(async (req) => {
       throw new Error('Erro ao buscar participantes da aula');
     }
 
-    const participants = participantsData || [];
+    // 3. Priorizar participantes da request (para aulas virtuais), ou buscar do banco (fallback)
+    let participants = [];
+    
+    if (requestParticipants && requestParticipants.length > 0) {
+      // Usar dados da request (mais confiáveis para aulas virtuais)
+      console.log('📊 Using participants from request:', requestParticipants.length);
+      participants = requestParticipants.map(p => ({
+        student_id: p.student_id,
+        profiles: p.profile
+      }));
+    } else {
+      // Fallback: buscar perfis dos participantes do banco (para aulas normais)
+      console.log('📊 Fetching participants from database');
+      for (const p of (participantsRaw || [])) {
+        const { data: profile } = await supabaseClient
+          .from('profiles')
+          .select('id, name, email')
+          .eq('id', p.student_id)
+          .maybeSingle();
+        
+        if (profile) {
+          participants.push({
+            student_id: p.student_id,
+            profiles: profile
+          });
+        }
+      }
+    }
     
     // ✅ DIAGNÓSTICO: Log detalhado da aula e participantes
     console.log('🔍 DEBUG - Cancellation request data:', {

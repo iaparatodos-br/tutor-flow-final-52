@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -108,6 +106,20 @@ serve(async (req) => {
     // Send email to each student and their guardian
     for (const student of studentsToNotify) {
       try {
+        // Buscar preferências de notificação do aluno
+        const { data: studentProfile } = await supabaseAdmin
+          .from("profiles")
+          .select("notification_preferences")
+          .eq("id", student.id)
+          .single();
+
+        // Verificar se aluno quer receber relatórios
+        const preferences = studentProfile?.notification_preferences as any;
+        if (preferences?.class_report_created === false) {
+          console.log(`⏭️ Aluno ${student.id} desabilitou notificações de relatórios`);
+          continue;
+        }
+
         // Find individual feedback for this student
         const studentFeedback = feedbacks?.find(f => f.student_id === student.id);
         
@@ -186,14 +198,17 @@ serve(async (req) => {
 
         // Send to student
         if (student.email) {
-          await resend.emails.send({
-            from: `${teacher?.name} <noreply@resend.dev>`,
-            to: [student.email],
+          const emailResult = await sendEmail({
+            to: student.email,
             subject: emailSubject,
-            html: emailContent
+            html: emailContent,
           });
 
-          console.log(`Email sent to student: ${student.email}`);
+          if (emailResult.success) {
+            console.log(`Email sent to student: ${student.email}`);
+          } else {
+            console.error(`Failed to send email to student: ${student.email}`, emailResult.error);
+          }
         }
 
         // Note: Guardian email functionality removed as guardian data is not in profiles table

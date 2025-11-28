@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 28/11/2025
+> **Última atualização:** 29/11/2025 (Revisão 2)
 
 ---
 
@@ -510,6 +510,72 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.count_teacher_students_and_dependents IS 'Conta total de alunos + dependentes de um professor';
+
+-- ============================================================
+-- FUNÇÃO: get_unbilled_participants_v2
+-- DESCRIÇÃO: Retorna participantes não faturados incluindo dependentes
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.get_unbilled_participants_v2(
+  p_teacher_id UUID,
+  p_responsible_id UUID DEFAULT NULL
+)
+RETURNS TABLE(
+  participant_id UUID,
+  class_id UUID,
+  student_id UUID,
+  dependent_id UUID,
+  responsible_id UUID,
+  class_date TIMESTAMPTZ,
+  service_id UUID,
+  charge_applied BOOLEAN,
+  class_services JSONB
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    cp.id AS participant_id,
+    cp.class_id,
+    cp.student_id,
+    cp.dependent_id,
+    CASE
+      -- Se for aluno normal, responsável é ele mesmo
+      WHEN cp.student_id IS NOT NULL THEN cp.student_id
+      -- Se for dependente, buscar responsible_id
+      WHEN cp.dependent_id IS NOT NULL THEN d.responsible_id
+    END AS responsible_id,
+    c.class_date,
+    c.service_id,
+    cp.charge_applied,
+    jsonb_build_object(
+      'id', cs.id,
+      'name', cs.name,
+      'price', cs.price,
+      'description', cs.description
+    ) AS class_services
+  FROM class_participants cp
+  JOIN classes c ON cp.class_id = c.id
+  LEFT JOIN dependents d ON cp.dependent_id = d.id
+  LEFT JOIN class_services cs ON c.service_id = cs.id
+  LEFT JOIN invoice_classes ic ON cp.id = ic.participant_id
+  WHERE c.teacher_id = p_teacher_id
+    AND cp.status = 'concluida'
+    AND ic.id IS NULL  -- Não foi faturado ainda
+    AND (
+      -- Se p_responsible_id fornecido, filtrar por ele
+      p_responsible_id IS NULL OR
+      (cp.student_id = p_responsible_id OR d.responsible_id = p_responsible_id)
+    )
+  ORDER BY c.class_date;
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_unbilled_participants_v2 IS 'Retorna participantes não faturados (alunos + dependentes) com responsible_id resolvido';
 ```
 
 ---
@@ -633,87 +699,33 @@ logStep('info', `Total de alunos + dependentes: ${totalStudents}`);
 ### 4.2 🔴 ALTA: Faturamento Automático
 
 #### Problema
-A edge function `automated-billing` busca apenas `class_participants.student_id` para agrupar faturas. Dependentes não são faturados.
+A edge function `automated-billing` busca apenas `class_participants.student_id` para agrupar faturas. Com o modelo de **faturamento consolidado**, todas as aulas do responsável (tanto as suas próprias quanto as de seus dependentes) devem ser agrupadas em uma única fatura.
 
 #### Arquivos Afetados
 - `supabase/functions/automated-billing/index.ts`
 
 #### Solução
 
+**Estratégia Simplificada:** Usar a nova função SQL `get_unbilled_participants_v2` que já resolve o `responsible_id` automaticamente.
+
 ```typescript
 // supabase/functions/automated-billing/index.ts
 
 // Código existente para setup e autenticação
 
-interface ParticipantWithResponsible {
-  participant_id: string;
-  class_id: string;
-  student_id: string | null;
-  dependent_id: string | null;
-  responsible_id: string; // ID de quem vai ser faturado
-  teacher_id: string;
-  class_date: string;
-  amount: number;
-  service_name: string;
-}
-
-// MUDANÇA: Buscar participantes e resolver responsável
+// MUDANÇA: Usar função SQL que já resolve responsible_id
 const { data: participants, error: participantsError } = await supabaseClient
-  .from('class_participants')
-  .select(`
-    id,
-    class_id,
-    student_id,
-    dependent_id,
-    classes!inner(
-      id,
-      class_date,
-      teacher_id,
-      service_id,
-      class_services(
-        name,
-        price
-      )
-    )
-  `)
-  .eq('status', 'concluida')
-  .is('billed', null); // Assumindo que adicionaremos campo billed
-
-// Resolver responsible_id para cada participante
-const participantsWithResponsible: ParticipantWithResponsible[] = [];
-
-for (const p of participants) {
-  let responsibleId: string;
-  
-  if (p.student_id) {
-    // Aluno normal -> responsável é ele mesmo
-    responsibleId = p.student_id;
-  } else if (p.dependent_id) {
-    // Dependente -> buscar responsible_id
-    const { data: dep } = await supabaseClient
-      .from('dependents')
-      .select('responsible_id')
-      .eq('id', p.dependent_id)
-      .single();
-    
-    responsibleId = dep.responsible_id;
-  }
-  
-  participantsWithResponsible.push({
-    participant_id: p.id,
-    class_id: p.class_id,
-    student_id: p.student_id,
-    dependent_id: p.dependent_id,
-    responsible_id: responsibleId,
-    teacher_id: p.classes.teacher_id,
-    class_date: p.classes.class_date,
-    amount: p.classes.class_services.price,
-    service_name: p.classes.class_services.name
+  .rpc('get_unbilled_participants_v2', {
+    p_teacher_id: teacherId,
+    p_responsible_id: null  // Buscar todos
   });
+
+if (participantsError) {
+  throw new Error('Erro ao buscar participantes não faturados');
 }
 
-// Agrupar por (responsible_id, teacher_id, billing_day)
-const grouped = participantsWithResponsible.reduce((acc, p) => {
+// Agrupar por (responsible_id, teacher_id)
+const grouped = participants.reduce((acc, p) => {
   const key = `${p.responsible_id}_${p.teacher_id}`;
   if (!acc[key]) {
     acc[key] = {
@@ -728,58 +740,63 @@ const grouped = participantsWithResponsible.reduce((acc, p) => {
 
 // Para cada grupo, criar fatura consolidada
 for (const group of Object.values(grouped)) {
-  const totalAmount = group.items.reduce((sum, item) => sum + item.amount, 0);
+  const totalAmount = group.items.reduce((sum, item) => 
+    sum + parseFloat(item.class_services.price), 0
+  );
   
-  // Criar fatura
-  const { data: invoice, error: invoiceError } = await supabaseClient
-    .from('invoices')
-    .insert({
-      student_id: group.responsible_id, // MUDANÇA: sempre o responsável
-      teacher_id: group.teacher_id,
-      amount: totalAmount,
-      description: `Fatura consolidada - ${group.items.length} aula(s)`,
-      due_date: calculateDueDate(billingDay),
-      status: 'pendente',
-      invoice_type: 'automated'
-    })
-    .select()
-    .single();
+  // Usar a função atomica create_invoice_and_mark_classes_billed
+  const invoiceData = {
+    student_id: group.responsible_id,  // Sempre o responsável
+    teacher_id: group.teacher_id,
+    amount: totalAmount,
+    description: `Fatura consolidada - ${group.items.length} aula(s)`,
+    due_date: calculateDueDate(billingDay),
+    status: 'pendente',
+    invoice_type: 'automated',
+    business_profile_id: businessProfileId
+  };
   
-  // Vincular todas as aulas (de alunos e dependentes)
-  const invoiceClassItems = group.items.map(item => ({
-    invoice_id: invoice.id,
-    class_id: item.class_id,
+  const classItems = group.items.map(item => ({
     participant_id: item.participant_id,
+    class_id: item.class_id,
     item_type: 'regular',
-    amount: item.amount,
-    description: item.service_name
+    amount: parseFloat(item.class_services.price),
+    description: item.class_services.name
   }));
   
-  await supabaseClient
-    .from('invoice_classes')
-    .insert(invoiceClassItems);
+  const { data: result } = await supabaseClient
+    .rpc('create_invoice_and_mark_classes_billed', {
+      p_invoice_data: invoiceData,
+      p_class_items: classItems
+    });
   
-  // Enviar notificação para o responsável
-  await supabaseClient.functions.invoke('send-invoice-notification', {
-    body: {
-      invoice_id: invoice.id,
-      notification_type: 'invoice_created'
-    }
-  });
+  if (result.success) {
+    // Enviar notificação para o responsável
+    await supabaseClient.functions.invoke('send-invoice-notification', {
+      body: {
+        invoice_id: result.invoice_id,
+        notification_type: 'invoice_created'
+      }
+    });
+  }
 }
-
-// Código restante existente
 ```
+
+**Benefícios:**
+- ✅ Faturamento consolidado automático (alunos + dependentes)
+- ✅ Usa função SQL otimizada
+- ✅ Reutiliza função atômica de criação de faturas
+- ✅ Código mais simples e manutenível
 
 #### Prioridade
 🔴 **ALTA** - Impacto no faturamento
 
 ---
 
-### 4.3 🟠 ALTA: Criação Manual de Faturas
+### 4.3 🟠 MÉDIA: Criação Manual de Faturas
 
 #### Problema
-O componente `CreateInvoiceModal` e a edge function `create-invoice` não suportam selecionar dependentes, apenas alunos normais.
+Com o modelo de **faturamento consolidado**, ao criar faturas manualmente para dependentes, a fatura deve sempre ser vinculada ao responsável, não ao dependente.
 
 #### Arquivos Afetados
 - `src/components/CreateInvoiceModal.tsx`
@@ -787,93 +804,29 @@ O componente `CreateInvoiceModal` e a edge function `create-invoice` não suport
 
 #### Solução
 
-**Passo 1: Atualizar interface do modal**
-
-```typescript
-// src/components/CreateInvoiceModal.tsx
-
-interface Student {
-  id: string;
-  name: string;
-  email: string;
-  type: 'student' | 'dependent'; // NOVO
-  responsible_id?: string; // NOVO - se for dependente
-}
-
-// Buscar alunos E dependentes
-const fetchStudents = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  
-  // Buscar alunos normais
-  const { data: normalStudents } = await supabase
-    .rpc('get_teacher_students', { teacher_user_id: user.id });
-  
-  // Buscar dependentes
-  const { data: dependents } = await supabase
-    .rpc('get_teacher_dependents', { p_teacher_id: user.id });
-  
-  const combined: Student[] = [
-    ...normalStudents.map(s => ({
-      id: s.student_id,
-      name: s.student_name,
-      email: s.student_email,
-      type: 'student' as const
-    })),
-    ...dependents.map(d => ({
-      id: d.dependent_id,
-      name: `${d.dependent_name} (filho de ${d.responsible_name})`,
-      email: d.responsible_email,
-      type: 'dependent' as const,
-      responsible_id: d.responsible_id
-    }))
-  ];
-  
-  setStudents(combined);
-};
-
-const handleSubmit = async () => {
-  const selectedStudent = students.find(s => s.id === formData.studentId);
-  
-  const { error } = await supabase.functions.invoke('create-invoice', {
-    body: {
-      studentId: formData.studentId,
-      studentType: selectedStudent.type, // NOVO
-      responsibleId: selectedStudent.responsible_id, // NOVO
-      amount: parseFloat(formData.amount),
-      description: formData.description,
-      dueDate: formData.dueDate
-    }
-  });
-  
-  // ... handle response
-};
-```
-
-**Passo 2: Atualizar edge function**
+**Impacto Minimizado:** Como as faturas são sempre consolidadas no responsável, as alterações são mínimas:
 
 ```typescript
 // supabase/functions/create-invoice/index.ts
 
-interface CreateInvoiceRequest {
-  studentId: string;
-  studentType: 'student' | 'dependent'; // NOVO
-  responsibleId?: string; // NOVO
-  amount: number;
-  description: string;
-  dueDate: string;
-}
+// Mudança mínima na lógica de billing
+const { student_id } = await req.json();
 
-const { studentId, studentType, responsibleId, amount, description, dueDate } = 
-  await req.json() as CreateInvoiceRequest;
+// Verificar se student_id é um dependente
+const { data: dependent } = await supabaseClient
+  .from('dependents')
+  .select('responsible_id')
+  .eq('id', student_id)
+  .maybeSingle();
 
-// Determinar quem será faturado
-const billedStudentId = studentType === 'dependent' ? responsibleId : studentId;
+// Se for dependente, faturar o responsável; senão, faturar o próprio aluno
+const billedStudentId = dependent ? dependent.responsible_id : student_id;
 
-const { data: invoice, error: invoiceError } = await supabaseClient
+// Criar fatura
+const { data: invoice } = await supabaseClient
   .from('invoices')
   .insert({
-    student_id: billedStudentId, // MUDANÇA: usar responsável se for dependente
+    student_id: billedStudentId,  // Sempre responsável se for dependente
     teacher_id: teacherId,
     amount,
     description,
@@ -887,8 +840,16 @@ const { data: invoice, error: invoiceError } = await supabaseClient
 // ... rest of code
 ```
 
+**No Frontend (`CreateInvoiceModal`):**
+- ✅ Pode listar dependentes normalmente
+- ✅ Não precisa indicar tipo ao selecionar
+- ✅ Backend resolve automaticamente quem será faturado
+- ✅ Mantém simplicidade da interface
+
+**Nota:** Esta é uma **simplificação importante** - o modelo consolidado reduz drasticamente a complexidade de faturamento manual!
+
 #### Prioridade
-🟠 **ALTA** - Necessário para funcionalidade completa
+🟠 **MÉDIA** - Importante mas não bloqueante (faturamento automático é mais crítico)
 
 ---
 
@@ -2023,6 +1984,340 @@ const DependentFormModal = ({ isOpen, onClose }) => {
 
 ---
 
+### 4.16 🔴 ALTA: Solicitação de Aula pelo Responsável
+
+#### Problema
+A edge function `request-class` não suporta que o responsável solicite aulas para seus dependentes. Atualmente, apenas alunos podem solicitar aulas para si mesmos.
+
+#### Arquivos Afetados
+- `supabase/functions/request-class/index.ts`
+
+#### Solução
+
+```typescript
+// supabase/functions/request-class/index.ts
+
+interface RequestClassPayload {
+  teacherId: string;
+  datetime: string;
+  serviceId: string;
+  notes?: string;
+  dependentId?: string; // NOVO - se responsável está solicitando para dependente
+}
+
+const { teacherId, datetime, serviceId, notes, dependentId } = 
+  await req.json() as RequestClassPayload;
+
+// Obter usuário autenticado
+const { data: { user } } = await supabaseClient.auth.getUser();
+if (!user) throw new Error('Não autenticado');
+
+// Verificar se é aluno
+const { data: profile } = await supabaseClient
+  .from('profiles')
+  .select('role')
+  .eq('id', user.id)
+  .single();
+
+if (profile.role !== 'aluno') {
+  throw new Error('Apenas alunos podem solicitar aulas');
+}
+
+let participantStudentId: string | null = null;
+let participantDependentId: string | null = null;
+
+if (dependentId) {
+  // Validar que o dependente pertence ao responsável
+  const { data: dependent, error: depError } = await supabaseClient
+    .from('dependents')
+    .select('id, responsible_id')
+    .eq('id', dependentId)
+    .eq('responsible_id', user.id)  // Garante que é filho deste responsável
+    .single();
+  
+  if (depError || !dependent) {
+    throw new Error('Dependente não encontrado ou não pertence a você');
+  }
+  
+  participantDependentId = dependentId;
+} else {
+  // Aula para o próprio aluno
+  participantStudentId = user.id;
+}
+
+// Verificar relacionamento professor-aluno
+const { data: relationship } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('id')
+  .eq('teacher_id', teacherId)
+  .eq('student_id', user.id)  // Sempre validar com o responsável
+  .single();
+
+if (!relationship) {
+  throw new Error('Você não é aluno deste professor');
+}
+
+// Criar aula
+const { data: classData } = await supabaseClient
+  .from('classes')
+  .insert({
+    teacher_id: teacherId,
+    class_date: datetime,
+    service_id: serviceId,
+    notes: notes || null,
+    status: 'pendente',
+    duration_minutes: 60
+  })
+  .select()
+  .single();
+
+// Criar participante
+const { data: participant } = await supabaseClient
+  .from('class_participants')
+  .insert({
+    class_id: classData.id,
+    student_id: participantStudentId,
+    dependent_id: participantDependentId,
+    status: 'pendente'
+  })
+  .select()
+  .single();
+
+// Enviar notificação para o professor
+await supabaseClient.functions.invoke('send-class-request-notification', {
+  body: {
+    class_id: classData.id,
+    teacher_id: teacherId,
+    is_dependent: !!dependentId
+  }
+});
+
+return new Response(
+  JSON.stringify({ success: true, class: classData }),
+  { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+);
+```
+
+**Mudanças necessárias no Frontend:**
+- Componente `StudentScheduleRequest` deve permitir selecionar "Para mim" ou "Para dependente"
+- Lista de dependentes deve ser carregada se houver
+
+#### Prioridade
+🔴 **ALTA** - Funcionalidade essencial para responsáveis
+
+---
+
+### 4.17 🔴 ALTA: Notificações para Dependentes
+
+#### Problema
+A tabela `class_notifications` possui `student_id NOT NULL`, o que impede registrar notificações para dependentes, já que eles não possuem perfil em `profiles`.
+
+#### Arquivos Afetados
+- Tabela `class_notifications`
+- Edge functions de notificação
+
+#### Solução
+
+**Opção 1: Adicionar coluna `dependent_id` (RECOMENDADO)**
+
+```sql
+-- Adicionar coluna dependent_id na tabela class_notifications
+ALTER TABLE public.class_notifications
+ADD COLUMN dependent_id UUID REFERENCES public.dependents(id) ON DELETE CASCADE;
+
+-- Criar índice
+CREATE INDEX idx_class_notifications_dependent ON public.class_notifications(dependent_id);
+
+-- Atualizar constraint: student_id OU dependent_id (mas não ambos)
+ALTER TABLE public.class_notifications
+DROP CONSTRAINT IF EXISTS check_notification_recipient_type;
+
+ALTER TABLE public.class_notifications
+ADD CONSTRAINT check_notification_recipient_type 
+  CHECK (
+    (student_id IS NOT NULL AND dependent_id IS NULL) OR
+    (student_id IS NULL AND dependent_id IS NOT NULL)
+  );
+
+-- Tornar student_id NULLABLE
+ALTER TABLE public.class_notifications
+ALTER COLUMN student_id DROP NOT NULL;
+
+COMMENT ON COLUMN public.class_notifications.dependent_id IS 'ID do dependente notificado (mutuamente exclusivo com student_id)';
+```
+
+**Opção 2: Usar `student_id` do responsável (ALTERNATIVA MAIS SIMPLES)**
+
+Neste caso, quando uma notificação é para um dependente, usamos o `student_id` do **responsável** e adicionamos informação no `notification_type` ou em um campo JSON de metadados.
+
+```sql
+-- Adicionar coluna metadata para contexto adicional
+ALTER TABLE public.class_notifications
+ADD COLUMN metadata JSONB DEFAULT '{}'::jsonb;
+
+CREATE INDEX idx_class_notifications_metadata ON public.class_notifications USING GIN(metadata);
+
+COMMENT ON COLUMN public.class_notifications.metadata IS 'Metadados como dependent_id, dependent_name, etc.';
+```
+
+**Recomendação:** Usar **Opção 1** para consistência com outras tabelas (`class_participants`, `material_access`, `class_report_feedbacks`).
+
+#### Prioridade
+🔴 **ALTA** - Bloqueador para notificações de dependentes
+
+---
+
+### 4.18 🟡 MÉDIA: Histórico Arquivado com Dependentes
+
+#### Problema
+A página `Historico.tsx` e a edge function `fetch-archived-data` não consideram dependentes ao buscar aulas arquivadas.
+
+#### Arquivos Afetados
+- `src/pages/Historico.tsx`
+- `supabase/functions/fetch-archived-data/index.ts`
+
+#### Solução
+
+```typescript
+// supabase/functions/fetch-archived-data/index.ts
+
+// Atualizar interface
+interface ArchivedClass {
+  id: string;
+  class_date: string;
+  student_id: string | null;
+  dependent_id: string | null;  // NOVO
+  student_name: string;
+  // ... outros campos
+}
+
+// Modificar query
+const { data: archivedClasses } = await supabaseClient
+  .from('archived_classes')  // Assumindo tabela de arquivo
+  .select(`
+    *,
+    profiles:student_id(name, email),
+    dependents:dependent_id(name, responsible_id, profiles:responsible_id(name, email))
+  `)
+  .eq('teacher_id', teacherId)
+  .gte('class_date', startDate)
+  .lte('class_date', endDate);
+
+// Processar dados
+const processed = archivedClasses.map(c => ({
+  ...c,
+  student_name: c.student_id 
+    ? c.profiles?.name 
+    : `${c.dependents?.name} (filho de ${c.dependents?.profiles?.name})`
+}));
+```
+
+**No Frontend (`Historico.tsx`):**
+- Exibir badge "Dependente" quando `dependent_id` presente
+- Mostrar nome do responsável quando for dependente
+
+#### Prioridade
+🟡 **MÉDIA** - Importante para completude, mas não crítico
+
+---
+
+### 4.19 🔴 CRÍTICA: Função RPC `get_unbilled_participants`
+
+#### Problema
+A função RPC `get_unbilled_participants` existente filtra apenas por `student_id`, não considerando dependentes. Isso impede o faturamento consolidado correto.
+
+#### Arquivos Afetados
+- Função SQL `get_unbilled_participants` (existente)
+- Nova função `get_unbilled_participants_v2`
+
+#### Solução
+
+**Já implementada na Seção 3.6!**
+
+A função `get_unbilled_participants_v2` já foi criada na Seção 3 com suporte completo a dependentes, incluindo:
+- ✅ Resolução automática de `responsible_id`
+- ✅ Filtro por `p_responsible_id` opcional
+- ✅ Join com `dependents` para dependentes
+- ✅ Retorna todas as participações não faturadas (alunos + dependentes)
+
+**Ação Necessária:**
+- Substituir chamadas de `get_unbilled_participants` por `get_unbilled_participants_v2` em:
+  - `automated-billing`
+  - `create-invoice` (se aplicável)
+
+#### Prioridade
+🔴 **CRÍTICA** - Bloqueador para faturamento consolidado
+
+---
+
+### 4.20 🟡 MÉDIA: Verificação de Inadimplência
+
+#### Problema
+A função `has_overdue_invoices` verifica apenas se um `student_id` possui faturas vencidas. Com dependentes, é necessário garantir que o sistema valida corretamente a inadimplência do **responsável**.
+
+#### Arquivos Afetados
+- Função SQL `has_overdue_invoices`
+
+#### Solução
+
+**Boa notícia:** Com o modelo de **faturamento consolidado**, as faturas de dependentes **já são vinculadas ao `responsible_id`** (que está em `invoices.student_id`). 
+
+Portanto, `has_overdue_invoices` **já funciona naturalmente** para dependentes, pois:
+1. Fatura de dependente é criada com `student_id = responsible_id`
+2. Função verifica `WHERE student_id = p_student_id`
+3. Logo, a inadimplência é verificada no responsável automaticamente
+
+**Validação necessária:**
+```sql
+-- Testar que has_overdue_invoices funciona para responsável com dependentes
+SELECT has_overdue_invoices('<responsible_id>');
+-- Deve retornar TRUE se houver faturas vencidas de qualquer filho
+```
+
+**Nenhuma alteração necessária!** ✅
+
+#### Prioridade
+🟡 **MÉDIA** - Validação de comportamento existente, não requer implementação
+
+---
+
+### 4.21 🟢 BAIXA: Rastreabilidade de Dependentes em Faturas
+
+#### Problema
+A tabela `invoice_classes` não possui `dependent_id`, dificultando rastrear **qual dependente específico** gerou cada item da fatura consolidada.
+
+#### Arquivos Afetados
+- Tabela `invoice_classes`
+
+#### Solução
+
+**Opcional, mas recomendado para auditoria:**
+
+```sql
+-- Adicionar coluna dependent_id em invoice_classes
+ALTER TABLE public.invoice_classes
+ADD COLUMN dependent_id UUID REFERENCES public.dependents(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_invoice_classes_dependent ON public.invoice_classes(dependent_id);
+
+COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que gerou este item (NULL se for aluno normal) - usado para rastreabilidade';
+```
+
+**Benefícios:**
+- ✅ Permite relatórios detalhados por dependente
+- ✅ Facilita auditoria e reconciliação
+- ✅ Histórico completo de faturamento por criança
+
+**Impacto:**
+- ⚠️ Modificação em `automated-billing` para preencher `dependent_id` ao criar `invoice_classes`
+
+**Decisão:** Implementar apenas se necessário para relatórios. Não é bloqueador.
+
+#### Prioridade
+🟢 **BAIXA** - Melhoria de rastreabilidade, não essencial
+
+---
+
 ## 5. Implementação Frontend
 
 ### 5.1 Componente: DependentManager
@@ -2702,14 +2997,16 @@ serve(async (req) => {
 | Função | Modificação | Seção Referência |
 |--------|-------------|------------------|
 | `handle-student-overage` | Contar alunos + dependentes | 4.1 |
-| `automated-billing` | Faturar dependentes | 4.2 |
-| `create-invoice` | Suportar dependentes | 4.3 |
+| `automated-billing` | Faturar dependentes (usar `get_unbilled_participants_v2`) | 4.2, 4.19 |
+| `create-invoice` | Suportar dependentes (faturamento consolidado) | 4.3 |
 | `send-class-report-notification` | Notificar responsáveis | 4.4 |
 | `send-material-shared-notification` | Notificar responsáveis | 4.5 |
 | `send-class-reminders` | Lembrar responsáveis | 4.11 |
 | `process-cancellation` | Tratar dependentes | 4.12 |
 | `send-cancellation-notification` | Notificar responsáveis | 4.12 |
 | `smart-delete-student` | Prevenir deleção de responsáveis | 4.14 |
+| `request-class` | Permitir solicitação para dependentes | 4.16 |
+| `fetch-archived-data` | Incluir dependentes no histórico | 4.18 |
 
 ---
 
@@ -2969,6 +3266,45 @@ serve(async (req) => {
 
 ---
 
+#### Teste 8: Solicitação de Aula pelo Responsável
+
+**Precondições:**
+- Responsável "Maria" logado
+- Tem dependente "João" cadastrado
+- Tem relacionamento ativo com professor
+
+**Passos:**
+1. Acessar portal de solicitação de aulas
+2. Selecionar "Para dependente: João"
+3. Escolher professor, data e serviço
+4. Enviar solicitação
+
+**Resultado Esperado:**
+- ✅ Aula criada com `dependent_id` preenchido
+- ✅ `class_participants` tem `dependent_id`, não `student_id`
+- ✅ Professor recebe notificação mencionando João
+- ✅ Aula aparece na agenda do professor
+
+---
+
+#### Teste 9: Histórico Arquivado com Dependentes
+
+**Precondições:**
+- Professor tem aulas arquivadas
+- Algumas aulas são de dependentes
+
+**Passos:**
+1. Acessar página de Histórico
+2. Buscar aulas arquivadas
+
+**Resultado Esperado:**
+- ✅ Aulas de dependentes são exibidas
+- ✅ Nome do dependente + "filho de [responsável]" aparece
+- ✅ Badge "Dependente" é exibida
+- ✅ Filtros funcionam corretamente
+
+---
+
 ### 8.2 Checklist de Validação
 
 #### Database
@@ -2976,8 +3312,11 @@ serve(async (req) => {
 - [ ] Coluna `dependent_id` em `class_participants`
 - [ ] Coluna `dependent_id` em `material_access`
 - [ ] Coluna `dependent_id` em `class_report_feedbacks`
+- [ ] Coluna `dependent_id` em `class_notifications` (4.17)
+- [ ] Coluna `dependent_id` em `invoice_classes` (opcional - 4.21)
 - [ ] Políticas RLS ativas e testadas
 - [ ] Funções helper funcionando
+- [ ] Função `get_unbilled_participants_v2` criada (4.19)
 - [ ] Índices criados para performance
 
 #### Backend
@@ -2985,8 +3324,10 @@ serve(async (req) => {
 - [ ] `update-dependent` funcionando
 - [ ] `delete-dependent` funcionando
 - [ ] `handle-student-overage` conta dependentes
-- [ ] `automated-billing` fatura dependentes
+- [ ] `automated-billing` fatura dependentes via `get_unbilled_participants_v2`
 - [ ] `create-invoice` aceita dependentes
+- [ ] `request-class` permite solicitação para dependentes (4.16)
+- [ ] `fetch-archived-data` inclui dependentes (4.18)
 - [ ] Notificações funcionam para dependentes
 - [ ] `smart-delete-student` previne deleção
 
@@ -2998,7 +3339,9 @@ serve(async (req) => {
 - [ ] `ClassForm` lista dependentes
 - [ ] `ShareMaterialModal` lista dependentes
 - [ ] `StudentDashboard` mostra aulas dos dependentes
+- [ ] `StudentScheduleRequest` permite solicitar para dependentes (4.16)
 - [ ] `ClassReportModal` aceita feedback de dependentes
+- [ ] `Historico.tsx` exibe dependentes com badge (4.18)
 
 #### UX
 - [ ] Traduções completas (pt + en)
@@ -3014,6 +3357,8 @@ serve(async (req) => {
 - [ ] Materiais compartilhados com dependentes
 - [ ] Faturas consolidadas corretas
 - [ ] Cancelamentos notificam responsáveis
+- [ ] Notificações registradas com `dependent_id` (4.17)
+- [ ] Solicitação de aula para dependentes (4.16)
 
 ---
 
@@ -3081,7 +3426,7 @@ serve(async (req) => {
 
 ---
 
-### Fase 4: Integrações - Notificações e Billing (Prioridade MÉDIA) - 1-2 dias
+### Fase 4: Integrações - Notificações e Billing (Prioridade MÉDIA) - 2-3 dias
 
 **Objetivo:** Garantir que dependentes sejam incluídos em todas as integrações.
 
@@ -3091,6 +3436,9 @@ serve(async (req) => {
 - [ ] Modificar `send-material-shared-notification`
 - [ ] Modificar `process-cancellation`
 - [ ] Modificar `send-cancellation-notification`
+- [ ] Modificar `request-class` (suporte a solicitação para dependentes - 4.16)
+- [ ] Modificar `fetch-archived-data` (histórico arquivado - 4.18)
+- [ ] Atualizar tabela `class_notifications` (adicionar `dependent_id` - 4.17)
 - [ ] Atualizar `useStudentCount` hook
 - [ ] Testar todos os fluxos de notificação
 
@@ -3098,6 +3446,8 @@ serve(async (req) => {
 - ✅ Responsáveis recebem lembretes de aulas dos filhos
 - ✅ Responsáveis recebem relatórios dos filhos
 - ✅ Responsáveis recebem notificações de cancelamento
+- ✅ Responsáveis podem solicitar aulas para dependentes
+- ✅ Histórico arquivado inclui dependentes
 
 ---
 
@@ -3144,11 +3494,18 @@ serve(async (req) => {
 | Fase 1: Estrutura de Dados | 1-2 dias | 🔴 CRÍTICA | Nenhuma |
 | Fase 2: Backend | 2-3 dias | 🔴 ALTA | Fase 1 |
 | Fase 3: Frontend - Professor | 2-3 dias | 🔴 ALTA | Fase 2 |
-| Fase 4: Integrações | 1-2 dias | 🟡 MÉDIA | Fase 2 |
+| Fase 4: Integrações | 2-3 dias | 🟡 MÉDIA | Fase 2 |
 | Fase 5: Portal Responsável | 1-2 dias | 🟡 MÉDIA | Fase 3 |
 | Fase 6: Polimento | 1 dia | 🟢 BAIXA | Todas |
 
-**Total Estimado: 8-13 dias**
+**Total Estimado: 9-14 dias**
+
+**Mudanças em relação à versão anterior:**
+- Fase 4 aumentada de 1-2 dias para 2-3 dias devido às novas pontas soltas:
+  - 4.16: `request-class` (solicitação para dependentes)
+  - 4.17: `class_notifications` (adicionar `dependent_id`)
+  - 4.18: `Historico.tsx` e `fetch-archived-data` (histórico arquivado)
+  - 4.19: Implementação e migração para `get_unbilled_participants_v2`
 
 ---
 
@@ -3485,6 +3842,102 @@ $$;
 
 COMMENT ON FUNCTION public.count_teacher_students_and_dependents IS 'Conta total de alunos + dependentes de um professor';
 
+-- Função: get_unbilled_participants_v2
+CREATE OR REPLACE FUNCTION public.get_unbilled_participants_v2(
+  p_teacher_id UUID,
+  p_responsible_id UUID DEFAULT NULL
+)
+RETURNS TABLE(
+  participant_id UUID,
+  class_id UUID,
+  student_id UUID,
+  dependent_id UUID,
+  responsible_id UUID,
+  class_date TIMESTAMPTZ,
+  service_id UUID,
+  charge_applied BOOLEAN,
+  class_services JSONB
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    cp.id AS participant_id,
+    cp.class_id,
+    cp.student_id,
+    cp.dependent_id,
+    CASE
+      WHEN cp.student_id IS NOT NULL THEN cp.student_id
+      WHEN cp.dependent_id IS NOT NULL THEN d.responsible_id
+    END AS responsible_id,
+    c.class_date,
+    c.service_id,
+    cp.charge_applied,
+    jsonb_build_object(
+      'id', cs.id,
+      'name', cs.name,
+      'price', cs.price,
+      'description', cs.description
+    ) AS class_services
+  FROM class_participants cp
+  JOIN classes c ON cp.class_id = c.id
+  LEFT JOIN dependents d ON cp.dependent_id = d.id
+  LEFT JOIN class_services cs ON c.service_id = cs.id
+  LEFT JOIN invoice_classes ic ON cp.id = ic.participant_id
+  WHERE c.teacher_id = p_teacher_id
+    AND cp.status = 'concluida'
+    AND ic.id IS NULL
+    AND (
+      p_responsible_id IS NULL OR
+      (cp.student_id = p_responsible_id OR d.responsible_id = p_responsible_id)
+    )
+  ORDER BY c.class_date;
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_unbilled_participants_v2 IS 'Retorna participantes não faturados (alunos + dependentes) com responsible_id resolvido';
+
+-- ============================================================
+-- 10. MODIFICAR CLASS_NOTIFICATIONS (Ponta Solta 4.17)
+-- ============================================================
+
+-- Adicionar coluna dependent_id
+ALTER TABLE public.class_notifications
+ADD COLUMN dependent_id UUID REFERENCES public.dependents(id) ON DELETE CASCADE;
+
+-- Criar índice
+CREATE INDEX idx_class_notifications_dependent ON public.class_notifications(dependent_id);
+
+-- Tornar student_id NULLABLE
+ALTER TABLE public.class_notifications
+ALTER COLUMN student_id DROP NOT NULL;
+
+-- Adicionar constraint: student_id OU dependent_id
+ALTER TABLE public.class_notifications
+ADD CONSTRAINT check_notification_recipient_type 
+  CHECK (
+    (student_id IS NOT NULL AND dependent_id IS NULL) OR
+    (student_id IS NULL AND dependent_id IS NOT NULL)
+  );
+
+COMMENT ON COLUMN public.class_notifications.dependent_id IS 'ID do dependente notificado (mutuamente exclusivo com student_id)';
+
+-- ============================================================
+-- 11. MODIFICAR INVOICE_CLASSES (Opcional - Ponta Solta 4.21)
+-- ============================================================
+
+-- Adicionar coluna dependent_id para rastreabilidade (OPCIONAL)
+ALTER TABLE public.invoice_classes
+ADD COLUMN dependent_id UUID REFERENCES public.dependents(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_invoice_classes_dependent ON public.invoice_classes(dependent_id);
+
+COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que gerou este item (NULL se aluno normal) - rastreabilidade';
+
 -- ============================================================
 -- FIM DO SQL
 -- ============================================================
@@ -3543,16 +3996,29 @@ COMMENT ON FUNCTION public.count_teacher_students_and_dependents IS 'Conta total
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ 15 pontas soltas identificadas e solucionadas  
-✅ Estrutura completa de dados (SQL)  
-✅ Implementação frontend (6 componentes)  
-✅ Implementação backend (3 edge functions novas + 9 modificadas)  
+✅ **21 pontas soltas** identificadas e solucionadas (15 originais + 6 novas)  
+✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
+✅ Implementação frontend (6 componentes + modificações em 4 páginas)  
+✅ Implementação backend (3 edge functions novas + 11 modificadas)  
+✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Traduções i18n (pt + en)  
-✅ Cenários de teste (7 cenários principais)  
-✅ Cronograma de implementação (6 fases, 8-13 dias)  
+✅ Cenários de teste (9 cenários principais)  
+✅ Cronograma de implementação (6 fases, **9-14 dias**)  
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
+
+**Revisão 2 - Mudanças principais:**
+- Simplificação do faturamento (modelo consolidado reduz complexidade)
+- Adicionadas 6 novas pontas soltas críticas:
+  - 4.16: Solicitação de aula pelo responsável (`request-class`)
+  - 4.17: Notificações para dependentes (`class_notifications`)
+  - 4.18: Histórico arquivado com dependentes
+  - 4.19: Função RPC `get_unbilled_participants_v2` (crítica)
+  - 4.20: Verificação de inadimplência (já funciona naturalmente)
+  - 4.21: Rastreabilidade em faturas (opcional)
+- Cronograma atualizado: 8-13 dias → **9-14 dias**
+- Fase 4 (Integrações) expandida: 1-2 dias → 2-3 dias
 
 **Próximos Passos:**
 1. Revisar este documento com a equipe

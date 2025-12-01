@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 29/11/2025 (Revisão 2)
+> **Última atualização:** 01/12/2025 (Revisão 3 - UX de Cadastro)
 
 ---
 
@@ -15,6 +15,12 @@
 3. [Estrutura de Dados](#3-estrutura-de-dados)
 4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
 5. [Implementação Frontend](#5-implementação-frontend)
+   - 5.0 [UX de Cadastro: Fluxo Unificado](#50-ux-de-cadastro-fluxo-unificado-com-seleção-de-tipo)
+   - 5.1 [DependentManager](#51-componente-dependentmanager)
+   - 5.2 [DependentFormModal](#52-componente-dependentformmodal)
+   - 5.3 [StudentDashboard](#53-modificação-studentdashboard)
+   - 5.4 [ClassForm](#54-modificação-classform)
+   - 5.5 [ShareMaterialModal](#55-modificação-sharematerialmodal)
 6. [Implementação Backend](#6-implementação-backend)
 7. [Traduções i18n](#7-traduções-i18n)
 8. [Testes e Validações](#8-testes-e-validações)
@@ -2320,6 +2326,594 @@ COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que g
 
 ## 5. Implementação Frontend
 
+### 5.0 UX de Cadastro: Fluxo Unificado com Seleção de Tipo
+
+#### 5.0.1 Visão Geral do Fluxo
+
+O cadastro de alunos foi redesenhado para oferecer uma experiência clara e otimizada, com **seleção inicial do tipo de cadastro** antes de apresentar o formulário específico.
+
+**Diagrama do Fluxo:**
+
+```mermaid
+flowchart TD
+    Start[Professor clica 'Novo Aluno'] --> Modal[StudentFormModal abre]
+    Modal --> TypeSelect{Seleção de Tipo}
+    
+    TypeSelect -->|"👤 Aluno com Email"| AdultForm[Formulário Padrão]
+    TypeSelect -->|"👨‍👩‍👧 Família/Menores"| FamilyForm[Formulário Família]
+    
+    AdultForm --> AdultFields[Nome, Email*, Telefone, CPF, Endereço]
+    AdultFields --> AdultBilling[Config. Faturamento]
+    AdultBilling --> AdultSave[Salvar]
+    AdultSave --> InviteEmail[Enviar convite por email]
+    InviteEmail --> End[Concluído]
+    
+    FamilyForm --> ResponsibleFields[Dados do Responsável<br/>Nome, Email*, Telefone, CPF, Endereço]
+    ResponsibleFields --> DependentsSection[Seção: Dependentes]
+    DependentsSection --> AddDependent[+ Adicionar Dependente]
+    AddDependent --> DepFields[Nome, Data Nasc. opcional]
+    DepFields --> MoreDeps{Mais dependentes?}
+    MoreDeps -->|Sim| AddDependent
+    MoreDeps -->|Não| FamilyBilling[Config. Faturamento<br/>aplicado à família]
+    FamilyBilling --> FamilySave[Salvar Responsável + Dependentes]
+    FamilySave --> InviteResponsible[Enviar convite para Responsável]
+    InviteResponsible --> End
+```
+
+**Princípios de Design:**
+- ✅ **Decisão explícita:** Professor escolhe o tipo antes de ver campos
+- ✅ **Formulários otimizados:** Cada tipo tem campos relevantes
+- ✅ **Cadastro em lote:** Família permite adicionar N dependentes de uma vez
+- ✅ **Clareza visual:** Cards grandes com ícones e descrições claras
+- ✅ **Reversibilidade:** Botão "Voltar" permite mudar de tipo
+
+---
+
+#### 5.0.2 Design dos Cards de Seleção
+
+**Visual dos Cards:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Que tipo de aluno você quer cadastrar?                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│  👤                           │  │  👨‍👩‍👧                          │
+│  Aluno com Email             │  │  Família / Menores           │
+│                              │  │                              │
+│  Adulto ou criança com       │  │  Responsável + filhos.       │
+│  email próprio. Terá login   │  │  Um único login, fatura      │
+│  individual.                 │  │  consolidada.                │
+│                              │  │                              │
+│  [Selecionar]                │  │  [Selecionar]                │
+└──────────────────────────────┘  └──────────────────────────────┘
+```
+
+**Especificações Técnicas:**
+- Componente: `StudentTypeSelector` (novo)
+- Layout: Grid 2 colunas em desktop, stack em mobile
+- Ícones: `User` (Aluno) e `Users` (Família) do lucide-react
+- Estados:
+  - Hover: Border + shadow
+  - Selected: Border accent + background subtle
+  - Disabled: Opacity 50%
+
+---
+
+#### 5.0.3 Formulário Expandido: Família/Menores
+
+Quando o professor seleciona "Família/Menores", o formulário é expandido com 3 seções:
+
+**Estrutura do Formulário:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  📋 Cadastrar Família                               [← Voltar]  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  🔹 Seção 1: Dados do Responsável                                │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │  Nome *: [____________________]                       │   │
+│     │  Email *: [____________________]                      │   │
+│     │  Telefone: [____________________]                     │   │
+│     │  CPF: [____________________]                          │   │
+│     │  Endereço (opcional):                                 │   │
+│     │    Rua: [__________________]  CEP: [________]         │   │
+│     │    Cidade: [______________]  Estado: [___]            │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  🔹 Seção 2: Dependentes                                         │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │  📌 Dependente #1                            [🗑️]     │   │
+│     │     Nome: [____________________]                      │   │
+│     │     Data de Nascimento (opcional): [__/__/____]       │   │
+│     ├──────────────────────────────────────────────────────┤   │
+│     │  📌 Dependente #2                            [🗑️]     │   │
+│     │     Nome: [____________________]                      │   │
+│     │     Data de Nascimento (opcional): [__/__/____]       │   │
+│     └──────────────────────────────────────────────────────┘   │
+│     [+ Adicionar outro dependente]                              │
+│                                                                  │
+│     ⚠️  Mínimo 1 dependente necessário                           │
+│                                                                  │
+│  🔹 Seção 3: Configurações de Faturamento                        │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │  Negócio de Recebimento: [Minha Conta Stripe    ▼]   │   │
+│     │  Dia de Cobrança: [5 ▼]                              │   │
+│     │                                                       │   │
+│     │  ℹ️  A fatura será enviada para o responsável com     │   │
+│     │     todas as aulas dos dependentes.                  │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  [Cancelar]                               [Salvar Família]     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Regras de Validação:**
+- ✅ Nome e email do responsável são obrigatórios
+- ✅ Mínimo de 1 dependente
+- ✅ Nome do dependente é obrigatório
+- ✅ Data de nascimento é opcional
+- ✅ Negócio de recebimento é obrigatório
+
+---
+
+#### 5.0.4 Componente: StudentTypeSelector
+
+**Arquivo:** `src/components/StudentTypeSelector.tsx` (novo)
+
+**Responsabilidades:**
+- Renderizar os 2 cards de seleção
+- Gerenciar estado de hover/seleção
+- Emitir evento de escolha para o componente pai
+
+**Interface:**
+
+```typescript
+export interface StudentTypeSelectorProps {
+  selectedType: 'adult' | 'family' | null;
+  onSelect: (type: 'adult' | 'family') => void;
+  disabled?: boolean;
+}
+
+export function StudentTypeSelector({ 
+  selectedType, 
+  onSelect, 
+  disabled = false 
+}: StudentTypeSelectorProps) {
+  // Implementação
+}
+```
+
+**Estrutura Interna:**
+
+```typescript
+const typeOptions = [
+  {
+    id: 'adult',
+    icon: User,
+    title: t('students.typeSelection.adult.title'),
+    description: t('students.typeSelection.adult.description'),
+    color: 'text-blue-500'
+  },
+  {
+    id: 'family',
+    icon: Users,
+    title: t('students.typeSelection.family.title'),
+    description: t('students.typeSelection.family.description'),
+    color: 'text-purple-500'
+  }
+];
+```
+
+**Rendering:**
+- Card component do shadcn/ui
+- Hover effect com border accent
+- Click handler para `onSelect(type)`
+
+---
+
+#### 5.0.5 Modificação: StudentFormModal
+
+**Arquivo:** `src/components/StudentFormModal.tsx` (existente)
+
+**Mudanças Necessárias:**
+
+**1. Estado do Componente:**
+
+```typescript
+const [studentType, setStudentType] = useState<'adult' | 'family' | null>(null);
+const [dependents, setDependents] = useState<Array<{
+  id: string; // temp ID para React keys
+  name: string;
+  birthDate?: string;
+}>>([{ id: crypto.randomUUID(), name: '', birthDate: '' }]);
+```
+
+**2. Fluxo de Renderização:**
+
+```typescript
+return (
+  <Dialog open={isOpen} onOpenChange={onClose}>
+    <DialogContent>
+      {/* STEP 1: Seleção de Tipo */}
+      {studentType === null && (
+        <StudentTypeSelector 
+          selectedType={null}
+          onSelect={(type) => setStudentType(type)}
+        />
+      )}
+
+      {/* STEP 2: Formulário Aluno Normal */}
+      {studentType === 'adult' && (
+        <>
+          <Button variant="ghost" onClick={() => setStudentType(null)}>
+            ← Voltar
+          </Button>
+          {/* Formulário existente de aluno */}
+        </>
+      )}
+
+      {/* STEP 3: Formulário Família */}
+      {studentType === 'family' && (
+        <>
+          <Button variant="ghost" onClick={() => setStudentType(null)}>
+            ← Voltar
+          </Button>
+          
+          {/* Seção 1: Dados do Responsável */}
+          <div className="space-y-4">
+            <h3>Dados do Responsável</h3>
+            {/* Campos do responsável (mesmo do formulário normal) */}
+          </div>
+
+          {/* Seção 2: Dependentes */}
+          <div className="space-y-4">
+            <h3>Dependentes</h3>
+            {dependents.map((dep, index) => (
+              <Card key={dep.id}>
+                <CardHeader>
+                  <div className="flex justify-between">
+                    <span>Dependente #{index + 1}</span>
+                    {dependents.length > 1 && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => removeDependent(dep.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Input 
+                    label="Nome *"
+                    value={dep.name}
+                    onChange={(e) => updateDependent(dep.id, 'name', e.target.value)}
+                  />
+                  <Input 
+                    label="Data de Nascimento (opcional)"
+                    type="date"
+                    value={dep.birthDate}
+                    onChange={(e) => updateDependent(dep.id, 'birthDate', e.target.value)}
+                  />
+                </CardContent>
+              </Card>
+            ))}
+            
+            <Button 
+              variant="outline" 
+              onClick={addDependent}
+              className="w-full"
+            >
+              + Adicionar outro dependente
+            </Button>
+
+            {dependents.length === 0 && (
+              <Alert variant="warning">
+                Adicione pelo menos um dependente
+              </Alert>
+            )}
+          </div>
+
+          {/* Seção 3: Faturamento */}
+          <div className="space-y-4">
+            <h3>Configurações de Faturamento</h3>
+            <Alert variant="info">
+              A fatura será enviada para o responsável com todas as aulas dos dependentes.
+            </Alert>
+            {/* Campos de faturamento existentes */}
+          </div>
+        </>
+      )}
+    </DialogContent>
+  </Dialog>
+);
+```
+
+**3. Lógica de Submit:**
+
+```typescript
+const handleSubmit = async () => {
+  if (studentType === 'adult') {
+    // Fluxo existente: create-student
+    await supabase.functions.invoke('create-student', {
+      body: { /* dados do aluno */ }
+    });
+  } else if (studentType === 'family') {
+    // NOVO FLUXO: Criar responsável + dependentes
+    try {
+      // 1. Criar responsável
+      const { data: responsibleData, error: respError } = await supabase.functions.invoke(
+        'create-student',
+        { body: { /* dados do responsável */ } }
+      );
+
+      if (respError) throw respError;
+
+      const responsibleId = responsibleData.student_id;
+
+      // 2. Criar cada dependente
+      const dependentPromises = dependents
+        .filter(d => d.name.trim())
+        .map(dep => 
+          supabase.functions.invoke('create-dependent', {
+            body: {
+              responsible_id: responsibleId,
+              name: dep.name,
+              birth_date: dep.birthDate || null
+            }
+          })
+        );
+
+      await Promise.all(dependentPromises);
+
+      toast.success('Família cadastrada com sucesso!');
+      onSuccess();
+      onClose();
+    } catch (error) {
+      console.error('Erro ao cadastrar família:', error);
+      toast.error('Erro ao cadastrar família');
+      // TODO: Rollback? Ou deixar o professor deletar manualmente?
+    }
+  }
+};
+```
+
+**4. Helpers:**
+
+```typescript
+const addDependent = () => {
+  setDependents([...dependents, { 
+    id: crypto.randomUUID(), 
+    name: '', 
+    birthDate: '' 
+  }]);
+};
+
+const removeDependent = (id: string) => {
+  setDependents(dependents.filter(d => d.id !== id));
+};
+
+const updateDependent = (id: string, field: 'name' | 'birthDate', value: string) => {
+  setDependents(dependents.map(d => 
+    d.id === id ? { ...d, [field]: value } : d
+  ));
+};
+```
+
+---
+
+#### 5.0.6 Fluxo de Dados no Submit
+
+**Sequência de Operações (Família):**
+
+```mermaid
+sequenceDiagram
+    participant UI as StudentFormModal
+    participant CreateStudent as create-student
+    participant CreateDependent as create-dependent
+    participant DB as Supabase DB
+
+    UI->>UI: Validar formulário
+    UI->>CreateStudent: POST { responsible_data }
+    CreateStudent->>DB: INSERT profiles (role=student)
+    CreateStudent->>DB: INSERT teacher_student_relationships
+    CreateStudent->>DB: Verificar limite de alunos
+    CreateStudent->>UI: { student_id: uuid }
+
+    loop Para cada dependente
+        UI->>CreateDependent: POST { responsible_id, name, birth_date }
+        CreateDependent->>DB: Verificar limite total (alunos + dependentes)
+        CreateDependent->>DB: INSERT dependents
+        CreateDependent->>UI: { dependent_id: uuid }
+    end
+
+    UI->>UI: toast.success("Família cadastrada!")
+    UI->>UI: Fechar modal
+```
+
+**Tratamento de Erros:**
+
+| Cenário | Ação |
+|---------|------|
+| Erro ao criar responsável | Mostrar erro, não criar dependentes |
+| Erro ao criar dependente #1 | Mostrar erro, perguntar se quer continuar |
+| Erro ao criar dependente #2+ | Mostrar erro parcial, listar quem foi criado |
+| Limite de alunos excedido | Bloquear submit, mostrar modal de upgrade |
+
+**Rollback:**
+- ❌ **Não implementar rollback automático** (complexidade alta)
+- ✅ **Permitir que professor delete manualmente** se algo der errado
+- ✅ **Logar erros detalhados** para debugging
+
+---
+
+#### 5.0.7 Estados do Formulário
+
+**Tabela de Estados:**
+
+| Estado | Condição | Campos Visíveis | Ação Principal | Validação |
+|--------|----------|-----------------|----------------|-----------|
+| **Seleção** | `studentType === null` | 2 cards de seleção | Escolher tipo | - |
+| **Aluno Normal** | `studentType === 'adult'` | Nome, Email*, Telefone, CPF, Endereço, Billing | Salvar aluno | Email obrigatório |
+| **Família** | `studentType === 'family'` | Responsável + Lista de dependentes + Billing | Salvar família | Email obrigatório + min 1 dependente |
+| **Loading** | `isSubmitting === true` | Spinner + mensagem | - | - |
+| **Erro** | `error !== null` | Alert de erro + retry | Tentar novamente | - |
+
+**Transições de Estado:**
+
+```
+[Inicial] 
+  → Clica "Novo Aluno" 
+  → [Seleção]
+  
+[Seleção] 
+  → Clica "Aluno com Email" 
+  → [Aluno Normal]
+  
+[Seleção] 
+  → Clica "Família/Menores" 
+  → [Família]
+  
+[Aluno Normal] 
+  → Clica "Voltar" 
+  → [Seleção]
+  
+[Família] 
+  → Clica "Voltar" 
+  → [Seleção]
+  
+[Aluno Normal/Família] 
+  → Clica "Salvar" 
+  → [Loading] 
+  → [Sucesso] ou [Erro]
+```
+
+---
+
+#### 5.0.8 Traduções i18n
+
+**Arquivo:** `src/i18n/locales/pt/students.json`
+
+**Novas chaves a adicionar:**
+
+```json
+{
+  "typeSelection": {
+    "title": "Que tipo de aluno você quer cadastrar?",
+    "adult": {
+      "title": "Aluno com Email",
+      "description": "Adulto ou criança com email próprio. Terá login individual.",
+      "icon": "user"
+    },
+    "family": {
+      "title": "Família / Menores",
+      "description": "Responsável + filhos. Um único login, fatura consolidada.",
+      "icon": "users"
+    }
+  },
+  "family": {
+    "title": "Cadastrar Família",
+    "responsibleSection": "Dados do Responsável",
+    "responsibleInfo": "O responsável receberá as faturas e terá acesso ao portal para acompanhar todos os dependentes.",
+    "dependentsSection": "Dependentes",
+    "dependentNumberLabel": "Dependente #{number}",
+    "addDependent": "Adicionar outro dependente",
+    "removeDependent": "Remover dependente",
+    "dependentName": "Nome do dependente",
+    "dependentBirthDate": "Data de nascimento (opcional)",
+    "noDependents": "Adicione pelo menos um dependente para continuar",
+    "minOneDependentRequired": "É necessário cadastrar pelo menos um dependente",
+    "billingSection": "Configurações de Faturamento",
+    "billingNote": "A fatura será enviada para o responsável com todas as aulas dos dependentes.",
+    "saveFamily": "Salvar Família",
+    "familyCreatedSuccess": "Família cadastrada com sucesso!",
+    "familyCreatedError": "Erro ao cadastrar família",
+    "partialCreationWarning": "Responsável criado, mas alguns dependentes falharam. Você pode adicioná-los depois."
+  },
+  "backToSelection": "Voltar para seleção de tipo"
+}
+```
+
+**Arquivo:** `src/i18n/locales/en/students.json`
+
+```json
+{
+  "typeSelection": {
+    "title": "What type of student do you want to register?",
+    "adult": {
+      "title": "Student with Email",
+      "description": "Adult or child with their own email. Will have individual login.",
+      "icon": "user"
+    },
+    "family": {
+      "title": "Family / Minors",
+      "description": "Guardian + children. Single login, consolidated billing.",
+      "icon": "users"
+    }
+  },
+  "family": {
+    "title": "Register Family",
+    "responsibleSection": "Guardian Information",
+    "responsibleInfo": "The guardian will receive invoices and have portal access to monitor all dependents.",
+    "dependentsSection": "Dependents",
+    "dependentNumberLabel": "Dependent #{number}",
+    "addDependent": "Add another dependent",
+    "removeDependent": "Remove dependent",
+    "dependentName": "Dependent's name",
+    "dependentBirthDate": "Birth date (optional)",
+    "noDependents": "Add at least one dependent to continue",
+    "minOneDependentRequired": "At least one dependent is required",
+    "billingSection": "Billing Settings",
+    "billingNote": "The invoice will be sent to the guardian with all dependents' classes.",
+    "saveFamily": "Save Family",
+    "familyCreatedSuccess": "Family registered successfully!",
+    "familyCreatedError": "Error registering family",
+    "partialCreationWarning": "Guardian created, but some dependents failed. You can add them later."
+  },
+  "backToSelection": "Back to type selection"
+}
+```
+
+---
+
+#### 5.0.9 Checklist de Implementação
+
+**Fase 3.1: Componente StudentTypeSelector (0.5 dia)**
+- [ ] Criar `src/components/StudentTypeSelector.tsx`
+- [ ] Implementar layout de cards com shadcn/ui
+- [ ] Adicionar ícones lucide-react (User, Users)
+- [ ] Implementar hover states e click handlers
+- [ ] Adicionar traduções i18n
+- [ ] Testar responsividade (desktop + mobile)
+
+**Fase 3.2: Modificar StudentFormModal (1 dia)**
+- [ ] Adicionar estado `studentType`
+- [ ] Adicionar estado `dependents` (array)
+- [ ] Implementar renderização condicional (3 estados: selection, adult, family)
+- [ ] Implementar seção de dependentes com add/remove
+- [ ] Implementar validação de mínimo 1 dependente
+- [ ] Adaptar lógica de submit para fluxo de família
+- [ ] Adicionar botão "Voltar" para cada formulário
+- [ ] Implementar tratamento de erros parciais
+- [ ] Adicionar loading states
+- [ ] Testar fluxo completo
+
+**Fase 3.3: Testes de UX (0.5 dia)**
+- [ ] Testar fluxo aluno normal (existente)
+- [ ] Testar fluxo família (novo)
+- [ ] Testar transições entre estados
+- [ ] Testar validações
+- [ ] Testar rollback/erro parcial
+- [ ] Feedback de professora sobre clareza
+
+**Total Estimado: 2 dias**
+
+---
+
 ### 5.1 Componente: DependentManager
 
 **Arquivo:** `src/components/DependentManager.tsx`
@@ -3406,23 +4000,49 @@ serve(async (req) => {
 
 ---
 
-### Fase 3: Frontend - Interface do Professor (Prioridade ALTA) - 2-3 dias
+### Fase 3: Frontend - Interface do Professor (Prioridade ALTA) - 2.5-3.5 dias
 
 **Objetivo:** Criar interface para professor gerenciar dependentes.
 
 **Tarefas:**
-- [ ] Criar `DependentManager` component
-- [ ] Criar `DependentFormModal` component
-- [ ] Modificar `ClassForm` (adicionar dependentes)
-- [ ] Modificar `ShareMaterialModal` (adicionar dependentes)
-- [ ] Modificar `ClassReportModal` (adicionar dependentes)
-- [ ] Adicionar rota para gerenciamento de dependentes
+- [ ] **UX de Cadastro (2 dias)**
+  - [ ] Criar `StudentTypeSelector` component (0.5 dia)
+    - [ ] Layout de cards com shadcn/ui
+    - [ ] Ícones lucide-react (User, Users)
+    - [ ] Hover states e click handlers
+    - [ ] Traduções i18n (typeSelection.*)
+    - [ ] Testes de responsividade
+  - [ ] Modificar `StudentFormModal` (1 dia)
+    - [ ] Adicionar estado `studentType` e `dependents`
+    - [ ] Implementar renderização condicional (3 estados)
+    - [ ] Implementar seção de dependentes com add/remove
+    - [ ] Validação de mínimo 1 dependente
+    - [ ] Adaptar lógica de submit para fluxo de família
+    - [ ] Tratamento de erros parciais
+    - [ ] Loading states
+  - [ ] Testes de UX (0.5 dia)
+    - [ ] Testar fluxo aluno normal
+    - [ ] Testar fluxo família
+    - [ ] Testar transições entre estados
+    - [ ] Validações e rollback
+- [ ] **Gerenciamento de Dependentes (0.5-1 dia)**
+  - [ ] Criar `DependentManager` component
+  - [ ] Criar `DependentFormModal` component
+  - [ ] Adicionar rota para gerenciamento de dependentes
+- [ ] **Integrações com Componentes Existentes (0.5-1 dia)**
+  - [ ] Modificar `ClassForm` (adicionar dependentes)
+  - [ ] Modificar `ShareMaterialModal` (adicionar dependentes)
+  - [ ] Modificar `ClassReportModal` (adicionar dependentes)
 - [ ] Testar fluxo completo de criação/edição/deleção
 
 **Entrega:**
-- ✅ Professor consegue gerenciar dependentes
+- ✅ Professor escolhe tipo de aluno (normal ou família) no cadastro
+- ✅ Professor consegue cadastrar responsável + dependentes em um único fluxo
+- ✅ Professor consegue gerenciar dependentes após cadastro
 - ✅ Professor consegue agendar aulas com dependentes
 - ✅ Professor consegue criar relatórios para dependentes
+
+**Duração estimada:** 2.5-3.5 dias (aumento de 0.5 dia devido à nova UX)
 
 ---
 
@@ -3493,10 +4113,19 @@ serve(async (req) => {
 |------|---------|-----------|--------------|
 | Fase 1: Estrutura de Dados | 1-2 dias | 🔴 CRÍTICA | Nenhuma |
 | Fase 2: Backend | 2-3 dias | 🔴 ALTA | Fase 1 |
-| Fase 3: Frontend - Professor | 2-3 dias | 🔴 ALTA | Fase 2 |
+| Fase 3: Frontend - Professor | 2.5-3.5 dias | 🔴 ALTA | Fase 2 |
 | Fase 4: Integrações | 2-3 dias | 🟡 MÉDIA | Fase 2 |
 | Fase 5: Portal Responsável | 1-2 dias | 🟡 MÉDIA | Fase 3 |
 | Fase 6: Polimento | 1 dia | 🟢 BAIXA | Todas |
+
+**Total Estimado: 9.5-14.5 dias**
+
+**Mudanças em relação à versão anterior (Revisão 2 → Revisão 3):**
+- Fase 3 aumentada de 2-3 dias para 2.5-3.5 dias devido à nova UX de cadastro:
+  - 5.0.4: Criação do `StudentTypeSelector` component (0.5 dia)
+  - 5.0.5: Modificação do `StudentFormModal` para fluxo unificado (1 dia)
+  - 5.0.9: Testes de UX completos (0.5 dia)
+- Total geral aumentou de 9-14 dias para 9.5-14.5 dias
 
 **Total Estimado: 9-14 dias**
 

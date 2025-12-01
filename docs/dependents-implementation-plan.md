@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 01/12/2025 (Revisão 3 - UX de Cadastro)
+> **Última atualização:** 01/12/2025 (Revisão 4 - Perfil do Aluno)
 
 ---
 
@@ -2324,6 +2324,446 @@ COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que g
 
 ---
 
+### 4.22 🟠 ALTA: Perfil do Aluno (PerfilAluno.tsx)
+
+#### Problema
+A página `PerfilAluno.tsx` exibe informações apenas do aluno visualizado (normal). Quando o professor acessa o perfil de um **responsável**, não há visualização dos **dependentes** vinculados a ele, nem acesso ao histórico de aulas e relatórios de cada filho.
+
+#### Arquivos Afetados
+- `src/pages/PerfilAluno.tsx`
+
+#### Cenários de Exibição
+
+**1. Aluno Normal:**
+- Exibição padrão atual (sem alterações)
+- Informações de contato
+- Histórico de aulas
+- Faturas
+
+**2. Responsável (com dependentes):**
+- **Nova seção:** "Dependentes" logo após as informações básicas
+- Lista de dependentes com estatísticas individuais
+- Cada dependente pode ser expandido para ver:
+  - Histórico de aulas do dependente
+  - Relatórios de aulas do dependente
+- Botão "Adicionar Dependente" visível
+
+**3. Dependente:**
+- Dependentes NÃO têm página própria em `/alunos/:id`
+- São exibidos apenas na página do responsável (cenário 2)
+
+#### Solução: Seção Expansível no Perfil do Responsável
+
+```mermaid
+sequenceDiagram
+    participant Professor
+    participant Frontend as PerfilAluno.tsx
+    participant Supabase
+    
+    Professor->>Frontend: Acessa /alunos/:id (responsável)
+    Frontend->>Supabase: Buscar dados do aluno
+    Supabase-->>Frontend: Profile do responsável
+    
+    Frontend->>Supabase: Buscar dependentes (responsible_id)
+    Supabase-->>Frontend: Lista de dependentes
+    
+    loop Para cada dependente
+        Frontend->>Supabase: Buscar estatísticas (aulas, freq.)
+        Supabase-->>Frontend: Stats do dependente
+    end
+    
+    Frontend-->>Professor: Renderizar perfil + seção dependentes
+    
+    Professor->>Frontend: Expandir dependente
+    Frontend->>Supabase: Buscar aulas do dependente
+    Frontend->>Supabase: Buscar relatórios do dependente
+    Supabase-->>Frontend: Histórico completo
+    Frontend-->>Professor: Exibir histórico expandido
+```
+
+#### Implementação
+
+**Interface de Dados:**
+
+```typescript
+// src/pages/PerfilAluno.tsx
+
+interface Dependent {
+  id: string;
+  name: string;
+  birth_date: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+interface DependentStats {
+  dependent_id: string;
+  total_classes: number;
+  attended_classes: number;
+  attendance_rate: number;
+}
+
+interface DependentClass {
+  id: string;
+  class_date: string;
+  status: string;
+  duration_minutes: number;
+  notes: string | null;
+  service_name: string | null;
+  has_report: boolean;
+  report_id: string | null;
+}
+```
+
+**State Management:**
+
+```typescript
+// Adicionar ao state existente do componente
+const [dependents, setDependents] = useState<Dependent[]>([]);
+const [dependentsStats, setDependentsStats] = useState<Record<string, DependentStats>>({});
+const [expandedDependent, setExpandedDependent] = useState<string | null>(null);
+const [selectedDependentClasses, setSelectedDependentClasses] = useState<DependentClass[]>([]);
+const [loadingDependentHistory, setLoadingDependentHistory] = useState(false);
+```
+
+**Função de Carregamento:**
+
+```typescript
+// Função para carregar dependentes do responsável
+const loadDependents = async (responsibleId: string) => {
+  try {
+    // Buscar dependentes
+    const { data: dependentsData, error: depsError } = await supabase
+      .from('dependents')
+      .select('*')
+      .eq('responsible_id', responsibleId)
+      .order('name');
+    
+    if (depsError) throw depsError;
+    
+    setDependents(dependentsData || []);
+    
+    // Buscar estatísticas de cada dependente
+    const statsPromises = (dependentsData || []).map(async (dep) => {
+      const { data: classesData } = await supabase
+        .from('class_participants')
+        .select('id, status')
+        .eq('dependent_id', dep.id);
+      
+      const total = classesData?.length || 0;
+      const attended = classesData?.filter(c => c.status === 'concluida').length || 0;
+      const rate = total > 0 ? (attended / total) * 100 : 0;
+      
+      return {
+        dependent_id: dep.id,
+        total_classes: total,
+        attended_classes: attended,
+        attendance_rate: rate
+      };
+    });
+    
+    const stats = await Promise.all(statsPromises);
+    const statsMap = stats.reduce((acc, stat) => {
+      acc[stat.dependent_id] = stat;
+      return acc;
+    }, {} as Record<string, DependentStats>);
+    
+    setDependentsStats(statsMap);
+  } catch (error) {
+    console.error('Erro ao carregar dependentes:', error);
+    toast.error('Erro ao carregar dependentes');
+  }
+};
+
+// Função para expandir dependente e carregar histórico
+const handleExpandDependent = async (dependentId: string) => {
+  if (expandedDependent === dependentId) {
+    // Fechar se já está expandido
+    setExpandedDependent(null);
+    setSelectedDependentClasses([]);
+    return;
+  }
+  
+  setExpandedDependent(dependentId);
+  setLoadingDependentHistory(true);
+  
+  try {
+    const { data: classesData, error } = await supabase
+      .from('class_participants')
+      .select(`
+        id,
+        status,
+        classes!inner(
+          id,
+          class_date,
+          duration_minutes,
+          notes,
+          service_id,
+          class_services(name)
+        ),
+        class_reports!left(
+          id
+        )
+      `)
+      .eq('dependent_id', dependentId)
+      .order('classes.class_date', { ascending: false })
+      .limit(20);
+    
+    if (error) throw error;
+    
+    const processed = classesData?.map(p => ({
+      id: p.id,
+      class_date: p.classes.class_date,
+      status: p.status,
+      duration_minutes: p.classes.duration_minutes,
+      notes: p.classes.notes,
+      service_name: p.classes.class_services?.[0]?.name || 'Aula',
+      has_report: p.class_reports?.length > 0,
+      report_id: p.class_reports?.[0]?.id || null
+    })) || [];
+    
+    setSelectedDependentClasses(processed);
+  } catch (error) {
+    console.error('Erro ao carregar histórico:', error);
+    toast.error('Erro ao carregar histórico do dependente');
+  } finally {
+    setLoadingDependentHistory(false);
+  }
+};
+```
+
+**Integração no useEffect:**
+
+```typescript
+useEffect(() => {
+  const loadStudentData = async () => {
+    // ... código existente para carregar dados do aluno
+    
+    if (studentData) {
+      setStudent(studentData);
+      
+      // NOVO: Verificar se tem dependentes
+      await loadDependents(studentData.id);
+    }
+    
+    // ... resto do código
+  };
+  
+  loadStudentData();
+}, [id]);
+```
+
+**Renderização da Seção de Dependentes:**
+
+```tsx
+{/* NOVA SEÇÃO: Dependentes (exibir apenas se houver) */}
+{dependents.length > 0 && (
+  <Card className="mt-6">
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <Users className="h-5 w-5" />
+        Dependentes ({dependents.length})
+      </CardTitle>
+      <CardDescription>
+        Filhos/dependentes vinculados a este responsável
+      </CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      {dependents.map((dependent) => {
+        const stats = dependentsStats[dependent.id];
+        const isExpanded = expandedDependent === dependent.id;
+        
+        return (
+          <div key={dependent.id} className="border rounded-lg p-4">
+            {/* Header do Dependente */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary">Dependente</Badge>
+                <div>
+                  <h4 className="font-medium">{dependent.name}</h4>
+                  {dependent.birth_date && (
+                    <p className="text-sm text-muted-foreground">
+                      Nascimento: {format(new Date(dependent.birth_date), 'dd/MM/yyyy')}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                {stats && (
+                  <div className="flex gap-4 text-sm text-muted-foreground mr-4">
+                    <span>{stats.total_classes} aulas</span>
+                    <span>{stats.attendance_rate.toFixed(0)}% freq.</span>
+                  </div>
+                )}
+                
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleExpandDependent(dependent.id)}
+                >
+                  {isExpanded ? (
+                    <>
+                      <ChevronUp className="h-4 w-4 mr-1" />
+                      Recolher
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="h-4 w-4 mr-1" />
+                      Ver Histórico
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+            
+            {/* Histórico Expandido */}
+            {isExpanded && (
+              <div className="mt-4 border-t pt-4">
+                {loadingDependentHistory ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h5 className="font-medium text-sm mb-3">
+                      Histórico de Aulas - {dependent.name}
+                    </h5>
+                    
+                    {selectedDependentClasses.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        Nenhuma aula registrada ainda
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {selectedDependentClasses.map((classItem) => (
+                          <div
+                            key={classItem.id}
+                            className="flex items-center justify-between p-3 bg-muted/50 rounded-md"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm">
+                                  {format(new Date(classItem.class_date), 'dd/MM/yyyy HH:mm')}
+                                </span>
+                                <Badge variant={getStatusVariant(classItem.status)}>
+                                  {classItem.status}
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {classItem.service_name} • {classItem.duration_minutes}min
+                              </p>
+                            </div>
+                            
+                            {classItem.has_report && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedReportId(classItem.report_id);
+                                  setIsReportModalOpen(true);
+                                }}
+                              >
+                                <FileText className="h-4 w-4 mr-1" />
+                                Ver Relato
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      
+      {/* Botão Adicionar Dependente */}
+      <Button
+        variant="outline"
+        className="w-full mt-4"
+        onClick={() => {
+          // TODO: Abrir modal de criação de dependente
+          toast.info('Modal de criação de dependente (implementar)');
+        }}
+      >
+        <Plus className="h-4 w-4 mr-2" />
+        Adicionar Dependente
+      </Button>
+    </CardContent>
+  </Card>
+)}
+```
+
+**Helpers (adicionar se não existirem):**
+
+```typescript
+// Helper para variant do badge de status
+const getStatusVariant = (status: string) => {
+  switch (status) {
+    case 'concluida':
+      return 'default';
+    case 'confirmada':
+      return 'secondary';
+    case 'pendente':
+      return 'outline';
+    case 'cancelada':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+};
+```
+
+#### Benefícios
+
+- ✅ **Visualização consolidada:** Professor vê responsável + todos os filhos em um só lugar
+- ✅ **Histórico individual:** Cada dependente tem seu histórico de aulas visível
+- ✅ **Estatísticas por dependente:** Frequência e total de aulas por filho
+- ✅ **Acesso a relatórios:** Relatórios de aula específicos de cada dependente
+- ✅ **Gerenciamento facilitado:** Botão para adicionar novos dependentes
+- ✅ **UX intuitiva:** Seções expansíveis mantém interface limpa
+
+#### Integração com DependentManager
+
+O botão "Adicionar Dependente" deve:
+1. Abrir um modal com formulário de criação (reutilizar `DependentFormModal`)
+2. Pré-preencher `responsible_id` com o ID do aluno visualizado
+3. Após criação bem-sucedida, recarregar a lista de dependentes
+
+```typescript
+// State para modal
+const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
+
+// No botão
+<Button
+  variant="outline"
+  className="w-full mt-4"
+  onClick={() => setIsDependentModalOpen(true)}
+>
+  <Plus className="h-4 w-4 mr-2" />
+  Adicionar Dependente
+</Button>
+
+// Componente modal
+<DependentFormModal
+  isOpen={isDependentModalOpen}
+  onClose={() => setIsDependentModalOpen(false)}
+  preselectedResponsibleId={student?.id}
+  onSuccess={() => {
+    loadDependents(student?.id);
+    setIsDependentModalOpen(false);
+  }}
+/>
+```
+
+#### Prioridade
+🟠 **ALTA** - Funcionalidade essencial para gerenciamento de famílias
+
+---
+
 ## 5. Implementação Frontend
 
 ### 5.0 UX de Cadastro: Fluxo Unificado com Seleção de Tipo
@@ -3899,6 +4339,32 @@ serve(async (req) => {
 
 ---
 
+#### Teste 10: Visualização de Dependentes no Perfil do Responsável
+
+**Precondições:**
+- Professor logado
+- Aluno "Maria" cadastrado como responsável
+- "Maria" tem 2 dependentes: "João" (10 anos) e "Ana" (8 anos)
+- Ambos dependentes têm histórico de aulas
+
+**Passos:**
+1. Acessar `/alunos/:id` (perfil de Maria)
+2. Visualizar seção "Dependentes"
+3. Clicar para expandir histórico de "João"
+4. Verificar estatísticas exibidas
+5. Clicar em "Adicionar Dependente"
+
+**Resultado Esperado:**
+- ✅ Seção "Dependentes (2)" visível após informações básicas
+- ✅ Cards de "João" e "Ana" exibidos com badges "Dependente"
+- ✅ Estatísticas corretas: total de aulas e % de frequência
+- ✅ Ao expandir "João": lista de aulas aparece com datas, status e serviços
+- ✅ Botão "Ver Relato" visível para aulas com relatórios
+- ✅ Botão "Adicionar Dependente" abre modal de criação
+- ✅ Após criar novo dependente, lista atualiza automaticamente
+
+---
+
 ### 8.2 Checklist de Validação
 
 #### Database
@@ -3936,6 +4402,10 @@ serve(async (req) => {
 - [ ] `StudentScheduleRequest` permite solicitar para dependentes (4.16)
 - [ ] `ClassReportModal` aceita feedback de dependentes
 - [ ] `Historico.tsx` exibe dependentes com badge (4.18)
+- [ ] **NOVO:** `PerfilAluno.tsx` exibe seção de dependentes para responsável (4.22)
+- [ ] **NOVO:** Histórico de aulas expandido por dependente funciona (4.22)
+- [ ] **NOVO:** Estatísticas de dependentes exibidas corretamente (4.22)
+- [ ] **NOVO:** Botão "Adicionar Dependente" no perfil funciona (4.22)
 
 #### UX
 - [ ] Traduções completas (pt + en)
@@ -4000,7 +4470,7 @@ serve(async (req) => {
 
 ---
 
-### Fase 3: Frontend - Interface do Professor (Prioridade ALTA) - 2.5-3.5 dias
+### Fase 3: Frontend - Interface do Professor (Prioridade ALTA) - 3-4 dias
 
 **Objetivo:** Criar interface para professor gerenciar dependentes.
 
@@ -4029,10 +4499,17 @@ serve(async (req) => {
   - [ ] Criar `DependentManager` component
   - [ ] Criar `DependentFormModal` component
   - [ ] Adicionar rota para gerenciamento de dependentes
-- [ ] **Integrações com Componentes Existentes (0.5-1 dia)**
+- [ ] **Integrações com Componentes Existentes (1-1.5 dias)**
   - [ ] Modificar `ClassForm` (adicionar dependentes)
   - [ ] Modificar `ShareMaterialModal` (adicionar dependentes)
   - [ ] Modificar `ClassReportModal` (adicionar dependentes)
+  - [ ] **NOVO:** Modificar `PerfilAluno.tsx` (seção expansível de dependentes - 4.22) (0.5 dia)
+    - [ ] Adicionar state para dependentes e estatísticas
+    - [ ] Criar função `loadDependents`
+    - [ ] Criar função `handleExpandDependent`
+    - [ ] Renderizar seção "Dependentes" com cards expansíveis
+    - [ ] Exibir histórico de aulas por dependente
+    - [ ] Integrar botão "Adicionar Dependente" com modal
 - [ ] Testar fluxo completo de criação/edição/deleção
 
 **Entrega:**
@@ -4041,8 +4518,9 @@ serve(async (req) => {
 - ✅ Professor consegue gerenciar dependentes após cadastro
 - ✅ Professor consegue agendar aulas com dependentes
 - ✅ Professor consegue criar relatórios para dependentes
+- ✅ Professor visualiza dependentes no perfil do responsável
 
-**Duração estimada:** 2.5-3.5 dias (aumento de 0.5 dia devido à nova UX)
+**Duração estimada:** 3-4 dias (aumento de 0.5 dia devido à nova UX + 0.5 dia para PerfilAluno)
 
 ---
 
@@ -4113,28 +4591,20 @@ serve(async (req) => {
 |------|---------|-----------|--------------|
 | Fase 1: Estrutura de Dados | 1-2 dias | 🔴 CRÍTICA | Nenhuma |
 | Fase 2: Backend | 2-3 dias | 🔴 ALTA | Fase 1 |
-| Fase 3: Frontend - Professor | 2.5-3.5 dias | 🔴 ALTA | Fase 2 |
+| Fase 3: Frontend - Professor | 3-4 dias | 🔴 ALTA | Fase 2 |
 | Fase 4: Integrações | 2-3 dias | 🟡 MÉDIA | Fase 2 |
 | Fase 5: Portal Responsável | 1-2 dias | 🟡 MÉDIA | Fase 3 |
 | Fase 6: Polimento | 1 dia | 🟢 BAIXA | Todas |
 
-**Total Estimado: 9.5-14.5 dias**
+**Total Estimado: 10-15 dias**
 
-**Mudanças em relação à versão anterior (Revisão 2 → Revisão 3):**
-- Fase 3 aumentada de 2-3 dias para 2.5-3.5 dias devido à nova UX de cadastro:
-  - 5.0.4: Criação do `StudentTypeSelector` component (0.5 dia)
-  - 5.0.5: Modificação do `StudentFormModal` para fluxo unificado (1 dia)
-  - 5.0.9: Testes de UX completos (0.5 dia)
-- Total geral aumentou de 9-14 dias para 9.5-14.5 dias
-
-**Total Estimado: 9-14 dias**
-
-**Mudanças em relação à versão anterior:**
-- Fase 4 aumentada de 1-2 dias para 2-3 dias devido às novas pontas soltas:
-  - 4.16: `request-class` (solicitação para dependentes)
-  - 4.17: `class_notifications` (adicionar `dependent_id`)
-  - 4.18: `Historico.tsx` e `fetch-archived-data` (histórico arquivado)
-  - 4.19: Implementação e migração para `get_unbilled_participants_v2`
+**Mudanças em relação à versão anterior (Revisão 3 → Revisão 4):**
+- Fase 3 aumentada de 2.5-3.5 dias para 3-4 dias devido à nova funcionalidade:
+  - 4.22: Modificação do `PerfilAluno.tsx` com seção expansível de dependentes (0.5 dia)
+  - Exibição de dependentes no perfil do responsável
+  - Histórico de aulas por dependente
+  - Integração com modal de criação de dependentes
+- Total geral aumentou de 9.5-14.5 dias para 10-15 dias
 
 ---
 

@@ -62,7 +62,12 @@ export const validateFileUpload = (file: File): { valid: boolean; errors: string
     'image/jpeg',
     'image/png',
     'image/gif',
-    'image/webp'
+    'image/webp',
+    'audio/mpeg',
+    'audio/wav',
+    'audio/ogg',
+    'audio/mp4',
+    'audio/webm'
   ];
   
   if (!allowedTypes.includes(file.type)) {

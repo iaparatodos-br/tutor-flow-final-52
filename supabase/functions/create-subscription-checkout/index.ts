@@ -341,6 +341,7 @@ serve(async (req) => {
       customer: customerId,
       line_items: [lineItem],
       mode: 'subscription',
+      payment_method_types: ['card', 'boleto'],
       success_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/subscription?success=true`,
       cancel_url: `${req.headers.get("origin") || "https://www.tutor-flow.app"}/planos?canceled=true`,
       allow_promotion_codes: true,

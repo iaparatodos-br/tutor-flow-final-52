@@ -260,5 +260,26 @@
   "confirm": {
     "confirmed": "Subscription confirmed!",
     "confirmedDescription": "Your subscription was successfully activated. Features have been unlocked."
+  },
+  "pendingBoleto": {
+    "title": "Awaiting Boleto Payment",
+    "status": "Awaiting bank processing",
+    "description": "Your boleto has been generated and is awaiting bank processing.",
+    "dueDate": "Due Date",
+    "dateUndefined": "Date not defined",
+    "amount": "Amount",
+    "barcode": "Barcode",
+    "copyBarcode": "Copy Barcode",
+    "barcodeCopied": "Barcode copied!",
+    "copyError": "Copy error",
+    "downloadBoleto": "Download Boleto",
+    "checkStatus": "Check Status",
+    "statusChecked": "Status checked!",
+    "checkError": "Error checking status",
+    "processingTimeTitle": "Processing time",
+    "processingTime": "Boleto payments can take 1-3 business days to be processed after payment.",
+    "accessGrantedTitle": "Access granted",
+    "accessGranted": "In the meantime, you can already use all features of your plan!",
+    "dismiss": "Got it"
   }
 }

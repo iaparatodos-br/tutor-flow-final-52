@@ -306,7 +306,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      // PRIORIDADE 1: Verificar se há boleto pendente
+      if (data?.pendingBoleto?.detected) {
+        console.log('Pending boleto detected on refresh - treating as active');
+        setPendingBoletoDetected(true);
+        setPendingBoletoData(data.pendingBoleto);
+        setSubscription(data.subscription);
+        setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        // Clear other states
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+        return;
+      }
+      
+      // PRIORIDADE 2: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
       if (data?.subscription && data.subscription.status === 'active') {
         console.log('Active subscription found on refresh - clearing any payment failure state');
         setSubscription(data.subscription);
@@ -314,9 +329,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
         
-        // CRITICAL: Clear payment failure state when active subscription exists
+        // CRITICAL: Clear payment failure and boleto states when active subscription exists
         setPaymentFailureDetected(false);
         setPaymentFailureData(null);
+        setPendingBoletoDetected(false);
+        setPendingBoletoData(null);
       } else if (data?.payment_failed) {
         // Só mostrar payment failure se NÃO houver subscription ativa
         console.log('Payment failure detected on refresh (no active subscription):', data.payment_failure_data);

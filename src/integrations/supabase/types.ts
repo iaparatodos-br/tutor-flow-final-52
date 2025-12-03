@@ -1700,6 +1700,9 @@ export type Database = {
       }
       user_subscriptions: {
         Row: {
+          boleto_barcode: string | null
+          boleto_due_date: string | null
+          boleto_url: string | null
           cancel_at_period_end: boolean
           created_at: string
           current_period_end: string | null
@@ -1707,6 +1710,7 @@ export type Database = {
           extra_cost_cents: number
           extra_students: number
           id: string
+          pending_payment_method: string | null
           plan_id: string
           status: string
           stripe_customer_id: string | null
@@ -1715,6 +1719,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          boleto_barcode?: string | null
+          boleto_due_date?: string | null
+          boleto_url?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1722,6 +1729,7 @@ export type Database = {
           extra_cost_cents?: number
           extra_students?: number
           id?: string
+          pending_payment_method?: string | null
           plan_id: string
           status?: string
           stripe_customer_id?: string | null
@@ -1730,6 +1738,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          boleto_barcode?: string | null
+          boleto_due_date?: string | null
+          boleto_url?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1737,6 +1748,7 @@ export type Database = {
           extra_cost_cents?: number
           extra_students?: number
           id?: string
+          pending_payment_method?: string | null
           plan_id?: string
           status?: string
           stripe_customer_id?: string | null

@@ -31,6 +31,14 @@ interface UserSubscription {
   extra_cost_cents: number;
 }
 
+interface PendingBoletoData {
+  detected: boolean;
+  boletoUrl?: string;
+  dueDate?: string;
+  barcode?: string;
+  amount?: number;
+}
+
 interface SubscriptionContextType {
   currentPlan: SubscriptionPlan | null;
   subscription: UserSubscription | null;
@@ -40,6 +48,8 @@ interface SubscriptionContextType {
   studentSelectionData: any;
   paymentFailureDetected: boolean;
   paymentFailureData: any;
+  pendingBoletoDetected: boolean;
+  pendingBoletoData: PendingBoletoData | null;
   hasFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   hasTeacherFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   canAddStudent: () => boolean;
@@ -53,6 +63,7 @@ interface SubscriptionContextType {
   cancelSubscription: (action: 'cancel' | 'reactivate') => Promise<void>;
   completeStudentSelection: () => Promise<void>;
   handlePaymentFailure: (action: 'renew' | 'downgrade') => Promise<void>;
+  dismissPendingBoleto: () => void;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -68,6 +79,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [studentSelectionData, setStudentSelectionData] = useState<any>(null);
   const [paymentFailureDetected, setPaymentFailureDetected] = useState(false);
   const [paymentFailureData, setPaymentFailureData] = useState<any>(null);
+  const [pendingBoletoDetected, setPendingBoletoDetected] = useState(false);
+  const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
 
   // Get teacher context conditionally
   let teacherContext = null;
@@ -119,6 +132,21 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      // PRIORIDADE: Verificar se há pendingBoleto
+      if (data?.pendingBoleto?.detected) {
+        console.log('Pending boleto detected - showing boleto modal');
+        setPendingBoletoDetected(true);
+        setPendingBoletoData(data.pendingBoleto);
+        setSubscription(data.subscription);
+        if (data.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        }
+        // Treat as active for functionality purposes
+        setPaymentFailureDetected(false);
+        setPaymentFailureData(null);
+        return;
+      }
+
       // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
       if (data?.subscription && data.subscription.status === 'active') {
         console.log('Active subscription found - clearing any payment failure state');
@@ -140,9 +168,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           }
         }
         
-        // CRITICAL: Clear payment failure state when active subscription exists
+        // CRITICAL: Clear payment failure and boleto state when active subscription exists
         setPaymentFailureDetected(false);
         setPaymentFailureData(null);
+        setPendingBoletoDetected(false);
+        setPendingBoletoData(null);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
       } else if (data?.payment_failed) {
@@ -710,6 +740,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
+  const dismissPendingBoleto = () => {
+    setPendingBoletoDetected(false);
+  };
+
   return (
     <SubscriptionContext.Provider
       value={{
@@ -721,6 +755,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         studentSelectionData,
         paymentFailureDetected,
         paymentFailureData,
+        pendingBoletoDetected,
+        pendingBoletoData,
         hasFeature,
         hasTeacherFeature,
         canAddStudent,
@@ -730,6 +766,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         cancelSubscription,
         completeStudentSelection,
         handlePaymentFailure,
+        dismissPendingBoleto,
       }}
     >
       {children}

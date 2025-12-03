@@ -101,20 +101,88 @@ const validateStripeEvent = (event: Stripe.Event): boolean => {
 };
 
 // Map Stripe subscription status to local status
-const mapStripeStatus = (status: string): string => {
+// paymentMethod parameter is used to handle boleto pending state
+const mapStripeStatus = (status: string, paymentMethod?: string | null): string => {
   switch (status) {
     case "active":
     case "trialing":
       return "active";
     case "past_due":
-    case "incomplete":
-    case "incomplete_expired":
     case "unpaid":
+      return "past_due";
+    case "incomplete":
+      // If payment method is boleto, use specific pending status
+      if (paymentMethod === 'boleto') {
+        return "pending_boleto";
+      }
+      return "past_due";
+    case "incomplete_expired":
       return "past_due";
     case "canceled":
       return "canceled";
     default:
       return status || "active";
+  }
+};
+
+// Helper to detect payment method from latest invoice
+const getPaymentMethodFromSubscription = async (stripe: any, subscriptionId: string): Promise<string | null> => {
+  try {
+    const invoices = await stripe.invoices.list({
+      subscription: subscriptionId,
+      limit: 1
+    });
+
+    if (invoices.data.length > 0) {
+      const invoice = invoices.data[0];
+      if (invoice.payment_intent) {
+        const paymentIntent = await stripe.paymentIntents.retrieve(invoice.payment_intent as string);
+        const pmTypes = paymentIntent.payment_method_types || [];
+        
+        if (pmTypes.includes('boleto')) return 'boleto';
+        if (pmTypes.includes('pix')) return 'pix';
+        
+        // Also check next_action for boleto
+        if (paymentIntent.next_action?.type === 'boleto_display_details') {
+          return 'boleto';
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    log("Error getting payment method from subscription", { error: (error as Error).message, subscriptionId });
+    return null;
+  }
+};
+
+// Helper to get boleto details from payment intent
+const getBoletoDetailsFromSubscription = async (stripe: any, subscriptionId: string): Promise<{
+  url: string | null;
+  dueDate: string | null;
+  barcode: string | null;
+}> => {
+  try {
+    const invoices = await stripe.invoices.list({
+      subscription: subscriptionId,
+      limit: 1
+    });
+
+    if (invoices.data.length > 0 && invoices.data[0].payment_intent) {
+      const pi = await stripe.paymentIntents.retrieve(invoices.data[0].payment_intent as string);
+      const boletoDetails = pi.next_action?.boleto_display_details;
+      
+      if (boletoDetails) {
+        return {
+          url: boletoDetails.hosted_voucher_url || null,
+          dueDate: boletoDetails.expires_at ? new Date(boletoDetails.expires_at * 1000).toISOString() : null,
+          barcode: boletoDetails.number || null
+        };
+      }
+    }
+    return { url: null, dueDate: null, barcode: null };
+  } catch (error) {
+    log("Error getting boleto details", { error: (error as Error).message, subscriptionId });
+    return { url: null, dueDate: null, barcode: null };
   }
 };
 
@@ -209,8 +277,11 @@ serve(async (req) => {
     currentPeriodStart: number | null;
     currentPeriodEnd: number | null;
     cancelAtPeriodEnd: boolean | null;
+    paymentMethod?: string | null;
+    boletoDetails?: { url: string | null; dueDate: string | null; barcode: string | null };
   }) => {
     const planId = await getPlanIdByPriceId(params.priceId);
+    const mappedStatus = mapStripeStatus(params.status, params.paymentMethod);
 
     // Check if a row exists for this user
     const { data: existing } = await supabase
@@ -224,11 +295,27 @@ serve(async (req) => {
       plan_id: planId,
       stripe_customer_id: params.stripeCustomerId,
       stripe_subscription_id: params.stripeSubscriptionId,
-      status: mapStripeStatus(params.status),
+      status: mappedStatus,
       current_period_start: params.currentPeriodStart ? new Date(params.currentPeriodStart * 1000).toISOString() : null,
       current_period_end: params.currentPeriodEnd ? new Date(params.currentPeriodEnd * 1000).toISOString() : null,
       cancel_at_period_end: params.cancelAtPeriodEnd ?? false,
     };
+
+    // Add boleto-specific fields if pending_boleto
+    if (mappedStatus === 'pending_boleto') {
+      payload.pending_payment_method = 'boleto';
+      if (params.boletoDetails) {
+        payload.boleto_url = params.boletoDetails.url;
+        payload.boleto_due_date = params.boletoDetails.dueDate;
+        payload.boleto_barcode = params.boletoDetails.barcode;
+      }
+    } else if (mappedStatus === 'active') {
+      // Clear boleto fields when subscription becomes active
+      payload.pending_payment_method = null;
+      payload.boleto_url = null;
+      payload.boleto_due_date = null;
+      payload.boleto_barcode = null;
+    }
 
     if (existing && existing.length > 0) {
       const id = existing[0].id;
@@ -241,10 +328,53 @@ serve(async (req) => {
     const profileUpdate: any = {
       stripe_customer_id: params.stripeCustomerId,
       current_plan_id: planId,
-      subscription_status: mapStripeStatus(params.status),
+      subscription_status: mappedStatus,
       subscription_end_date: params.currentPeriodEnd ? new Date(params.currentPeriodEnd * 1000).toISOString() : null,
     };
     await supabase.from("profiles").update(profileUpdate).eq("id", params.userId);
+
+    // Send boleto notification email if pending_boleto
+    if (mappedStatus === 'pending_boleto' && params.boletoDetails?.url) {
+      try {
+        // Get plan name for email
+        let planName = "Premium";
+        if (planId) {
+          const { data: plan } = await supabase
+            .from("subscription_plans")
+            .select("name")
+            .eq("id", planId)
+            .single();
+          if (plan) planName = plan.name;
+        }
+
+        // Get latest invoice amount
+        let amount = 0;
+        if (params.stripeSubscriptionId) {
+          const invoices = await stripe.invoices.list({
+            subscription: params.stripeSubscriptionId,
+            limit: 1
+          });
+          if (invoices.data.length > 0) {
+            amount = invoices.data[0].amount_due;
+          }
+        }
+
+        await supabase.functions.invoke("send-boleto-subscription-notification", {
+          body: {
+            user_id: params.userId,
+            notification_type: "boleto_generated",
+            boleto_url: params.boletoDetails.url,
+            due_date: params.boletoDetails.dueDate,
+            amount: amount,
+            barcode: params.boletoDetails.barcode,
+            plan_name: planName
+          }
+        });
+        log("Boleto notification sent", { userId: params.userId });
+      } catch (notifError) {
+        log("Error sending boleto notification", { error: (notifError as Error).message });
+      }
+    }
   };
 
   try {
@@ -332,6 +462,14 @@ serve(async (req) => {
             }
           }
           
+          // Check if payment method is boleto
+          const paymentMethod = await getPaymentMethodFromSubscription(stripe, subscriptionId);
+          const boletoDetails = paymentMethod === 'boleto' 
+            ? await getBoletoDetailsFromSubscription(stripe, subscriptionId) 
+            : undefined;
+          
+          log("Payment method detected on checkout", { paymentMethod, hasBoletoDetails: !!boletoDetails?.url });
+          
           await upsertUserSubscription({
             userId,
             stripeCustomerId: customerId,
@@ -341,6 +479,8 @@ serve(async (req) => {
             currentPeriodStart: sub.current_period_start ?? null,
             currentPeriodEnd: sub.current_period_end ?? null,
             cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+            paymentMethod,
+            boletoDetails,
           });
           
           // Update extra_students and extra_cost_cents separately if needed
@@ -387,6 +527,19 @@ serve(async (req) => {
         }
         
         const priceId = sub.items.data[0]?.price?.id ?? null;
+        
+        // Check if payment method is boleto for incomplete status
+        let paymentMethod: string | null = null;
+        let boletoDetails: { url: string | null; dueDate: string | null; barcode: string | null } | undefined;
+        
+        if (sub.status === 'incomplete') {
+          paymentMethod = await getPaymentMethodFromSubscription(stripe, sub.id);
+          if (paymentMethod === 'boleto') {
+            boletoDetails = await getBoletoDetailsFromSubscription(stripe, sub.id);
+            log("Boleto detected on subscription event", { hasBoletoDetails: !!boletoDetails?.url });
+          }
+        }
+        
         await upsertUserSubscription({
           userId,
           stripeCustomerId: customerId,
@@ -396,6 +549,8 @@ serve(async (req) => {
           currentPeriodStart: sub.current_period_start ?? null,
           currentPeriodEnd: sub.current_period_end ?? null,
           cancelAtPeriodEnd: sub.cancel_at_period_end ?? false,
+          paymentMethod,
+          boletoDetails,
         });
         break;
       }

@@ -178,8 +178,8 @@ serve(async (req) => {
           });
 
           // Check if subscription is in past_due or other failure states
+          // IMPORTANT: Do NOT treat 'incomplete' as failure if payment method is boleto
           if (stripeSubscription.status === 'past_due' || 
-              stripeSubscription.status === 'incomplete' ||
               stripeSubscription.status === 'incomplete_expired') {
             
             logStep("PAYMENT FAILURE DETECTED for active subscription", {
@@ -207,6 +207,65 @@ serve(async (req) => {
             };
 
             logStep("Payment failure details", paymentFailure);
+          } else if (stripeSubscription.status === 'incomplete') {
+            // Check if it's a boleto payment - don't treat as failure
+            logStep("Incomplete status detected, checking payment method");
+            
+            try {
+              const invoices = await stripe.invoices.list({
+                subscription: activeSubscription.stripe_subscription_id,
+                limit: 1
+              });
+
+              if (invoices.data.length > 0 && invoices.data[0].payment_intent) {
+                const pi = await stripe.paymentIntents.retrieve(invoices.data[0].payment_intent as string);
+                const isBoleto = pi.payment_method_types?.includes('boleto') || 
+                                 pi.next_action?.type === 'boleto_display_details';
+                
+                if (isBoleto) {
+                  logStep("Boleto payment detected - not treating as failure");
+                  
+                  // Get boleto details
+                  const boletoDetails = pi.next_action?.boleto_display_details;
+                  
+                  return new Response(JSON.stringify({
+                    subscription: {
+                      id: activeSubscription.id,
+                      plan_id: activeSubscription.plan_id,
+                      status: 'pending_boleto',
+                      current_period_end: activeSubscription.current_period_end,
+                      cancel_at_period_end: activeSubscription.cancel_at_period_end,
+                      extra_students: activeSubscription.extra_students,
+                      extra_cost_cents: activeSubscription.extra_cost_cents
+                    },
+                    plan: activeSubscription.subscription_plans,
+                    pendingBoleto: {
+                      detected: true,
+                      boletoUrl: boletoDetails?.hosted_voucher_url || activeSubscription.boleto_url,
+                      dueDate: boletoDetails?.expires_at 
+                        ? new Date(boletoDetails.expires_at * 1000).toISOString() 
+                        : activeSubscription.boleto_due_date,
+                      barcode: boletoDetails?.number || activeSubscription.boleto_barcode,
+                      amount: invoices.data[0].amount_due
+                    }
+                  }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                    status: 200,
+                  });
+                } else {
+                  // Not boleto, treat as payment failure
+                  paymentFailure = {
+                    detected: true,
+                    status: stripeSubscription.status,
+                    lastFailureDate: null,
+                    attemptsCount: 0,
+                    nextAttempt: null
+                  };
+                }
+              }
+            } catch (boletoCheckError) {
+              logStep("Error checking if boleto", { error: (boletoCheckError as Error).message });
+            }
           }
         } catch (stripeError) {
           logStep("Error checking Stripe subscription status for active sub", { 
@@ -217,6 +276,31 @@ serve(async (req) => {
       }
 
       // Return active subscription WITH payment failure data if detected
+      // Also check for pending_boleto status from database
+      if (activeSubscription.status === 'pending_boleto' || activeSubscription.pending_payment_method === 'boleto') {
+        return new Response(JSON.stringify({
+          subscription: {
+            id: activeSubscription.id,
+            plan_id: activeSubscription.plan_id,
+            status: 'pending_boleto',
+            current_period_end: activeSubscription.current_period_end,
+            cancel_at_period_end: activeSubscription.cancel_at_period_end,
+            extra_students: activeSubscription.extra_students,
+            extra_cost_cents: activeSubscription.extra_cost_cents
+          },
+          plan: activeSubscription.subscription_plans,
+          pendingBoleto: {
+            detected: true,
+            boletoUrl: activeSubscription.boleto_url,
+            dueDate: activeSubscription.boleto_due_date,
+            barcode: activeSubscription.boleto_barcode
+          }
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       return new Response(JSON.stringify({
         subscription: {
           id: activeSubscription.id,

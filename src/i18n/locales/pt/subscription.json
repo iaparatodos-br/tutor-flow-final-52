@@ -260,5 +260,26 @@
   "confirm": {
     "confirmed": "Assinatura confirmada!",
     "confirmedDescription": "Sua assinatura foi ativada com sucesso. As funcionalidades foram desbloqueadas."
+  },
+  "pendingBoleto": {
+    "title": "Aguardando Pagamento do Boleto",
+    "status": "Aguardando compensação",
+    "description": "Seu boleto foi gerado e está aguardando compensação bancária.",
+    "dueDate": "Vencimento",
+    "dateUndefined": "Data não definida",
+    "amount": "Valor",
+    "barcode": "Código de Barras",
+    "copyBarcode": "Copiar Código de Barras",
+    "barcodeCopied": "Código de barras copiado!",
+    "copyError": "Erro ao copiar",
+    "downloadBoleto": "Baixar Boleto",
+    "checkStatus": "Verificar Status",
+    "statusChecked": "Status verificado!",
+    "checkError": "Erro ao verificar status",
+    "processingTimeTitle": "Tempo de compensação",
+    "processingTime": "O boleto pode levar de 1 a 3 dias úteis para ser compensado após o pagamento.",
+    "accessGrantedTitle": "Acesso liberado",
+    "accessGranted": "Enquanto isso, você já pode usar todas as funcionalidades do seu plano!",
+    "dismiss": "Entendi"
   }
 }

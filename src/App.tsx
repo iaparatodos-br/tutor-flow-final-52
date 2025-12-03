@@ -12,6 +12,7 @@ import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
 import { PaymentFailureGuard } from "@/components/PaymentFailureGuard";
+import { PendingBoletoGuard } from "@/components/PendingBoletoGuard";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
@@ -122,8 +123,9 @@ const AppWithProviders = () => {
         <SubscriptionProvider>
           <SidebarProvider>
             <TooltipProvider>
-              <StudentSelectionBlocker />
+            <StudentSelectionBlocker />
               <PaymentFailureGuard />
+              <PendingBoletoGuard />
               <Toaster />
               <Sonner />
               <Routes>

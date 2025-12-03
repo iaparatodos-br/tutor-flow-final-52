@@ -48,3 +48,8 @@ verify_jwt = false
 [functions.send-material-shared-notification]
 verify_jwt = false
 
+[functions.send-boleto-subscription-notification]
+verify_jwt = false
+
+[functions.check-pending-boletos]
+verify_jwt = false

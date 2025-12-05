@@ -1609,80 +1609,517 @@ for (const participant of participants) {
 
 ---
 
-### 4.12 🟠 ALTA: Cancelamento de Aulas
+### 4.12 🟠 ALTA: Cancelamento de Aulas com Dependentes
 
 #### Problema
-As edge functions `process-cancellation` e `send-cancellation-notification` não tratam dependentes.
+As edge functions `process-cancellation` e `send-cancellation-notification` não tratam dependentes corretamente:
+- Não buscam `dependent_id` da tabela `class_participants`
+- Não resolvem dados do responsável quando o participante é um dependente
+- Não validam permissão de responsável para cancelar aulas de dependentes
+- Não personalizam emails para mencionar nome do dependente
 
 #### Arquivos Afetados
 - `supabase/functions/process-cancellation/index.ts`
 - `supabase/functions/send-cancellation-notification/index.ts`
+- `src/components/CancellationModal.tsx`
+- `src/i18n/locales/pt/cancellation.json`
+- `src/i18n/locales/en/cancellation.json`
 
-#### Solução
+---
 
-**`process-cancellation`:**
+#### Cenários de Cancelamento
+
+| # | Quem Cancela | Para Quem | Notificação Enviada Para | Cobrança Aplicada A |
+|---|--------------|-----------|--------------------------|---------------------|
+| 1 | Professor | Dependente (aula individual) | Responsável | Responsável |
+| 2 | Responsável | Seu dependente | Professor | Responsável |
+| 3 | Professor | Aula em grupo mista | Cada destinatário apropriado | Cada responsável/aluno |
+| 4 | Aluno normal | Própria aula | Professor | Aluno |
+| 5 | Responsável | Aula em grupo (sai da aula) | Professor | Responsável |
+
+---
+
+#### Diagrama de Fluxo
+
+```mermaid
+flowchart TD
+    A[Cancelamento Solicitado] --> B{Buscar Participantes}
+    B --> C[Para cada participante]
+    C --> D{student_id ou dependent_id?}
+    
+    D -->|student_id| E[Buscar profiles]
+    E --> F[recipientEmail = profiles.email<br/>studentName = profiles.name]
+    
+    D -->|dependent_id| G[Buscar dependents]
+    G --> H[Buscar responsible_id → profiles]
+    H --> I[recipientEmail = responsible.email<br/>studentName = dependent.name<br/>responsibleName = responsible.name]
+    
+    F --> J{Verificar notification_preferences}
+    I --> J
+    
+    J -->|class_cancelled = true| K[Enviar Email]
+    J -->|class_cancelled = false| L[Skip - Log apenas]
+    
+    K --> M{Tipo de participante?}
+    M -->|Aluno Normal| N[Email: Sua aula foi cancelada]
+    M -->|Dependente| O[Email: A aula de X foi cancelada]
+    
+    N --> P[Registrar class_notifications]
+    O --> P
+```
+
+---
+
+#### Solução Completa
+
+##### 1. `process-cancellation/index.ts`
 
 ```typescript
 // supabase/functions/process-cancellation/index.ts
 
-// Ao buscar participante
-const { data: participant } = await supabaseClient
-  .from('class_participants')
-  .select(`
-    *,
-    profiles:student_id(
-      name,
-      email,
-      notification_preferences
-    ),
-    dependents:dependent_id(
-      name,
-      responsible_id,
-      profiles:responsible_id(
-        name,
-        email,
-        notification_preferences
-      )
-    )
-  `)
-  .eq('id', participantId)
-  .single();
-
-// Resolver dados do destinatário
-let recipientEmail: string;
-let recipientName: string;
-let studentName: string;
-let notificationPrefs: any;
-
-if (participant.student_id) {
-  recipientEmail = participant.profiles.email;
-  recipientName = participant.profiles.name;
-  studentName = participant.profiles.name;
-  notificationPrefs = participant.profiles.notification_preferences;
-} else if (participant.dependent_id) {
-  const dep = participant.dependents;
-  recipientEmail = dep.profiles.email;
-  recipientName = dep.profiles.name;
-  studentName = dep.name;
-  notificationPrefs = dep.profiles.notification_preferences;
+// Interface para participante resolvido
+interface ResolvedParticipant {
+  participantId: string;
+  participantType: 'student' | 'dependent';
+  studentId: string | null;
+  dependentId: string | null;
+  recipientEmail: string;
+  recipientName: string;
+  studentName: string;
+  notificationPreferences: any;
+  chargeApplied: boolean;
 }
 
-// Passar para send-cancellation-notification
+// Ao buscar participantes da aula
+const { data: participants, error: participantsError } = await supabaseClient
+  .from('class_participants')
+  .select(`
+    id,
+    student_id,
+    dependent_id,
+    status,
+    charge_applied
+  `)
+  .eq('class_id', classId)
+  .in('status', ['confirmado', 'pendente']);
+
+if (participantsError) {
+  console.error('[PROCESS-CANCELLATION] Error fetching participants:', participantsError);
+  throw new Error('Failed to fetch participants');
+}
+
+// Resolver dados de cada participante
+const resolvedParticipants: ResolvedParticipant[] = [];
+
+for (const participant of participants) {
+  let resolved: ResolvedParticipant;
+
+  if (participant.student_id) {
+    // Participante é aluno normal
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('name, email, notification_preferences')
+      .eq('id', participant.student_id)
+      .single();
+
+    if (!profile) {
+      console.warn(`[PROCESS-CANCELLATION] Profile not found for student ${participant.student_id}`);
+      continue;
+    }
+
+    resolved = {
+      participantId: participant.id,
+      participantType: 'student',
+      studentId: participant.student_id,
+      dependentId: null,
+      recipientEmail: profile.email,
+      recipientName: profile.name,
+      studentName: profile.name,
+      notificationPreferences: profile.notification_preferences,
+      chargeApplied: participant.charge_applied || false
+    };
+
+  } else if (participant.dependent_id) {
+    // Participante é dependente - buscar dados do dependente e responsável
+    const { data: dependent } = await supabaseClient
+      .from('dependents')
+      .select('id, name, responsible_id')
+      .eq('id', participant.dependent_id)
+      .single();
+
+    if (!dependent) {
+      console.warn(`[PROCESS-CANCELLATION] Dependent not found: ${participant.dependent_id}`);
+      continue;
+    }
+
+    // Buscar perfil do responsável
+    const { data: responsibleProfile } = await supabaseClient
+      .from('profiles')
+      .select('name, email, notification_preferences')
+      .eq('id', dependent.responsible_id)
+      .single();
+
+    if (!responsibleProfile) {
+      console.warn(`[PROCESS-CANCELLATION] Responsible profile not found: ${dependent.responsible_id}`);
+      continue;
+    }
+
+    resolved = {
+      participantId: participant.id,
+      participantType: 'dependent',
+      studentId: null,
+      dependentId: participant.dependent_id,
+      recipientEmail: responsibleProfile.email,
+      recipientName: responsibleProfile.name,
+      studentName: dependent.name, // Nome do dependente para o email
+      notificationPreferences: responsibleProfile.notification_preferences,
+      chargeApplied: participant.charge_applied || false
+    };
+
+  } else {
+    console.warn(`[PROCESS-CANCELLATION] Participant ${participant.id} has no student_id or dependent_id`);
+    continue;
+  }
+
+  resolvedParticipants.push(resolved);
+}
+
+console.log(`[PROCESS-CANCELLATION] Resolved ${resolvedParticipants.length} participants`);
+
+// Atualizar status de cada participante
+for (const resolved of resolvedParticipants) {
+  await supabaseClient
+    .from('class_participants')
+    .update({
+      status: 'cancelado',
+      cancelled_at: new Date().toISOString(),
+      cancelled_by: cancelledBy,
+      cancellation_reason: cancellationReason,
+      charge_applied: chargeApplied
+    })
+    .eq('id', resolved.participantId);
+}
+
+// Enviar notificações
 await supabaseClient.functions.invoke('send-cancellation-notification', {
   body: {
     classId,
-    participantId,
-    recipientEmail,
-    recipientName,
-    studentName,
-    chargeApplied,
-    cancellationReason
+    classDate: classData.class_date,
+    serviceName: serviceData?.name || 'Aula',
+    teacherName: teacherProfile.name,
+    cancelledByType: cancelledBy === teacherId ? 'teacher' : 'student',
+    cancellationReason,
+    participants: resolvedParticipants.map(p => ({
+      participantId: p.participantId,
+      participantType: p.participantType,
+      recipientEmail: p.recipientEmail,
+      recipientName: p.recipientName,
+      studentName: p.studentName,
+      chargeApplied: p.chargeApplied,
+      notificationPreferences: p.notificationPreferences
+    }))
   }
 });
 ```
 
+##### 2. `send-cancellation-notification/index.ts`
+
+```typescript
+// supabase/functions/send-cancellation-notification/index.ts
+
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmail } from "../_shared/ses-email.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface ParticipantNotification {
+  participantId: string;
+  participantType: 'student' | 'dependent';
+  recipientEmail: string;
+  recipientName: string;
+  studentName: string;
+  chargeApplied: boolean;
+  notificationPreferences: any;
+}
+
+interface NotificationRequest {
+  classId: string;
+  classDate: string;
+  serviceName: string;
+  teacherName: string;
+  cancelledByType: 'teacher' | 'student';
+  cancellationReason: string;
+  participants: ParticipantNotification[];
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const request: NotificationRequest = await req.json();
+    const { classId, classDate, serviceName, teacherName, cancelledByType, cancellationReason, participants } = request;
+
+    console.log(`[SEND-CANCELLATION] Processing ${participants.length} notifications for class ${classId}`);
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const formattedDate = new Date(classDate).toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const results = { sent: 0, skipped: 0, errors: 0 };
+
+    for (const participant of participants) {
+      // Verificar preferências de notificação
+      const prefs = participant.notificationPreferences || {};
+      if (prefs.class_cancelled === false) {
+        console.log(`[SEND-CANCELLATION] Skipping ${participant.recipientEmail} - notifications disabled`);
+        results.skipped++;
+        continue;
+      }
+
+      // Montar assunto do email baseado no tipo de participante
+      let subject: string;
+      let greeting: string;
+      let mainMessage: string;
+
+      if (participant.participantType === 'dependent') {
+        // Email para responsável sobre dependente
+        subject = `📅 Aula de ${participant.studentName} Cancelada - ${formattedDate}`;
+        greeting = `Olá ${participant.recipientName},`;
+        mainMessage = `A aula de <strong>${participant.studentName}</strong> foi cancelada.`;
+      } else {
+        // Email para aluno normal
+        subject = `📅 Aula Cancelada - ${formattedDate}`;
+        greeting = `Olá ${participant.recipientName},`;
+        mainMessage = `Sua aula foi cancelada.`;
+      }
+
+      // Montar corpo do email
+      const chargeInfo = participant.chargeApplied 
+        ? `<p style="color: #dc2626; font-weight: bold;">⚠️ De acordo com a política de cancelamento, uma cobrança será aplicada.</p>`
+        : `<p style="color: #16a34a;">✅ Cancelamento gratuito - sem cobrança.</p>`;
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${subject}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 20px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Aula Cancelada</h1>
+          </div>
+          
+          <div style="background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p>${greeting}</p>
+            
+            <p>${mainMessage}</p>
+            
+            <div style="background: white; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #6366f1;">
+              <p style="margin: 5px 0;"><strong>📚 Serviço:</strong> ${serviceName}</p>
+              <p style="margin: 5px 0;"><strong>📅 Data:</strong> ${formattedDate}</p>
+              <p style="margin: 5px 0;"><strong>👨‍🏫 Professor:</strong> ${teacherName}</p>
+              ${cancelledByType === 'teacher' 
+                ? `<p style="margin: 5px 0;"><strong>ℹ️ Cancelado por:</strong> Professor</p>`
+                : `<p style="margin: 5px 0;"><strong>ℹ️ Cancelado por:</strong> Aluno/Responsável</p>`
+              }
+              ${cancellationReason ? `<p style="margin: 5px 0;"><strong>📝 Motivo:</strong> ${cancellationReason}</p>` : ''}
+            </div>
+            
+            ${chargeInfo}
+            
+            ${participant.participantType === 'dependent' 
+              ? `<p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
+                  Este email foi enviado porque você é responsável por ${participant.studentName}.
+                </p>`
+              : ''
+            }
+            
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+            
+            <p style="font-size: 12px; color: #6b7280;">
+              Este é um email automático do Tutor Flow. Por favor, não responda diretamente.
+            </p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      try {
+        await sendEmail({
+          to: participant.recipientEmail,
+          subject,
+          html: htmlContent
+        });
+
+        // Registrar notificação
+        // Nota: student_id usa o responsável para dependentes (para RLS funcionar)
+        await supabaseClient
+          .from('class_notifications')
+          .insert({
+            class_id: classId,
+            student_id: participant.participantType === 'dependent' 
+              ? (await supabaseClient.from('dependents').select('responsible_id').eq('id', participant.participantId).single()).data?.responsible_id
+              : participant.participantId,
+            notification_type: participant.chargeApplied ? 'cancellation_with_charge' : 'cancellation_free',
+            status: 'sent'
+          });
+
+        console.log(`[SEND-CANCELLATION] Email sent to ${participant.recipientEmail}`);
+        results.sent++;
+      } catch (emailError) {
+        console.error(`[SEND-CANCELLATION] Failed to send to ${participant.recipientEmail}:`, emailError);
+        results.errors++;
+      }
+    }
+
+    console.log(`[SEND-CANCELLATION] Completed:`, results);
+
+    return new Response(JSON.stringify({ success: true, results }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('[SEND-CANCELLATION] Error:', error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+});
+```
+
+---
+
+#### Validação de Permissão no Frontend
+
+##### `CancellationModal.tsx`
+
+```typescript
+// src/components/CancellationModal.tsx
+
+// Buscar dependentes do usuário logado (se for responsável)
+const { data: userDependents } = await supabase
+  .from('dependents')
+  .select('id')
+  .eq('responsible_id', userId);
+
+const userDependentIds = userDependents?.map(d => d.id) || [];
+
+// Verificar se o usuário pode cancelar a aula
+const canCancel = useMemo(() => {
+  // Professor dono da aula
+  if (userId === classData?.teacher_id) return true;
+  
+  // Aluno participante direto
+  if (participants.some(p => p.student_id === userId)) return true;
+  
+  // Responsável de dependente participante
+  if (participants.some(p => 
+    p.dependent_id && userDependentIds.includes(p.dependent_id)
+  )) return true;
+  
+  return false;
+}, [userId, classData, participants, userDependentIds]);
+
+// Identificar se está cancelando para um dependente
+const cancellingForDependent = useMemo(() => {
+  const dependentParticipant = participants.find(p => 
+    p.dependent_id && userDependentIds.includes(p.dependent_id)
+  );
+  
+  if (dependentParticipant?.dependent_id) {
+    // Buscar nome do dependente
+    return dependents?.find(d => d.id === dependentParticipant.dependent_id);
+  }
+  
+  return null;
+}, [participants, userDependentIds, dependents]);
+
+// No JSX do modal
+{cancellingForDependent && (
+  <Alert variant="default" className="mb-4">
+    <AlertDescription>
+      <p className="font-medium">
+        {t('cancellation.cancelClassFor', { name: cancellingForDependent.name })}
+      </p>
+      <p className="text-sm text-muted-foreground mt-1">
+        {t('cancellation.chargeAppliedToResponsible')}
+      </p>
+    </AlertDescription>
+  </Alert>
+)}
+```
+
+---
+
+#### Traduções i18n
+
+##### `pt/cancellation.json` (adicionar)
+
+```json
+{
+  "cancelClassFor": "Cancelar aula de {{name}}",
+  "chargeAppliedToResponsible": "A cobrança será aplicada à sua conta",
+  "dependentClassCancelled": "Aula de {{dependentName}} cancelada",
+  "dependentEmailNote": "Este email foi enviado porque você é responsável por {{dependentName}}.",
+  "cancellingForDependent": "Você está cancelando a aula de {{name}}"
+}
+```
+
+##### `en/cancellation.json` (adicionar)
+
+```json
+{
+  "cancelClassFor": "Cancel class for {{name}}",
+  "chargeAppliedToResponsible": "The charge will be applied to your account",
+  "dependentClassCancelled": "{{dependentName}}'s class cancelled",
+  "dependentEmailNote": "This email was sent because you are responsible for {{dependentName}}.",
+  "cancellingForDependent": "You are cancelling {{name}}'s class"
+}
+```
+
+---
+
+#### Notas Importantes
+
+| Regra | Descrição |
+|-------|-----------|
+| **Cobrança** | Sempre aplicada ao responsável, nunca ao dependente (dependentes não têm perfil de pagamento) |
+| **Preferências** | Usar `notification_preferences` do responsável, não do dependente |
+| **Permissão** | Responsável pode cancelar qualquer aula de seus dependentes |
+| **Aulas em Grupo** | Se mista (alunos + dependentes), cada participante recebe email personalizado |
+| **Amnistia** | Também deve funcionar para dependentes - aplicada ao responsável |
+| **class_notifications** | O `student_id` registrado é o do responsável (para RLS funcionar) |
+
+---
+
+#### Validação
+
+- [ ] Professor cancela aula individual de dependente → Responsável recebe email com nome do dependente
+- [ ] Responsável cancela aula de dependente → Professor recebe notificação
+- [ ] Aula em grupo com aluno + dependente → Cada um recebe email personalizado
+- [ ] Cobrança é aplicada corretamente ao responsável
+- [ ] Preferências do responsável são respeitadas
+- [ ] class_notifications registra corretamente para dependentes
+
 #### Prioridade
-🟠 **ALTA** - Impacto direto na comunicação
+🟠 **ALTA** - Impacto direto na comunicação e experiência do responsável
 
 ---
 

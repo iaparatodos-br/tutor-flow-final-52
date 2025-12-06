@@ -14,6 +14,8 @@
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
 4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
+   - 4.22 [Perfil do Aluno](#422--alta-perfil-do-aluno-perfilaluno)
+   - 4.23 [Listagem de Alunos com Dependentes](#423--alta-listagem-de-alunos-com-dependentes-alunostsx)
 5. [Implementação Frontend](#5-implementação-frontend)
    - 5.0 [UX de Cadastro: Fluxo Unificado](#50-ux-de-cadastro-fluxo-unificado-com-seleção-de-tipo)
    - 5.1 [DependentManager](#51-componente-dependentmanager)
@@ -3201,6 +3203,584 @@ const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
 
 ---
 
+### 4.23 🟠 ALTA: Listagem de Alunos com Dependentes (Alunos.tsx)
+
+#### Problema
+
+A página `Alunos.tsx` exibe apenas alunos normais em uma tabela flat. Após a implementação do sistema de dependentes, é necessário visualizar **responsáveis com seus dependentes** de forma hierárquica e clara, permitindo expansão inline.
+
+#### Arquivos Afetados
+
+- `src/pages/Alunos.tsx`
+- Nova função RPC: `get_teacher_dependents`
+
+---
+
+#### Design Escolhido: Linhas Expansíveis (Accordion)
+
+**Mockup Visual da Tabela:**
+
+```
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│  Nome              │ E-mail           │ Tipo      │ Responsável │ Cadastro │ Ações   │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│ ▼ 👨 João Silva    │ joao@email.com   │ Aluno     │ Próprio     │ 01/12/24 │ 👁✏🔄🗑 │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│ ▼ 👨‍👩‍👧 Ana Costa     │ ana@email.com    │ Família   │ Própria     │ 15/11/24 │ 👁✏➕🗑 │
+│    └─ 📌 Pedro Jr  │ —                │ Dependente│ Ana Costa   │ 15/11/24 │ 👁✏🗑   │
+│    └─ 📌 Maria Jr  │ —                │ Dependente│ Ana Costa   │ 20/11/24 │ 👁✏🗑   │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│   👨 Carlos Santos │ carlos@email.com │ Aluno     │ Próprio     │ 10/11/24 │ 👁✏🔄🗑 │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Características do Design:**
+- ▼ Chevron expansível apenas em responsáveis com dependentes
+- Badges visuais diferenciando tipos (Aluno, Família, Dependente)
+- Sub-linhas indentadas para dependentes
+- Botão ➕ "Adicionar Dependente" nas linhas de responsáveis
+- Contador de dependentes no badge "Família (N)"
+
+---
+
+#### Diagrama de Fluxo de Dados
+
+```mermaid
+sequenceDiagram
+    participant U as Professor
+    participant A as Alunos.tsx
+    participant S as Supabase
+    
+    U->>A: Acessa página /alunos
+    A->>S: RPC get_teacher_students()
+    S-->>A: Lista de alunos
+    A->>S: RPC get_teacher_dependents()
+    S-->>A: Lista de dependentes
+    A->>A: groupStudentsWithDependents()
+    A->>A: Renderiza tabela agrupada
+    
+    U->>A: Clica no chevron ▼
+    A->>A: toggleExpand(responsibleId)
+    A->>A: Mostra sub-linhas de dependentes
+    
+    U->>A: Clica em ➕ Adicionar Dependente
+    A->>A: Abre DependentFormModal
+```
+
+---
+
+#### Nova Função RPC: `get_teacher_dependents`
+
+```sql
+-- Função para buscar todos os dependentes dos alunos de um professor
+CREATE OR REPLACE FUNCTION get_teacher_dependents(teacher_user_id UUID)
+RETURNS TABLE (
+  dependent_id UUID,
+  dependent_name TEXT,
+  birth_date DATE,
+  notes TEXT,
+  responsible_id UUID,
+  responsible_name TEXT,
+  responsible_email TEXT,
+  created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    d.id AS dependent_id,
+    d.name AS dependent_name,
+    d.birth_date,
+    d.notes,
+    d.responsible_id,
+    p.name AS responsible_name,
+    p.email AS responsible_email,
+    d.created_at
+  FROM dependents d
+  INNER JOIN profiles p ON p.id = d.responsible_id
+  WHERE d.teacher_id = teacher_user_id
+  ORDER BY p.name, d.name;
+END;
+$$;
+
+-- Permissão
+GRANT EXECUTE ON FUNCTION get_teacher_dependents(UUID) TO authenticated;
+```
+
+---
+
+#### Novas Interfaces TypeScript
+
+```typescript
+// Interface para dependentes
+interface Dependent {
+  id: string;
+  name: string;
+  birth_date?: string;
+  notes?: string;
+  responsible_id: string;
+  responsible_name: string;
+  responsible_email: string;
+  created_at: string;
+}
+
+// Interface para aluno agrupado (com dependentes)
+interface StudentWithDependents extends Student {
+  type: 'student' | 'responsible';  // 'responsible' se tem dependentes
+  dependents: Dependent[];
+  dependentCount: number;
+}
+```
+
+---
+
+#### Novos Estados no Componente
+
+```typescript
+// Estados existentes
+const [students, setStudents] = useState<Student[]>([]);
+
+// Novos estados
+const [dependents, setDependents] = useState<Dependent[]>([]);
+const [expandedResponsibles, setExpandedResponsibles] = useState<Set<string>>(new Set());
+const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
+const [selectedResponsible, setSelectedResponsible] = useState<Student | null>(null);
+
+// Estado derivado: alunos agrupados com dependentes
+const studentsWithDependents = useMemo(() => {
+  return groupStudentsWithDependents(students, dependents);
+}, [students, dependents]);
+```
+
+---
+
+#### Função de Agrupamento
+
+```typescript
+function groupStudentsWithDependents(
+  students: Student[], 
+  dependents: Dependent[]
+): StudentWithDependents[] {
+  // Criar mapa de dependentes por responsible_id
+  const dependentsByResponsible = dependents.reduce((acc, dep) => {
+    if (!acc[dep.responsible_id]) {
+      acc[dep.responsible_id] = [];
+    }
+    acc[dep.responsible_id].push(dep);
+    return acc;
+  }, {} as Record<string, Dependent[]>);
+
+  // Mapear alunos adicionando seus dependentes
+  return students.map(student => ({
+    ...student,
+    type: dependentsByResponsible[student.id] ? 'responsible' : 'student',
+    dependents: dependentsByResponsible[student.id] || [],
+    dependentCount: (dependentsByResponsible[student.id] || []).length
+  }));
+}
+```
+
+---
+
+#### Função para Carregar Dependentes
+
+```typescript
+const loadDependents = async () => {
+  if (!profile?.id) return;
+  
+  try {
+    const { data, error } = await supabase.rpc('get_teacher_dependents', {
+      teacher_user_id: profile.id
+    });
+    
+    if (error) throw error;
+    setDependents(data || []);
+  } catch (error) {
+    console.error('Erro ao carregar dependentes:', error);
+  }
+};
+
+// Chamar no useEffect junto com loadStudents
+useEffect(() => {
+  if (profile?.id) {
+    loadStudents();
+    loadDependents();
+  }
+}, [profile]);
+```
+
+---
+
+#### Função Toggle de Expansão
+
+```typescript
+const toggleExpand = (responsibleId: string) => {
+  setExpandedResponsibles(prev => {
+    const next = new Set(prev);
+    if (next.has(responsibleId)) {
+      next.delete(responsibleId);
+    } else {
+      next.add(responsibleId);
+    }
+    return next;
+  });
+};
+```
+
+---
+
+#### Renderização da Tabela Expansível (JSX Completo)
+
+```tsx
+import { ChevronDown, ChevronRight, Users, UserPlus, User, Eye, Edit, RefreshCcw, Trash2, Mail } from "lucide-react";
+
+// Colunas da tabela atualizadas
+<TableHeader>
+  <TableRow>
+    <TableHead>Nome</TableHead>
+    <TableHead>E-mail</TableHead>
+    <TableHead>Tipo</TableHead>  {/* NOVA COLUNA */}
+    <TableHead>Responsável</TableHead>
+    {hasFeature('financial_module') && (
+      <>
+        <TableHead>Negócio Recebimento</TableHead>
+        <TableHead>Dia Cobrança</TableHead>
+      </>
+    )}
+    <TableHead>Data de Cadastro</TableHead>
+    <TableHead className="w-[140px]">Ações</TableHead>
+  </TableRow>
+</TableHeader>
+
+// Corpo da tabela
+<TableBody>
+  {studentsWithDependents.map(student => (
+    <React.Fragment key={student.id}>
+      {/* Linha Principal do Aluno/Responsável */}
+      <TableRow className={student.type === 'responsible' ? 'bg-muted/30' : ''}>
+        <TableCell className="font-medium">
+          <div className="flex items-center gap-2">
+            {/* Botão de expansão (apenas para responsáveis) */}
+            {student.type === 'responsible' ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0"
+                onClick={() => toggleExpand(student.id)}
+              >
+                {expandedResponsibles.has(student.id) 
+                  ? <ChevronDown className="h-4 w-4" />
+                  : <ChevronRight className="h-4 w-4" />
+                }
+              </Button>
+            ) : (
+              <div className="w-6" /> {/* Espaçador para alinhamento */}
+            )}
+            
+            {/* Avatar */}
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              {student.type === 'responsible' 
+                ? <Users className="h-4 w-4 text-primary" />
+                : <User className="h-4 w-4 text-primary" />
+              }
+            </div>
+            
+            {/* Nome */}
+            <span>{student.name}</span>
+          </div>
+        </TableCell>
+        
+        <TableCell>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Mail className="h-4 w-4" />
+            {student.email}
+          </div>
+        </TableCell>
+        
+        {/* Badge de Tipo */}
+        <TableCell>
+          {student.type === 'responsible' ? (
+            <Badge variant="secondary" className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+              <Users className="h-3 w-3 mr-1" />
+              {t('students.types.family')} ({student.dependentCount})
+            </Badge>
+          ) : (
+            <Badge variant="outline">
+              <User className="h-3 w-3 mr-1" />
+              {t('students.types.student')}
+            </Badge>
+          )}
+        </TableCell>
+        
+        {/* Coluna Responsável */}
+        <TableCell>
+          <span className="text-muted-foreground">{t('students.self')}</span>
+        </TableCell>
+        
+        {/* Colunas de Financial Module (se aplicável) */}
+        {hasFeature('financial_module') && (
+          <>
+            <TableCell>{student.business_name || '—'}</TableCell>
+            <TableCell>{student.billing_day || '—'}</TableCell>
+          </>
+        )}
+        
+        {/* Data de Cadastro */}
+        <TableCell>
+          {new Date(student.created_at).toLocaleDateString('pt-BR')}
+        </TableCell>
+        
+        {/* Ações */}
+        <TableCell>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)}>
+              <Eye className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)}>
+              <Edit className="h-4 w-4" />
+            </Button>
+            
+            {/* Botão Adicionar Dependente (apenas responsáveis) */}
+            {student.type === 'responsible' && (
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  setSelectedResponsible(student);
+                  setIsDependentModalOpen(true);
+                }}
+                title={t('students.dependents.addDependent')}
+                className="hover:bg-purple-50 dark:hover:bg-purple-950"
+              >
+                <UserPlus className="h-4 w-4" />
+              </Button>
+            )}
+            
+            {/* Reenviar convite (apenas alunos não confirmados) */}
+            {!student.email_confirmed && student.type === 'student' && (
+              <Button variant="ghost" size="sm" onClick={() => handleResendInvitation(student)}>
+                <RefreshCcw className="h-4 w-4" />
+              </Button>
+            )}
+            
+            <Button variant="ghost" size="sm" onClick={() => handleConfirmSmartDelete(student)}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </TableCell>
+      </TableRow>
+      
+      {/* Sub-linhas de Dependentes (expansíveis) */}
+      {student.type === 'responsible' && expandedResponsibles.has(student.id) && (
+        student.dependents.map(dep => (
+          <TableRow key={dep.id} className="bg-muted/10">
+            <TableCell className="font-medium">
+              <div className="flex items-center gap-2 pl-10">
+                {/* Indicador de hierarquia */}
+                <span className="text-muted-foreground">└─</span>
+                
+                {/* Avatar de dependente */}
+                <div className="h-7 w-7 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                  <User className="h-3 w-3 text-purple-600 dark:text-purple-300" />
+                </div>
+                
+                {/* Nome do dependente */}
+                <span className="text-sm">{dep.name}</span>
+              </div>
+            </TableCell>
+            
+            <TableCell>
+              <span className="text-muted-foreground text-sm">{t('students.dependents.noEmail')}</span>
+            </TableCell>
+            
+            <TableCell>
+              <Badge variant="outline" className="text-xs border-purple-200 text-purple-700 dark:border-purple-700 dark:text-purple-300">
+                📌 {t('students.types.dependent')}
+              </Badge>
+            </TableCell>
+            
+            <TableCell>
+              <span className="text-sm text-muted-foreground">{dep.responsible_name}</span>
+            </TableCell>
+            
+            {hasFeature('financial_module') && (
+              <>
+                <TableCell>
+                  <span className="text-muted-foreground text-sm">—</span>
+                </TableCell>
+                <TableCell>
+                  <span className="text-muted-foreground text-sm">—</span>
+                </TableCell>
+              </>
+            )}
+            
+            <TableCell>
+              {new Date(dep.created_at).toLocaleDateString('pt-BR')}
+            </TableCell>
+            
+            <TableCell>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => navigate(`/dependentes/${dep.id}`)}>
+                  <Eye className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleEditDependent(dep)}>
+                  <Edit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDeleteDependent(dep)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </TableCell>
+          </TableRow>
+        ))
+      )}
+    </React.Fragment>
+  ))}
+</TableBody>
+```
+
+---
+
+#### Atualização do Contador de Alunos
+
+```typescript
+// O contador deve incluir dependentes para limite do plano
+const totalCount = students.length + dependents.length;
+
+// No CardTitle
+<CardTitle className="flex items-center gap-2">
+  <User className="h-5 w-5" />
+  {t('students.list')} ({students.length})
+  {dependents.length > 0 && (
+    <span className="text-sm font-normal text-muted-foreground">
+      + {dependents.length} {t('students.dependents.label')}
+    </span>
+  )}
+</CardTitle>
+```
+
+---
+
+#### Integração com DependentFormModal
+
+```tsx
+{/* Modal para adicionar dependente */}
+<DependentFormModal
+  isOpen={isDependentModalOpen}
+  onOpenChange={setIsDependentModalOpen}
+  responsible={selectedResponsible}
+  onSuccess={() => {
+    loadDependents();
+    setIsDependentModalOpen(false);
+  }}
+/>
+```
+
+---
+
+#### Traduções i18n
+
+**`src/i18n/locales/pt/students.json`:**
+```json
+{
+  "types": {
+    "student": "Aluno",
+    "family": "Família",
+    "dependent": "Dependente"
+  },
+  "self": "Próprio",
+  "dependents": {
+    "label": "dependentes",
+    "count": "({count} dependentes)",
+    "noDependents": "Nenhum dependente",
+    "addDependent": "Adicionar Dependente",
+    "noEmail": "—"
+  },
+  "badges": {
+    "student": "Aluno",
+    "family": "Família",
+    "dependent": "Dependente"
+  }
+}
+```
+
+**`src/i18n/locales/en/students.json`:**
+```json
+{
+  "types": {
+    "student": "Student",
+    "family": "Family",
+    "dependent": "Dependent"
+  },
+  "self": "Self",
+  "dependents": {
+    "label": "dependents",
+    "count": "({count} dependents)",
+    "noDependents": "No dependents",
+    "addDependent": "Add Dependent",
+    "noEmail": "—"
+  },
+  "badges": {
+    "student": "Student",
+    "family": "Family",
+    "dependent": "Dependent"
+  }
+}
+```
+
+---
+
+#### Checklist de Validação
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | RPC | `get_teacher_dependents` criada e funcionando |
+| ⬜ | Data | Dependentes carregam junto com alunos |
+| ⬜ | UI | Responsáveis exibem chevron expansível |
+| ⬜ | UI | Alunos sem dependentes não têm chevron |
+| ⬜ | UI | Sub-linhas indentadas corretamente |
+| ⬜ | UI | Badge "Família (N)" mostra contagem correta |
+| ⬜ | UI | Botão "Adicionar Dependente" apenas em responsáveis |
+| ⬜ | Ações | Ações de dependente funcionam (ver, editar, excluir) |
+| ⬜ | Contador | Contador total inclui dependentes |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
+| ⬜ | Responsivo | Layout funciona em mobile |
+
+---
+
+#### Notas Importantes
+
+> 📌 **Contagem para Limite de Plano**  
+> O contador para verificar limite do plano deve usar `students.length + dependents.length`, não apenas alunos.
+
+> 📌 **Dependentes não têm Email**  
+> Dependentes nunca terão email próprio. A coluna de email deve mostrar "—" para eles.
+
+> 📌 **Ações de Responsável**  
+> - Ver perfil → navega para `/alunos/{id}` (onde mostra dependentes)
+> - Editar → abre `StudentFormModal` 
+> - Adicionar Dependente → abre `DependentFormModal`
+> - Remover → remove apenas o responsável (dependentes órfãos são tratados pela regra de cascade)
+
+> 📌 **Ações de Dependente**  
+> - Ver perfil → navega para `/dependentes/{id}` (nova rota a criar)
+> - Editar → abre `DependentFormModal` em modo edição
+> - Remover → confirma e chama `delete-dependent`
+
+> 📌 **Expansão Automática (Opcional)**  
+> Considerar expandir automaticamente responsáveis com apenas 1-2 dependentes para melhor UX.
+
+---
+
+#### Prioridade
+
+🟠 **ALTA** - Funcionalidade essencial para visualização e gerenciamento de famílias na listagem principal
+
+---
+
 ## 5. Implementação Frontend
 
 ### 5.0 UX de Cadastro: Fluxo Unificado com Seleção de Tipo
@@ -5532,10 +6112,10 @@ COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que g
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **21 pontas soltas** identificadas e solucionadas (15 originais + 6 novas)  
+✅ **22 pontas soltas** identificadas e solucionadas (15 originais + 7 novas)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 4 páginas)  
-✅ Implementação backend (3 edge functions novas + 11 modificadas)  
+✅ Implementação frontend (6 componentes + modificações em 5 páginas)  
+✅ Implementação backend (3 edge functions novas + 11 modificadas + 1 RPC nova)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
@@ -5553,6 +6133,8 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
   - 4.19: Função RPC `get_unbilled_participants_v2` (crítica)
   - 4.20: Verificação de inadimplência (já funciona naturalmente)
   - 4.21: Rastreabilidade em faturas (opcional)
+  - 4.22: Perfil do aluno com dependentes (`PerfilAluno.tsx`)
+  - 4.23: Listagem de alunos com dependentes expansíveis (`Alunos.tsx`)
 - Cronograma atualizado: 8-13 dias → **9-14 dias**
 - Fase 4 (Integrações) expandida: 1-2 dias → 2-3 dias
 

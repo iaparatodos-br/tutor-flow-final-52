@@ -3681,6 +3681,292 @@ const totalCount = students.length + dependents.length;
 
 ---
 
+#### Edição de Dependentes (Modal Unificado)
+
+O mesmo `DependentFormModal` é usado tanto para criação quanto para edição, seguindo o padrão já estabelecido pelo `StudentFormModal`. A diferença está na prop `dependent` que, quando preenchida, coloca o modal em modo edição.
+
+##### Novo Estado para Edição
+
+```typescript
+// Em Alunos.tsx - Estados adicionais para edição
+const [selectedDependent, setSelectedDependent] = useState<Dependent | null>(null);
+```
+
+##### Função handleEditDependent
+
+```typescript
+/**
+ * Abre o modal de dependente em modo edição
+ * @param dep - Dependente a ser editado
+ */
+const handleEditDependent = (dep: Dependent) => {
+  // Encontra o responsável correspondente
+  const responsible = students.find(s => s.id === dep.responsible_id);
+  if (responsible) {
+    setSelectedResponsible(responsible);
+    setSelectedDependent(dep);
+    setIsDependentModalOpen(true);
+  }
+};
+```
+
+##### Integração Atualizada do DependentFormModal
+
+```tsx
+{/* Modal para adicionar/editar dependente */}
+<DependentFormModal
+  isOpen={isDependentModalOpen}
+  onOpenChange={(open) => {
+    setIsDependentModalOpen(open);
+    if (!open) {
+      setSelectedDependent(null);  // Limpa seleção ao fechar
+    }
+  }}
+  responsible={selectedResponsible}
+  dependent={selectedDependent}  // ← NOVA PROP para modo edição
+  onSuccess={() => {
+    loadDependents();
+    setIsDependentModalOpen(false);
+    setSelectedDependent(null);
+  }}
+/>
+```
+
+##### Diagrama de Fluxo de Edição
+
+```mermaid
+sequenceDiagram
+    participant U as Professor
+    participant T as Tabela Expansível
+    participant M as DependentFormModal
+    participant API as update-dependent
+    participant DB as Supabase
+
+    U->>T: Clica ✏️ em dependente
+    T->>T: handleEditDependent(dep)
+    T->>T: setSelectedResponsible(...)
+    T->>T: setSelectedDependent(dep)
+    T->>T: setIsDependentModalOpen(true)
+    T->>M: Abre modal com dados
+    
+    M->>M: useEffect detecta dependent prop
+    M->>M: form.reset({...dependent})
+    M->>M: Exibe título "Editar Dependente"
+    M->>M: Desabilita campo Responsável
+    
+    U->>M: Altera campos (nome, data nasc.)
+    U->>M: Clica "Salvar"
+    
+    M->>API: invoke('update-dependent', { dependentId, ...data })
+    API->>DB: UPDATE dependents SET name, birth_date WHERE id
+    DB-->>API: success
+    API-->>M: success
+    
+    M->>M: toast.success('Dependente atualizado!')
+    M->>M: onSuccess()
+    M->>T: Fecha modal
+    T->>T: setSelectedDependent(null)
+    T->>T: loadDependents()
+    T->>T: Re-renderiza tabela
+```
+
+##### Modificação no JSX da Sub-linha de Dependente
+
+```tsx
+{/* Ações na sub-linha de dependente */}
+<TableCell className="text-right">
+  <div className="flex justify-end gap-1">
+    {/* Botão Editar */}
+    <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={() => handleEditDependent(dep)}
+      title={t('common.edit')}
+    >
+      <Edit className="h-4 w-4" />
+    </Button>
+    
+    {/* Botão Ver Perfil */}
+    <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={() => navigate(`/alunos/${dep.responsible_id}?dependent=${dep.id}`)}
+      title={t('students.viewProfile')}
+    >
+      <Eye className="h-4 w-4" />
+    </Button>
+    
+    {/* Botão Excluir */}
+    <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={() => handleDeleteDependent(dep)}
+      className="text-destructive hover:text-destructive"
+      title={t('common.delete')}
+    >
+      <Trash2 className="h-4 w-4" />
+    </Button>
+  </div>
+</TableCell>
+```
+
+##### Comportamento do Modal: Criação vs Edição
+
+| Aspecto | Criação (`dependent={null}`) | Edição (`dependent={...}`) |
+|---------|------------------------------|----------------------------|
+| **Título** | "Adicionar Dependente" | "Editar Dependente" |
+| **Campo Responsável** | Dropdown habilitado | Dropdown desabilitado (readonly) |
+| **Valores iniciais** | Campos vazios | Preenchidos do `dependent` |
+| **Botão Submit** | "Adicionar" | "Salvar" |
+| **Edge Function** | `create-dependent` | `update-dependent` |
+| **Toast sucesso** | "Dependente adicionado!" | "Dependente atualizado!" |
+
+##### Lógica Interna do DependentFormModal (Modo Edição)
+
+```tsx
+// Em DependentFormModal.tsx
+
+interface DependentFormModalProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  responsible: Student | null;
+  dependent?: Dependent | null;  // ← Prop para edição
+  onSuccess: () => void;
+}
+
+export function DependentFormModal({ 
+  isOpen, 
+  onOpenChange, 
+  responsible,
+  dependent,  // ← Pode ser null (criação) ou objeto (edição)
+  onSuccess 
+}: DependentFormModalProps) {
+  const { t } = useTranslation('students');
+  const isEditMode = !!dependent;
+  
+  const form = useForm<DependentFormData>({
+    resolver: zodResolver(dependentSchema),
+    defaultValues: {
+      name: '',
+      birth_date: null,
+    },
+  });
+  
+  // Preenche form quando abre em modo edição
+  useEffect(() => {
+    if (isOpen && dependent) {
+      form.reset({
+        name: dependent.name,
+        birth_date: dependent.birth_date ? new Date(dependent.birth_date) : null,
+      });
+    } else if (isOpen && !dependent) {
+      form.reset({ name: '', birth_date: null });
+    }
+  }, [isOpen, dependent, form]);
+  
+  const onSubmit = async (data: DependentFormData) => {
+    try {
+      if (isEditMode) {
+        // Modo edição
+        await supabase.functions.invoke('update-dependent', {
+          body: {
+            dependentId: dependent.id,
+            name: data.name,
+            birthDate: data.birth_date?.toISOString().split('T')[0] || null,
+          },
+        });
+        toast.success(t('dependents.editSuccess'));
+      } else {
+        // Modo criação
+        await supabase.functions.invoke('create-dependent', {
+          body: {
+            responsibleId: responsible?.id,
+            name: data.name,
+            birthDate: data.birth_date?.toISOString().split('T')[0] || null,
+          },
+        });
+        toast.success(t('dependents.createSuccess'));
+      }
+      onSuccess();
+    } catch (error) {
+      toast.error(isEditMode ? t('dependents.editError') : t('dependents.createError'));
+    }
+  };
+  
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {isEditMode ? t('dependents.edit') : t('dependents.addDependent')}
+          </DialogTitle>
+        </DialogHeader>
+        
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Campo Responsável - desabilitado em edição */}
+            <FormField
+              control={form.control}
+              name="responsible"
+              render={() => (
+                <FormItem>
+                  <FormLabel>{t('dependents.responsible')}</FormLabel>
+                  <Input 
+                    value={responsible?.name || ''} 
+                    disabled 
+                    className={isEditMode ? 'opacity-60' : ''}
+                  />
+                </FormItem>
+              )}
+            />
+            
+            {/* Campo Nome */}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('dependents.name')}</FormLabel>
+                  <Input {...field} placeholder={t('dependents.namePlaceholder')} />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            {/* Campo Data de Nascimento */}
+            <FormField
+              control={form.control}
+              name="birth_date"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('dependents.birthDate')}</FormLabel>
+                  <DatePicker
+                    date={field.value}
+                    onDateChange={field.onChange}
+                  />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit">
+                {isEditMode ? t('common.save') : t('dependents.add')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+---
+
 #### Traduções i18n
 
 **`src/i18n/locales/pt/students.json`:**
@@ -3697,7 +3983,17 @@ const totalCount = students.length + dependents.length;
     "count": "({count} dependentes)",
     "noDependents": "Nenhum dependente",
     "addDependent": "Adicionar Dependente",
-    "noEmail": "—"
+    "noEmail": "—",
+    "edit": "Editar Dependente",
+    "editSuccess": "Dependente atualizado com sucesso",
+    "editError": "Erro ao atualizar dependente",
+    "createSuccess": "Dependente adicionado com sucesso",
+    "createError": "Erro ao adicionar dependente",
+    "name": "Nome do Dependente",
+    "namePlaceholder": "Digite o nome completo",
+    "birthDate": "Data de Nascimento",
+    "responsible": "Responsável",
+    "add": "Adicionar"
   },
   "badges": {
     "student": "Aluno",
@@ -3721,7 +4017,17 @@ const totalCount = students.length + dependents.length;
     "count": "({count} dependents)",
     "noDependents": "No dependents",
     "addDependent": "Add Dependent",
-    "noEmail": "—"
+    "noEmail": "—",
+    "edit": "Edit Dependent",
+    "editSuccess": "Dependent updated successfully",
+    "editError": "Error updating dependent",
+    "createSuccess": "Dependent added successfully",
+    "createError": "Error adding dependent",
+    "name": "Dependent Name",
+    "namePlaceholder": "Enter full name",
+    "birthDate": "Date of Birth",
+    "responsible": "Guardian",
+    "add": "Add"
   },
   "badges": {
     "student": "Student",
@@ -3733,7 +4039,7 @@ const totalCount = students.length + dependents.length;
 
 ---
 
-#### Checklist de Validação
+#### Checklist de Validação - Listagem
 
 | Item | Status | Verificar |
 |------|--------|-----------|
@@ -3748,6 +4054,25 @@ const totalCount = students.length + dependents.length;
 | ⬜ | Contador | Contador total inclui dependentes |
 | ⬜ | i18n | Traduções funcionam em PT e EN |
 | ⬜ | Responsivo | Layout funciona em mobile |
+
+---
+
+#### Checklist de Validação - Edição de Dependentes
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | UI | Clique no ✏️ abre modal com dados preenchidos |
+| ⬜ | UI | Nome do dependente está preenchido e editável |
+| ⬜ | UI | Data de nascimento está preenchida e editável |
+| ⬜ | UI | Campo "Responsável" exibe nome e está desabilitado |
+| ⬜ | UI | Título do modal mostra "Editar Dependente" |
+| ⬜ | UI | Botão submit mostra "Salvar" (não "Adicionar") |
+| ⬜ | API | Submissão chama `update-dependent` (não create) |
+| ⬜ | Feedback | Toast de sucesso "Dependente atualizado" aparece |
+| ⬜ | Flow | Modal fecha automaticamente após sucesso |
+| ⬜ | Refresh | Tabela atualiza refletindo alterações |
+| ⬜ | State | `selectedDependent` é limpo ao fechar modal |
+| ⬜ | i18n | Traduções de edição funcionam em PT e EN |
 
 ---
 

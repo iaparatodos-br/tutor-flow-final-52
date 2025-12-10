@@ -13,13 +13,19 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.24)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.40)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
    - 4.22 [Perfil do Aluno](#422--alta-perfil-do-aluno-perfilaluno)
    - 4.23 [Listagem de Alunos com Dependentes](#423--alta-listagem-de-alunos-com-dependentes-alunostsx)
    - 4.24 [Importação em Massa de Famílias](#424--média-importação-em-massa-de-famílias-studentimportdialogtsx)
+   - 4.35 [handle-student-overage - Contagem Correta](#435--crítica-handle-student-overage---contagem-correta)
+   - 4.36 [handle-plan-downgrade-selection - Incluir Dependentes](#436--crítica-handle-plan-downgrade-selection---incluir-dependentes)
+   - 4.37 [process-payment-failure-downgrade - Suporte a Dependentes](#437--crítica-process-payment-failure-downgrade---suporte-a-dependentes)
+   - 4.38 [PlanDowngradeSelectionModal - UI para Dependentes](#438--crítica-plandowngradeselectionmodal---ui-para-dependentes)
+   - 4.39 [PaymentFailureStudentSelectionModal - UI para Dependentes](#439--crítica-paymentfailurestudentselectionmodal---ui-para-dependentes)
+   - 4.40 [handle-teacher-subscription-cancellation - Corrigir Query](#440--média-handle-teacher-subscription-cancellation---corrigir-query)
 5. [Implementação Frontend](#5-implementação-frontend)
    - 5.0 [UX de Cadastro: Fluxo Unificado](#50-ux-de-cadastro-fluxo-unificado-com-seleção-de-tipo)
    - 5.1 [DependentManager](#51-componente-dependentmanager)
@@ -8445,25 +8451,945 @@ A aula de ${dependentName} do dia ${originalDate} foi cancelada.
 
 ---
 
+## 4.35 (🔴 CRÍTICA) handle-student-overage - Contagem Correta
+
+### Problema Identificado
+A edge function `handle-student-overage` conta apenas registros em `teacher_student_relationships` para calcular overage de alunos, ignorando completamente dependentes. Isso resulta em:
+- **Cobrança incorreta**: Professor com 10 alunos + 5 dependentes é cobrado como se tivesse apenas 10
+- **Violação de limite de plano**: Limite de 15 alunos pode ser excedido sem cobrança
+
+### Localização
+`supabase/functions/handle-student-overage/index.ts` (linhas 74-82)
+
+### Código Atual (Problemático)
+```typescript
+// Conta total de alunos do professor - IGNORA DEPENDENTES
+const { count: totalStudents } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('*', { count: 'exact', head: true })
+  .eq('teacher_id', userId);
+```
+
+### Solução: Usar RPC `count_teacher_students_and_dependents`
+
+```typescript
+// Contar alunos + dependentes usando RPC
+const { data: countData, error: countError } = await supabaseClient
+  .rpc('count_teacher_students_and_dependents', {
+    p_teacher_id: userId
+  });
+
+if (countError) {
+  console.error('Erro ao contar alunos/dependentes:', countError);
+  throw new Error('Falha ao contar total de alunos');
+}
+
+const totalStudents = countData?.total || 0;
+const totalDirectStudents = countData?.direct_students || 0;
+const totalDependents = countData?.dependents || 0;
+
+logStep('Contagem total', {
+  totalStudents,
+  totalDirectStudents,
+  totalDependents,
+  planLimit,
+  extraStudents: totalStudents - planLimit
+});
+
+// Atualizar subscription quantity com total correto
+await stripe.subscriptions.update(stripeSubscription.id, {
+  items: [{
+    id: mainItem.id,
+    quantity: totalStudents // Inclui dependentes
+  }]
+});
+```
+
+### SQL da RPC (Já Documentada em Seção 3)
+```sql
+CREATE OR REPLACE FUNCTION count_teacher_students_and_dependents(p_teacher_id uuid)
+RETURNS TABLE (
+  direct_students bigint,
+  dependents bigint,
+  total bigint
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    (SELECT COUNT(*) FROM teacher_student_relationships WHERE teacher_id = p_teacher_id) as direct_students,
+    (SELECT COUNT(*) FROM dependents WHERE teacher_id = p_teacher_id) as dependents,
+    (SELECT COUNT(*) FROM teacher_student_relationships WHERE teacher_id = p_teacher_id) +
+    (SELECT COUNT(*) FROM dependents WHERE teacher_id = p_teacher_id) as total;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+```
+
+### Checklist de Validação
+- [ ] RPC `count_teacher_students_and_dependents` criada no banco
+- [ ] Edge function usa RPC em vez de query direta
+- [ ] Log registra breakdown (diretos vs dependentes)
+- [ ] Quantity do Stripe atualizado com total correto
+- [ ] Teste: criar dependente deve disparar overage se exceder limite
+
+---
+
+## 4.36 (🔴 CRÍTICA) handle-plan-downgrade-selection - Incluir Dependentes
+
+### Problema Identificado
+Ao fazer downgrade de plano, a edge function `handle-plan-downgrade-selection` busca apenas alunos diretos para que o professor selecione quais manter. Dependentes são ignorados, causando:
+- **Dados órfãos**: Dependentes de alunos excluídos ficam sem responsável
+- **Contagem incorreta**: Validação de limite não considera dependentes
+- **Experiência confusa**: Professor não sabe que está perdendo acesso aos dependentes
+
+### Localização
+`supabase/functions/handle-plan-downgrade-selection/index.ts` (linhas 67-80)
+
+### Código Atual (Problemático)
+```typescript
+// Busca apenas alunos diretos - IGNORA DEPENDENTES
+const { data: students, error: studentsError } = await supabase
+  .from('teacher_student_relationships')
+  .select('student_id, student_name')
+  .eq('teacher_id', userId);
+```
+
+### Solução Completa
+
+```typescript
+interface StudentWithDependents {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsible_id?: string;
+  responsible_name?: string;
+}
+
+// 1. Buscar alunos diretos
+const { data: directStudents } = await supabase
+  .from('teacher_student_relationships')
+  .select('student_id, student_name')
+  .eq('teacher_id', userId);
+
+// 2. Buscar dependentes
+const { data: dependents } = await supabase
+  .from('dependents')
+  .select(`
+    id,
+    name,
+    responsible_id,
+    responsible:profiles!dependents_responsible_id_fkey(name)
+  `)
+  .eq('teacher_id', userId);
+
+// 3. Combinar em lista unificada
+const allStudents: StudentWithDependents[] = [
+  ...(directStudents || []).map(s => ({
+    id: s.student_id,
+    name: s.student_name || 'Sem nome',
+    type: 'student' as const
+  })),
+  ...(dependents || []).map(d => ({
+    id: d.id,
+    name: d.name,
+    type: 'dependent' as const,
+    responsible_id: d.responsible_id,
+    responsible_name: d.responsible?.name
+  }))
+];
+
+logStep('Listagem para seleção', {
+  directStudents: directStudents?.length || 0,
+  dependents: dependents?.length || 0,
+  total: allStudents.length
+});
+```
+
+### Validação de Limite Considerando Dependentes
+
+```typescript
+// Validar que seleção não excede limite do novo plano
+const selectedTotal = selectedIds.length;
+const planLimit = newPlan.student_limit;
+
+if (selectedTotal > planLimit) {
+  throw new Error(
+    `Seleção excede limite do plano. ` +
+    `Selecionados: ${selectedTotal}, Limite: ${planLimit}. ` +
+    `Inclua apenas ${planLimit} alunos/dependentes.`
+  );
+}
+```
+
+### Exclusão de Dependentes Não Selecionados
+
+```typescript
+// Identificar dependentes para excluir
+const dependentIdsToRemove = allStudents
+  .filter(s => s.type === 'dependent' && !selectedIds.includes(s.id))
+  .map(s => s.id);
+
+// Deletar dependentes não selecionados
+if (dependentIdsToRemove.length > 0) {
+  const { error: deleteDependentsError } = await supabase
+    .from('dependents')
+    .delete()
+    .in('id', dependentIdsToRemove);
+
+  if (deleteDependentsError) {
+    console.error('Erro ao deletar dependentes:', deleteDependentsError);
+  }
+
+  logStep('Dependentes removidos', {
+    count: dependentIdsToRemove.length,
+    ids: dependentIdsToRemove
+  });
+}
+
+// Continuar com exclusão de alunos diretos (código existente)
+const studentIdsToRemove = allStudents
+  .filter(s => s.type === 'student' && !selectedIds.includes(s.id))
+  .map(s => s.id);
+
+for (const studentId of studentIdsToRemove) {
+  await supabase.functions.invoke('smart-delete-student', {
+    body: { studentId }
+  });
+}
+```
+
+### Checklist de Validação
+- [ ] Query busca dependentes junto com alunos diretos
+- [ ] Lista retornada inclui tipo (student/dependent)
+- [ ] Validação de limite considera total (alunos + dependentes)
+- [ ] Dependentes não selecionados são deletados
+- [ ] Cascade deletar dependentes de alunos removidos
+- [ ] Log registra breakdown de exclusões
+
+---
+
+## 4.37 (🔴 CRÍTICA) process-payment-failure-downgrade - Suporte a Dependentes
+
+### Problema Identificado
+A edge function `process-payment-failure-downgrade` tem o mesmo problema da função de downgrade: ao processar falha de pagamento e fazer downgrade forçado, ignora dependentes na seleção e contagem.
+
+### Localização
+`supabase/functions/process-payment-failure-downgrade/index.ts` (linhas 71-88)
+
+### Código Atual (Problemático)
+```typescript
+// Busca apenas alunos diretos
+const { data: allStudents } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('student_id, student_name')
+  .eq('teacher_id', user.id);
+
+// Validação não considera dependentes
+if (selectedStudentIds.length > freePlan.student_limit) {
+  return new Response(
+    JSON.stringify({ error: 'Exceeded student limit' }),
+    { status: 400 }
+  );
+}
+```
+
+### Solução
+
+Aplicar mesma lógica da seção 4.36, adaptada para contexto de falha de pagamento:
+
+```typescript
+// 1. Buscar alunos diretos
+const { data: directStudents } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('student_id, student_name')
+  .eq('teacher_id', user.id);
+
+// 2. Buscar dependentes
+const { data: dependents } = await supabaseClient
+  .from('dependents')
+  .select(`
+    id,
+    name,
+    responsible_id,
+    responsible:profiles!dependents_responsible_id_fkey(name)
+  `)
+  .eq('teacher_id', user.id);
+
+// 3. Combinar para validação
+const allEntities = [
+  ...(directStudents || []).map(s => ({
+    id: s.student_id,
+    name: s.student_name,
+    type: 'student' as const
+  })),
+  ...(dependents || []).map(d => ({
+    id: d.id,
+    name: d.name,
+    type: 'dependent' as const,
+    responsible_id: d.responsible_id
+  }))
+];
+
+// 4. Validar seleção
+const selectedTotal = selectedStudentIds.length;
+if (selectedTotal > freePlan.student_limit) {
+  return new Response(
+    JSON.stringify({
+      error: `Selecione no máximo ${freePlan.student_limit} alunos/dependentes`
+    }),
+    { status: 400, headers: corsHeaders }
+  );
+}
+
+// 5. Remover não selecionados
+const entitiesToRemove = allEntities.filter(e => !selectedStudentIds.includes(e.id));
+
+// Remover dependentes primeiro (para evitar FK issues)
+const dependentsToRemove = entitiesToRemove.filter(e => e.type === 'dependent');
+if (dependentsToRemove.length > 0) {
+  await supabaseClient
+    .from('dependents')
+    .delete()
+    .in('id', dependentsToRemove.map(d => d.id));
+}
+
+// Remover alunos diretos
+const studentsToRemove = entitiesToRemove.filter(e => e.type === 'student');
+for (const student of studentsToRemove) {
+  await supabaseClient.functions.invoke('smart-delete-student', {
+    body: { studentId: student.id }
+  });
+}
+
+logStep('Downgrade por falha de pagamento', {
+  totalBefore: allEntities.length,
+  selected: selectedTotal,
+  dependentsRemoved: dependentsToRemove.length,
+  studentsRemoved: studentsToRemove.length
+});
+```
+
+### Checklist de Validação
+- [ ] Busca dependentes junto com alunos diretos
+- [ ] Validação de limite considera total
+- [ ] Dependentes são deletados antes de alunos (FK cascade)
+- [ ] Log detalhado de remoções
+- [ ] Teste: falha de pagamento com dependentes processa corretamente
+
+---
+
+## 4.38 (🔴 CRÍTICA) PlanDowngradeSelectionModal - UI para Dependentes
+
+### Problema Identificado
+O modal `PlanDowngradeSelectionModal.tsx` exibe apenas alunos diretos para seleção durante downgrade de plano, não mostrando dependentes. Isso causa:
+- Professor não sabe que está perdendo acesso aos dependentes
+- Seleção incompleta resulta em dados inconsistentes
+- Experiência do usuário confusa
+
+### Localização
+`src/components/PlanDowngradeSelectionModal.tsx`
+
+### Interface Atualizada
+
+```typescript
+interface Student {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsible_id?: string;
+  responsible_name?: string;
+}
+
+interface PlanDowngradeSelectionModalProps {
+  open: boolean;
+  onClose: () => void;
+  students: Student[]; // Agora inclui dependentes
+  newPlanLimit: number;
+  onConfirm: (selectedIds: string[]) => Promise<void>;
+}
+```
+
+### Renderização com Agrupamento
+
+```tsx
+// Agrupar por tipo para exibição organizada
+const directStudents = students.filter(s => s.type === 'student');
+const dependentStudents = students.filter(s => s.type === 'dependent');
+
+// Agrupar dependentes por responsável
+const dependentsByResponsible = dependentStudents.reduce((acc, dep) => {
+  const key = dep.responsible_id || 'unknown';
+  if (!acc[key]) {
+    acc[key] = {
+      responsible_name: dep.responsible_name || 'Responsável desconhecido',
+      dependents: []
+    };
+  }
+  acc[key].dependents.push(dep);
+  return acc;
+}, {} as Record<string, { responsible_name: string; dependents: Student[] }>);
+
+return (
+  <Dialog open={open} onOpenChange={onClose}>
+    <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>{t('subscription.downgrade.selectStudents')}</DialogTitle>
+        <DialogDescription>
+          {t('subscription.downgrade.selectDescription', { limit: newPlanLimit })}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4">
+        {/* Contador de seleção */}
+        <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+          <span>{t('subscription.downgrade.selected')}</span>
+          <Badge variant={selectedIds.length > newPlanLimit ? 'destructive' : 'default'}>
+            {selectedIds.length} / {newPlanLimit}
+          </Badge>
+        </div>
+
+        {/* Alunos Diretos */}
+        {directStudents.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm text-muted-foreground">
+              {t('dependents.labels.directStudents')} ({directStudents.length})
+            </h4>
+            {directStudents.map(student => (
+              <div
+                key={student.id}
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                  selectedIds.includes(student.id)
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
+                )}
+                onClick={() => toggleSelection(student.id)}
+              >
+                <Checkbox checked={selectedIds.includes(student.id)} />
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span>{student.name}</span>
+                <Badge variant="outline" className="ml-auto">
+                  {t('dependents.badges.student')}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Dependentes (agrupados por responsável) */}
+        {Object.entries(dependentsByResponsible).map(([responsibleId, group]) => (
+          <div key={responsibleId} className="space-y-2">
+            <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              {t('dependents.labels.familyOf', { name: group.responsible_name })}
+              ({group.dependents.length})
+            </h4>
+            {group.dependents.map(dependent => (
+              <div
+                key={dependent.id}
+                className={cn(
+                  "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ml-4",
+                  selectedIds.includes(dependent.id)
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-primary/50"
+                )}
+                onClick={() => toggleSelection(dependent.id)}
+              >
+                <Checkbox checked={selectedIds.includes(dependent.id)} />
+                <span className="text-muted-foreground">📌</span>
+                <span>{dependent.name}</span>
+                <Badge variant="secondary" className="ml-auto">
+                  {t('dependents.badges.dependent')}
+                </Badge>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {/* Aviso sobre limite */}
+        {selectedIds.length > newPlanLimit && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {t('subscription.downgrade.exceedsLimit', {
+                selected: selectedIds.length,
+                limit: newPlanLimit
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button
+          onClick={handleConfirm}
+          disabled={selectedIds.length > newPlanLimit || selectedIds.length === 0}
+        >
+          {t('subscription.downgrade.confirmSelection')}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+);
+```
+
+### Traduções Necessárias
+
+```json
+// pt/subscription.json
+{
+  "downgrade": {
+    "selectStudents": "Selecione os alunos que deseja manter",
+    "selectDescription": "Seu novo plano permite até {limit} alunos/dependentes. Selecione quais deseja manter.",
+    "selected": "Selecionados",
+    "exceedsLimit": "Você selecionou {selected} mas o limite é {limit}. Remova alguns para continuar.",
+    "confirmSelection": "Confirmar Seleção"
+  }
+}
+
+// pt/dependents.json
+{
+  "labels": {
+    "directStudents": "Alunos Diretos",
+    "familyOf": "Família de {name}"
+  },
+  "badges": {
+    "student": "Aluno",
+    "dependent": "Dependente"
+  }
+}
+```
+
+### Checklist de Validação
+- [ ] Modal recebe lista com alunos E dependentes
+- [ ] Dependentes agrupados visualmente por responsável
+- [ ] Badge diferencia aluno de dependente
+- [ ] Contador mostra total selecionado vs limite
+- [ ] Botão desabilitado se exceder limite
+- [ ] Seleção enviada inclui IDs de dependentes
+
+---
+
+## 4.39 (🔴 CRÍTICA) PaymentFailureStudentSelectionModal - UI para Dependentes
+
+### Problema Identificado
+O modal `PaymentFailureStudentSelectionModal.tsx` tem o mesmo problema do modal de downgrade: não exibe dependentes para seleção quando o pagamento falha e o usuário precisa escolher quais alunos manter no plano gratuito.
+
+### Localização
+`src/components/PaymentFailureStudentSelectionModal.tsx`
+
+### Solução
+Aplicar a mesma lógica da seção 4.38, reutilizando o padrão de interface e renderização:
+
+```typescript
+interface Student {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsible_id?: string;
+  responsible_name?: string;
+}
+
+interface PaymentFailureStudentSelectionModalProps {
+  open: boolean;
+  onClose: () => void;
+  students: Student[]; // Inclui dependentes
+  freeLimit: number;
+  onConfirm: (selectedIds: string[]) => Promise<void>;
+}
+```
+
+### Integração com SubscriptionContext
+
+O `SubscriptionContext` que abre este modal deve ser atualizado para buscar dependentes:
+
+```typescript
+// Em SubscriptionContext.tsx - loadSubscription()
+const loadStudentsWithDependents = async (teacherId: string) => {
+  // Buscar alunos diretos
+  const { data: directStudents } = await supabase
+    .from('teacher_student_relationships')
+    .select('student_id, student_name')
+    .eq('teacher_id', teacherId);
+
+  // Buscar dependentes
+  const { data: dependents } = await supabase
+    .from('dependents')
+    .select(`
+      id,
+      name,
+      responsible_id,
+      responsible:profiles!dependents_responsible_id_fkey(name)
+    `)
+    .eq('teacher_id', teacherId);
+
+  return [
+    ...(directStudents || []).map(s => ({
+      id: s.student_id,
+      name: s.student_name || 'Sem nome',
+      type: 'student' as const
+    })),
+    ...(dependents || []).map(d => ({
+      id: d.id,
+      name: d.name,
+      type: 'dependent' as const,
+      responsible_id: d.responsible_id,
+      responsible_name: d.responsible?.name
+    }))
+  ];
+};
+```
+
+### Componente com Suporte a Dependentes
+
+```tsx
+export function PaymentFailureStudentSelectionModal({
+  open,
+  onClose,
+  students,
+  freeLimit,
+  onConfirm
+}: PaymentFailureStudentSelectionModalProps) {
+  const { t } = useTranslation(['subscription', 'dependents']);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Agrupar por tipo
+  const directStudents = students.filter(s => s.type === 'student');
+  const dependentsByResponsible = useMemo(() => {
+    const deps = students.filter(s => s.type === 'dependent');
+    return deps.reduce((acc, dep) => {
+      const key = dep.responsible_id || 'unknown';
+      if (!acc[key]) {
+        acc[key] = {
+          responsible_name: dep.responsible_name || 'Responsável',
+          dependents: []
+        };
+      }
+      acc[key].dependents.push(dep);
+      return acc;
+    }, {} as Record<string, { responsible_name: string; dependents: Student[] }>);
+  }, [students]);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id)
+        ? prev.filter(i => i !== id)
+        : [...prev, id]
+    );
+  };
+
+  const handleConfirm = async () => {
+    setIsSubmitting(true);
+    try {
+      await onConfirm(selectedIds);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            {t('subscription.paymentFailure.selectStudentsTitle')}
+          </DialogTitle>
+          <DialogDescription>
+            {t('subscription.paymentFailure.selectStudentsDescription', { limit: freeLimit })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Contador */}
+          <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+            <span>{t('subscription.downgrade.selected')}</span>
+            <Badge variant={selectedIds.length > freeLimit ? 'destructive' : 'default'}>
+              {selectedIds.length} / {freeLimit}
+            </Badge>
+          </div>
+
+          {/* Lista de alunos diretos */}
+          {directStudents.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm text-muted-foreground">
+                {t('dependents:labels.directStudents')} ({directStudents.length})
+              </h4>
+              {directStudents.map(student => (
+                <StudentSelectionItem
+                  key={student.id}
+                  student={student}
+                  selected={selectedIds.includes(student.id)}
+                  onToggle={() => toggleSelection(student.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Lista de dependentes por responsável */}
+          {Object.entries(dependentsByResponsible).map(([respId, group]) => (
+            <div key={respId} className="space-y-2">
+              <h4 className="font-medium text-sm text-muted-foreground flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                {t('dependents:labels.familyOf', { name: group.responsible_name })}
+              </h4>
+              {group.dependents.map(dep => (
+                <StudentSelectionItem
+                  key={dep.id}
+                  student={dep}
+                  selected={selectedIds.includes(dep.id)}
+                  onToggle={() => toggleSelection(dep.id)}
+                  className="ml-4"
+                />
+              ))}
+            </div>
+          ))}
+
+          {/* Alerta de limite excedido */}
+          {selectedIds.length > freeLimit && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {t('subscription.downgrade.exceedsLimit', {
+                  selected: selectedIds.length,
+                  limit: freeLimit
+                })}
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button
+            onClick={handleConfirm}
+            disabled={selectedIds.length > freeLimit || selectedIds.length === 0 || isSubmitting}
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : null}
+            {t('subscription.downgrade.confirmSelection')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Componente auxiliar reutilizável
+function StudentSelectionItem({
+  student,
+  selected,
+  onToggle,
+  className
+}: {
+  student: Student;
+  selected: boolean;
+  onToggle: () => void;
+  className?: string;
+}) {
+  const { t } = useTranslation('dependents');
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+        selected
+          ? "border-primary bg-primary/5"
+          : "border-border hover:border-primary/50",
+        className
+      )}
+      onClick={onToggle}
+    >
+      <Checkbox checked={selected} />
+      {student.type === 'dependent' ? (
+        <span className="text-muted-foreground">📌</span>
+      ) : (
+        <User className="h-4 w-4 text-muted-foreground" />
+      )}
+      <span className="flex-1">{student.name}</span>
+      <Badge variant={student.type === 'dependent' ? 'secondary' : 'outline'}>
+        {t(`badges.${student.type}`)}
+      </Badge>
+    </div>
+  );
+}
+```
+
+### Checklist de Validação
+- [ ] Modal recebe lista com alunos E dependentes
+- [ ] Dependentes agrupados por responsável
+- [ ] Badges diferenciam tipos
+- [ ] Contador mostra seleção vs limite
+- [ ] SubscriptionContext busca dependentes
+- [ ] Confirmação envia IDs corretos para edge function
+
+---
+
+## 4.40 (🟠 MÉDIA) handle-teacher-subscription-cancellation - Corrigir Query
+
+### Problema Identificado
+A edge function `handle-teacher-subscription-cancellation` tenta buscar `guardian_email` da tabela `profiles`, que não existe. O campo correto é `student_guardian_email` na tabela `teacher_student_relationships`.
+
+### Localização
+`supabase/functions/handle-teacher-subscription-cancellation/index.ts`
+
+### Código Problemático (se existir)
+```typescript
+// ERRADO: profiles não tem guardian_email
+const { data: students } = await supabaseClient
+  .from('profiles')
+  .select('email, guardian_email, name')
+  .eq('role', 'aluno');
+```
+
+### Solução
+
+```typescript
+// Buscar alunos do professor com emails de responsáveis
+const { data: studentRelationships } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select(`
+    student_id,
+    student_name,
+    student_guardian_email,
+    student_guardian_name,
+    student:profiles!teacher_student_relationships_student_id_fkey(
+      email,
+      name
+    )
+  `)
+  .eq('teacher_id', teacherId);
+
+// Buscar também os dependentes do professor
+const { data: dependents } = await supabaseClient
+  .from('dependents')
+  .select(`
+    id,
+    name,
+    responsible_id,
+    responsible:profiles!dependents_responsible_id_fkey(
+      email,
+      name
+    )
+  `)
+  .eq('teacher_id', teacherId);
+
+// Preparar lista de notificações
+const notifications: Array<{
+  email: string;
+  name: string;
+  dependentNames?: string[];
+}> = [];
+
+// Adicionar alunos diretos
+for (const rel of studentRelationships || []) {
+  const email = rel.student_guardian_email || rel.student?.email;
+  const name = rel.student_guardian_name || rel.student?.name || rel.student_name;
+  
+  if (email) {
+    notifications.push({ email, name });
+  }
+}
+
+// Agrupar dependentes por responsável
+const dependentsByResponsible = new Map<string, {
+  email: string;
+  name: string;
+  dependentNames: string[];
+}>();
+
+for (const dep of dependents || []) {
+  if (dep.responsible?.email) {
+    const existing = dependentsByResponsible.get(dep.responsible_id);
+    if (existing) {
+      existing.dependentNames.push(dep.name);
+    } else {
+      dependentsByResponsible.set(dep.responsible_id, {
+        email: dep.responsible.email,
+        name: dep.responsible.name,
+        dependentNames: [dep.name]
+      });
+    }
+  }
+}
+
+// Adicionar responsáveis com seus dependentes
+for (const resp of dependentsByResponsible.values()) {
+  notifications.push(resp);
+}
+
+// Enviar notificações
+for (const notification of notifications) {
+  await sendCancellationEmail({
+    to: notification.email,
+    recipientName: notification.name,
+    teacherName: teacherProfile.name,
+    dependentNames: notification.dependentNames, // Lista de dependentes afetados
+    cancellationReason: reason
+  });
+}
+```
+
+### Template de Email para Responsável com Dependentes
+
+```html
+<p>Olá ${recipientName},</p>
+
+<p>Informamos que o professor(a) <strong>${teacherName}</strong> cancelou sua assinatura na plataforma Tutor Flow.</p>
+
+<p>Esta alteração afeta os seguintes dependentes vinculados a você:</p>
+<ul>
+  ${dependentNames.map(name => `<li>📌 ${name}</li>`).join('')}
+</ul>
+
+<p>As aulas programadas foram canceladas e você não receberá mais cobranças relacionadas.</p>
+
+<p>Atenciosamente,<br>Equipe Tutor Flow</p>
+```
+
+### Checklist de Validação
+- [ ] Query usa `teacher_student_relationships.student_guardian_email`
+- [ ] Busca dependentes separadamente
+- [ ] Agrupa dependentes por responsável
+- [ ] Email para responsável lista todos dependentes afetados
+- [ ] Não tenta acessar `profiles.guardian_email`
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **34 pontas soltas** identificadas e solucionadas (15 originais + 19 adicionais)  
+✅ **40 pontas soltas** identificadas e solucionadas (15 originais + 25 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 8 páginas)  
-✅ Implementação backend (3 edge functions novas + 17 modificadas + 3 RPCs novas)
+✅ Implementação frontend (6 componentes + modificações em 10 páginas)  
+✅ Implementação backend (3 edge functions novas + 20 modificadas + 3 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
-✅ Cronograma de implementação (6 fases, **11-16 dias**)  
+✅ Cronograma de implementação (6 fases, **13-18 dias**)  
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
+
+**Revisão 6 - 10/12/2025 - Documentação Final:**
+- Adicionadas 6 novas pontas soltas (4.35-4.40):
+  - 4.35: `handle-student-overage` - contagem correta com RPC
+  - 4.36: `handle-plan-downgrade-selection` - incluir dependentes na seleção
+  - 4.37: `process-payment-failure-downgrade` - suporte a dependentes
+  - 4.38: `PlanDowngradeSelectionModal.tsx` - UI para selecionar dependentes
+  - 4.39: `PaymentFailureStudentSelectionModal.tsx` - UI para falha de pagamento
+  - 4.40: `handle-teacher-subscription-cancellation` - corrigir query de email
+- Cronograma atualizado: 11-16 dias → **13-18 dias**
+- Total de edge functions modificadas: 17 → 20
+- Total de páginas/componentes frontend afetados: 8 → 10
 
 **Revisão 5 - 10/12/2025 - Documentação Completa:**
 - Adicionadas 10 novas pontas soltas (4.25-4.34):
@@ -8478,7 +9404,7 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
   - 4.33: `end-recurrence` - notificar responsáveis
   - 4.34: `manage-class-exception` - notificações customizadas
 - Nova RPC: `count_teacher_students_and_dependents`
-- Cronograma atualizado: 9-14 dias → **11-16 dias**
+- Cronograma atualizado: 9-14 dias → 11-16 dias
 - Total de edge functions modificadas: 11 → 17
 - Total de páginas frontend afetadas: 6 → 8
 

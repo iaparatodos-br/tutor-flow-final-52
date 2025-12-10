@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 10/12/2025 (Revisão 5 - Documentação Completa)
+> **Última atualização:** 10/12/2025 (Revisão 8 - 45 Pontas Soltas)
 
 ---
 
@@ -13,7 +13,7 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.40)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.45)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
@@ -9740,16 +9740,146 @@ GRANT EXECUTE ON FUNCTION public.count_teacher_students_and_dependents(uuid) TO 
 
 ---
 
+### 4.45 🟡 BAIXA: `process-orphan-cancellation-charges` - Incluir Dependente na Descrição
+
+#### Problema Identificado
+A função que processa cobranças órfãs de cancelamentos não inclui `dependent_id` na query de `class_participants`, resultando em descrições de fatura genéricas que não mencionam qual dependente gerou a cobrança.
+
+**Localização:** `supabase/functions/process-orphan-cancellation-charges/index.ts`
+
+#### Código Atual (Problemático)
+```typescript
+// Linha ~33-57 - Query não inclui dependent_id
+const { data: orphanParticipants } = await supabaseAdmin
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    student_id,
+    cancelled_at,
+    charge_applied,
+    classes!inner(
+      id,
+      teacher_id,
+      service_id,
+      class_services(id, name, price)
+    )
+  `)
+  .eq('status', 'cancelada')
+  .eq('charge_applied', true)
+  // ...
+```
+
+#### Solução
+
+##### 1. Adicionar `dependent_id` no SELECT
+```typescript
+const { data: orphanParticipants } = await supabaseAdmin
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    student_id,
+    dependent_id,  // ← NOVO: Incluir dependent_id
+    cancelled_at,
+    charge_applied,
+    classes!inner(
+      id,
+      teacher_id,
+      service_id,
+      class_services(id, name, price)
+    )
+  `)
+  .eq('status', 'cancelada')
+  .eq('charge_applied', true)
+  // ...
+```
+
+##### 2. Buscar Nome do Dependente (se aplicável)
+```typescript
+// Dentro do loop de processamento
+for (const participant of orphanParticipants) {
+  let dependentName: string | null = null;
+  
+  // Se for dependente, buscar nome
+  if (participant.dependent_id) {
+    const { data: dependent } = await supabaseAdmin
+      .from('dependents')
+      .select('name')
+      .eq('id', participant.dependent_id)
+      .single();
+    
+    dependentName = dependent?.name || null;
+  }
+  
+  // Criar descrição customizada
+  const serviceName = participant.classes?.class_services?.name || 'Aula';
+  const description = dependentName 
+    ? `Cancelamento (${dependentName}) - ${serviceName}`
+    : `Cancelamento - ${serviceName}`;
+  
+  // Usar description no item da fatura
+  invoiceItems.push({
+    class_id: participant.class_id,
+    participant_id: participant.id,
+    dependent_id: participant.dependent_id,  // ← Incluir na fatura
+    description,
+    amount: calculatedAmount,
+    // ...
+  });
+}
+```
+
+##### 3. Atualizar RPC `create_invoice_and_mark_classes_billed`
+Se a RPC receber `dependent_id` nos itens, garantir que ele seja persistido em `invoice_classes`:
+
+```sql
+-- Já deve estar preparado se invoice_classes tem coluna dependent_id
+INSERT INTO public.invoice_classes (
+  invoice_id,
+  class_id,
+  participant_id,
+  dependent_id,  -- ← Incluir se existir na tabela
+  item_type,
+  amount,
+  description,
+  -- ...
+) VALUES (
+  v_invoice_id,
+  (v_item->>'class_id')::uuid,
+  (v_item->>'participant_id')::uuid,
+  (v_item->>'dependent_id')::uuid,  -- ← Pode ser NULL
+  -- ...
+);
+```
+
+#### Impacto
+- **Transparência:** Professor vê exatamente qual dependente gerou a cobrança órfã
+- **Auditoria:** Histórico mais claro em faturas consolidadas de famílias
+- **Sem impacto no faturamento:** Cobrança sempre vai para o responsável (correto)
+
+#### Prioridade
+🟡 **BAIXA** - Funcionalidade já funciona, apenas falta clareza na descrição
+
+#### Checklist de Validação
+- [ ] Query inclui `dependent_id` no SELECT
+- [ ] Nome do dependente buscado quando `dependent_id` existe
+- [ ] Descrição da fatura inclui nome do dependente
+- [ ] Cobrança continua indo para o responsável (não para o dependente)
+- [ ] Teste: cobrança órfã de dependente mostra nome correto na fatura
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **44 pontas soltas** identificadas e solucionadas (15 originais + 29 adicionais)  
+✅ **45 pontas soltas** identificadas e solucionadas (15 originais + 30 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
 ✅ Implementação frontend (6 componentes + modificações em 12 páginas)  
-✅ Implementação backend (3 edge functions novas + 22 modificadas + 4 RPCs novas)
+✅ Implementação backend (3 edge functions novas + 23 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
@@ -9760,7 +9890,13 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
-**Revisão 7 - 10/12/2025 - Documentação Final:**
+**Revisão 8 - 10/12/2025 - Documentação Final:**
+- Adicionada 1 nova ponta solta (4.45):
+  - 4.45: `process-orphan-cancellation-charges` - incluir dependent_id na descrição
+- Total de edge functions modificadas: 22 → 23
+- Total de pontas soltas: 44 → 45
+
+**Revisão 7 - 10/12/2025:**
 - Adicionadas 4 novas pontas soltas (4.41-4.44):
   - 4.41: `useStudentCount.ts` - contagem correta no frontend com RPC
   - 4.42: `create-subscription-checkout` - quantidade correta para Stripe

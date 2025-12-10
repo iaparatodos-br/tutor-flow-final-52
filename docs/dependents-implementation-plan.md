@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> > **Última atualização:** 10/12/2025 (Revisão 9 - 48 Pontas Soltas)
+> > **Última atualização:** 10/12/2025 (Revisão 10 - 48 Pontas Soltas + Decisões Técnicas Finais)
 
 ---
 
@@ -206,6 +206,55 @@ flowchart TD
 | **Índices compostos** | Performance em queries que juntam responsible + teacher |
 | **Fatura sempre no `responsible_id`** | Simplifica billing, usa `student_id` existente |
 | **Dependentes NÃO têm login** | Simplifica segurança, responsável gerencia tudo |
+| **`get_unbilled_participants` substituição** | Substituir função v1 pela nova com suporte a dependentes (não criar v2 separada) |
+| **Edge Functions: queries sequenciais** | Evitar FK joins explícitos que falham por cache de schema no Deno |
+| **`StudentFormModal` refatoração** | Opção A: Estender modal existente com seleção de tipo (mínimo impacto) |
+| **Overage em `create-dependent`** | Chamar `handle-student-overage` ao criar dependente (contagem imediata) |
+| **Scripts de Rollback SQL** | Incluir scripts de reversão para cada fase de deploy |
+| **i18n `dependents.json`** | Namespace dedicado para traduções de dependentes |
+| **`class_notifications` dependentes** | Usar `responsible_id` no `student_id` para RLS e consistência de verificação de duplicidade |
+
+### 2.5 Scripts de Rollback
+
+Cada fase de implementação deve incluir scripts SQL de rollback para reversão segura em caso de problemas.
+
+**Estrutura:**
+- `rollback-fase1-estrutura.sql` - Remove tabela `dependents` e colunas adicionadas
+- `rollback-fase2-backend.sql` - Reverte funções RPC para versões originais
+- `rollback-fase3-frontend.sql` - N/A (apenas código)
+- `rollback-fase4-integracoes.sql` - Reverte edge functions para versões originais
+- `rollback-fase5-portal.sql` - N/A (apenas código frontend)
+- `rollback-fase6-polimento.sql` - N/A (apenas ajustes)
+
+**Exemplo de Rollback Fase 1:**
+```sql
+-- ============================================================
+-- ROLLBACK FASE 1: Reverter Estrutura de Dados
+-- ============================================================
+
+-- Reverter class_participants
+ALTER TABLE public.class_participants DROP CONSTRAINT IF EXISTS check_participant_type;
+ALTER TABLE public.class_participants DROP COLUMN IF EXISTS dependent_id;
+
+-- Reverter material_access
+ALTER TABLE public.material_access DROP CONSTRAINT IF EXISTS check_material_access_type;
+ALTER TABLE public.material_access DROP COLUMN IF EXISTS dependent_id;
+
+-- Reverter class_report_feedbacks  
+ALTER TABLE public.class_report_feedbacks DROP CONSTRAINT IF EXISTS check_feedback_type;
+ALTER TABLE public.class_report_feedbacks DROP COLUMN IF EXISTS dependent_id;
+
+-- Reverter class_notifications
+ALTER TABLE public.class_notifications DROP CONSTRAINT IF EXISTS check_notification_recipient_type;
+ALTER TABLE public.class_notifications DROP COLUMN IF EXISTS dependent_id;
+ALTER TABLE public.class_notifications ALTER COLUMN student_id SET NOT NULL;
+
+-- Remover tabela dependents (CASCADE remove índices e políticas)
+DROP TABLE IF EXISTS public.dependents CASCADE;
+
+-- Reverter invoice_classes (se implementado)
+ALTER TABLE public.invoice_classes DROP COLUMN IF EXISTS dependent_id;
+```
 
 ---
 
@@ -285,6 +334,9 @@ ADD CONSTRAINT check_participant_type
 
 -- Comentário
 COMMENT ON COLUMN public.class_participants.dependent_id IS 'ID do dependente participante (mutuamente exclusivo com student_id)';
+
+-- > **✅ Verificação realizada (10/12/2025):** Query confirmou 0 registros com `student_id = NULL`
+-- > na tabela `class_participants`. O CHECK constraint pode ser aplicado com segurança.
 ```
 
 ### 3.3 Modificação: `material_access`
@@ -3364,6 +3416,21 @@ COMMENT ON COLUMN public.class_notifications.metadata IS 'Metadados como depende
 
 **Recomendação:** Usar **Opção 1** para consistência com outras tabelas (`class_participants`, `material_access`, `class_report_feedbacks`).
 
+**Decisão Confirmada (10/12/2025):**
+
+Para verificação de duplicidade de notificações de dependentes:
+- ✅ **Usar Opção combinada:** Adicionar coluna `dependent_id` para rastreabilidade
+- ✅ **No campo `student_id`:** Usar `responsible_id` para notificações de dependentes
+- **Justificativa:**
+  1. Email vai para o responsável mesmo (consistência)
+  2. Mantém compatibilidade com RLS baseado em `student_id`
+  3. Evita lógica duplicada de verificação de duplicidade
+  4. `dependent_id` serve apenas para auditoria/rastreabilidade
+
+> **✅ Verificação realizada (10/12/2025):** Análise das edge functions confirmou que fazer
+> `student_id` nullable é seguro. As funções de notificação precisam apenas de ajustes menores
+> para verificar duplicidade usando `responsible_id` quando a notificação é para um dependente.
+
 #### Prioridade
 🔴 **ALTA** - Bloqueador para notificações de dependentes
 
@@ -3430,22 +3497,26 @@ A função RPC `get_unbilled_participants` existente filtra apenas por `student_
 
 #### Arquivos Afetados
 - Função SQL `get_unbilled_participants` (existente)
-- Nova função `get_unbilled_participants_v2`
 
 #### Solução
 
+**Decisão Confirmada (10/12/2025):**
+- ❌ **NÃO** criar função `get_unbilled_participants_v2` separada
+- ✅ **SUBSTITUIR** a função existente `get_unbilled_participants` com a nova implementação
+- A nova função usa mesma assinatura + parâmetros opcionais para backward compatibility
+
 **Já implementada na Seção 3.6!**
 
-A função `get_unbilled_participants_v2` já foi criada na Seção 3 com suporte completo a dependentes, incluindo:
+A nova função `get_unbilled_participants` (substituindo a original) foi criada na Seção 3 com suporte completo a dependentes, incluindo:
 - ✅ Resolução automática de `responsible_id`
 - ✅ Filtro por `p_responsible_id` opcional
 - ✅ Join com `dependents` para dependentes
 - ✅ Retorna todas as participações não faturadas (alunos + dependentes)
+- ✅ Backward compatible com chamadas existentes
 
 **Ação Necessária:**
-- Substituir chamadas de `get_unbilled_participants` por `get_unbilled_participants_v2` em:
-  - `automated-billing`
-  - `create-invoice` (se aplicável)
+- Executar migration para substituir a função SQL existente
+- Nenhuma modificação necessária em `automated-billing` ou `create-invoice` (mesma assinatura)
 
 #### Prioridade
 🔴 **CRÍTICA** - Bloqueador para faturamento consolidado
@@ -10232,6 +10303,19 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
+**Revisão 10 - 10/12/2025 - Verificações e Decisões Técnicas Finais:**
+- Verificação SQL confirmou: 0 registros com `student_id = NULL` em `class_participants` (constraint segura)
+- Verificação de edge functions confirmou: tornar `student_id` nullable em `class_notifications` é seguro
+- Decisão: Substituir `get_unbilled_participants` existente (não criar v2 separada)
+- Decisão: Usar `responsible_id` no `student_id` para notificações de dependentes (consistência RLS)
+- Decisão: Queries sequenciais em Edge Functions (não FK joins explícitos)
+- Decisão: Refatorar `StudentFormModal` existente (não criar novo componente)
+- Decisão: Chamar `handle-student-overage` em `create-dependent`
+- Decisão: Namespace dedicado `dependents.json` para i18n
+- Decisão: Usar paleta atual para eventos de dependentes no calendário
+- Adicionada seção 2.5 com scripts de rollback SQL
+- Atualizadas decisões técnicas na seção 2.4 com 7 novas decisões
+
 **Revisão 9 - 10/12/2025 - Portal do Aluno/Responsável:**
 - Adicionadas 3 novas pontas soltas (4.46-4.48):
   - 4.46: `ClassReportView.tsx` - visualização de feedbacks para dependentes
@@ -10285,6 +10369,5 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 - Total de páginas frontend afetadas: 6 → 8
 
 **Próximos Passos:**
-1. Revisar este documento com a equipe
-2. Ajustar estimativas se necessário
-3. Começar pela Fase 1 (Estrutura de Dados)
+1. ✅ Documento revisado e decisões técnicas finalizadas
+2. Começar pela Fase 1 (Estrutura de Dados)

@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 01/12/2025 (Revisão 4 - Perfil do Aluno)
+> **Última atualização:** 10/12/2025 (Revisão 5 - Documentação Completa)
 
 ---
 
@@ -13,9 +13,13 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.24)
+   - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
+   - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
+   - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
    - 4.22 [Perfil do Aluno](#422--alta-perfil-do-aluno-perfilaluno)
    - 4.23 [Listagem de Alunos com Dependentes](#423--alta-listagem-de-alunos-com-dependentes-alunostsx)
+   - 4.24 [Importação em Massa de Famílias](#424--média-importação-em-massa-de-famílias-studentimportdialogtsx)
 5. [Implementação Frontend](#5-implementação-frontend)
    - 5.0 [UX de Cadastro: Fluxo Unificado](#50-ux-de-cadastro-fluxo-unificado-com-seleção-de-tipo)
    - 5.1 [DependentManager](#51-componente-dependentmanager)
@@ -1306,7 +1310,403 @@ O componente `ClassForm` não distingue entre alunos normais e dependentes na se
 #### Arquivos Afetados
 - `src/components/ClassForm/ClassForm.tsx`
 
-#### Solução
+---
+
+#### Diagrama de Fluxo - Seleção de Participantes
+
+```mermaid
+flowchart TD
+    A[Professor abre ClassForm] --> B[Buscar alunos do professor]
+    B --> C[Buscar dependentes via RPC]
+    C --> D[Combinar em lista agrupada]
+    D --> E{Renderizar Select}
+    
+    E --> F[SelectGroup: Alunos]
+    F --> G[SelectItem para cada aluno]
+    
+    E --> H[SelectGroup: Dependentes]
+    H --> I[SelectItem: nome + responsável]
+    
+    G --> J[Usuário seleciona]
+    I --> J
+    
+    J --> K{Tipo selecionado?}
+    K -->|Aluno| L[student_id = id, dependent_id = null]
+    K -->|Dependente| M[student_id = responsible_id, dependent_id = id]
+    
+    L --> N[Criar class_participants]
+    M --> N
+```
+
+---
+
+#### Interfaces TypeScript
+
+```typescript
+// src/components/ClassForm/ClassForm.tsx
+
+// Interface para opção de participante no Select
+interface ParticipantOption {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsibleId?: string;      // Apenas para dependentes
+  responsibleName?: string;    // Apenas para dependentes
+}
+
+// Interface para dados de dependente vindo da RPC
+interface DependentData {
+  id: string;
+  name: string;
+  responsible_id: string;
+  birth_date: string | null;
+  responsible_name: string;    // Vindo do JOIN com profiles
+}
+
+// Interface para seleção de participante no form
+interface SelectedParticipant {
+  studentId: string | null;
+  dependentId: string | null;
+}
+```
+
+---
+
+#### Função de Agrupamento
+
+```typescript
+// src/components/ClassForm/ClassForm.tsx
+
+/**
+ * Agrupa alunos e dependentes para exibição no Select
+ * @param students - Lista de alunos do professor
+ * @param dependents - Lista de dependentes do professor
+ * @returns Objeto com grupos separados
+ */
+const groupParticipantsForSelection = (
+  students: Student[],
+  dependents: DependentData[]
+): { students: ParticipantOption[]; dependents: ParticipantOption[] } => {
+  const studentOptions: ParticipantOption[] = students.map(s => ({
+    id: s.id,
+    name: s.name,
+    type: 'student' as const,
+  }));
+
+  const dependentOptions: ParticipantOption[] = dependents.map(d => ({
+    id: d.id,
+    name: d.name,
+    type: 'dependent' as const,
+    responsibleId: d.responsible_id,
+    responsibleName: d.responsible_name,
+  }));
+
+  return { students: studentOptions, dependents: dependentOptions };
+};
+```
+
+---
+
+#### Busca de Dependentes via RPC
+
+```typescript
+// No useEffect ou função de carregamento
+
+const loadParticipantOptions = async () => {
+  // Buscar alunos (já existente)
+  const { data: studentsData } = await supabase
+    .from('teacher_student_relationships')
+    .select('student_id, profiles:student_id(id, name, email)')
+    .eq('teacher_id', teacherId);
+
+  // Buscar dependentes do professor via RPC
+  const { data: dependentsData, error: depError } = await supabase
+    .rpc('get_teacher_dependents', { p_teacher_id: teacherId });
+
+  if (depError) {
+    console.error('Erro ao buscar dependentes:', depError);
+  }
+
+  const grouped = groupParticipantsForSelection(
+    studentsData?.map(s => s.profiles) || [],
+    dependentsData || []
+  );
+
+  setStudentOptions(grouped.students);
+  setDependentOptions(grouped.dependents);
+};
+```
+
+---
+
+#### JSX do Select com Grupos
+
+```tsx
+// src/components/ClassForm/ClassForm.tsx
+
+<FormField
+  control={form.control}
+  name="selectedParticipants"
+  render={({ field }) => (
+    <FormItem>
+      <FormLabel>{t('classes.selectParticipants')}</FormLabel>
+      <Select
+        onValueChange={(value) => {
+          // Parsear valor: "student:uuid" ou "dependent:uuid"
+          const [type, id] = value.split(':');
+          const option = type === 'student'
+            ? studentOptions.find(s => s.id === id)
+            : dependentOptions.find(d => d.id === id);
+          
+          if (option) {
+            handleParticipantSelect(option);
+          }
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder={t('classes.selectParticipantPlaceholder')} />
+        </SelectTrigger>
+        <SelectContent>
+          {/* Grupo: Alunos */}
+          {studentOptions.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase">
+                {t('classes.participantGroups.students')}
+              </SelectLabel>
+              {studentOptions.map(student => (
+                <SelectItem key={`student:${student.id}`} value={`student:${student.id}`}>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span>{student.name}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
+
+          {/* Separador visual */}
+          {studentOptions.length > 0 && dependentOptions.length > 0 && (
+            <SelectSeparator />
+          )}
+
+          {/* Grupo: Dependentes */}
+          {dependentOptions.length > 0 && (
+            <SelectGroup>
+              <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase">
+                {t('classes.participantGroups.dependents')}
+              </SelectLabel>
+              {dependentOptions.map(dep => (
+                <SelectItem key={`dependent:${dep.id}`} value={`dependent:${dep.id}`}>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span>{dep.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({t('classes.childOf', { name: dep.responsibleName })})
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          )}
+
+          {/* Estado vazio */}
+          {studentOptions.length === 0 && dependentOptions.length === 0 && (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {t('classes.noParticipantsAvailable')}
+            </div>
+          )}
+        </SelectContent>
+      </Select>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
+```
+
+---
+
+#### Lógica de Seleção de Participante
+
+```typescript
+// src/components/ClassForm/ClassForm.tsx
+
+const handleParticipantSelect = (option: ParticipantOption) => {
+  // Verificar se já está selecionado
+  const isAlreadySelected = selectedParticipants.some(p => 
+    (option.type === 'student' && p.studentId === option.id) ||
+    (option.type === 'dependent' && p.dependentId === option.id)
+  );
+
+  if (isAlreadySelected) {
+    toast.warning(t('classes.participantAlreadySelected'));
+    return;
+  }
+
+  // Adicionar à lista de selecionados
+  const newParticipant: SelectedParticipant = {
+    studentId: option.type === 'student' ? option.id : option.responsibleId!,
+    dependentId: option.type === 'dependent' ? option.id : null,
+  };
+
+  setSelectedParticipants(prev => [...prev, newParticipant]);
+
+  // Atualizar badges de participantes selecionados
+  const displayInfo = {
+    id: option.id,
+    name: option.name,
+    type: option.type,
+    responsibleName: option.responsibleName,
+  };
+  setSelectedParticipantsDisplay(prev => [...prev, displayInfo]);
+};
+
+// Remover participante da seleção
+const handleRemoveParticipant = (id: string, type: 'student' | 'dependent') => {
+  setSelectedParticipants(prev => prev.filter(p => 
+    type === 'student' ? p.studentId !== id : p.dependentId !== id
+  ));
+  setSelectedParticipantsDisplay(prev => prev.filter(p => p.id !== id));
+};
+```
+
+---
+
+#### Exibição de Participantes Selecionados
+
+```tsx
+{/* Badges dos participantes selecionados */}
+{selectedParticipantsDisplay.length > 0 && (
+  <div className="flex flex-wrap gap-2 mt-2">
+    {selectedParticipantsDisplay.map(p => (
+      <Badge 
+        key={p.id} 
+        variant={p.type === 'student' ? 'default' : 'secondary'}
+        className="flex items-center gap-1"
+      >
+        {p.type === 'dependent' && <Users className="h-3 w-3" />}
+        {p.name}
+        {p.type === 'dependent' && p.responsibleName && (
+          <span className="text-xs opacity-75">
+            ({t('classes.childOf', { name: p.responsibleName })})
+          </span>
+        )}
+        <button
+          type="button"
+          onClick={() => handleRemoveParticipant(p.id, p.type)}
+          className="ml-1 hover:text-destructive"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </Badge>
+    ))}
+  </div>
+)}
+```
+
+---
+
+#### Submissão do Form com Dependentes
+
+```typescript
+// Na função de submit do ClassForm
+
+const onSubmit = async (data: ClassFormData) => {
+  // ... validações existentes ...
+
+  // Criar aula
+  const { data: classData, error: classError } = await supabase
+    .from('classes')
+    .insert({
+      teacher_id: teacherId,
+      class_date: data.datetime,
+      service_id: data.serviceId,
+      duration_minutes: selectedService?.duration_minutes || 60,
+      notes: data.notes,
+      status: 'pendente',
+      is_group_class: selectedParticipants.length > 1,
+    })
+    .select()
+    .single();
+
+  if (classError) throw classError;
+
+  // Criar participantes (alunos E dependentes)
+  const participantsToInsert = selectedParticipants.map(p => ({
+    class_id: classData.id,
+    student_id: p.studentId,      // Sempre preenchido (aluno ou responsável)
+    dependent_id: p.dependentId,  // null para alunos, UUID para dependentes
+    status: 'pendente',
+  }));
+
+  const { error: participantsError } = await supabase
+    .from('class_participants')
+    .insert(participantsToInsert);
+
+  if (participantsError) throw participantsError;
+
+  toast.success(t('classes.scheduleSuccess'));
+  onSuccess();
+};
+```
+
+---
+
+#### Traduções i18n
+
+**`src/i18n/locales/pt/classes.json`** (adicionar):
+```json
+{
+  "selectParticipants": "Selecionar Participantes",
+  "selectParticipantPlaceholder": "Escolha os alunos ou dependentes",
+  "participantGroups": {
+    "students": "Alunos",
+    "dependents": "Dependentes"
+  },
+  "childOf": "filho(a) de {{name}}",
+  "noParticipantsAvailable": "Nenhum aluno ou dependente disponível",
+  "participantAlreadySelected": "Este participante já foi selecionado"
+}
+```
+
+**`src/i18n/locales/en/classes.json`** (adicionar):
+```json
+{
+  "selectParticipants": "Select Participants",
+  "selectParticipantPlaceholder": "Choose students or dependents",
+  "participantGroups": {
+    "students": "Students",
+    "dependents": "Dependents"
+  },
+  "childOf": "child of {{name}}",
+  "noParticipantsAvailable": "No students or dependents available",
+  "participantAlreadySelected": "This participant is already selected"
+}
+```
+
+---
+
+#### Checklist de Validação - ClassForm
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | UI | Select exibe grupos separados (Alunos / Dependentes) |
+| ⬜ | UI | Dependentes mostram "(filho(a) de X)" |
+| ⬜ | UI | Ícones distintos para alunos vs dependentes |
+| ⬜ | UI | Badges mostram participantes selecionados |
+| ⬜ | UI | Botão X remove participante da seleção |
+| ⬜ | Logic | Aluno selecionado: student_id preenchido, dependent_id null |
+| ⬜ | Logic | Dependente selecionado: student_id = responsible, dependent_id preenchido |
+| ⬜ | DB | class_participants criado corretamente para dependentes |
+| ⬜ | Multi | Aula em grupo com alunos + dependentes funciona |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
+| ⬜ | Empty | Estado vazio quando não há participantes |
+
+#### Prioridade
+🟡 **MÉDIA** - Essencial para agendar aulas com dependentes
+
+---
+
+#### Solução (Código Original - Mantido para Referência)
 
 ```typescript
 // src/components/ClassForm/ClassForm.tsx
@@ -2098,6 +2498,161 @@ const cancellingForDependent = useMemo(() => {
 
 ---
 
+#### Validação de Permissão no Frontend
+
+O `CancellationModal.tsx` deve validar se o usuário tem permissão para cancelar a aula:
+
+```typescript
+// src/components/CancellationModal.tsx
+
+/**
+ * Verifica se o usuário pode cancelar uma aula
+ * @param userId - ID do usuário logado
+ * @param userRole - Role do usuário ('professor' ou 'aluno')
+ * @param classTeacherId - ID do professor da aula
+ * @param participants - Lista de participantes da aula
+ * @param userDependentIds - IDs dos dependentes do usuário (se for responsável)
+ * @returns { canCancel: boolean, reason?: string }
+ */
+const canUserCancelClass = (
+  userId: string,
+  userRole: string,
+  classTeacherId: string,
+  participants: ClassParticipant[],
+  userDependentIds: string[]
+): { canCancel: boolean; reason?: string } => {
+  // Professor pode cancelar qualquer aula sua
+  if (userRole === 'professor' && classTeacherId === userId) {
+    return { canCancel: true };
+  }
+
+  // Aluno pode cancelar se:
+  // 1. É participante direto (student_id = userId)
+  // 2. É responsável de um dependente participante
+  if (userRole === 'aluno') {
+    const isDirectParticipant = participants.some(p => p.student_id === userId);
+    const hasDependentInClass = participants.some(p => 
+      p.dependent_id && userDependentIds.includes(p.dependent_id)
+    );
+
+    if (isDirectParticipant || hasDependentInClass) {
+      return { canCancel: true };
+    }
+
+    return { 
+      canCancel: false, 
+      reason: 'cancellation.noPermissionToCancel' 
+    };
+  }
+
+  return { 
+    canCancel: false, 
+    reason: 'cancellation.unknownUserRole' 
+  };
+};
+```
+
+---
+
+#### Implementação no CancellationModal
+
+```tsx
+// src/components/CancellationModal.tsx
+
+// Buscar dependentes do usuário logado (se for aluno)
+const { data: userDependents } = await supabase
+  .from('dependents')
+  .select('id')
+  .eq('responsible_id', user.id);
+
+const userDependentIds = userDependents?.map(d => d.id) || [];
+
+// Verificar permissão
+const { canCancel, reason } = canUserCancelClass(
+  user.id,
+  profile.role,
+  classData.teacher_id,
+  participants,
+  userDependentIds
+);
+
+// Se não pode cancelar, mostrar erro
+if (!canCancel) {
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{t('cancellation.notAllowed')}</DialogTitle>
+      </DialogHeader>
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          {t(reason!)}
+        </AlertDescription>
+      </Alert>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          {t('common.close')}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+// Identificar se está cancelando para dependente
+const cancellingForDependent = useMemo(() => {
+  if (profile?.role !== 'aluno' || !userDependentIds.length) return null;
+  
+  const dependentParticipant = participants.find(p => 
+    p.dependent_id && userDependentIds.includes(p.dependent_id)
+  );
+  
+  if (dependentParticipant) {
+    return dependents?.find(d => d.id === dependentParticipant.dependent_id);
+  }
+  
+  return null;
+}, [participants, userDependentIds, dependents]);
+
+// Exibir nome do dependente no modal
+{cancellingForDependent && (
+  <Alert variant="default" className="mb-4">
+    <Users className="h-4 w-4" />
+    <AlertDescription>
+      <p className="font-medium">
+        {t('cancellation.cancellingForDependent', { name: cancellingForDependent.name })}
+      </p>
+      <p className="text-sm text-muted-foreground mt-1">
+        {t('cancellation.chargeAppliedToResponsible')}
+      </p>
+    </AlertDescription>
+  </Alert>
+)}
+```
+
+---
+
+#### Traduções i18n (Adicionar)
+
+**`src/i18n/locales/pt/cancellation.json`:**
+```json
+{
+  "notAllowed": "Cancelamento não permitido",
+  "noPermissionToCancel": "Você não tem permissão para cancelar esta aula",
+  "unknownUserRole": "Não foi possível verificar sua permissão"
+}
+```
+
+**`src/i18n/locales/en/cancellation.json`:**
+```json
+{
+  "notAllowed": "Cancellation not allowed",
+  "noPermissionToCancel": "You don't have permission to cancel this class",
+  "unknownUserRole": "Could not verify your permission"
+}
+```
+
+---
+
 #### Notas Importantes
 
 | Regra | Descrição |
@@ -2111,7 +2666,20 @@ const cancellingForDependent = useMemo(() => {
 
 ---
 
-#### Validação
+#### Checklist de Validação - Frontend
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | Permission | Professor pode cancelar suas aulas |
+| ⬜ | Permission | Aluno pode cancelar própria aula |
+| ⬜ | Permission | Responsável pode cancelar aula de dependente |
+| ⬜ | Permission | Aluno NÃO pode cancelar aula de outro aluno |
+| ⬜ | UI | Modal mostra nome do dependente quando aplicável |
+| ⬜ | UI | Alerta informa que cobrança vai para responsável |
+| ⬜ | Error | Erro exibido quando sem permissão |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
+
+#### Checklist de Validação - Backend
 
 - [ ] Professor cancela aula individual de dependente → Responsável recebe email com nome do dependente
 - [ ] Responsável cancela aula de dependente → Professor recebe notificação
@@ -2543,9 +3111,192 @@ return new Response(
 );
 ```
 
-**Mudanças necessárias no Frontend:**
-- Componente `StudentScheduleRequest` deve permitir selecionar "Para mim" ou "Para dependente"
-- Lista de dependentes deve ser carregada se houver
+---
+
+#### Implementação Frontend - StudentScheduleRequest.tsx
+
+```tsx
+// src/components/StudentScheduleRequest.tsx
+
+import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Users, User } from 'lucide-react';
+
+interface Dependent {
+  id: string;
+  name: string;
+}
+
+export function StudentScheduleRequest({ teacherId, onSubmit }: Props) {
+  const { t } = useTranslation(['classes', 'students']);
+  const { user } = useAuth();
+  
+  // Estado para dependentes e seleção
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [selectedRecipient, setSelectedRecipient] = useState<string>('self');
+  const [loadingDependents, setLoadingDependents] = useState(false);
+
+  // Buscar dependentes do responsável logado
+  useEffect(() => {
+    const fetchDependents = async () => {
+      if (!user?.id) return;
+      
+      setLoadingDependents(true);
+      const { data, error } = await supabase
+        .from('dependents')
+        .select('id, name')
+        .eq('responsible_id', user.id)
+        .eq('teacher_id', teacherId);
+
+      if (!error && data) {
+        setDependents(data);
+      }
+      setLoadingDependents(false);
+    };
+
+    fetchDependents();
+  }, [user?.id, teacherId]);
+
+  // Handler do submit
+  const handleSubmit = async (formData: ClassRequestData) => {
+    const dependentId = selectedRecipient !== 'self' ? selectedRecipient : undefined;
+    
+    await supabase.functions.invoke('request-class', {
+      body: {
+        teacherId,
+        datetime: formData.datetime,
+        serviceId: formData.serviceId,
+        notes: formData.notes,
+        dependentId, // null se for para si mesmo
+      },
+    });
+
+    onSubmit();
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Seleção de destinatário (se tem dependentes) */}
+      {dependents.length > 0 && (
+        <div className="space-y-2 mb-4">
+          <Label>{t('classes.requestFor')}</Label>
+          <Select
+            value={selectedRecipient}
+            onValueChange={setSelectedRecipient}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {/* Opção: Para mim */}
+              <SelectItem value="self">
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4" />
+                  <span>{t('classes.forMyself')}</span>
+                </div>
+              </SelectItem>
+              
+              {/* Opções: Para cada dependente */}
+              {dependents.map(dep => (
+                <SelectItem key={dep.id} value={dep.id}>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    <span>{t('classes.forDependent', { name: dep.name })}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          
+          {/* Nota informativa */}
+          {selectedRecipient !== 'self' && (
+            <p className="text-xs text-muted-foreground">
+              {t('classes.dependentRequestNote')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* ... resto do formulário existente ... */}
+    </form>
+  );
+}
+```
+
+---
+
+#### Diagrama de Fluxo - Solicitação de Aula
+
+```mermaid
+sequenceDiagram
+    participant R as Responsável
+    participant F as StudentScheduleRequest
+    participant E as request-class
+    participant DB as Database
+
+    R->>F: Abre formulário
+    F->>DB: Busca dependents (responsible_id = user.id)
+    DB-->>F: Lista de dependentes
+    F->>F: Renderiza dropdown (se tem dependentes)
+    
+    R->>F: Seleciona "Para João" (dependente)
+    R->>F: Preenche data/hora/serviço
+    R->>F: Clica "Solicitar"
+    
+    F->>E: invoke('request-class', { dependentId: '...' })
+    E->>E: Valida que dependente pertence ao user
+    E->>DB: INSERT classes
+    E->>DB: INSERT class_participants (dependent_id)
+    E->>E: Envia notificação ao professor
+    E-->>F: { success: true }
+    
+    F->>R: Toast "Aula solicitada!"
+```
+
+---
+
+#### Traduções i18n
+
+**`src/i18n/locales/pt/classes.json`** (adicionar):
+```json
+{
+  "requestFor": "Para quem é a aula?",
+  "forMyself": "Para mim",
+  "forDependent": "Para {{name}}",
+  "dependentRequestNote": "A solicitação será enviada ao professor em nome do dependente selecionado."
+}
+```
+
+**`src/i18n/locales/en/classes.json`** (adicionar):
+```json
+{
+  "requestFor": "Who is the class for?",
+  "forMyself": "For myself",
+  "forDependent": "For {{name}}",
+  "dependentRequestNote": "The request will be sent to the teacher on behalf of the selected dependent."
+}
+```
+
+---
+
+#### Checklist de Validação - StudentScheduleRequest
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | Data | Dependentes do responsável são carregados |
+| ⬜ | UI | Dropdown aparece apenas se tem dependentes |
+| ⬜ | UI | Opção "Para mim" está sempre disponível |
+| ⬜ | UI | Cada dependente aparece com ícone diferente |
+| ⬜ | Logic | "Para mim" envia dependentId = null |
+| ⬜ | Logic | Dependente selecionado envia dependentId correto |
+| ⬜ | Backend | request-class valida que dependente pertence ao user |
+| ⬜ | Backend | class_participants criado com dependent_id |
+| ⬜ | Notification | Professor recebe notificação com nome do dependente |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
 
 #### Prioridade
 🔴 **ALTA** - Funcionalidade essencial para responsáveis
@@ -4091,18 +4842,359 @@ export function DependentFormModal({
 > - Remover → remove apenas o responsável (dependentes órfãos são tratados pela regra de cascade)
 
 > 📌 **Ações de Dependente**  
-> - Ver perfil → navega para `/dependentes/{id}` (nova rota a criar)
+> - Ver perfil → navega para `/alunos/{responsibleId}?tab=dependentes&highlight={dependentId}` (redireciona para perfil do responsável com aba de dependentes ativa)
 > - Editar → abre `DependentFormModal` em modo edição
 > - Remover → confirma e chama `delete-dependent`
+
+> 📌 **Rota `/dependentes/:id` - DECISÃO**  
+> Não criar rota separada para dependentes. Em vez disso, redirecionar para o perfil do responsável com parâmetros de query:
+> - `/alunos/{responsibleId}?tab=dependentes&highlight={dependentId}`
+> - Isso mantém a hierarquia clara e evita proliferação de rotas
+> - O highlight pode ser usado para scroll automático ou destaque visual do dependente
 
 > 📌 **Expansão Automática (Opcional)**  
 > Considerar expandir automaticamente responsáveis com apenas 1-2 dependentes para melhor UX.
 
 ---
 
+### 4.23.2 Exclusão de Dependentes (handleDeleteDependent)
+
+#### Problema
+A documentação não incluía a implementação de exclusão de dependentes na tabela de alunos.
+
+#### Solução
+
+##### Estado e Função
+
+```typescript
+// Em Alunos.tsx - Adicionar estado
+const [dependentToDelete, setDependentToDelete] = useState<Dependent | null>(null);
+const [isDeleting, setIsDeleting] = useState(false);
+
+// Função para iniciar exclusão
+const handleDeleteDependent = (dep: Dependent) => {
+  setDependentToDelete(dep);
+};
+
+// Função para confirmar exclusão
+const handleConfirmDeleteDependent = async () => {
+  if (!dependentToDelete) return;
+  
+  setIsDeleting(true);
+  try {
+    const { error } = await supabase.functions.invoke('delete-dependent', {
+      body: { dependentId: dependentToDelete.id },
+    });
+
+    if (error) throw error;
+
+    toast.success(t('dependents.deleteSuccess', { name: dependentToDelete.name }));
+    
+    // Atualizar lista de dependentes
+    setDependents(prev => prev.filter(d => d.id !== dependentToDelete.id));
+    setDependentToDelete(null);
+    
+    // Recarregar lista completa para atualizar contadores
+    loadDependents();
+  } catch (error) {
+    console.error('Erro ao excluir dependente:', error);
+    toast.error(t('dependents.deleteError'));
+  } finally {
+    setIsDeleting(false);
+  }
+};
+```
+
+##### Dialog de Confirmação
+
+```tsx
+// Em Alunos.tsx - Dialog de confirmação de exclusão
+
+<AlertDialog 
+  open={!!dependentToDelete} 
+  onOpenChange={(open) => !open && setDependentToDelete(null)}
+>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>
+        {t('dependents.deleteConfirmTitle')}
+      </AlertDialogTitle>
+      <AlertDialogDescription>
+        {t('dependents.deleteConfirmMessage', { 
+          name: dependentToDelete?.name 
+        })}
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    
+    {/* Aviso se dependente tem aulas futuras */}
+    <Alert variant="warning" className="mt-4">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertDescription>
+        {t('dependents.deleteWarning')}
+      </AlertDescription>
+    </Alert>
+    
+    <AlertDialogFooter>
+      <AlertDialogCancel disabled={isDeleting}>
+        {t('common.cancel')}
+      </AlertDialogCancel>
+      <AlertDialogAction
+        onClick={handleConfirmDeleteDependent}
+        disabled={isDeleting}
+        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      >
+        {isDeleting ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {t('common.deleting')}
+          </>
+        ) : (
+          t('common.delete')
+        )}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+##### Botão de Exclusão na Sub-linha
+
+```tsx
+{/* Botão de exclusão na linha do dependente */}
+<Button 
+  variant="ghost" 
+  size="sm" 
+  onClick={() => handleDeleteDependent(dep)}
+  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+  title={t('common.delete')}
+>
+  <Trash2 className="h-4 w-4" />
+</Button>
+```
+
+##### Traduções i18n
+
+**`src/i18n/locales/pt/students.json`** (adicionar):
+```json
+{
+  "dependents": {
+    "deleteConfirmTitle": "Excluir Dependente",
+    "deleteConfirmMessage": "Tem certeza que deseja excluir {{name}}? Esta ação não pode ser desfeita.",
+    "deleteWarning": "Se este dependente tiver aulas futuras agendadas, elas também serão canceladas.",
+    "deleteSuccess": "{{name}} foi excluído com sucesso",
+    "deleteError": "Erro ao excluir dependente. Tente novamente."
+  }
+}
+```
+
+**`src/i18n/locales/en/students.json`** (adicionar):
+```json
+{
+  "dependents": {
+    "deleteConfirmTitle": "Delete Dependent",
+    "deleteConfirmMessage": "Are you sure you want to delete {{name}}? This action cannot be undone.",
+    "deleteWarning": "If this dependent has future scheduled classes, they will also be cancelled.",
+    "deleteSuccess": "{{name}} was successfully deleted",
+    "deleteError": "Error deleting dependent. Please try again."
+  }
+}
+```
+
+##### Checklist de Validação - Exclusão
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | UI | Botão 🗑️ aparece na linha do dependente |
+| ⬜ | UI | Clique abre AlertDialog de confirmação |
+| ⬜ | UI | Nome do dependente aparece na mensagem |
+| ⬜ | UI | Aviso sobre aulas futuras é exibido |
+| ⬜ | UI | Loading state no botão durante exclusão |
+| ⬜ | API | Chama `delete-dependent` com ID correto |
+| ⬜ | Update | Lista atualiza removendo dependente |
+| ⬜ | Update | Contador do responsável atualiza |
+| ⬜ | Toast | Mensagem de sucesso exibida |
+| ⬜ | Error | Erro tratado com mensagem amigável |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
+
+---
+
 #### Prioridade
 
 🟠 **ALTA** - Funcionalidade essencial para visualização e gerenciamento de famílias na listagem principal
+
+---
+
+### 4.24 🟡 MÉDIA: Importação em Massa de Famílias (StudentImportDialog.tsx)
+
+#### Problema
+O componente `StudentImportDialog` não suporta importação de famílias (responsável + dependentes) em lote.
+
+#### Arquivos Afetados
+- `src/components/students/StudentImportDialog.tsx`
+
+---
+
+#### Formato Esperado da Planilha
+
+| Nome | Email | Tipo | Responsável Email | Data Nascimento |
+|------|-------|------|-------------------|-----------------|
+| Maria Silva | maria@email.com | aluno | | |
+| João Santos | joao@email.com | responsavel | | |
+| Pedro Santos | | dependente | joao@email.com | 2015-03-20 |
+| Ana Santos | | dependente | joao@email.com | 2018-07-15 |
+
+**Tipos válidos:**
+- `aluno` - Aluno individual com email próprio
+- `responsavel` - Responsável por dependentes (igual a aluno, mas indica que terá filhos)
+- `dependente` - Menor sem email, vinculado a um responsável
+
+---
+
+#### Diagrama de Fluxo
+
+```mermaid
+flowchart TD
+    A[Upload Planilha] --> B[Parse Excel/CSV]
+    B --> C[Mapear Colunas]
+    C --> D[Validar Dados]
+    
+    D --> E{Para cada linha}
+    E --> F{Qual tipo?}
+    
+    F -->|aluno/responsavel| G[create-student]
+    G --> H[Guardar ID no mapa]
+    
+    F -->|dependente| I{Responsável já processado?}
+    I -->|Sim| J[create-dependent com ID]
+    I -->|Não| K[Adicionar à fila pendente]
+    
+    H --> L[Processar fila pendente]
+    J --> L
+    K --> L
+    
+    L --> M[Relatório final]
+```
+
+---
+
+#### Modificações no Código
+
+```typescript
+// src/components/students/StudentImportDialog.tsx
+
+// Novos campos no mapeamento
+const SYSTEM_FIELDS = [
+  { key: 'name', label: 'Nome', required: true },
+  { key: 'email', label: 'Email', required: false }, // Não obrigatório para dependentes
+  { key: 'type', label: 'Tipo (aluno/responsavel/dependente)', required: false },
+  { key: 'responsibleEmail', label: 'Email do Responsável', required: false },
+  { key: 'birthDate', label: 'Data de Nascimento', required: false },
+  { key: 'phone', label: 'Telefone', required: false },
+];
+
+// Processar importação com famílias
+const handleImport = async () => {
+  const responsibleMap = new Map<string, string>(); // email -> id
+  const pendingDependents: any[] = [];
+  const results = { success: 0, errors: [] as string[] };
+
+  // Primeira passada: criar alunos e responsáveis
+  for (const row of mappedData) {
+    const type = (row.type || 'aluno').toLowerCase();
+    
+    if (type === 'aluno' || type === 'responsavel') {
+      if (!row.email) {
+        results.errors.push(`${row.name}: Email obrigatório para alunos`);
+        continue;
+      }
+      
+      try {
+        const { data } = await supabase.functions.invoke('create-student', {
+          body: { name: row.name, email: row.email, phone: row.phone },
+        });
+        
+        responsibleMap.set(row.email, data.student.id);
+        results.success++;
+      } catch (e) {
+        results.errors.push(`${row.name}: ${e.message}`);
+      }
+    } else if (type === 'dependente') {
+      pendingDependents.push(row);
+    }
+  }
+
+  // Segunda passada: criar dependentes
+  for (const dep of pendingDependents) {
+    const responsibleId = responsibleMap.get(dep.responsibleEmail);
+    
+    if (!responsibleId) {
+      results.errors.push(`${dep.name}: Responsável ${dep.responsibleEmail} não encontrado`);
+      continue;
+    }
+    
+    try {
+      await supabase.functions.invoke('create-dependent', {
+        body: {
+          name: dep.name,
+          responsibleId,
+          birthDate: dep.birthDate,
+        },
+      });
+      results.success++;
+    } catch (e) {
+      results.errors.push(`${dep.name}: ${e.message}`);
+    }
+  }
+
+  return results;
+};
+```
+
+---
+
+#### Traduções i18n
+
+**PT:**
+```json
+{
+  "import": {
+    "typeColumn": "Tipo",
+    "responsibleColumn": "Email do Responsável",
+    "typeHint": "Use: aluno, responsavel ou dependente",
+    "dependentRequiresResponsible": "Dependentes precisam do email do responsável"
+  }
+}
+```
+
+**EN:**
+```json
+{
+  "import": {
+    "typeColumn": "Type",
+    "responsibleColumn": "Guardian Email",
+    "typeHint": "Use: student, guardian or dependent",
+    "dependentRequiresResponsible": "Dependents require guardian email"
+  }
+}
+```
+
+---
+
+#### Checklist de Validação
+
+| Item | Status | Verificar |
+|------|--------|-----------|
+| ⬜ | UI | Campo "Tipo" aparece no mapeamento |
+| ⬜ | UI | Campo "Email do Responsável" aparece |
+| ⬜ | Validation | Email obrigatório apenas para alunos |
+| ⬜ | Validation | Dependente sem responsável gera erro |
+| ⬜ | Logic | Responsáveis criados antes de dependentes |
+| ⬜ | Logic | Dependentes vinculados ao ID correto |
+| ⬜ | Report | Relatório mostra sucessos e erros |
+| ⬜ | i18n | Traduções funcionam em PT e EN |
+
+#### Prioridade
+🟡 **MÉDIA** - Nice to have para escala
 
 ---
 
@@ -6437,11 +7529,12 @@ COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que g
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **22 pontas soltas** identificadas e solucionadas (15 originais + 7 novas)  
+✅ **24 pontas soltas** identificadas e solucionadas (15 originais + 9 novas)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 5 páginas)  
-✅ Implementação backend (3 edge functions novas + 11 modificadas + 1 RPC nova)
+✅ Implementação frontend (6 componentes + modificações em 6 páginas)  
+✅ Implementação backend (3 edge functions novas + 11 modificadas + 2 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
+✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
 ✅ Cronograma de implementação (6 fases, **9-14 dias**)  
@@ -6449,9 +7542,16 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
-**Revisão 2 - Mudanças principais:**
+**Revisão 3 - Mudanças principais:**
 - Simplificação do faturamento (modelo consolidado reduz complexidade)
-- Adicionadas 6 novas pontas soltas críticas:
+- Seções expandidas com código completo:
+  - 4.9: ClassForm - seleção de participantes com grupos (alunos/dependentes)
+  - 4.12: CancellationModal - validação de permissão no frontend
+  - 4.16: StudentScheduleRequest - formulário para responsável solicitar aula
+  - 4.23.2: handleDeleteDependent - exclusão de dependentes na tabela
+  - 4.24: StudentImportDialog - importação em massa de famílias
+- Decisão sobre rota `/dependentes/:id`: usar redirecionamento para `/alunos/:id?tab=dependentes`
+- Adicionadas 8 novas pontas soltas:
   - 4.16: Solicitação de aula pelo responsável (`request-class`)
   - 4.17: Notificações para dependentes (`class_notifications`)
   - 4.18: Histórico arquivado com dependentes
@@ -6460,6 +7560,7 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
   - 4.21: Rastreabilidade em faturas (opcional)
   - 4.22: Perfil do aluno com dependentes (`PerfilAluno.tsx`)
   - 4.23: Listagem de alunos com dependentes expansíveis (`Alunos.tsx`)
+  - 4.24: Importação em massa de famílias (`StudentImportDialog.tsx`)
 - Cronograma atualizado: 8-13 dias → **9-14 dias**
 - Fase 4 (Integrações) expandida: 1-2 dias → 2-3 dias
 

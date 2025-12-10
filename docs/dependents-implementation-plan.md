@@ -9359,27 +9359,419 @@ for (const notification of notifications) {
 
 ---
 
+### 4.41 🔴 CRÍTICA: `useStudentCount.ts` - Contagem Incorreta no Frontend
+
+#### Problema Identificado
+O hook `useStudentCount.ts` conta apenas registros em `teacher_student_relationships`, ignorando completamente os dependentes. Isso afeta:
+- Banner de upgrade mostrando contagem incorreta
+- Validação de limite de plano no frontend
+- Decisões de UX baseadas em contagem de alunos
+
+#### Localização
+- `src/hooks/useStudentCount.ts` (linhas 16-24 e 41-47)
+
+#### Código Atual (Problema)
+```typescript
+// Contagem incorreta - ignora dependentes
+const { data, error } = await supabase
+  .from('teacher_student_relationships')
+  .select('id')
+  .eq('teacher_id', user.id);
+
+if (!error) {
+  setStudentCount(data?.length || 0);
+}
+```
+
+#### Solução Proposta
+
+```typescript
+// src/hooks/useStudentCount.ts - VERSÃO CORRIGIDA
+
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+
+export function useStudentCount() {
+  const [studentCount, setStudentCount] = useState<number>(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadStudentCount = async () => {
+      try {
+        setLoading(true);
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // CORREÇÃO: Usar RPC que conta alunos + dependentes
+        const { data, error } = await supabase
+          .rpc('count_teacher_students_and_dependents', {
+            p_teacher_id: user.id
+          });
+        
+        if (!error && data !== null) {
+          setStudentCount(data);
+        } else {
+          console.error('Error loading student count:', error);
+          // Fallback: contagem manual
+          await loadManualCount(user.id);
+        }
+      } catch (error) {
+        console.error('Error loading student count:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // Fallback para contagem manual caso RPC não exista ainda
+    const loadManualCount = async (userId: string) => {
+      const [studentsResult, dependentsResult] = await Promise.all([
+        supabase
+          .from('teacher_student_relationships')
+          .select('id', { count: 'exact', head: true })
+          .eq('teacher_id', userId),
+        supabase
+          .from('dependents')
+          .select('id', { count: 'exact', head: true })
+          .eq('teacher_id', userId)
+      ]);
+
+      const studentsCount = studentsResult.count || 0;
+      const dependentsCount = dependentsResult.count || 0;
+      setStudentCount(studentsCount + dependentsCount);
+    };
+
+    loadStudentCount();
+  }, []);
+
+  const refreshStudentCount = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .rpc('count_teacher_students_and_dependents', {
+          p_teacher_id: user.id
+        });
+      
+      if (!error && data !== null) {
+        setStudentCount(data);
+      }
+    } catch (error) {
+      console.error('Error refreshing student count:', error);
+    }
+  };
+
+  return {
+    studentCount,
+    loading,
+    refreshStudentCount
+  };
+}
+```
+
+#### Prioridade
+🔴 **CRÍTICA** - Afeta UX e decisões de upgrade em todo o sistema
+
+#### Checklist de Validação
+- [ ] Hook usa RPC `count_teacher_students_and_dependents`
+- [ ] Fallback implementado para compatibilidade
+- [ ] Banner de upgrade mostra contagem correta
+- [ ] Teste com professor sem dependentes (contagem = só alunos)
+- [ ] Teste com professor com dependentes (contagem = alunos + dependentes)
+
+---
+
+### 4.42 🔴 CRÍTICA: `create-subscription-checkout` - Quantidade Incorreta no Stripe
+
+#### Problema Identificado
+A edge function `create-subscription-checkout` conta apenas `teacher_student_relationships` para definir a quantidade inicial da assinatura no Stripe, ignorando dependentes.
+
+#### Localização
+- `supabase/functions/create-subscription-checkout/index.ts` (linhas ~60-70)
+
+#### Código Atual (Problema)
+```typescript
+// Contagem incorreta - ignora dependentes
+const { data: students, error: studentsError } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('id')
+  .eq('teacher_id', user.id);
+
+const studentCount = students?.length || 0;
+```
+
+#### Solução Proposta
+
+```typescript
+// supabase/functions/create-subscription-checkout/index.ts
+
+// SUBSTITUIR contagem por RPC
+const { data: totalCount, error: countError } = await supabaseClient
+  .rpc('count_teacher_students_and_dependents', {
+    p_teacher_id: user.id
+  });
+
+if (countError) {
+  logStep('Erro ao contar alunos e dependentes', { error: countError.message });
+  throw new Error('Falha ao verificar quantidade de alunos');
+}
+
+const studentCount = totalCount || 0;
+logStep('Contagem total (alunos + dependentes)', { studentCount });
+
+// Resto do código permanece igual...
+// A quantidade studentCount agora reflete o total real
+```
+
+#### Prioridade
+🔴 **CRÍTICA** - Quantidade incorreta afeta cobrança de overage no Stripe
+
+#### Checklist de Validação
+- [ ] Usa RPC `count_teacher_students_and_dependents`
+- [ ] Log registra contagem total
+- [ ] Stripe recebe quantidade correta
+- [ ] Teste: criar assinatura com 3 alunos + 2 dependentes = quantity 5
+
+---
+
+### 4.43 🔴 CRÍTICA: `check-subscription-status` - Listagem Incompleta para Downgrade
+
+#### Problema Identificado
+A função `checkNeedsStudentSelection` dentro de `check-subscription-status` não lista dependentes quando o usuário precisa selecionar quais alunos manter durante um downgrade.
+
+#### Localização
+- `supabase/functions/check-subscription-status/index.ts` (função `checkNeedsStudentSelection`)
+
+#### Código Atual (Problema)
+```typescript
+async function checkNeedsStudentSelection(...) {
+  // Só busca alunos diretos
+  const { data: students } = await supabaseClient
+    .from('teacher_student_relationships')
+    .select('student_id, student_name')
+    .eq('teacher_id', userId);
+  
+  // Não inclui dependentes na lista
+}
+```
+
+#### Solução Proposta
+
+```typescript
+// supabase/functions/check-subscription-status/index.ts
+
+interface StudentOrDependent {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsible_name?: string;
+}
+
+async function checkNeedsStudentSelection(
+  supabaseClient: any,
+  userId: string,
+  newPlanLimit: number
+): Promise<{ needsSelection: boolean; students: StudentOrDependent[]; currentCount: number }> {
+  
+  // 1. Buscar alunos diretos
+  const { data: students, error: studentsError } = await supabaseClient
+    .from('teacher_student_relationships')
+    .select('student_id, student_name')
+    .eq('teacher_id', userId);
+
+  if (studentsError) {
+    console.error('Erro ao buscar alunos:', studentsError);
+    return { needsSelection: false, students: [], currentCount: 0 };
+  }
+
+  // 2. Buscar dependentes
+  const { data: dependents, error: dependentsError } = await supabaseClient
+    .from('dependents')
+    .select(`
+      id,
+      name,
+      responsible_id,
+      responsible:profiles!dependents_responsible_id_fkey(name)
+    `)
+    .eq('teacher_id', userId);
+
+  if (dependentsError) {
+    console.error('Erro ao buscar dependentes:', dependentsError);
+  }
+
+  // 3. Montar lista unificada
+  const allStudents: StudentOrDependent[] = [];
+
+  // Adicionar alunos
+  for (const student of (students || [])) {
+    allStudents.push({
+      id: student.student_id,
+      name: student.student_name || 'Sem nome',
+      type: 'student'
+    });
+  }
+
+  // Adicionar dependentes
+  for (const dep of (dependents || [])) {
+    allStudents.push({
+      id: dep.id,
+      name: dep.name,
+      type: 'dependent',
+      responsible_name: dep.responsible?.name || 'Responsável desconhecido'
+    });
+  }
+
+  const currentCount = allStudents.length;
+  const needsSelection = currentCount > newPlanLimit;
+
+  return {
+    needsSelection,
+    students: allStudents,
+    currentCount
+  };
+}
+```
+
+#### Integração com Response
+
+```typescript
+// No corpo principal da função, atualizar a resposta:
+
+if (result.needsSelection) {
+  return new Response(
+    JSON.stringify({
+      ...subscriptionData,
+      needsStudentSelection: true,
+      students: result.students, // Agora inclui dependentes com tipo
+      currentCount: result.currentCount,
+      newPlanLimit: newPlan.student_limit
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+```
+
+#### Interface TypeScript para Frontend
+
+```typescript
+// src/types/subscription.ts (ou inline no componente)
+
+export interface StudentForSelection {
+  id: string;
+  name: string;
+  type: 'student' | 'dependent';
+  responsible_name?: string;
+}
+
+export interface SubscriptionStatusResponse {
+  // ... campos existentes ...
+  needsStudentSelection?: boolean;
+  students?: StudentForSelection[];
+  currentCount?: number;
+  newPlanLimit?: number;
+}
+```
+
+#### Prioridade
+🔴 **CRÍTICA** - Sem isso, dependentes não aparecem na seleção de downgrade
+
+#### Checklist de Validação
+- [ ] Função busca tanto alunos quanto dependentes
+- [ ] Lista retornada inclui `type` para diferenciar
+- [ ] Dependentes incluem `responsible_name`
+- [ ] Frontend recebe lista completa para seleção
+- [ ] Teste: professor com 5 alunos + 3 dependentes fazendo downgrade para plano de 5
+
+---
+
+### 4.44 🟡 MÉDIA: RPC `count_teacher_students_and_dependents` - Criar Função
+
+#### Problema Identificado
+Várias partes do sistema precisam contar alunos + dependentes, mas não existe uma RPC centralizada para isso. Esta seção documenta a criação da função que será usada por:
+- `useStudentCount.ts`
+- `create-subscription-checkout`
+- `handle-student-overage`
+- `create-dependent`
+
+#### SQL para Criar a Função
+
+```sql
+-- RPC: Contar total de alunos + dependentes de um professor
+CREATE OR REPLACE FUNCTION public.count_teacher_students_and_dependents(p_teacher_id uuid)
+RETURNS integer
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+  SELECT (
+    -- Contar alunos diretos
+    (SELECT COUNT(*)::integer FROM teacher_student_relationships WHERE teacher_id = p_teacher_id)
+    +
+    -- Contar dependentes
+    (SELECT COUNT(*)::integer FROM dependents WHERE teacher_id = p_teacher_id)
+  );
+$$;
+
+-- Comentário explicativo
+COMMENT ON FUNCTION public.count_teacher_students_and_dependents(uuid) IS 
+'Retorna o total de alunos (diretos + dependentes) de um professor. Usado para verificar limites de plano.';
+
+-- Grant para uso via API
+GRANT EXECUTE ON FUNCTION public.count_teacher_students_and_dependents(uuid) TO authenticated;
+```
+
+#### Notas de Implementação
+- Função é `STABLE` pois só lê dados
+- `SECURITY DEFINER` garante acesso às tabelas
+- Retorna `integer` para compatibilidade com contagens existentes
+- Deve ser criada ANTES de modificar as edge functions que a utilizam
+
+#### Prioridade
+🟡 **MÉDIA** - Pré-requisito para outras correções, mas simples de implementar
+
+#### Checklist de Validação
+- [ ] Função criada no banco
+- [ ] Grant aplicado para `authenticated`
+- [ ] Teste: professor sem dependentes retorna só contagem de alunos
+- [ ] Teste: professor com dependentes retorna soma correta
+- [ ] Teste: professor sem alunos nem dependentes retorna 0
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **40 pontas soltas** identificadas e solucionadas (15 originais + 25 adicionais)  
+✅ **44 pontas soltas** identificadas e solucionadas (15 originais + 29 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 10 páginas)  
-✅ Implementação backend (3 edge functions novas + 20 modificadas + 3 RPCs novas)
+✅ Implementação frontend (6 componentes + modificações em 12 páginas)  
+✅ Implementação backend (3 edge functions novas + 22 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
-✅ Cronograma de implementação (6 fases, **13-18 dias**)  
+✅ Cronograma de implementação (6 fases, **14-20 dias**)  
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
-**Revisão 6 - 10/12/2025 - Documentação Final:**
+**Revisão 7 - 10/12/2025 - Documentação Final:**
+- Adicionadas 4 novas pontas soltas (4.41-4.44):
+  - 4.41: `useStudentCount.ts` - contagem correta no frontend com RPC
+  - 4.42: `create-subscription-checkout` - quantidade correta para Stripe
+  - 4.43: `check-subscription-status` - listagem completa para downgrade
+  - 4.44: RPC `count_teacher_students_and_dependents` - função centralizada
+- Cronograma atualizado: 13-18 dias → **14-20 dias**
+- Total de edge functions modificadas: 20 → 22
+- Total de páginas/componentes frontend afetados: 10 → 12
+- Total de RPCs: 3 → 4
+
+**Revisão 6 - 10/12/2025:**
 - Adicionadas 6 novas pontas soltas (4.35-4.40):
   - 4.35: `handle-student-overage` - contagem correta com RPC
   - 4.36: `handle-plan-downgrade-selection` - incluir dependentes na seleção
@@ -9387,9 +9779,6 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
   - 4.38: `PlanDowngradeSelectionModal.tsx` - UI para selecionar dependentes
   - 4.39: `PaymentFailureStudentSelectionModal.tsx` - UI para falha de pagamento
   - 4.40: `handle-teacher-subscription-cancellation` - corrigir query de email
-- Cronograma atualizado: 11-16 dias → **13-18 dias**
-- Total de edge functions modificadas: 17 → 20
-- Total de páginas/componentes frontend afetados: 8 → 10
 
 **Revisão 5 - 10/12/2025 - Documentação Completa:**
 - Adicionadas 10 novas pontas soltas (4.25-4.34):

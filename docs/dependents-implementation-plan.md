@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> **Última atualização:** 10/12/2025 (Revisão 8 - 45 Pontas Soltas)
+> > **Última atualização:** 10/12/2025 (Revisão 9 - 48 Pontas Soltas)
 
 ---
 
@@ -13,7 +13,7 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.45)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.48)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
@@ -9870,27 +9870,378 @@ INSERT INTO public.invoice_classes (
 
 ---
 
+### 4.46 🟡 MÉDIA: `ClassReportView.tsx` - Visualização de Feedbacks para Dependentes
+
+#### Problema Identificado
+Responsáveis não conseguem ver feedbacks individuais de seus dependentes em relatórios de aula. A filtragem atual só mostra feedbacks do `profile.id` direto.
+
+**Localização:** `src/components/ClassReportView.tsx` (linhas 119-127)
+
+#### Código Atual (Problemático)
+```typescript
+// Linha ~119-127 - Apenas filtra por profile.id do usuário logado
+if (profile?.role === 'aluno') {
+  feedbackData = feedbackData.filter(f => f.student_id === profile.id);
+}
+```
+
+#### Solução
+
+##### 1. Buscar IDs dos Dependentes do Responsável
+```typescript
+// No início do componente, buscar dependentes
+const [myDependentIds, setMyDependentIds] = useState<string[]>([]);
+
+useEffect(() => {
+  const loadMyDependents = async () => {
+    if (!profile || profile.role !== 'aluno') return;
+    
+    const { data } = await supabase
+      .from('dependents')
+      .select('id')
+      .eq('responsible_id', profile.id);
+    
+    if (data) {
+      setMyDependentIds(data.map(d => d.id));
+    }
+  };
+  
+  loadMyDependents();
+}, [profile]);
+```
+
+##### 2. Expandir Filtragem de Feedbacks
+```typescript
+// Modificar a filtragem para incluir dependentes
+if (profile?.role === 'aluno') {
+  feedbackData = feedbackData.filter(f => 
+    f.student_id === profile.id || 
+    myDependentIds.includes(f.student_id) ||
+    (f.dependent_id && myDependentIds.includes(f.dependent_id))
+  );
+}
+```
+
+##### 3. Adicionar Badge de Identificação
+```typescript
+// Na renderização, mostrar de quem é o feedback
+{feedbacks.map((feedback) => {
+  const isMyFeedback = feedback.student_id === profile?.id;
+  const dependentName = !isMyFeedback 
+    ? dependentsMap.get(feedback.dependent_id || feedback.student_id)?.name 
+    : null;
+  
+  return (
+    <Card key={feedback.id}>
+      <CardContent>
+        {dependentName && (
+          <Badge variant="outline" className="mb-2">
+            📌 {dependentName}
+          </Badge>
+        )}
+        <p>{feedback.feedback}</p>
+      </CardContent>
+    </Card>
+  );
+})}
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Afeta experiência do responsável ao visualizar relatórios
+
+#### Checklist de Validação
+- [ ] Responsável vê feedbacks de seus dependentes
+- [ ] Badge mostra nome do dependente em cada feedback
+- [ ] Feedbacks próprios (do responsável direto) não mostram badge
+- [ ] Alunos normais (sem dependentes) veem apenas seu feedback
+- [ ] Professor continua vendo todos os feedbacks normalmente
+
+---
+
+### 4.47 🟡 MÉDIA: `MeusMateriais.tsx` - Materiais Compartilhados com Dependentes
+
+#### Problema Identificado
+A página "Meus Materiais" só mostra materiais compartilhados diretamente com o `profile.id`, não incluindo materiais compartilhados com dependentes do responsável.
+
+**Localização:** `src/pages/MeusMateriais.tsx` (linhas 62-69)
+
+#### Código Atual (Problemático)
+```typescript
+// Linha ~62-69 - Query filtra apenas por student_id do usuário logado
+const { data: access } = await supabase
+  .from('material_access')
+  .select('material_id')
+  .eq('student_id', profile.id);
+```
+
+#### Solução
+
+##### 1. Buscar Dependentes do Responsável
+```typescript
+// Adicionar estado para dependentes
+const [dependents, setDependents] = useState<Array<{id: string; name: string}>>([]);
+
+// No useEffect inicial, buscar dependentes
+const loadDependents = async () => {
+  if (!profile) return;
+  
+  const { data } = await supabase
+    .from('dependents')
+    .select('id, name')
+    .eq('responsible_id', profile.id);
+  
+  setDependents(data || []);
+};
+```
+
+##### 2. Expandir Query de Material Access
+```typescript
+// Buscar materiais do responsável + materiais dos dependentes
+const allStudentIds = [profile.id, ...dependents.map(d => d.id)];
+
+const { data: access } = await supabase
+  .from('material_access')
+  .select('material_id, student_id')
+  .in('student_id', allStudentIds);
+```
+
+##### 3. Agrupar Materiais na UI
+```typescript
+// Agrupar materiais por destinatário
+const myMaterials = materials.filter(m => 
+  accessMap.get(m.id)?.student_id === profile.id
+);
+
+const dependentMaterials = dependents.map(dep => ({
+  dependent: dep,
+  materials: materials.filter(m => 
+    accessMap.get(m.id)?.student_id === dep.id
+  )
+})).filter(g => g.materials.length > 0);
+```
+
+##### 4. Renderização com Seções
+```typescript
+{/* Meus Materiais */}
+{myMaterials.length > 0 && (
+  <section>
+    <h2 className="text-lg font-semibold mb-4">Meus Materiais</h2>
+    <div className="grid gap-4">
+      {myMaterials.map(material => <MaterialCard key={material.id} {...material} />)}
+    </div>
+  </section>
+)}
+
+{/* Materiais dos Dependentes */}
+{dependentMaterials.map(group => (
+  <section key={group.dependent.id}>
+    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+      <span>📌</span> Materiais de {group.dependent.name}
+    </h2>
+    <div className="grid gap-4">
+      {group.materials.map(material => <MaterialCard key={material.id} {...material} />)}
+    </div>
+  </section>
+))}
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Essencial para responsáveis acessarem materiais dos filhos
+
+#### Checklist de Validação
+- [ ] Responsável vê materiais próprios na seção "Meus Materiais"
+- [ ] Responsável vê materiais de cada dependente em seções separadas
+- [ ] Nome do dependente aparece no título de cada seção
+- [ ] Materiais duplicados (compartilhados com responsável E dependente) aparecem em ambas seções
+- [ ] Alunos sem dependentes veem interface normal (sem seções extras)
+- [ ] Download funciona corretamente para materiais de dependentes
+
+---
+
+### 4.48 🟠 ALTA: `Agenda.tsx` (Portal do Aluno) - Aulas de Dependentes no Calendário
+
+#### Problema Identificado
+Responsáveis não veem as aulas de seus dependentes no calendário. Múltiplas queries filtram apenas por `student_id = profile.id`, excluindo completamente os dependentes.
+
+**Localização:** `src/pages/Agenda.tsx` (múltiplas queries - linhas ~312, 360, 408, 455)
+
+#### Código Atual (Problemático)
+```typescript
+// Múltiplas ocorrências - Query filtra apenas por profile.id
+const { data: classes } = await supabase
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    status,
+    ...
+  `)
+  .eq('student_id', profile.id)
+  // ...
+```
+
+#### Solução
+
+##### 1. Adicionar Estado para Dependentes
+```typescript
+// No início do componente
+const [myDependents, setMyDependents] = useState<Array<{id: string; name: string}>>([]);
+
+// Buscar dependentes do responsável
+useEffect(() => {
+  const loadDependents = async () => {
+    if (!profile || profile.role !== 'aluno') return;
+    
+    const { data } = await supabase
+      .from('dependents')
+      .select('id, name')
+      .eq('responsible_id', profile.id);
+    
+    setMyDependents(data || []);
+  };
+  
+  loadDependents();
+}, [profile]);
+```
+
+##### 2. Modificar Queries para Incluir Dependentes
+```typescript
+// Construir array de IDs (responsável + dependentes)
+const allParticipantIds = [profile.id, ...myDependents.map(d => d.id)];
+
+// Modificar a query principal
+const { data: participations } = await supabase
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    student_id,
+    dependent_id,  // ← Novo campo
+    status,
+    classes!inner(
+      id,
+      class_date,
+      duration_minutes,
+      status,
+      teacher_id
+    )
+  `)
+  .or(`student_id.in.(${allParticipantIds.join(',')}),dependent_id.in.(${myDependents.map(d => d.id).join(',')})`)
+  // ...
+```
+
+##### 3. Adicionar Identificação Visual nos Eventos
+```typescript
+// Interface estendida para eventos
+interface CalendarEvent {
+  // ... campos existentes
+  isDependent?: boolean;
+  dependentName?: string;
+}
+
+// Ao mapear eventos
+const events = participations.map(p => {
+  const isDependent = p.dependent_id !== null || p.student_id !== profile.id;
+  const dependentName = isDependent 
+    ? myDependents.find(d => d.id === p.dependent_id || d.id === p.student_id)?.name
+    : null;
+  
+  return {
+    ...eventData,
+    isDependent,
+    dependentName,
+    title: dependentName 
+      ? `📌 ${dependentName} - ${eventData.title}`
+      : eventData.title
+  };
+});
+```
+
+##### 4. Estilização Diferenciada no Calendário
+```typescript
+// No componente de evento do calendário
+const eventStyleGetter = (event: CalendarEvent) => {
+  if (event.isDependent) {
+    return {
+      className: 'dependent-class-event',
+      style: {
+        borderLeft: '3px solid hsl(var(--primary))',
+        backgroundColor: 'hsl(var(--primary) / 0.1)'
+      }
+    };
+  }
+  return {};
+};
+```
+
+##### 5. Legenda no Calendário
+```typescript
+{/* Adicionar legenda se houver dependentes */}
+{myDependents.length > 0 && (
+  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+    <div className="flex items-center gap-2">
+      <div className="w-3 h-3 rounded bg-primary/20 border-l-2 border-primary" />
+      <span>Aulas de dependentes</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <div className="w-3 h-3 rounded bg-primary" />
+      <span>Minhas aulas</span>
+    </div>
+  </div>
+)}
+```
+
+#### Considerações Especiais
+- **Performance:** Usar `.or()` pode ser menos eficiente que queries separadas. Considerar alternativa com RPC se houver muitos dependentes.
+- **Filtros:** Se existir filtro por aluno, adicionar opção "Todos" + cada dependente individual.
+- **Notificações:** Ações de confirmação/cancelamento devem respeitar permissões do responsável.
+
+#### Prioridade
+🟠 **ALTA** - Funcionalidade core do portal do responsável
+
+#### Checklist de Validação
+- [ ] Responsável vê suas aulas próprias no calendário
+- [ ] Responsável vê aulas de TODOS os dependentes no calendário
+- [ ] Eventos de dependentes têm estilo visual diferenciado
+- [ ] Nome do dependente aparece no título do evento
+- [ ] Legenda aparece quando há dependentes
+- [ ] Click no evento abre detalhes corretos (do dependente)
+- [ ] Confirmação/cancelamento funciona para aulas de dependentes
+- [ ] Alunos sem dependentes veem interface normal
+- [ ] Performance aceitável com múltiplos dependentes
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **45 pontas soltas** identificadas e solucionadas (15 originais + 30 adicionais)  
+✅ **48 pontas soltas** identificadas e solucionadas (15 originais + 33 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 12 páginas)  
+✅ Implementação frontend (6 componentes + modificações em 14 páginas)  
 ✅ Implementação backend (3 edge functions novas + 23 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
-✅ Cronograma de implementação (6 fases, **14-20 dias**)  
+✅ Cronograma de implementação (6 fases, **15-21 dias**)  
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
-**Revisão 8 - 10/12/2025 - Documentação Final:**
+**Revisão 9 - 10/12/2025 - Portal do Aluno/Responsável:**
+- Adicionadas 3 novas pontas soltas (4.46-4.48):
+  - 4.46: `ClassReportView.tsx` - visualização de feedbacks para dependentes
+  - 4.47: `MeusMateriais.tsx` - materiais compartilhados com dependentes
+  - 4.48: `Agenda.tsx` (portal aluno) - aulas de dependentes no calendário
+- Total de páginas frontend afetadas: 12 → 14
+- Total de pontas soltas: 45 → 48
+- Tempo estimado: 14-20 dias → 15-21 dias
+
+**Revisão 8 - 10/12/2025:**
 - Adicionada 1 nova ponta solta (4.45):
   - 4.45: `process-orphan-cancellation-charges` - incluir dependent_id na descrição
 - Total de edge functions modificadas: 22 → 23

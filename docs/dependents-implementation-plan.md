@@ -7523,46 +7523,964 @@ COMMENT ON COLUMN public.invoice_classes.dependent_id IS 'ID do dependente que g
 
 ---
 
+---
+
+## 4.25 Materialização de Aulas Virtuais com Dependentes
+
+### Problema Identificado
+A edge function `materialize-virtual-class` não copia o `dependent_id` ao materializar participações de aulas virtuais (templates recorrentes). Isso causa perda de contexto sobre qual dependente participou da aula.
+
+### Localização
+`supabase/functions/materialize-virtual-class/index.ts`
+
+### Solução
+
+```typescript
+// Buscar participantes do template INCLUINDO dependent_id
+const { data: templateParticipants, error: participantsError } = await supabaseClient
+  .from('class_participants')
+  .select('student_id, dependent_id, status')
+  .eq('class_id', classTemplateId);
+
+if (participantsError) throw participantsError;
+
+// Criar participantes para a aula materializada COM dependent_id
+const participantsToInsert = templateParticipants.map(p => ({
+  class_id: materializedClass.id,
+  student_id: p.student_id,
+  dependent_id: p.dependent_id, // ✅ CRÍTICO: preservar dependent_id
+  status: 'confirmada'
+}));
+
+const { error: insertParticipantsError } = await supabaseClient
+  .from('class_participants')
+  .insert(participantsToInsert);
+```
+
+### Diagrama de Fluxo
+
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant EF as materialize-virtual-class
+    participant DB as Database
+    
+    F->>EF: { classTemplateId, targetDate }
+    EF->>DB: SELECT student_id, dependent_id FROM class_participants WHERE class_id = template
+    DB-->>EF: [{ student_id, dependent_id }]
+    EF->>DB: INSERT INTO classes (nova aula)
+    DB-->>EF: { id: new_class_id }
+    EF->>DB: INSERT INTO class_participants (preservando dependent_id)
+    EF-->>F: { success: true, classId }
+```
+
+### Checklist de Validação
+- [ ] Query de participantes inclui `dependent_id`
+- [ ] Insert de participantes preserva `dependent_id`
+- [ ] Aula materializada reflete corretamente o dependente
+- [ ] Faturamento funciona para aulas materializadas de dependentes
+
+---
+
+## 4.26 Verificação de Disponibilidade para Responsáveis
+
+### Problema Identificado
+A edge function `get-teacher-availability` não permite que responsáveis verifiquem a disponibilidade de professores para solicitar aulas em nome de seus dependentes.
+
+### Localização
+`supabase/functions/get-teacher-availability/index.ts`
+
+### Solução
+
+```typescript
+// Verificar se o usuário pode acessar o professor
+async function canAccessTeacher(
+  supabase: SupabaseClient,
+  userId: string,
+  teacherId: string
+): Promise<boolean> {
+  // 1. Verificar se é aluno direto do professor
+  const { data: directRelation } = await supabase
+    .from('teacher_student_relationships')
+    .select('id')
+    .eq('teacher_id', teacherId)
+    .eq('student_id', userId)
+    .maybeSingle();
+
+  if (directRelation) return true;
+
+  // 2. Verificar se é responsável de algum dependente vinculado ao professor
+  const { data: dependentRelation } = await supabase
+    .from('dependents')
+    .select('id')
+    .eq('responsible_id', userId)
+    .eq('teacher_id', teacherId)
+    .limit(1);
+
+  return dependentRelation && dependentRelation.length > 0;
+}
+
+// No handler principal
+const canAccess = await canAccessTeacher(supabaseClient, userId, teacherId);
+if (!canAccess) {
+  return new Response(
+    JSON.stringify({ error: 'Você não tem permissão para acessar este professor' }),
+    { status: 403, headers: corsHeaders }
+  );
+}
+```
+
+### Cenários
+
+| Usuário | Relação com Professor | Pode Verificar Disponibilidade |
+|---------|----------------------|-------------------------------|
+| Aluno direto | `teacher_student_relationships` | ✅ Sim |
+| Responsável | Dependente em `dependents` | ✅ Sim |
+| Usuário sem relação | Nenhuma | ❌ Não |
+
+### Checklist de Validação
+- [ ] Aluno direto pode verificar disponibilidade
+- [ ] Responsável pode verificar disponibilidade para solicitar aula de dependente
+- [ ] Usuário sem relação recebe erro 403
+
+---
+
+## 4.27 Arquivamento de Dados com Dependentes
+
+### Problema Identificado
+A edge function `archive-old-data` não inclui `dependent_id` ao arquivar `class_participants`, perdendo contexto histórico.
+
+### Localização
+`supabase/functions/archive-old-data/index.ts`
+
+### Solução
+
+```typescript
+// Buscar participantes INCLUINDO dependent_id
+const { data: participants, error: participantsError } = await supabaseClient
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    student_id,
+    dependent_id,
+    status,
+    confirmed_at,
+    completed_at,
+    cancelled_at,
+    cancelled_by,
+    cancellation_reason,
+    charge_applied,
+    created_at,
+    updated_at
+  `)
+  .in('class_id', classIds);
+
+// Estrutura do arquivo JSON inclui dependent_id
+const archivedData = {
+  classes: classesToArchive,
+  participants: participants.map(p => ({
+    ...p,
+    dependent_id: p.dependent_id, // ✅ Preservar
+    dependent_name: null // Será preenchido abaixo se houver
+  })),
+  // ... resto do arquivo
+};
+
+// Enriquecer com nome do dependente para legibilidade
+if (participants.some(p => p.dependent_id)) {
+  const dependentIds = participants
+    .filter(p => p.dependent_id)
+    .map(p => p.dependent_id);
+  
+  const { data: dependents } = await supabaseClient
+    .from('dependents')
+    .select('id, name')
+    .in('id', dependentIds);
+  
+  const dependentMap = new Map(dependents.map(d => [d.id, d.name]));
+  
+  archivedData.participants = archivedData.participants.map(p => ({
+    ...p,
+    dependent_name: p.dependent_id ? dependentMap.get(p.dependent_id) : null
+  }));
+}
+```
+
+### Estrutura do Arquivo Arquivado
+
+```json
+{
+  "archived_at": "2025-12-10T00:00:00Z",
+  "participants": [
+    {
+      "id": "uuid",
+      "class_id": "uuid",
+      "student_id": null,
+      "dependent_id": "uuid-dependente",
+      "dependent_name": "João Silva Jr.",
+      "status": "concluida",
+      "charge_applied": false
+    }
+  ]
+}
+```
+
+### Checklist de Validação
+- [ ] Select inclui `dependent_id`
+- [ ] Arquivo JSON preserva `dependent_id`
+- [ ] Nome do dependente incluído para legibilidade
+- [ ] Histórico arquivado pode ser consultado com contexto de dependente
+
+---
+
+## 4.28 Dashboard - Contagem Correta de Alunos
+
+### Problema Identificado
+`Dashboard.tsx` usa `get_teacher_students` que retorna apenas alunos diretos, não incluindo dependentes na contagem total. Isso afeta a exibição de métricas e pode confundir professores.
+
+### Localização
+`src/pages/Dashboard.tsx`
+
+### Solução
+
+```typescript
+// ANTES (incorreto):
+const { count: studentCount } = await supabase
+  .from('teacher_student_relationships')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', profile.id);
+
+// DEPOIS (correto):
+// Opção 1: Usar nova RPC
+const { data: countData } = await supabase
+  .rpc('count_teacher_students_and_dependents', { p_teacher_id: profile.id });
+
+const totalCount = countData?.total_count ?? 0;
+
+// Opção 2: Query direta (se RPC não existir)
+const { count: studentCount } = await supabase
+  .from('teacher_student_relationships')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', profile.id);
+
+const { count: dependentCount } = await supabase
+  .from('dependents')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', profile.id);
+
+const totalCount = (studentCount ?? 0) + (dependentCount ?? 0);
+```
+
+### Nova RPC (SQL)
+
+```sql
+CREATE OR REPLACE FUNCTION public.count_teacher_students_and_dependents(p_teacher_id UUID)
+RETURNS TABLE(student_count INTEGER, dependent_count INTEGER, total_count INTEGER)
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT 
+    (SELECT COUNT(*)::INTEGER FROM teacher_student_relationships WHERE teacher_id = p_teacher_id) AS student_count,
+    (SELECT COUNT(*)::INTEGER FROM dependents WHERE teacher_id = p_teacher_id) AS dependent_count,
+    (
+      (SELECT COUNT(*)::INTEGER FROM teacher_student_relationships WHERE teacher_id = p_teacher_id) +
+      (SELECT COUNT(*)::INTEGER FROM dependents WHERE teacher_id = p_teacher_id)
+    ) AS total_count;
+END;
+$$;
+```
+
+### Exibição no Dashboard
+
+```tsx
+// Exibir com breakdown
+<Card>
+  <CardHeader>
+    <CardTitle>Alunos</CardTitle>
+  </CardHeader>
+  <CardContent>
+    <div className="text-3xl font-bold">{totalCount}</div>
+    <p className="text-xs text-muted-foreground">
+      {studentCount} alunos • {dependentCount} dependentes
+    </p>
+  </CardContent>
+</Card>
+```
+
+### Checklist de Validação
+- [ ] Contagem inclui dependentes
+- [ ] Breakdown exibido (alunos vs dependentes)
+- [ ] Limite de plano considera total (alunos + dependentes)
+- [ ] Métricas consistentes com página Alunos
+
+---
+
+## 4.29 ClassReportModal - Feedbacks para Dependentes
+
+### Problema Identificado
+`ClassReportModal.tsx` inicializa feedbacks apenas para `student_id`, ignorando participantes que são dependentes (`dependent_id`).
+
+### Localização
+`src/components/ClassReportModal.tsx`
+
+### Solução
+
+```typescript
+interface ParticipantForFeedback {
+  participant_id: string;
+  student_id: string | null;
+  dependent_id: string | null;
+  name: string;
+  type: 'student' | 'dependent';
+}
+
+// Buscar participantes incluindo dependentes
+const loadParticipants = async () => {
+  const { data: participants, error } = await supabase
+    .from('class_participants')
+    .select(`
+      id,
+      student_id,
+      dependent_id,
+      profiles!class_participants_student_id_fkey(name)
+    `)
+    .eq('class_id', classId)
+    .in('status', ['confirmada', 'concluida']);
+
+  if (error) throw error;
+
+  // Buscar nomes dos dependentes
+  const dependentIds = participants
+    .filter(p => p.dependent_id)
+    .map(p => p.dependent_id);
+
+  let dependentNames: Map<string, string> = new Map();
+  if (dependentIds.length > 0) {
+    const { data: dependents } = await supabase
+      .from('dependents')
+      .select('id, name')
+      .in('id', dependentIds);
+    
+    dependentNames = new Map(dependents?.map(d => [d.id, d.name]) ?? []);
+  }
+
+  // Montar lista unificada
+  const participantsForFeedback: ParticipantForFeedback[] = participants.map(p => ({
+    participant_id: p.id,
+    student_id: p.student_id,
+    dependent_id: p.dependent_id,
+    name: p.dependent_id 
+      ? dependentNames.get(p.dependent_id) ?? 'Dependente'
+      : p.profiles?.name ?? 'Aluno',
+    type: p.dependent_id ? 'dependent' : 'student'
+  }));
+
+  return participantsForFeedback;
+};
+
+// Inicializar feedbacks para todos os participantes
+const initializeFeedbacks = (participants: ParticipantForFeedback[]) => {
+  const feedbacks: Record<string, string> = {};
+  participants.forEach(p => {
+    const key = p.dependent_id ?? p.student_id;
+    if (key) feedbacks[key] = '';
+  });
+  return feedbacks;
+};
+```
+
+### Renderização
+
+```tsx
+{participants.map(participant => (
+  <div key={participant.participant_id} className="space-y-2">
+    <div className="flex items-center gap-2">
+      {participant.type === 'dependent' && (
+        <Badge variant="secondary">Dependente</Badge>
+      )}
+      <Label>{participant.name}</Label>
+    </div>
+    <Textarea
+      placeholder={t('reports.view.feedbackPlaceholder')}
+      value={feedbacks[participant.dependent_id ?? participant.student_id ?? ''] ?? ''}
+      onChange={(e) => handleFeedbackChange(
+        participant.dependent_id ?? participant.student_id ?? '',
+        e.target.value
+      )}
+    />
+  </div>
+))}
+```
+
+### Salvamento
+
+```typescript
+// Salvar feedback usando dependent_id quando aplicável
+const saveFeedback = async (participantKey: string, feedback: string) => {
+  const participant = participants.find(p => 
+    (p.dependent_id ?? p.student_id) === participantKey
+  );
+  
+  if (!participant) return;
+
+  await supabase.from('class_report_feedbacks').upsert({
+    report_id: reportId,
+    student_id: participant.student_id, // NULL se for dependente
+    dependent_id: participant.dependent_id, // NULL se for aluno
+    feedback
+  }, {
+    onConflict: 'report_id,student_id,dependent_id'
+  });
+};
+```
+
+### Checklist de Validação
+- [ ] Query busca participantes com `dependent_id`
+- [ ] Nomes de dependentes são buscados separadamente
+- [ ] Feedbacks inicializados para dependentes
+- [ ] Badge "Dependente" exibido no modal
+- [ ] Salvamento usa `dependent_id` quando aplicável
+
+---
+
+## 4.30 Recibo - Exibir Informações de Dependente
+
+### Problema Identificado
+`Recibo.tsx` não exibe qual dependente gerou a cobrança quando a fatura é de aulas de dependentes.
+
+### Localização
+`src/pages/Recibo.tsx`
+
+### Solução
+
+```typescript
+interface InvoiceClassWithDependent {
+  id: string;
+  class_id: string;
+  amount: number;
+  item_type: string;
+  dependent_id: string | null;
+  dependent?: {
+    id: string;
+    name: string;
+  };
+  classes: {
+    class_date: string;
+    duration_minutes: number;
+    service_id: string;
+  };
+}
+
+// Buscar itens da fatura incluindo dependent_id
+const loadInvoiceDetails = async () => {
+  const { data: invoiceClasses, error } = await supabase
+    .from('invoice_classes')
+    .select(`
+      id,
+      class_id,
+      amount,
+      item_type,
+      dependent_id,
+      classes!inner(
+        class_date,
+        duration_minutes,
+        service_id
+      )
+    `)
+    .eq('invoice_id', invoiceId);
+
+  if (error) throw error;
+
+  // Buscar nomes dos dependentes
+  const dependentIds = invoiceClasses
+    .filter(ic => ic.dependent_id)
+    .map(ic => ic.dependent_id);
+
+  if (dependentIds.length > 0) {
+    const { data: dependents } = await supabase
+      .from('dependents')
+      .select('id, name')
+      .in('id', dependentIds);
+    
+    const dependentMap = new Map(dependents?.map(d => [d.id, d]) ?? []);
+    
+    return invoiceClasses.map(ic => ({
+      ...ic,
+      dependent: ic.dependent_id ? dependentMap.get(ic.dependent_id) : null
+    }));
+  }
+
+  return invoiceClasses;
+};
+```
+
+### Renderização no Recibo
+
+```tsx
+{/* Itens da Fatura */}
+<table className="w-full">
+  <thead>
+    <tr>
+      <th>Data</th>
+      <th>Descrição</th>
+      <th>Aluno/Dependente</th>
+      <th>Valor</th>
+    </tr>
+  </thead>
+  <tbody>
+    {invoiceClasses.map(item => (
+      <tr key={item.id}>
+        <td>{format(new Date(item.classes.class_date), 'dd/MM/yyyy')}</td>
+        <td>
+          {item.item_type === 'completed' ? 'Aula realizada' : 'Cancelamento'}
+        </td>
+        <td>
+          {item.dependent ? (
+            <span className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">📌</span>
+              {item.dependent.name}
+            </span>
+          ) : (
+            studentName
+          )}
+        </td>
+        <td>{formatCurrency(item.amount)}</td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+{/* Resumo por dependente (se houver múltiplos) */}
+{hasDependents && (
+  <div className="mt-4 p-3 bg-muted rounded-lg">
+    <h4 className="font-medium mb-2">Resumo por Dependente</h4>
+    {Object.entries(groupByDependent(invoiceClasses)).map(([depId, items]) => (
+      <div key={depId} className="flex justify-between text-sm">
+        <span>{getDependentName(depId)}</span>
+        <span>{formatCurrency(sumAmounts(items))}</span>
+      </div>
+    ))}
+  </div>
+)}
+```
+
+### Checklist de Validação
+- [ ] Query busca `dependent_id` de `invoice_classes`
+- [ ] Nome do dependente exibido na coluna apropriada
+- [ ] Ícone 📌 diferencia dependentes de alunos
+- [ ] Resumo por dependente quando houver múltiplos
+- [ ] Fatura consolidada mostra total correto
+
+---
+
+## 4.31 Smart Delete Student - Contagem com Dependentes
+
+### Problema Identificado
+`smart-delete-student` não considera dependentes ao atualizar a quantidade da assinatura Stripe, podendo resultar em cobrança incorreta.
+
+### Localização
+`supabase/functions/smart-delete-student/index.ts`
+
+### Solução
+
+```typescript
+// ANTES (incorreto):
+const { count: remainingStudents } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('id', { count: 'exact', head: true })
+  .eq('teacher_id', teacherId);
+
+// DEPOIS (correto):
+async function countTeacherStudentsAndDependents(
+  supabase: SupabaseClient,
+  teacherId: string
+): Promise<number> {
+  const { count: studentCount } = await supabase
+    .from('teacher_student_relationships')
+    .select('id', { count: 'exact', head: true })
+    .eq('teacher_id', teacherId);
+
+  const { count: dependentCount } = await supabase
+    .from('dependents')
+    .select('id', { count: 'exact', head: true })
+    .eq('teacher_id', teacherId);
+
+  return (studentCount ?? 0) + (dependentCount ?? 0);
+}
+
+// No handler principal
+const totalStudents = await countTeacherStudentsAndDependents(supabaseClient, teacherId);
+
+// Atualizar Stripe com total correto
+await stripe.subscriptions.update(subscriptionId, {
+  items: [{
+    id: subscriptionItemId,
+    quantity: totalStudents
+  }]
+});
+```
+
+### Cenários de Deleção
+
+| Ação | Impacto na Contagem |
+|------|---------------------|
+| Deletar aluno sem dependentes | -1 aluno |
+| Deletar responsável com 2 dependentes | -1 aluno, -2 dependentes = -3 total |
+| Deletar dependente individual | -1 dependente |
+
+### Checklist de Validação
+- [ ] Contagem inclui alunos + dependentes
+- [ ] Stripe atualizado com quantidade correta
+- [ ] Deleção de responsável cascata para dependentes
+- [ ] Cobrança de overage reflete total correto
+
+---
+
+## 4.32 Notificações de Fatura - Detalhamento de Dependentes
+
+### Problema Identificado
+Notificações de fatura para responsáveis não mencionam quais dependentes geraram as cobranças.
+
+### Localização
+`supabase/functions/send-invoice-notification/index.ts`
+
+### Solução
+
+```typescript
+// Buscar itens da fatura com dependentes
+const { data: invoiceClasses } = await supabaseClient
+  .from('invoice_classes')
+  .select(`
+    id,
+    amount,
+    item_type,
+    dependent_id,
+    classes(class_date)
+  `)
+  .eq('invoice_id', invoiceId);
+
+// Buscar nomes dos dependentes
+const dependentIds = invoiceClasses
+  ?.filter(ic => ic.dependent_id)
+  .map(ic => ic.dependent_id) ?? [];
+
+let dependentNames: Map<string, string> = new Map();
+if (dependentIds.length > 0) {
+  const { data: dependents } = await supabaseClient
+    .from('dependents')
+    .select('id, name')
+    .in('id', dependentIds);
+  
+  dependentNames = new Map(dependents?.map(d => [d.id, d.name]) ?? []);
+}
+
+// Agrupar por dependente para o email
+const itemsByDependent = invoiceClasses?.reduce((acc, item) => {
+  const key = item.dependent_id ?? 'aluno_principal';
+  if (!acc[key]) {
+    acc[key] = {
+      name: item.dependent_id 
+        ? dependentNames.get(item.dependent_id) ?? 'Dependente'
+        : studentName,
+      items: [],
+      total: 0
+    };
+  }
+  acc[key].items.push(item);
+  acc[key].total += item.amount;
+  return acc;
+}, {} as Record<string, { name: string; items: any[]; total: number }>);
+
+// Template de email atualizado
+const emailHtml = `
+  <h2>Nova Fatura - ${teacherName}</h2>
+  
+  <p>Olá ${responsibleName},</p>
+  
+  <p>Segue o detalhamento da sua fatura:</p>
+  
+  ${Object.values(itemsByDependent ?? {}).map(group => `
+    <h3>📌 ${group.name}</h3>
+    <ul>
+      ${group.items.map(item => `
+        <li>${format(new Date(item.classes.class_date), 'dd/MM')} - 
+            ${formatCurrency(item.amount)}</li>
+      `).join('')}
+    </ul>
+    <p><strong>Subtotal: ${formatCurrency(group.total)}</strong></p>
+  `).join('')}
+  
+  <h3>Total: ${formatCurrency(totalAmount)}</h3>
+  
+  <p>Vencimento: ${format(new Date(dueDate), 'dd/MM/yyyy')}</p>
+`;
+```
+
+### Checklist de Validação
+- [ ] Email lista itens agrupados por dependente
+- [ ] Nome do dependente exibido com ícone 📌
+- [ ] Subtotal por dependente calculado
+- [ ] Total geral correto
+- [ ] Respeita `notification_preferences` do responsável
+
+---
+
+## 4.33 End Recurrence - Notificação para Responsáveis
+
+### Problema Identificado
+Ao encerrar uma recorrência de aulas, a edge function `end-recurrence` não notifica responsáveis de dependentes que eram participantes.
+
+### Localização
+`supabase/functions/end-recurrence/index.ts`
+
+### Solução
+
+```typescript
+// Buscar participantes incluindo dependentes
+const { data: participants } = await supabaseClient
+  .from('class_participants')
+  .select(`
+    student_id,
+    dependent_id,
+    profiles!class_participants_student_id_fkey(email, name)
+  `)
+  .eq('class_id', templateClassId)
+  .in('status', ['confirmada', 'pendente']);
+
+// Separar alunos diretos de dependentes
+const directStudents = participants?.filter(p => p.student_id && !p.dependent_id) ?? [];
+const dependentParticipants = participants?.filter(p => p.dependent_id) ?? [];
+
+// Buscar responsáveis dos dependentes
+const dependentIds = dependentParticipants.map(p => p.dependent_id);
+const { data: dependents } = await supabaseClient
+  .from('dependents')
+  .select(`
+    id,
+    name,
+    responsible_id,
+    responsible:profiles!dependents_responsible_id_fkey(email, name)
+  `)
+  .in('id', dependentIds);
+
+// Notificar alunos diretos
+for (const student of directStudents) {
+  await sendEndRecurrenceNotification({
+    recipientEmail: student.profiles?.email,
+    recipientName: student.profiles?.name,
+    className: className,
+    endDate: endDate
+  });
+}
+
+// Notificar responsáveis (agrupando por responsável)
+const responsibleMap = new Map<string, { 
+  email: string; 
+  name: string; 
+  dependentNames: string[] 
+}>();
+
+for (const dep of dependents ?? []) {
+  const existing = responsibleMap.get(dep.responsible_id);
+  if (existing) {
+    existing.dependentNames.push(dep.name);
+  } else {
+    responsibleMap.set(dep.responsible_id, {
+      email: dep.responsible?.email,
+      name: dep.responsible?.name,
+      dependentNames: [dep.name]
+    });
+  }
+}
+
+for (const [_, responsible] of responsibleMap) {
+  await sendEndRecurrenceNotification({
+    recipientEmail: responsible.email,
+    recipientName: responsible.name,
+    className: className,
+    endDate: endDate,
+    dependentNames: responsible.dependentNames // Lista de dependentes afetados
+  });
+}
+```
+
+### Template de Email para Responsável
+
+```html
+<p>Olá ${responsibleName},</p>
+
+<p>A série de aulas "${className}" foi encerrada.</p>
+
+<p>Esta alteração afeta os seguintes dependentes:</p>
+<ul>
+  ${dependentNames.map(name => `<li>📌 ${name}</li>`).join('')}
+</ul>
+
+<p>Última aula: ${format(new Date(endDate), 'dd/MM/yyyy')}</p>
+```
+
+### Checklist de Validação
+- [ ] Query busca participantes com `dependent_id`
+- [ ] Responsáveis identificados via tabela `dependents`
+- [ ] Notificações agrupadas por responsável (evita múltiplos emails)
+- [ ] Email lista dependentes afetados
+- [ ] Respeita `notification_preferences`
+
+---
+
+## 4.34 Manage Class Exception - Notificações para Dependentes
+
+### Problema Identificado
+Ao criar exceções de aula (reagendamento ou cancelamento pontual), a edge function `manage-class-exception` não envia notificações customizadas para responsáveis de dependentes.
+
+### Localização
+`supabase/functions/manage-class-exception/index.ts`
+
+### Solução
+
+```typescript
+// Após criar a exceção, buscar participantes
+const { data: participants } = await supabaseClient
+  .from('class_participants')
+  .select(`
+    student_id,
+    dependent_id,
+    profiles!class_participants_student_id_fkey(
+      email, 
+      name,
+      notification_preferences
+    )
+  `)
+  .eq('class_id', classId)
+  .in('status', ['confirmada', 'pendente']);
+
+// Processar participantes
+for (const participant of participants ?? []) {
+  if (participant.dependent_id) {
+    // É dependente - buscar responsável
+    const { data: dependent } = await supabaseClient
+      .from('dependents')
+      .select(`
+        name,
+        responsible_id,
+        responsible:profiles!dependents_responsible_id_fkey(
+          email,
+          name,
+          notification_preferences
+        )
+      `)
+      .eq('id', participant.dependent_id)
+      .single();
+
+    // Verificar preferência do responsável
+    const prefs = dependent?.responsible?.notification_preferences;
+    if (prefs?.class_cancelled === false && action === 'cancel') continue;
+    
+    await sendExceptionNotification({
+      recipientEmail: dependent?.responsible?.email,
+      recipientName: dependent?.responsible?.name,
+      dependentName: dependent?.name, // Incluir nome do dependente
+      action: action, // 'reschedule' ou 'cancel'
+      originalDate: originalDate,
+      newDate: newDate,
+      className: className
+    });
+  } else {
+    // É aluno direto
+    const prefs = participant.profiles?.notification_preferences;
+    if (prefs?.class_cancelled === false && action === 'cancel') continue;
+    
+    await sendExceptionNotification({
+      recipientEmail: participant.profiles?.email,
+      recipientName: participant.profiles?.name,
+      dependentName: null,
+      action: action,
+      originalDate: originalDate,
+      newDate: newDate,
+      className: className
+    });
+  }
+}
+```
+
+### Templates de Email
+
+**Reagendamento - Aluno Direto:**
+```
+Assunto: Aula "${className}" Reagendada
+
+Sua aula foi reagendada de ${originalDate} para ${newDate}.
+```
+
+**Reagendamento - Responsável:**
+```
+Assunto: Aula de ${dependentName} Reagendada
+
+A aula de ${dependentName} foi reagendada de ${originalDate} para ${newDate}.
+```
+
+**Cancelamento - Aluno Direto:**
+```
+Assunto: Aula "${className}" Cancelada
+
+Sua aula do dia ${originalDate} foi cancelada.
+```
+
+**Cancelamento - Responsável:**
+```
+Assunto: Aula de ${dependentName} Cancelada
+
+A aula de ${dependentName} do dia ${originalDate} foi cancelada.
+```
+
+### Checklist de Validação
+- [ ] Query busca participantes com `dependent_id`
+- [ ] Responsável identificado para dependentes
+- [ ] Email menciona nome do dependente
+- [ ] Ação (reagendamento/cancelamento) tratada corretamente
+- [ ] Respeita `notification_preferences` do responsável
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **24 pontas soltas** identificadas e solucionadas (15 originais + 9 novas)  
+✅ **34 pontas soltas** identificadas e solucionadas (15 originais + 19 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 6 páginas)  
-✅ Implementação backend (3 edge functions novas + 11 modificadas + 2 RPCs novas)
+✅ Implementação frontend (6 componentes + modificações em 8 páginas)  
+✅ Implementação backend (3 edge functions novas + 17 modificadas + 3 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
+✅ Função SQL `count_teacher_students_and_dependents` para contagem total
 ✅ Traduções i18n (pt + en)  
 ✅ Cenários de teste (9 cenários principais)  
-✅ Cronograma de implementação (6 fases, **9-14 dias**)  
+✅ Cronograma de implementação (6 fases, **11-16 dias**)  
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
 
-**Revisão 3 - Mudanças principais:**
-- Simplificação do faturamento (modelo consolidado reduz complexidade)
-- Seções expandidas com código completo:
-  - 4.9: ClassForm - seleção de participantes com grupos (alunos/dependentes)
-  - 4.12: CancellationModal - validação de permissão no frontend
-  - 4.16: StudentScheduleRequest - formulário para responsável solicitar aula
-  - 4.23.2: handleDeleteDependent - exclusão de dependentes na tabela
-  - 4.24: StudentImportDialog - importação em massa de famílias
-- Decisão sobre rota `/dependentes/:id`: usar redirecionamento para `/alunos/:id?tab=dependentes`
-- Adicionadas 8 novas pontas soltas:
-  - 4.16: Solicitação de aula pelo responsável (`request-class`)
-  - 4.17: Notificações para dependentes (`class_notifications`)
-  - 4.18: Histórico arquivado com dependentes
-  - 4.19: Função RPC `get_unbilled_participants_v2` (crítica)
-  - 4.20: Verificação de inadimplência (já funciona naturalmente)
-  - 4.21: Rastreabilidade em faturas (opcional)
-  - 4.22: Perfil do aluno com dependentes (`PerfilAluno.tsx`)
-  - 4.23: Listagem de alunos com dependentes expansíveis (`Alunos.tsx`)
-  - 4.24: Importação em massa de famílias (`StudentImportDialog.tsx`)
-- Cronograma atualizado: 8-13 dias → **9-14 dias**
-- Fase 4 (Integrações) expandida: 1-2 dias → 2-3 dias
+**Revisão 5 - 10/12/2025 - Documentação Completa:**
+- Adicionadas 10 novas pontas soltas (4.25-4.34):
+  - 4.25: `materialize-virtual-class` - preservar `dependent_id`
+  - 4.26: `get-teacher-availability` - acesso por responsáveis
+  - 4.27: `archive-old-data` - incluir dependentes no arquivo
+  - 4.28: `Dashboard.tsx` - contagem correta (alunos + dependentes)
+  - 4.29: `ClassReportModal.tsx` - feedbacks para dependentes
+  - 4.30: `Recibo.tsx` - exibir informações de dependente
+  - 4.31: `smart-delete-student` - contagem Stripe com dependentes
+  - 4.32: Notificações de fatura - detalhamento por dependente
+  - 4.33: `end-recurrence` - notificar responsáveis
+  - 4.34: `manage-class-exception` - notificações customizadas
+- Nova RPC: `count_teacher_students_and_dependents`
+- Cronograma atualizado: 9-14 dias → **11-16 dias**
+- Total de edge functions modificadas: 11 → 17
+- Total de páginas frontend afetadas: 6 → 8
 
 **Próximos Passos:**
 1. Revisar este documento com a equipe

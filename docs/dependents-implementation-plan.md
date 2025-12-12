@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> > **Última atualização:** 12/12/2025 (Revisão 12 - 53 Pontas Soltas + Validação Final)
+> > **Última atualização:** 12/12/2025 (Revisão 13 - 56 Pontas Soltas + Componentes de Diagnóstico)
 
 ---
 
@@ -13,7 +13,7 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.53)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.56)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
@@ -10790,15 +10790,324 @@ const loadStudentsAndInvoices = async () => {
 
 ---
 
+### 4.54 🟡 MÉDIA: SystemHealthAlert - Verificar Responsáveis de Dependentes
+
+#### Problema
+O componente `SystemHealthAlert.tsx` verifica "alunos órfãos" (sem `business_profile_id`), mas não considera que dependentes herdam o `business_profile_id` do responsável. Se um responsável não tem business profile, seus dependentes também terão problemas de roteamento.
+
+#### Arquivos Afetados
+- `src/components/SystemHealthAlert.tsx`
+
+#### Solução
+
+```typescript
+// src/components/SystemHealthAlert.tsx
+
+// ADICIONAR: Query para buscar dependentes
+const { data: dependents } = useQuery({
+  queryKey: ["system-health-dependents", profile?.id],
+  queryFn: async () => {
+    if (!profile?.id) return [];
+    
+    const { data, error } = await supabase
+      .rpc('get_teacher_dependents', { p_teacher_id: profile.id });
+    
+    if (error) throw error;
+    return data || [];
+  },
+  enabled: isProfessor && !!profile?.id,
+});
+
+// MODIFICAR: Verificar alunos órfãos incluindo responsáveis de dependentes
+useEffect(() => {
+  if (!isProfessor || isLoading) return;
+
+  const newIssues: SystemHealthIssue[] = [];
+
+  // Alunos diretos sem business profile
+  const orphanDirectStudents = orphanStudents?.filter(
+    (s: any) => !s.business_profile_id
+  ) || [];
+  
+  // Responsáveis de dependentes sem business profile
+  const responsiblesWithDependents = orphanStudents?.filter((student: any) => {
+    const hasDependents = dependents?.some(
+      (d: any) => d.responsible_id === student.student_id
+    );
+    return hasDependents && !student.business_profile_id;
+  }) || [];
+
+  const totalOrphans = orphanDirectStudents.length + responsiblesWithDependents.length;
+
+  if (totalOrphans > 0) {
+    const dependentCount = responsiblesWithDependents.reduce((acc, r) => {
+      return acc + (dependents?.filter(d => d.responsible_id === r.student_id).length || 0);
+    }, 0);
+
+    newIssues.push({
+      type: "critical",
+      title: "Alunos/Famílias sem Negócio Vinculado",
+      description: `${orphanDirectStudents.length} aluno(s) e ${responsiblesWithDependents.length} família(s) (${dependentCount} dependente(s)) não possuem negócio definido para roteamento de pagamentos.`,
+      count: totalOrphans,
+    });
+  }
+
+  setIssues(newIssues);
+}, [orphanStudents, dependents, businessProfiles, isProfessor, isLoading]);
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Melhoria de diagnóstico do sistema
+
+#### Checklist de Validação
+- [ ] Query busca dependentes do professor
+- [ ] Identifica responsáveis de dependentes sem business profile
+- [ ] Mensagem de alerta menciona famílias e dependentes
+- [ ] Contagem de dependentes afetados é precisa
+
+---
+
+### 4.55 🟢 BAIXA: PaymentRoutingTest - Incluir Dependentes
+
+#### Problema
+O componente `PaymentRoutingTest.tsx` lista apenas alunos diretos para teste de roteamento de pagamento. Dependentes não aparecem na lista, impedindo testes completos de roteamento.
+
+#### Arquivos Afetados
+- `src/components/PaymentRoutingTest.tsx`
+
+#### Solução
+
+```typescript
+// src/components/PaymentRoutingTest.tsx
+
+// ADICIONAR: Interface para dependente
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+}
+
+// ADICIONAR: Query para buscar dependentes
+const { data: dependents = [] } = useQuery({
+  queryKey: ["payment-routing-dependents", profile?.id],
+  queryFn: async () => {
+    if (!profile?.id) return [];
+    
+    const { data, error } = await supabase
+      .rpc('get_teacher_dependents', { p_teacher_id: profile.id });
+    
+    if (error) throw error;
+    return data || [];
+  },
+  enabled: !!profile?.id,
+});
+
+// MODIFICAR: Select com grupos (Alunos + Dependentes)
+<Select value={selectedStudent} onValueChange={setSelectedStudent}>
+  <SelectTrigger>
+    <SelectValue placeholder="Selecione aluno ou dependente" />
+  </SelectTrigger>
+  <SelectContent>
+    {/* Grupo: Alunos */}
+    {students && students.length > 0 && (
+      <SelectGroup>
+        <SelectLabel>Alunos</SelectLabel>
+        {students.map((student) => (
+          <SelectItem key={student.student_id} value={student.student_id}>
+            {student.student_name}
+          </SelectItem>
+        ))}
+      </SelectGroup>
+    )}
+    
+    {/* Grupo: Dependentes */}
+    {dependents && dependents.length > 0 && (
+      <SelectGroup>
+        <SelectLabel>Dependentes</SelectLabel>
+        {dependents.map((dep: Dependent) => (
+          <SelectItem key={`dep-${dep.id}`} value={`dependent:${dep.id}`}>
+            📌 {dep.name} (filho de {dep.responsible_name})
+          </SelectItem>
+        ))}
+      </SelectGroup>
+    )}
+  </SelectContent>
+</Select>
+
+// MODIFICAR: handleRunTests para tratar dependentes
+const handleRunTests = () => {
+  if (!selectedStudent) {
+    toast.error("Selecione um aluno ou dependente");
+    return;
+  }
+  
+  // Se for dependente, resolver para o responsável
+  const isDependent = selectedStudent.startsWith('dependent:');
+  const targetId = isDependent 
+    ? selectedStudent.replace('dependent:', '')
+    : selectedStudent;
+  
+  // Para dependentes, buscar o responsible_id para teste de roteamento
+  const testStudentId = isDependent
+    ? dependents.find(d => d.id === targetId)?.responsible_id
+    : targetId;
+  
+  if (!testStudentId) {
+    toast.error("Não foi possível resolver o responsável do dependente");
+    return;
+  }
+  
+  runTestsMutation.mutate({ student_id: testStudentId });
+};
+```
+
+#### Prioridade
+🟢 **BAIXA** - Ferramenta de diagnóstico/debug
+
+#### Checklist de Validação
+- [ ] Dependentes aparecem em grupo separado no select
+- [ ] Dependentes mostram nome do responsável
+- [ ] Ao selecionar dependente, teste usa responsible_id
+- [ ] Mensagem de resultado indica que foi teste via dependente
+
+---
+
+### 4.56 🟡 MÉDIA: PainelNegocios - Aba Vínculos com Dependentes
+
+#### Problema
+A aba "Vínculos Aluno-Negócio" no `PainelNegocios.tsx` usa `get_teacher_students` e só exibe alunos diretos. Não mostra dependentes vinculados através do responsável, dificultando visualização completa dos vínculos.
+
+#### Arquivos Afetados
+- `src/pages/PainelNegocios.tsx`
+
+#### Solução
+
+```typescript
+// src/pages/PainelNegocios.tsx
+
+// ADICIONAR: Query para buscar dependentes
+const { data: dependents = [] } = useQuery({
+  queryKey: ["business-panel-dependents", profile?.id],
+  queryFn: async () => {
+    if (!profile?.id) return [];
+    
+    const { data, error } = await supabase
+      .rpc('get_teacher_dependents', { p_teacher_id: profile.id });
+    
+    if (error) throw error;
+    return data || [];
+  },
+  enabled: !!profile?.id,
+});
+
+// ADICIONAR: Estado para expandir responsáveis
+const [expandedResponsibles, setExpandedResponsibles] = useState<Set<string>>(new Set());
+
+// ADICIONAR: Função para agrupar estudantes com dependentes
+const studentsWithDependents = useMemo(() => {
+  return students?.map(student => ({
+    ...student,
+    dependents: dependents.filter(d => d.responsible_id === student.student_id),
+    isResponsible: dependents.some(d => d.responsible_id === student.student_id)
+  })) || [];
+}, [students, dependents]);
+
+// MODIFICAR: Renderização da tabela de vínculos
+<TableBody>
+  {studentsWithDependents.map((student) => (
+    <React.Fragment key={student.student_id}>
+      {/* Linha do aluno/responsável */}
+      <TableRow>
+        <TableCell>
+          <div className="flex items-center gap-2">
+            {student.isResponsible && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const newSet = new Set(expandedResponsibles);
+                  if (newSet.has(student.student_id)) {
+                    newSet.delete(student.student_id);
+                  } else {
+                    newSet.add(student.student_id);
+                  }
+                  setExpandedResponsibles(newSet);
+                }}
+              >
+                {expandedResponsibles.has(student.student_id) 
+                  ? <ChevronDown className="h-4 w-4" />
+                  : <ChevronRight className="h-4 w-4" />}
+              </Button>
+            )}
+            <span>{student.student_name}</span>
+            {student.isResponsible && (
+              <Badge variant="secondary" className="ml-2">
+                <Users className="h-3 w-3 mr-1" />
+                Família ({student.dependents.length})
+              </Badge>
+            )}
+          </div>
+        </TableCell>
+        <TableCell>{student.student_email}</TableCell>
+        <TableCell>
+          {student.business_profile_id 
+            ? businessProfiles?.find(bp => bp.id === student.business_profile_id)?.business_name
+            : <span className="text-destructive">Não vinculado</span>}
+        </TableCell>
+        <TableCell>
+          {/* Actions */}
+        </TableCell>
+      </TableRow>
+      
+      {/* Linhas de dependentes (expandíveis) */}
+      {student.isResponsible && expandedResponsibles.has(student.student_id) && (
+        student.dependents.map(dep => (
+          <TableRow key={dep.id} className="bg-muted/50">
+            <TableCell className="pl-12">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">📌</span>
+                <span>{dep.name}</span>
+                <Badge variant="outline" className="text-xs">Dependente</Badge>
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground">—</TableCell>
+            <TableCell>
+              <span className="text-muted-foreground italic">
+                (via {student.student_name})
+              </span>
+            </TableCell>
+            <TableCell>—</TableCell>
+          </TableRow>
+        ))
+      )}
+    </React.Fragment>
+  ))}
+</TableBody>
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Visibilidade completa de vínculos no painel de negócios
+
+#### Checklist de Validação
+- [ ] Responsáveis mostram indicador de família com contagem
+- [ ] Chevron permite expandir/colapsar dependentes
+- [ ] Dependentes aparecem como sub-linhas indentadas
+- [ ] Dependentes mostram "(via ResponsávelName)" na coluna de negócio
+- [ ] Badge "Dependente" diferencia visualmente
+- [ ] Contagem total inclui dependentes
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **53 pontas soltas** identificadas e solucionadas (15 originais + 38 adicionais)  
+✅ **56 pontas soltas** identificadas e solucionadas (15 originais + 41 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 16 páginas)  
+✅ Implementação frontend (8 componentes + modificações em 18 páginas)  
 ✅ Implementação backend (3 edge functions novas + 25 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
@@ -10809,6 +11118,14 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
+
+**Revisão 13 - 12/12/2025 - Componentes de Diagnóstico:**
+- Adicionada seção 4.54: `SystemHealthAlert.tsx` - Verificar responsáveis de dependentes sem business profile
+- Adicionada seção 4.55: `PaymentRoutingTest.tsx` - Incluir dependentes na lista de teste de roteamento
+- Adicionada seção 4.56: `PainelNegocios.tsx` - Aba vínculos com dependentes expansíveis
+- Total de pontas soltas: 53 → 56
+- Total de páginas frontend afetadas: 16 → 18
+- Total de componentes: 6 → 8
 
 **Revisão 12 - 12/12/2025 - Validação Final:**
 - Adicionada seção 4.51: `validate-business-profile-deletion` - Verificar dependentes antes de exclusão

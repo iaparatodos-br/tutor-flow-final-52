@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> > **Última atualização:** 10/12/2025 (Revisão 10 - 48 Pontas Soltas + Decisões Técnicas Finais)
+> > **Última atualização:** 12/12/2025 (Revisão 11 - 50 Pontas Soltas + Novas Lacunas Identificadas)
 
 ---
 
@@ -13,7 +13,7 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.48)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.50)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
@@ -8151,6 +8151,11 @@ const loadInvoiceDetails = async () => {
 - [ ] Resumo por dependente quando houver múltiplos
 - [ ] Fatura consolidada mostra total correto
 
+> **📌 Navegação:** A página `Faturas.tsx` (portal do aluno) já possui botão 
+> "Ver Recibo" que navega para esta página. O detalhamento por dependente 
+> nesta seção atende automaticamente à necessidade de visualização detalhada
+> das faturas consolidadas.
+
 ---
 
 ## 4.31 Smart Delete Student - Contagem com Dependentes
@@ -8302,6 +8307,11 @@ const emailHtml = `
 - [ ] Subtotal por dependente calculado
 - [ ] Total geral correto
 - [ ] Respeita `notification_preferences` do responsável
+
+> **💡 Melhoria Opcional (Baixa Prioridade):**
+> A descrição do boleto (em `generate-boleto-for-invoice`) pode ser melhorada para incluir nomes dos dependentes:
+> `"Aulas de João e Maria - Dezembro/2024"` em vez de apenas `"Fatura #123"`.
+> Isso melhora clareza para responsáveis com múltiplos dependentes.
 
 ---
 
@@ -10283,16 +10293,221 @@ const eventStyleGetter = (event: CalendarEvent) => {
 
 ---
 
+### 4.49 🟠 ALTA: `StudentDashboard.tsx` - Estatísticas Consolidadas para Responsáveis
+
+#### Problema Identificado
+O `StudentDashboard.tsx` exibe estatísticas (`upcomingCount`, `classesConcludedCount`, `sharedMaterialsCount`) apenas para o `profile.id` do usuário logado. Responsáveis não veem estatísticas agregadas de seus dependentes.
+
+**Localização:** `src/pages/StudentDashboard.tsx` (linhas ~85-152)
+
+#### Impacto
+Responsáveis não têm visão completa das atividades educacionais da família, prejudicando a experiência principal do portal.
+
+#### Solução
+
+##### 1. Detectar se Usuário é Responsável
+```typescript
+// No início do componente, buscar dependentes
+const [dependents, setDependents] = useState<Array<{id: string; name: string}>>([]);
+
+useEffect(() => {
+  const loadDependents = async () => {
+    if (!profile || profile.role !== 'aluno') return;
+    
+    const { data } = await supabase
+      .from('dependents')
+      .select('id, name')
+      .eq('responsible_id', profile.id);
+    
+    setDependents(data || []);
+  };
+  
+  loadDependents();
+}, [profile]);
+
+const isResponsible = dependents.length > 0;
+```
+
+##### 2. Buscar Estatísticas Consolidadas
+```typescript
+// Modificar loadStudentStats para incluir dependentes
+const loadStudentStats = async () => {
+  // Array de IDs para busca consolidada
+  const studentIds = isResponsible 
+    ? [profile.id, ...dependents.map(d => d.id)]
+    : [profile.id];
+  
+  // Aulas próximas (consolidado)
+  // Para responsáveis, buscar participações próprias + de dependentes
+  const upcomingQuery = supabase
+    .from('class_participants')
+    .select('id', { count: 'exact', head: true })
+    .in('status', ['confirmada', 'pendente'])
+    .or(`student_id.in.(${studentIds.join(',')}),dependent_id.in.(${dependents.map(d => d.id).join(',')})`);
+  
+  const { count: upcomingCount } = await upcomingQuery;
+  
+  // Aulas concluídas (consolidado)
+  const { count: completedCount } = await supabase
+    .from('class_participants')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'concluida')
+    .or(`student_id.in.(${studentIds.join(',')}),dependent_id.in.(${dependents.map(d => d.id).join(',')})`);
+  
+  // Materiais compartilhados (consolidado)
+  const { count: materialsCount } = await supabase
+    .from('material_access')
+    .select('id', { count: 'exact', head: true })
+    .or(`student_id.in.(${studentIds.join(',')}),dependent_id.in.(${dependents.map(d => d.id).join(',')})`);
+  
+  setStats({
+    upcomingCount: upcomingCount ?? 0,
+    classesConcludedCount: completedCount ?? 0,
+    sharedMaterialsCount: materialsCount ?? 0
+  });
+};
+```
+
+##### 3. Exibir Cards Diferenciados
+```tsx
+{/* Cards de Estatísticas */}
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <Card>
+    <CardContent className="pt-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            {isResponsible ? t('students.familyUpcomingClasses') : t('students.upcomingClasses')}
+          </p>
+          <p className="text-2xl font-bold">{stats.upcomingCount}</p>
+        </div>
+        <Calendar className="h-8 w-8 text-primary" />
+      </div>
+    </CardContent>
+  </Card>
+  
+  {/* ... outros cards ... */}
+</div>
+
+{/* Breakdown por dependente (opcional) */}
+{isResponsible && (
+  <Collapsible className="mt-4">
+    <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground">
+      <ChevronDown className="h-4 w-4" />
+      {t('dependents.viewByDependent')}
+    </CollapsibleTrigger>
+    <CollapsibleContent className="pt-4">
+      <div className="grid gap-2">
+        {dependents.map(dep => (
+          <DependentStatsRow key={dep.id} dependent={dep} teacherId={selectedTeacherId} />
+        ))}
+      </div>
+    </CollapsibleContent>
+  </Collapsible>
+)}
+```
+
+#### Prioridade
+🟠 **ALTA** - Afeta experiência principal do responsável no portal
+
+#### Checklist de Validação
+- [ ] Responsável vê estatísticas consolidadas (próprias + dependentes)
+- [ ] Contagem de aulas inclui participações de dependentes
+- [ ] Contagem de materiais inclui materiais compartilhados com dependentes
+- [ ] Opção de ver breakdown por dependente
+- [ ] Alunos sem dependentes veem estatísticas normais (sem mudança visual)
+- [ ] Labels diferenciados para responsáveis ("Aulas da Família" vs "Minhas Aulas")
+
+---
+
+### 4.50 🟡 MÉDIA: `check-overdue-invoices` - Correção de Verificação de Duplicidade
+
+#### Problema Identificado
+A função `check-overdue-invoices` usa `class_id` para verificar notificações duplicadas, mas faturas consolidadas têm `class_id = NULL`. Isso pode causar:
+1. Notificações duplicadas para faturas consolidadas
+2. Falha silenciosa na detecção de duplicidade
+
+**Localização:** `supabase/functions/check-overdue-invoices/index.ts` (linhas ~60-80)
+
+#### Código Atual (Problemático)
+```typescript
+// Verificação atual usa class_id que pode ser NULL
+const { data: existingNotification } = await supabaseClient
+  .from('class_notifications')
+  .select('id')
+  .eq('student_id', invoice.student_id)
+  .eq('class_id', invoice.class_id)  // ❌ NULL para faturas consolidadas!
+  .eq('notification_type', 'invoice_overdue')
+  .single();
+```
+
+#### Solução
+
+##### 1. Usar Combinação Única para Duplicidade
+```typescript
+// Verificar duplicidade usando student_id + notification_type + data
+const startOfDay = new Date();
+startOfDay.setHours(0, 0, 0, 0);
+
+const { data: existingNotification } = await supabaseClient
+  .from('class_notifications')
+  .select('id')
+  .eq('student_id', invoice.student_id)
+  .eq('notification_type', 'invoice_overdue')
+  .gte('sent_at', startOfDay.toISOString())  // Evita duplicatas no mesmo dia
+  .single();
+```
+
+##### 2. Alternativa: Adicionar Campo invoice_id (Opcional)
+Se necessário rastreamento mais preciso:
+```sql
+-- Adicionar coluna opcional para invoice_id
+ALTER TABLE public.class_notifications
+ADD COLUMN invoice_id UUID REFERENCES public.invoices(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_class_notifications_invoice ON public.class_notifications(invoice_id);
+```
+
+```typescript
+// Verificação usando invoice_id quando disponível
+const { data: existingNotification } = await supabaseClient
+  .from('class_notifications')
+  .select('id')
+  .eq('student_id', invoice.student_id)
+  .eq('notification_type', 'invoice_overdue')
+  .or(`invoice_id.eq.${invoice.id},class_id.eq.${invoice.class_id}`)
+  .single();
+```
+
+##### 3. Para Dependentes: Usar responsible_id
+Conforme decisão técnica 2.4, notificações de dependentes usam `responsible_id` no campo `student_id`:
+```typescript
+// student_id na notificação = responsible_id (não o dependent_id)
+// Isso mantém consistência com RLS e billing
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Bug existente, não específico de dependentes mas agravado por faturas consolidadas
+
+#### Checklist de Validação
+- [ ] Verificação de duplicidade funciona para faturas com `class_id = NULL`
+- [ ] Não envia múltiplas notificações de overdue no mesmo dia
+- [ ] Faturas consolidadas de responsáveis não geram duplicatas
+- [ ] Lembretes de pagamento funcionam corretamente
+- [ ] Logs indicam quando notificação é pulada por duplicidade
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **48 pontas soltas** identificadas e solucionadas (15 originais + 33 adicionais)  
+✅ **50 pontas soltas** identificadas e solucionadas (15 originais + 35 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 14 páginas)  
-✅ Implementação backend (3 edge functions novas + 23 modificadas + 4 RPCs novas)
+✅ Implementação frontend (6 componentes + modificações em 15 páginas)  
+✅ Implementação backend (3 edge functions novas + 24 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
@@ -10302,6 +10517,15 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
+
+**Revisão 11 - 12/12/2025 - Novas Lacunas Identificadas:**
+- Adicionada seção 4.49: `StudentDashboard.tsx` - Estatísticas consolidadas para responsáveis
+- Adicionada seção 4.50: `check-overdue-invoices` - Correção de verificação de duplicidade
+- Atualizada seção 4.32: Nota sobre melhoria opcional de descrição do boleto
+- Atualizada seção 4.30: Nota sobre navegação de `Faturas.tsx` para Recibo
+- Total de pontas soltas: 48 → 50
+- Total de páginas frontend afetadas: 14 → 15
+- Total de edge functions modificadas: 23 → 24
 
 **Revisão 10 - 10/12/2025 - Verificações e Decisões Técnicas Finais:**
 - Verificação SQL confirmou: 0 registros com `student_id = NULL` em `class_participants` (constraint segura)

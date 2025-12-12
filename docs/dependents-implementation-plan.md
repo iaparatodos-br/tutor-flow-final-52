@@ -4,7 +4,7 @@
 > 
 > **Status:** Em Planejamento
 > 
-> > **Última atualização:** 12/12/2025 (Revisão 11 - 50 Pontas Soltas + Novas Lacunas Identificadas)
+> > **Última atualização:** 12/12/2025 (Revisão 12 - 53 Pontas Soltas + Validação Final)
 
 ---
 
@@ -13,7 +13,7 @@
 1. [Visão Geral](#1-visão-geral)
 2. [Arquitetura da Solução](#2-arquitetura-da-solução)
 3. [Estrutura de Dados](#3-estrutura-de-dados)
-4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.50)
+4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções) (4.1-4.53)
    - 4.9 [ClassForm - Seleção de Participantes](#49--média-classform---seleção-de-participantes)
    - 4.12 [Cancelamento de Aulas com Dependentes](#412--alta-cancelamento-de-aulas-com-dependentes)
    - 4.16 [Solicitação de Aula pelo Responsável](#416--alta-solicitação-de-aula-pelo-responsável)
@@ -10498,16 +10498,308 @@ Conforme decisão técnica 2.4, notificações de dependentes usam `responsible_
 
 ---
 
+### 4.51 🟡 MÉDIA: `validate-business-profile-deletion` - Verificar Dependentes
+
+#### Problema Identificado
+A função `validate-business-profile-deletion` verifica faturas e relacionamentos antes de permitir exclusão de um business profile, mas **não verifica dependentes** com aulas não faturadas ou faturas pendentes consolidadas.
+
+**Localização:** `supabase/functions/validate-business-profile-deletion/index.ts`
+
+#### Impacto
+- Perfil de negócio pode ser excluído deixando dependentes com aulas não faturadas órfãs
+- Responsáveis com faturas pendentes consolidadas podem não ser detectados
+- Perda de rastreabilidade financeira para famílias
+
+#### Código Atual (Incompleto)
+```typescript
+// Verifica apenas invoices e teacher_student_relationships
+// Não considera dependentes vinculados aos alunos do business profile
+```
+
+#### Solução
+
+##### 1. Adicionar Verificação de Dependentes
+```typescript
+// Buscar alunos vinculados ao business profile
+const { data: relationships } = await supabaseClient
+  .from("teacher_student_relationships")
+  .select("student_id, student_name")
+  .eq("business_profile_id", business_profile_id);
+
+if (relationships && relationships.length > 0) {
+  const studentIds = relationships.map(r => r.student_id);
+  
+  // Verificar dependentes desses alunos
+  const { data: dependents } = await supabaseClient
+    .from("dependents")
+    .select(`
+      id, 
+      name,
+      responsible_id,
+      class_participants!inner(id, status)
+    `)
+    .in("responsible_id", studentIds)
+    .eq("class_participants.status", "concluida");
+  
+  // Verificar se há participações não faturadas
+  if (dependents && dependents.length > 0) {
+    const dependentIds = dependents.map(d => d.id);
+    
+    const { data: unbilledParticipations } = await supabaseClient
+      .from("class_participants")
+      .select("id, dependent_id")
+      .in("dependent_id", dependentIds)
+      .eq("status", "concluida")
+      .is("invoice_classes.id", null);  // Não faturado
+    
+    if (unbilledParticipations && unbilledParticipations.length > 0) {
+      issues.push({
+        type: "critical",
+        title: "Dependentes com Aulas Não Faturadas",
+        description: `Existem ${unbilledParticipations.length} aula(s) de dependentes não faturadas vinculadas a este negócio.`,
+        count: unbilledParticipations.length
+      });
+    }
+  }
+}
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Afeta integridade financeira em cenários de exclusão de negócio
+
+#### Checklist de Validação
+- [ ] Verifica dependentes vinculados a alunos do business profile
+- [ ] Detecta aulas de dependentes não faturadas
+- [ ] Inclui contagem de dependentes afetados na resposta
+- [ ] Bloqueia exclusão se há pendências financeiras de dependentes
+- [ ] Warnings incluem nomes dos dependentes afetados
+
+---
+
+### 4.52 🟠 ALTA: `process-orphan-cancellation-charges` - Incluir Dependentes
+
+#### Problema Identificado
+A função `process-orphan-cancellation-charges` agrupa cobranças órfãs apenas por `student_id`, mas não considera participações onde `dependent_id` está preenchido. Isso pode causar:
+1. Cobranças de cancelamento de dependentes não serem processadas
+2. Faturamento incorreto (ir para dependente em vez de responsável)
+
+**Localização:** `supabase/functions/process-orphan-cancellation-charges/index.ts`
+
+#### Código Atual (Problemático)
+```typescript
+// Agrupa apenas por student_id, ignora dependent_id
+const chargesByRelationship: Record<string, typeof orphanCharges> = {};
+for (const charge of orphanCharges) {
+  const key = `${charge.teacher_id}:${charge.student_id}`;
+  // ❌ dependent_id não é considerado
+}
+```
+
+#### Solução
+
+##### 1. Incluir dependent_id na Query
+```typescript
+// Buscar participações incluindo dependent_id
+const { data: orphanCharges, error: orphanError } = await supabaseClient
+  .from('class_participants')
+  .select(`
+    id,
+    class_id,
+    student_id,
+    dependent_id,
+    charge_applied,
+    cancelled_at,
+    classes!inner(
+      id,
+      teacher_id,
+      service_id,
+      class_services(price, name)
+    )
+  `)
+  .eq('status', 'cancelada')
+  .eq('charge_applied', true)
+  .lt('cancelled_at', fortyFiveDaysAgo.toISOString());
+```
+
+##### 2. Resolver para responsible_id
+```typescript
+// Determinar o student_id correto para faturamento
+const getInvoiceStudentId = async (charge: OrphanCharge): Promise<string> => {
+  if (charge.dependent_id) {
+    // Buscar responsible_id do dependente
+    const { data: dependent } = await supabaseClient
+      .from('dependents')
+      .select('responsible_id')
+      .eq('id', charge.dependent_id)
+      .single();
+    
+    return dependent?.responsible_id || charge.student_id;
+  }
+  return charge.student_id;
+};
+
+// Agrupar por teacher + responsible (não student)
+for (const charge of orphanCharges) {
+  const invoiceStudentId = await getInvoiceStudentId(charge);
+  const key = `${charge.classes.teacher_id}:${invoiceStudentId}`;
+  
+  if (!chargesByRelationship[key]) {
+    chargesByRelationship[key] = [];
+  }
+  chargesByRelationship[key].push({
+    ...charge,
+    billing_student_id: invoiceStudentId  // Para faturamento
+  });
+}
+```
+
+##### 3. Descrição da Fatura com Dependentes
+```typescript
+// Incluir nome do dependente na descrição
+const generateDescription = (charges: OrphanCharge[]): string => {
+  const dependentNames = charges
+    .filter(c => c.dependent_id)
+    .map(c => c.dependent_name)
+    .filter(Boolean);
+  
+  if (dependentNames.length > 0) {
+    return `Cobranças de cancelamento - ${dependentNames.join(', ')}`;
+  }
+  return `Cobranças de cancelamento atrasadas`;
+};
+```
+
+#### Prioridade
+🟠 **ALTA** - Afeta faturamento automático de cancelamentos de dependentes
+
+#### Checklist de Validação
+- [ ] Query inclui `dependent_id` nas participações
+- [ ] Cobranças de dependentes são resolvidas para `responsible_id`
+- [ ] Faturamento consolidado por responsável (não por dependente)
+- [ ] Descrição da fatura menciona nomes dos dependentes
+- [ ] Logs indicam quantas cobranças são de dependentes vs alunos diretos
+
+---
+
+### 4.53 🟡 MÉDIA: `SubscriptionCancellationModal.tsx` - Faturas de Responsáveis
+
+#### Problema Identificado
+O modal `SubscriptionCancellationModal.tsx` exibe contagem de faturas pendentes para alertar o professor antes de cancelar, mas **não inclui faturas consolidadas de responsáveis** (que têm dependentes).
+
+**Localização:** `src/components/SubscriptionCancellationModal.tsx`
+
+#### Impacto
+- Professor pode cancelar assinatura sem saber que há faturas de famílias pendentes
+- Contagem de faturas pendentes é subestimada
+- Perda potencial de receita por falta de visibilidade
+
+#### Código Atual (Incompleto)
+```typescript
+// Busca apenas alunos diretos, não considera que alguns são responsáveis
+const { data: students } = await supabase
+  .from('teacher_student_relationships')
+  .select('student_id, student_name')
+  .eq('teacher_id', user.id);
+
+// Busca faturas desses students
+const { data: invoices } = await supabase
+  .from('invoices')
+  .select('id, status, amount')
+  .in('student_id', studentIds)
+  .eq('status', 'pendente');
+// ❌ Não considera que faturas de responsáveis incluem aulas de dependentes
+```
+
+#### Solução
+
+##### 1. Buscar Dependentes dos Alunos
+```typescript
+const loadStudentsAndInvoices = async () => {
+  // Buscar alunos
+  const { data: students } = await supabase
+    .from('teacher_student_relationships')
+    .select('student_id, student_name')
+    .eq('teacher_id', user.id);
+  
+  if (!students?.length) return;
+  
+  const studentIds = students.map(s => s.student_id);
+  
+  // Buscar dependentes desses alunos (eles são responsáveis)
+  const { data: dependents } = await supabase
+    .from('dependents')
+    .select('id, name, responsible_id')
+    .in('responsible_id', studentIds)
+    .eq('teacher_id', user.id);
+  
+  // Marcar quais alunos são responsáveis
+  const responsibleIds = new Set(dependents?.map(d => d.responsible_id) || []);
+  
+  // Buscar faturas (student_id = responsible_id para famílias)
+  const { data: invoices } = await supabase
+    .from('invoices')
+    .select('id, status, amount, student_id')
+    .in('student_id', studentIds)
+    .eq('status', 'pendente');
+  
+  // Calcular estatísticas
+  const stats = students.map(student => {
+    const isResponsible = responsibleIds.has(student.student_id);
+    const studentDependents = dependents?.filter(d => d.responsible_id === student.student_id) || [];
+    const pendingInvoices = invoices?.filter(i => i.student_id === student.student_id) || [];
+    
+    return {
+      ...student,
+      isResponsible,
+      dependentCount: studentDependents.length,
+      pendingInvoices
+    };
+  });
+  
+  setStudentsData(stats);
+};
+```
+
+##### 2. Exibir Informação de Família no Modal
+```tsx
+{student.isResponsible && (
+  <Badge variant="outline" className="ml-2">
+    <Users className="h-3 w-3 mr-1" />
+    Família ({student.dependentCount})
+  </Badge>
+)}
+
+{student.pendingInvoices.length > 0 && (
+  <span className="text-destructive text-sm">
+    {student.pendingInvoices.length} fatura(s) pendente(s)
+    {student.isResponsible && ' (consolidada)'}
+  </span>
+)}
+```
+
+#### Prioridade
+🟡 **MÉDIA** - Afeta visibilidade financeira no cancelamento de assinatura
+
+#### Checklist de Validação
+- [ ] Modal busca dependentes dos alunos do professor
+- [ ] Identifica quais alunos são responsáveis (têm dependentes)
+- [ ] Faturas pendentes incluem faturas consolidadas de famílias
+- [ ] Badge visual diferencia alunos individuais de famílias
+- [ ] Contagem total de faturas pendentes é precisa
+- [ ] Informação de quantos dependentes cada responsável tem
+
+---
+
 **FIM DO DOCUMENTO**
 
 ---
 
 Este documento consolidou todo o planejamento da implementação do Sistema de Dependentes Vinculados ao Responsável, incluindo:
 
-✅ **50 pontas soltas** identificadas e solucionadas (15 originais + 35 adicionais)  
+✅ **53 pontas soltas** identificadas e solucionadas (15 originais + 38 adicionais)  
 ✅ Estrutura completa de dados (SQL com `class_notifications` e `invoice_classes`)  
-✅ Implementação frontend (6 componentes + modificações em 15 páginas)  
-✅ Implementação backend (3 edge functions novas + 24 modificadas + 4 RPCs novas)
+✅ Implementação frontend (6 componentes + modificações em 16 páginas)  
+✅ Implementação backend (3 edge functions novas + 25 modificadas + 4 RPCs novas)
 ✅ Função SQL `get_unbilled_participants_v2` para faturamento consolidado  
 ✅ Função SQL `get_teacher_dependents` para listagem de dependentes  
 ✅ Função SQL `count_teacher_students_and_dependents` para contagem total
@@ -10517,6 +10809,14 @@ Este documento consolidou todo o planejamento da implementação do Sistema de D
 ✅ Análise de riscos e mitigações  
 ✅ SQL completo para deploy  
 ✅ Checklist de deploy
+
+**Revisão 12 - 12/12/2025 - Validação Final:**
+- Adicionada seção 4.51: `validate-business-profile-deletion` - Verificar dependentes antes de exclusão
+- Adicionada seção 4.52: `process-orphan-cancellation-charges` - Incluir dependent_id no processamento
+- Adicionada seção 4.53: `SubscriptionCancellationModal.tsx` - Faturas consolidadas de responsáveis
+- Total de pontas soltas: 50 → 53
+- Total de páginas frontend afetadas: 15 → 16
+- Total de edge functions modificadas: 24 → 25
 
 **Revisão 11 - 12/12/2025 - Novas Lacunas Identificadas:**
 - Adicionada seção 4.49: `StudentDashboard.tsx` - Estatísticas consolidadas para responsáveis

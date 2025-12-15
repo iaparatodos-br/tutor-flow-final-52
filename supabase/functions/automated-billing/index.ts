@@ -28,6 +28,24 @@ interface StudentBillingInfo {
   relationship_id: string;
 }
 
+interface UnbilledParticipant {
+  participant_id: string;
+  class_id: string;
+  student_id: string;
+  dependent_id: string | null;
+  dependent_name: string | null;
+  responsible_id: string | null;
+  class_date: string;
+  service_id: string | null;
+  charge_applied: boolean | null;
+  class_services: {
+    id: string;
+    name: string;
+    price: number;
+    description: string | null;
+  } | null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -123,8 +141,9 @@ serve(async (req) => {
           relationship_id: relationship.id,
         };
 
-        // 2. Encontrar todas as aulas concluídas e não faturadas para este relacionamento
-        logStep(`Looking for completed and unbilled classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name})`);
+        // 2. Encontrar todas as aulas concluídas e não faturadas usando get_unbilled_participants_v2
+        // Esta versão inclui dependentes e retorna o responsible_id para consolidação
+        logStep(`Looking for completed and unbilled classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name}) including dependents`);
         
         // 2.0. ALERTA: Verificar aulas confirmadas antigas que não foram marcadas como concluídas
         const thirtyDaysAgo = new Date();
@@ -155,25 +174,35 @@ serve(async (req) => {
           });
         }
         
-        // NOVA LÓGICA: Buscar aulas concluídas usando RPC helper
+        // NOVA LÓGICA: Usar get_unbilled_participants_v2 que inclui dependentes
+        // Esta RPC retorna tanto participações do aluno quanto de seus dependentes
         const { data: completedParticipations, error: classesError } = await supabaseAdmin
-          .rpc('get_unbilled_participants', {
+          .rpc('get_unbilled_participants_v2', {
             p_teacher_id: studentInfo.teacher_id,
             p_student_id: studentInfo.student_id,
             p_status: 'concluida'
-          });
+          }) as { data: UnbilledParticipant[] | null, error: any };
         
-        // Transform to match expected structure
+        logStep(`Query result - Unbilled participations (including dependents): ${completedParticipations?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
+
+        // Contabilizar dependentes encontrados
+        const dependentParticipations = completedParticipations?.filter(p => p.dependent_id !== null) || [];
+        if (dependentParticipations.length > 0) {
+          const dependentNames = [...new Set(dependentParticipations.map(p => p.dependent_name))];
+          logStep(`Found ${dependentParticipations.length} unbilled participations for dependents: ${dependentNames.join(', ')}`);
+        }
+
+        // Transform to match expected structure, mantendo dependent_id e dependent_name
         const classesToInvoice = completedParticipations?.map(cp => ({
           id: cp.class_id,
           participant_id: cp.participant_id,
           class_date: cp.class_date,
           service_id: cp.service_id,
           teacher_id: studentInfo.teacher_id,
-          class_services: cp.class_services
+          class_services: cp.class_services,
+          dependent_id: cp.dependent_id,
+          dependent_name: cp.dependent_name
         })) || [];
-
-        logStep(`Query result - Unbilled classes found: ${classesToInvoice?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
         if (classesError) {
           logStep(`Error fetching unbilled classes for ${studentInfo.student_name}`, classesError);
@@ -181,13 +210,13 @@ serve(async (req) => {
           continue;
         }
 
-        // 2.1. Encontrar cancelamentos com cobrança pendente usando RPC helper
+        // 2.1. Encontrar cancelamentos com cobrança pendente usando get_unbilled_participants_v2
         const { data: cancelledParticipations, error: cancelledError } = await supabaseAdmin
-          .rpc('get_unbilled_participants', {
+          .rpc('get_unbilled_participants_v2', {
             p_teacher_id: studentInfo.teacher_id,
             p_student_id: studentInfo.student_id,
             p_status: 'cancelada'
-          });
+          }) as { data: UnbilledParticipant[] | null, error: any };
         
         // Filtrar apenas os que têm charge_applied
         const cancelledClassesWithCharge = (cancelledParticipations || [])
@@ -199,10 +228,12 @@ serve(async (req) => {
             service_id: cp.service_id,
             teacher_id: studentInfo.teacher_id,
             class_services: cp.class_services,
-            is_cancellation_charge: true
+            is_cancellation_charge: true,
+            dependent_id: cp.dependent_id,
+            dependent_name: cp.dependent_name
           }));
 
-        logStep(`Query result - Cancelled classes with charge: ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
+        logStep(`Query result - Cancelled with charge (including dependents): ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
 
         if (cancelledError) {
           logStep(`Error fetching cancelled classes with charge for ${studentInfo.student_name}`, cancelledError);
@@ -224,6 +255,7 @@ serve(async (req) => {
         let totalAmount = 0;
         let completedClassesCount = 0;
         let cancellationChargesCount = 0;
+        let dependentClassesCount = 0;
         
         // Buscar serviço padrão do professor caso alguma aula não tenha serviço associado
         let defaultServicePrice: number | null = null;
@@ -241,15 +273,18 @@ serve(async (req) => {
         
         // Somar aulas concluídas
         for (const classItem of unbilledClasses) {
-          const service = Array.isArray(classItem.class_services) ? classItem.class_services[0] : classItem.class_services;
+          const service = classItem.class_services;
           const amount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
           totalAmount += amount;
           completedClassesCount++;
+          if (classItem.dependent_id) {
+            dependentClassesCount++;
+          }
         }
         
         // Somar cobranças de cancelamento
         for (const cancelledClass of cancelledChargeable) {
-          const service = Array.isArray(cancelledClass.class_services) ? cancelledClass.class_services[0] : cancelledClass.class_services;
+          const service = cancelledClass.class_services;
           const baseAmount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
           
           // Buscar política de cancelamento para calcular porcentagem
@@ -264,44 +299,51 @@ serve(async (req) => {
           const chargeAmount = (baseAmount * chargePercentage) / 100;
           totalAmount += chargeAmount;
           cancellationChargesCount++;
+          if (cancelledClass.dependent_id) {
+            dependentClassesCount++;
+          }
         }
 
         logStep(`Total amount calculated`, { 
           totalAmount, 
           completedClassesCount, 
-          cancellationChargesCount 
+          cancellationChargesCount,
+          dependentClassesCount 
         });
 
         const now = new Date();
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
 
-        // Preparar itens detalhados para invoice_classes
+        // Preparar itens detalhados para invoice_classes com dependent_id para auditoria
         const invoiceItems = [];
 
         // Adicionar aulas concluídas
         for (const classItem of unbilledClasses) {
-          const service = Array.isArray(classItem.class_services) 
-            ? classItem.class_services[0] 
-            : classItem.class_services;
+          const service = classItem.class_services;
           const amount = service?.price || defaultServicePrice || 100;
+          
+          // Descrição inclui nome do dependente se aplicável
+          let description = `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`;
+          if (classItem.dependent_name) {
+            description = `[${classItem.dependent_name}] ${description}`;
+          }
           
           invoiceItems.push({
             class_id: classItem.id,
             participant_id: classItem.participant_id,
             item_type: 'completed_class',
             amount: amount,
-            description: `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`,
+            description: description,
             cancellation_policy_id: null,
-            charge_percentage: null
+            charge_percentage: null,
+            dependent_id: classItem.dependent_id // Para auditoria
           });
         }
 
         // Adicionar cobranças de cancelamento
         for (const cancelledClass of cancelledChargeable) {
-          const service = Array.isArray(cancelledClass.class_services) 
-            ? cancelledClass.class_services[0] 
-            : cancelledClass.class_services;
+          const service = cancelledClass.class_services;
           const baseAmount = service?.price || defaultServicePrice || 100;
           
           // Buscar política de cancelamento
@@ -315,18 +357,25 @@ serve(async (req) => {
           const chargePercentage = policy?.charge_percentage || 50;
           const chargeAmount = (baseAmount * chargePercentage) / 100;
           
+          // Descrição inclui nome do dependente se aplicável
+          let description = `Cancelamento - ${service?.name || 'serviço padrão'} (${chargePercentage}%)`;
+          if (cancelledClass.dependent_name) {
+            description = `[${cancelledClass.dependent_name}] ${description}`;
+          }
+          
           invoiceItems.push({
             class_id: cancelledClass.id,
             participant_id: cancelledClass.participant_id,
             item_type: 'cancellation_charge',
             amount: chargeAmount,
-            description: `Cancelamento - ${service?.name || 'serviço padrão'} (${chargePercentage}%)`,
+            description: description,
             cancellation_policy_id: policy?.id || null,
-            charge_percentage: chargePercentage
+            charge_percentage: chargePercentage,
+            dependent_id: cancelledClass.dependent_id // Para auditoria
           });
         }
         
-        // Criar descrição detalhada
+        // Criar descrição detalhada incluindo dependentes
         let descriptionParts = [];
         if (completedClassesCount > 0) {
           descriptionParts.push(`${completedClassesCount} aula${completedClassesCount > 1 ? 's' : ''}`);
@@ -334,10 +383,22 @@ serve(async (req) => {
         if (cancellationChargesCount > 0) {
           descriptionParts.push(`${cancellationChargesCount} cancelamento${cancellationChargesCount > 1 ? 's' : ''}`);
         }
-        const description = `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} (${descriptionParts.join(' + ')})`;
+        
+        let description = `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} (${descriptionParts.join(' + ')})`;
+        
+        // Adicionar nota sobre dependentes se houver
+        if (dependentClassesCount > 0) {
+          const dependentNames = [...new Set([
+            ...unbilledClasses.filter(c => c.dependent_name).map(c => c.dependent_name),
+            ...cancelledChargeable.filter(c => c.dependent_name).map(c => c.dependent_name)
+          ])];
+          if (dependentNames.length > 0) {
+            description += ` - Inclui aulas de: ${dependentNames.join(', ')}`;
+          }
+        }
 
         const invoiceData = {
-          student_id: studentInfo.student_id,
+          student_id: studentInfo.student_id, // Responsável recebe a fatura
           teacher_id: studentInfo.teacher_id,
           amount: totalAmount,
           description: description,
@@ -371,7 +432,8 @@ serve(async (req) => {
           businessProfileId: studentInfo.business_profile_id,
           itemsCreated: transactionResult.items_created,
           classesMarked: transactionResult.classes_updated,
-          participantsMarked: transactionResult.participants_updated
+          participantsMarked: transactionResult.participants_updated,
+          dependentItemsIncluded: dependentClassesCount
         });
 
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
@@ -415,7 +477,10 @@ serve(async (req) => {
           // Continue without failing the invoice creation
         }
 
-        logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`);
+        logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`, {
+          totalItems: completedClassesCount + cancellationChargesCount,
+          dependentItems: dependentClassesCount
+        });
         processedCount++;
 
       } catch (relationshipError) {

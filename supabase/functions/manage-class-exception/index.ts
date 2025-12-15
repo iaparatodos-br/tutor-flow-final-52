@@ -39,16 +39,69 @@ serve(async (req) => {
       throw new Error("Missing required fields: original_class_id, exception_date, action");
     }
 
+    // Get user profile to check role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
     // Validate that the user owns the original class
     const { data: originalClass, error: classError } = await supabase
       .from('classes')
       .select('id, teacher_id')
       .eq('id', original_class_id)
-      .eq('teacher_id', user.id)
       .maybeSingle();
 
     if (classError) throw classError;
-    if (!originalClass) throw new Error("Class not found or access denied");
+    if (!originalClass) throw new Error("Class not found");
+
+    // Authorization: professor must own the class, student must be participant or responsible
+    let isAuthorized = false;
+    
+    if (profile?.role === 'professor') {
+      // Professor must be the teacher
+      isAuthorized = originalClass.teacher_id === user.id;
+    } else if (profile?.role === 'aluno') {
+      // Student must be participant or responsible for a dependent participant
+      const { data: participation } = await supabase
+        .from('class_participants')
+        .select('id, student_id, dependent_id')
+        .eq('class_id', original_class_id)
+        .eq('student_id', user.id)
+        .maybeSingle();
+      
+      if (participation) {
+        isAuthorized = true;
+      } else {
+        // Check if user is responsible for any dependent participant
+        const { data: dependentParticipation } = await supabase
+          .from('class_participants')
+          .select(`
+            id,
+            dependent_id,
+            dependents!class_participants_dependent_id_fkey(responsible_id)
+          `)
+          .eq('class_id', original_class_id)
+          .not('dependent_id', 'is', null);
+        
+        if (dependentParticipation) {
+          for (const p of dependentParticipation) {
+            const dep = p.dependents as any;
+            if (dep?.responsible_id === user.id) {
+              isAuthorized = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      throw new Error("Access denied: you cannot manage exceptions for this class");
+    }
+    
+    console.log(`✅ User ${user.id} authorized to manage exception for class ${original_class_id}`);
 
     let exceptionData: any = {
       original_class_id,

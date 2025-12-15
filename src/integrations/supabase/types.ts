@@ -315,6 +315,7 @@ export type Database = {
           completed_at: string | null
           confirmed_at: string | null
           created_at: string
+          dependent_id: string | null
           id: string
           status: string
           student_id: string
@@ -329,6 +330,7 @@ export type Database = {
           completed_at?: string | null
           confirmed_at?: string | null
           created_at?: string
+          dependent_id?: string | null
           id?: string
           status?: string
           student_id: string
@@ -343,6 +345,7 @@ export type Database = {
           completed_at?: string | null
           confirmed_at?: string | null
           created_at?: string
+          dependent_id?: string | null
           id?: string
           status?: string
           student_id?: string
@@ -371,6 +374,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "class_participants_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "class_participants_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
@@ -382,6 +392,7 @@ export type Database = {
       class_report_feedbacks: {
         Row: {
           created_at: string
+          dependent_id: string | null
           feedback: string
           id: string
           report_id: string
@@ -390,6 +401,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dependent_id?: string | null
           feedback: string
           id?: string
           report_id: string
@@ -398,13 +410,22 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dependent_id?: string | null
           feedback?: string
           id?: string
           report_id?: string
           student_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "class_report_feedbacks_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       class_reports: {
         Row: {
@@ -592,6 +613,54 @@ export type Database = {
           },
           {
             foreignKeyName: "classes_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dependents: {
+        Row: {
+          birth_date: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          responsible_id: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          birth_date?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          responsible_id: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          birth_date?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          responsible_id?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dependents_responsible_id_fkey"
+            columns: ["responsible_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dependents_teacher_id_fkey"
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -952,6 +1021,7 @@ export type Database = {
       }
       material_access: {
         Row: {
+          dependent_id: string | null
           granted_at: string
           granted_by: string
           id: string
@@ -959,6 +1029,7 @@ export type Database = {
           student_id: string
         }
         Insert: {
+          dependent_id?: string | null
           granted_at?: string
           granted_by: string
           id?: string
@@ -966,6 +1037,7 @@ export type Database = {
           student_id: string
         }
         Update: {
+          dependent_id?: string | null
           granted_at?: string
           granted_by?: string
           id?: string
@@ -973,6 +1045,13 @@ export type Database = {
           student_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "material_access_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "material_access_material_id_fkey"
             columns: ["material_id"]

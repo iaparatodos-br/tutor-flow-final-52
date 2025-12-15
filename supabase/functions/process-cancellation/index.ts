@@ -11,8 +11,10 @@ interface CancellationRequest {
   cancelled_by: string;
   reason: string;
   cancelled_by_type: 'student' | 'teacher';
+  dependent_id?: string; // NEW: Support for dependent cancellation
   participants?: Array<{
     student_id: string;
+    dependent_id?: string; // NEW: Support for dependent
     profile: { id: string; name: string; email: string };
   }>;
 }
@@ -28,7 +30,14 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    const { class_id, cancelled_by, reason, cancelled_by_type, participants: requestParticipants }: CancellationRequest = await req.json();
+    const { 
+      class_id, 
+      cancelled_by, 
+      reason, 
+      cancelled_by_type, 
+      dependent_id,
+      participants: requestParticipants 
+    }: CancellationRequest = await req.json();
 
     // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
@@ -41,10 +50,10 @@ serve(async (req) => {
       throw new Error('Aula não encontrada');
     }
 
-    // 2. Buscar participantes sem FK
+    // 2. Buscar participantes sem FK (incluindo dependent_id)
     const { data: participantsRaw, error: participantsError } = await supabaseClient
       .from('class_participants')
-      .select('student_id')
+      .select('student_id, dependent_id')
       .eq('class_id', class_id);
 
     if (participantsError) {
@@ -53,13 +62,18 @@ serve(async (req) => {
     }
 
     // 3. Priorizar participantes da request (para aulas virtuais), ou buscar do banco (fallback)
-    let participants = [];
+    let participants: Array<{
+      student_id: string;
+      dependent_id?: string;
+      profiles: { id: string; name: string; email: string };
+    }> = [];
     
     if (requestParticipants && requestParticipants.length > 0) {
       // Usar dados da request (mais confiáveis para aulas virtuais)
       console.log('📊 Using participants from request:', requestParticipants.length);
       participants = requestParticipants.map(p => ({
         student_id: p.student_id,
+        dependent_id: p.dependent_id,
         profiles: p.profile
       }));
     } else {
@@ -75,8 +89,29 @@ serve(async (req) => {
         if (profile) {
           participants.push({
             student_id: p.student_id,
+            dependent_id: p.dependent_id,
             profiles: profile
           });
+        }
+      }
+    }
+
+    // NEW: Buscar nome do dependente se está cancelando para um dependente
+    let dependentName: string | null = null;
+    if (dependent_id) {
+      const { data: dependent } = await supabaseClient
+        .from('dependents')
+        .select('name, responsible_id')
+        .eq('id', dependent_id)
+        .single();
+      
+      if (dependent) {
+        dependentName = dependent.name;
+        console.log(`📌 Cancelamento para dependente: ${dependentName}`);
+        
+        // Validar que o cancelled_by é o responsável pelo dependente
+        if (cancelled_by_type === 'student' && dependent.responsible_id !== cancelled_by) {
+          throw new Error('Você não tem permissão para cancelar aulas deste dependente');
         }
       }
     }
@@ -89,6 +124,8 @@ serve(async (req) => {
       participants_ids: participants.map(p => p.student_id),
       cancelled_by,
       cancelled_by_type,
+      dependent_id,
+      dependent_name: dependentName,
       class_date: classData.class_date,
       class_status: classData.status
     });
@@ -116,23 +153,26 @@ serve(async (req) => {
     }
 
     // VALIDAÇÃO 3: Verificar permissão do usuário
-    // Professor pode cancelar suas próprias aulas
-    // Aluno pode cancelar se for o aluno da aula (individual) ou participante (grupo)
     if (cancelled_by_type === 'teacher') {
       if (classData.teacher_id !== cancelled_by) {
         throw new Error('Você não tem permissão para cancelar esta aula');
       }
     } else if (cancelled_by_type === 'student') {
-      // Verificar se é participante (tanto para aulas individuais quanto em grupo)
-      const { data: participation, error: participationError } = await supabaseClient
-        .from('class_participants')
-        .select('id')
-        .eq('class_id', class_id)
-        .eq('student_id', cancelled_by)
-        .maybeSingle();
+      // NEW: Para dependentes, verificar se o cancelled_by é responsável
+      if (dependent_id) {
+        // Já validamos acima
+      } else {
+        // Verificar se é participante (tanto para aulas individuais quanto em grupo)
+        const { data: participation, error: participationError } = await supabaseClient
+          .from('class_participants')
+          .select('id')
+          .eq('class_id', class_id)
+          .eq('student_id', cancelled_by)
+          .maybeSingle();
 
-      if (participationError || !participation) {
-        throw new Error('Você não tem permissão para cancelar esta aula');
+        if (participationError || !participation) {
+          throw new Error('Você não tem permissão para cancelar esta aula');
+        }
       }
     }
 
@@ -170,17 +210,24 @@ serve(async (req) => {
       hoursBeforeClass,
       chargePercentage,
       shouldCharge,
-      is_group_class: classData.is_group_class
+      is_group_class: classData.is_group_class,
+      dependent_id,
+      dependent_name: dependentName
     });
 
     // ===== NOVA LÓGICA: Determinar tipo de cancelamento =====
     const isStudentLeavingGroupClass = cancelled_by_type === 'student' && classData.is_group_class;
 
     if (isStudentLeavingGroupClass) {
-      // CENÁRIO 1: Aluno saindo de aula em grupo
+      // CENÁRIO 1: Aluno/Responsável saindo de aula em grupo
       console.log('Student leaving group class - updating only participant status');
       
-      const { error: updateParticipantError } = await supabaseClient
+      // NEW: Para dependentes, buscar participação pelo dependent_id
+      const participantFilter = dependent_id 
+        ? { class_id, dependent_id }
+        : { class_id, student_id: cancelled_by };
+
+      let updateQuery = supabaseClient
         .from('class_participants')
         .update({
           status: 'cancelada',
@@ -189,8 +236,15 @@ serve(async (req) => {
           charge_applied: shouldCharge,
           cancellation_reason: reason
         })
-        .eq('class_id', class_id)
-        .eq('student_id', cancelled_by);
+        .eq('class_id', class_id);
+
+      if (dependent_id) {
+        updateQuery = updateQuery.eq('dependent_id', dependent_id);
+      } else {
+        updateQuery = updateQuery.eq('student_id', cancelled_by);
+      }
+
+      const { error: updateParticipantError } = await updateQuery;
 
       if (updateParticipantError) {
         console.error('Error updating participant:', updateParticipantError);
@@ -214,7 +268,8 @@ serve(async (req) => {
           cancellation_reason: reason,
           is_group_class: true,
           notification_target: 'teacher',
-          removed_student_id: cancelled_by
+          removed_student_id: cancelled_by,
+          removed_dependent_id: dependent_id // NEW: Passar dependent_id
         }
       }).then(({ error: emailError }) => {
         if (emailError) {
@@ -222,7 +277,7 @@ serve(async (req) => {
         }
       });
 
-      console.log(`Participant ${cancelled_by} removed from group class ${class_id}`);
+      console.log(`Participant ${dependent_id ? `dependent ${dependent_id}` : cancelled_by} removed from group class ${class_id}`);
 
     } else {
       // CENÁRIO 2: Professor cancela ou aula individual
@@ -245,7 +300,7 @@ serve(async (req) => {
         throw new Error('Erro ao cancelar participantes');
       }
 
-      // Atualizar a classe (o trigger sync_class_status_from_participants já foi disparado)
+      // Atualizar a classe
       await supabaseClient
         .from('classes')
         .update({
@@ -257,7 +312,6 @@ serve(async (req) => {
         .eq('id', class_id);
 
       // Create notification records for all affected students
-      // Always use participants array for both individual and group classes
       const studentsToNotify = participants.map(p => p.student_id);
 
       const notificationType = shouldCharge ? 'cancellation_with_charge' : 'cancellation_free';
@@ -282,6 +336,7 @@ serve(async (req) => {
           is_group_class: classData.is_group_class,
           participants: participants.map(p => ({
             student_id: p.student_id,
+            dependent_id: p.dependent_id, // NEW: Passar dependent_id
             profile: Array.isArray(p.profiles) ? p.profiles[0] : p.profiles
           }))
         }
@@ -293,8 +348,6 @@ serve(async (req) => {
 
       console.log(`Full class ${class_id} cancelled for ${studentsToNotify.length} students`);
     }
-
-    // Notifications already sent in the specific scenarios above
 
     // Check if teacher has financial module access (only if charging)
     if (shouldCharge) {
@@ -309,16 +362,24 @@ serve(async (req) => {
         console.log('Teacher does not have financial module access, removing charge');
         
         // Update participant charge status
-        await supabaseClient
+        let updateChargeQuery = supabaseClient
           .from('class_participants')
           .update({ charge_applied: false })
-          .eq('class_id', class_id)
-          .eq('student_id', cancelled_by);
+          .eq('class_id', class_id);
+
+        if (dependent_id) {
+          updateChargeQuery = updateChargeQuery.eq('dependent_id', dependent_id);
+        } else {
+          updateChargeQuery = updateChargeQuery.eq('student_id', cancelled_by);
+        }
+
+        await updateChargeQuery;
 
         return new Response(JSON.stringify({ 
           success: true, 
           charged: false,
           type: isStudentLeavingGroupClass ? 'participant_removed' : 'full_cancellation',
+          dependent_name: dependentName,
           message: 'Aula cancelada sem cobrança - módulo financeiro não disponível'
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -331,10 +392,11 @@ serve(async (req) => {
       success: true, 
       charged: shouldCharge,
       type: isStudentLeavingGroupClass ? 'participant_removed' : 'full_cancellation',
+      dependent_name: dependentName,
       message: isStudentLeavingGroupClass
         ? (shouldCharge 
-          ? 'Você foi removido da aula. A cobrança será incluída na próxima fatura.' 
-          : 'Você foi removido da aula sem cobrança')
+          ? `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula. A cobrança será incluída na próxima fatura.` 
+          : `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula sem cobrança`)
         : (shouldCharge 
           ? 'Aula cancelada. A cobrança será incluída na próxima fatura mensal.' 
           : 'Aula cancelada sem cobrança')

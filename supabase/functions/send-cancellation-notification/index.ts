@@ -13,10 +13,12 @@ interface NotificationRequest {
   charge_applied: boolean;
   cancellation_reason: string;
   is_group_class?: boolean;
-  notification_target?: 'teacher' | 'students'; // NOVO
-  removed_student_id?: string; // NOVO
+  notification_target?: 'teacher' | 'students';
+  removed_student_id?: string;
+  removed_dependent_id?: string; // NEW: Support for dependent
   participants?: Array<{
     student_id: string;
+    dependent_id?: string; // NEW: Support for dependent
     profile: {
       name: string;
       email: string;
@@ -43,6 +45,7 @@ serve(async (req) => {
       is_group_class = false,
       notification_target,
       removed_student_id,
+      removed_dependent_id,
       participants = []
     }: NotificationRequest = await req.json();
 
@@ -79,18 +82,24 @@ serve(async (req) => {
       service = serviceData;
     }
 
-    // 4. Buscar participantes separadamente
+    // 4. Buscar participantes separadamente (incluindo dependent_id)
     const { data: participantsData, error: participantsError } = await supabaseClient
       .from('class_participants')
-      .select('student_id')
+      .select('student_id, dependent_id')
       .eq('class_id', class_id);
 
     if (participantsError) {
       console.error('Erro ao buscar participantes:', participantsError);
     }
 
-    // 5. Buscar perfis dos participantes
-    const class_participants = [];
+    // 5. Buscar perfis dos participantes e nomes de dependentes
+    const class_participants: Array<{
+      student_id: string;
+      dependent_id?: string;
+      dependent_name?: string;
+      profiles: { id: string; name: string; email: string };
+    }> = [];
+
     for (const p of (participantsData || [])) {
       const { data: studentProfile } = await supabaseClient
         .from('profiles')
@@ -99,8 +108,20 @@ serve(async (req) => {
         .maybeSingle();
       
       if (studentProfile) {
+        let dependentName = null;
+        if (p.dependent_id) {
+          const { data: dependent } = await supabaseClient
+            .from('dependents')
+            .select('name')
+            .eq('id', p.dependent_id)
+            .single();
+          dependentName = dependent?.name;
+        }
+
         class_participants.push({
           student_id: p.student_id,
+          dependent_id: p.dependent_id,
+          dependent_name: dependentName,
           profiles: studentProfile
         });
       }
@@ -116,6 +137,17 @@ serve(async (req) => {
       timeZone: 'America/Sao_Paulo'
     });
 
+    // NEW: Buscar nome do dependente removido (se aplicável)
+    let removedDependentName: string | null = null;
+    if (removed_dependent_id) {
+      const { data: removedDependent } = await supabaseClient
+        .from('dependents')
+        .select('name')
+        .eq('id', removed_dependent_id)
+        .single();
+      removedDependentName = removedDependent?.name || null;
+    }
+
     console.log('🔍 NOTIFICATION DATA:', {
       source: participants.length > 0 ? 'REQUEST' : 'DATABASE',
       participants_from_request: participants.length,
@@ -126,13 +158,15 @@ serve(async (req) => {
       is_group_class,
       notification_target,
       removed_student_id,
+      removed_dependent_id,
+      removed_dependent_name: removedDependentName,
       teacher: teacher?.email,
       student: student?.email
     });
 
     // Preparar conteúdo do email
     const classTypeLabel = is_group_class ? 'aula em grupo' : 'aula';
-    const emailsToSend: Array<{ to: string; subject: string; html: string }> = [];
+    const emailsToSend: Array<{ to: string; subject: string; html: string; student_id?: string }> = [];
 
     // Caso especial: notificar professor sobre saída de participante
     if (notification_target === 'teacher' && removed_student_id) {
@@ -159,14 +193,23 @@ serve(async (req) => {
       }
 
       const recipientEmail = teacher?.email || '';
-      const subject = `Aluno saiu da aula em grupo`;
+      
+      // Determinar nome do aluno (dependente ou normal)
+      const studentDisplayName = removedDependentName 
+        ? `${removedDependentName} (dependente de ${removedStudent?.name})`
+        : removedStudent?.name;
+      
+      const subject = removedDependentName 
+        ? `Dependente ${removedDependentName} saiu da aula em grupo`
+        : `Aluno saiu da aula em grupo`;
       
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #dc2626;">Participante Removido da Aula em Grupo</h2>
           
           <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Aluno:</strong> ${removedStudent?.name}</p>
+            <p><strong>Aluno:</strong> ${removedDependentName || removedStudent?.name}${removedDependentName ? ' <span style="color: #7c3aed;">(dependente)</span>' : ''}</p>
+            ${removedDependentName ? `<p><strong>Responsável:</strong> ${removedStudent?.name}</p>` : ''}
             <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
             ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
             <p><strong>Motivo:</strong> ${cancellation_reason}</p>
@@ -175,8 +218,8 @@ serve(async (req) => {
           ${charge_applied ? `
             <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0;">
               <p style="margin: 0; color: #991b1b;">
-                <strong>⚠️ Cobrança Aplicada ao Aluno:</strong><br>
-                O cancelamento foi fora do prazo e será incluído na próxima fatura mensal do aluno.
+                <strong>⚠️ Cobrança Aplicada ${removedDependentName ? 'ao Responsável' : 'ao Aluno'}:</strong><br>
+                O cancelamento foi fora do prazo e será incluído na próxima fatura mensal.
               </p>
             </div>
           ` : `
@@ -221,16 +264,32 @@ serve(async (req) => {
         });
       }
 
+      // Determinar nome do aluno (pode ser dependente)
+      const firstParticipantDep = participants[0];
+      let cancellerDisplayName = student?.name || 'Aluno';
+      
+      // Verificar se há dependente no primeiro participante da request
+      if (firstParticipantDep?.dependent_id) {
+        const { data: depData } = await supabaseClient
+          .from('dependents')
+          .select('name')
+          .eq('id', firstParticipantDep.dependent_id)
+          .single();
+        if (depData) {
+          cancellerDisplayName = `${depData.name} (dependente)`;
+        }
+      }
+
       // Notificar professor que aluno cancelou
       const recipientEmail = teacher?.email || '';
-      const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${student?.name || 'Aluno'}`;
+      const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${cancellerDisplayName}`;
       
       const htmlContent = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #dc2626;">${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada pelo Aluno</h2>
           
           <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <p><strong>Aluno:</strong> ${student?.name}</p>
+            <p><strong>Aluno:</strong> ${cancellerDisplayName}</p>
             ${is_group_class ? `<p><strong>Tipo:</strong> Aula em Grupo (${participants.length} participantes)</p>` : ''}
             <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
             ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
@@ -241,7 +300,7 @@ serve(async (req) => {
             <div style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0;">
               <p style="margin: 0; color: #991b1b;">
                 <strong>⚠️ Cobrança Aplicada:</strong><br>
-                O cancelamento foi fora do prazo e será incluído na próxima fatura mensal do aluno.
+                O cancelamento foi fora do prazo e será incluído na próxima fatura mensal.
               </p>
             </div>
           ` : `
@@ -275,9 +334,10 @@ serve(async (req) => {
       // Notificar aluno(s) que professor cancelou
       // SEMPRE priorizar participants da request (para todos os tipos de aula)
       const studentsToNotify = participants.length > 0
-        ? participants  // Usar dados da request (mais confiáveis)
-        : class_participants.map(p => ({  // Fallback: buscar do banco
+        ? participants
+        : class_participants.map(p => ({
             student_id: p.student_id,
+            dependent_id: p.dependent_id,
             profile: p.profiles
           }));
 
@@ -291,7 +351,7 @@ serve(async (req) => {
         const studentProfile = participantData.profile;
         if (!studentProfile) continue;
 
-        // Verificar preferências do aluno
+        // Verificar preferências do aluno/responsável
         const { data: studentPrefs } = await supabaseClient
           .from('profiles')
           .select('notification_preferences')
@@ -301,20 +361,40 @@ serve(async (req) => {
         const preferences = studentPrefs?.notification_preferences || {};
         if (preferences.class_cancelled === false) {
           console.log(`⏭️ Student ${participantData.student_id} has disabled class_cancelled notifications, skipping.`);
-          continue; // Pular este aluno
+          continue;
+        }
+
+        // NEW: Buscar nome do dependente se aplicável
+        let dependentName: string | null = null;
+        if (participantData.dependent_id) {
+          const { data: depData } = await supabaseClient
+            .from('dependents')
+            .select('name')
+            .eq('id', participantData.dependent_id)
+            .single();
+          dependentName = depData?.name || null;
         }
 
         const recipientEmail = studentProfile.email || '';
         if (!recipientEmail) continue;
 
-        const subject = `${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada - ${teacher?.name || 'Professor'}`;
+        const subject = dependentName 
+          ? `Aula de ${dependentName} Cancelada - ${teacher?.name || 'Professor'}`
+          : `${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada - ${teacher?.name || 'Professor'}`;
         
         const htmlContent = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #dc2626;">${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada pelo Professor</h2>
+            <h2 style="color: #dc2626;">${dependentName ? `Aula de ${dependentName} Cancelada` : `${classTypeLabel.charAt(0).toUpperCase() + classTypeLabel.slice(1)} Cancelada pelo Professor`}</h2>
+            
+            ${dependentName ? `
+              <div style="background: #ede9fe; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: inline-block;">
+                <span style="color: #7c3aed; font-weight: 500;">📌 Cancelamento da aula de ${dependentName}</span>
+              </div>
+            ` : ''}
             
             <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
               <p><strong>Professor:</strong> ${teacher?.name}</p>
+              ${dependentName ? `<p><strong>Aluno:</strong> ${dependentName} <span style="color: #7c3aed;">(dependente)</span></p>` : ''}
               ${is_group_class ? `<p><strong>Tipo:</strong> Aula em Grupo (${participants.length} participantes)</p>` : ''}
               <p><strong>Data/Hora:</strong> ${classDateFormatted}</p>
               ${service ? `<p><strong>Serviço:</strong> ${service.name}</p>` : ''}
@@ -336,7 +416,7 @@ serve(async (req) => {
           </div>
         `;
 
-        emailsToSend.push({ to: recipientEmail, subject, html: htmlContent });
+        emailsToSend.push({ to: recipientEmail, subject, html: htmlContent, student_id: participantData.student_id });
       }
     }
 
@@ -376,11 +456,9 @@ serve(async (req) => {
             .from('class_notifications')
             .insert({
               class_id: class_id,
-              student_id: notification_target === 'teacher' 
+              student_id: emailData.student_id || (notification_target === 'teacher' 
                 ? classData.teacher_id
-                : emailData.to.includes(teacher?.email || '') 
-                  ? classData.teacher_id
-                  : (class_participants?.[0]?.student_id || null),
+                : class_participants?.[0]?.student_id || null),
               notification_type: 'class_cancelled',
               status: 'sent'
             });

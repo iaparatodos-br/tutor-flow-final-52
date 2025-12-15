@@ -51,7 +51,7 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
-    // 2. Buscar dados do aluno e preferências
+    // 2. Buscar dados do aluno/responsável e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
       .select("name, email, notification_preferences")
@@ -104,7 +104,33 @@ serve(async (req) => {
     const recipientEmail = relationship?.student_guardian_email || student.email;
     const recipientName = relationship?.student_guardian_name || student.name;
 
-    // 5. Formatar valores
+    // 5. NEW: Buscar itens da fatura para identificar dependentes
+    const { data: invoiceItems } = await supabase
+      .from("invoice_classes")
+      .select("description, amount, participant_id")
+      .eq("invoice_id", payload.invoice_id);
+
+    // Extrair nomes de dependentes das descrições (formato: [NomeDependente] Descrição)
+    const dependentNames: string[] = [];
+    if (invoiceItems && invoiceItems.length > 0) {
+      for (const item of invoiceItems) {
+        if (item.description && item.description.startsWith('[')) {
+          const match = item.description.match(/^\[([^\]]+)\]/);
+          if (match && match[1] && !dependentNames.includes(match[1])) {
+            dependentNames.push(match[1]);
+          }
+        }
+      }
+    }
+
+    const hasDependents = dependentNames.length > 0;
+    console.log("📚 Invoice items analysis:", {
+      itemCount: invoiceItems?.length || 0,
+      dependentNames,
+      hasDependents
+    });
+
+    // 6. Formatar valores
     const formattedAmount = new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL'
@@ -117,7 +143,7 @@ serve(async (req) => {
       timeZone: "America/Sao_Paulo",
     });
 
-    // 6. Construir conteúdo do email baseado no tipo
+    // 7. Construir conteúdo do email baseado no tipo
     let subject = "";
     let headerColor = "";
     let icon = "";
@@ -125,40 +151,51 @@ serve(async (req) => {
     let mainMessage = "";
     let ctaButton = "";
 
+    // Adicionar sufixo de dependentes no subject se aplicável
+    const dependentSuffix = hasDependents ? ` (${dependentNames.join(', ')})` : '';
+
     switch (payload.notification_type) {
       case 'invoice_created':
-        subject = `💵 Nova fatura de ${teacher.name}`;
+        subject = `💵 Nova fatura de ${teacher.name}${dependentSuffix}`;
         headerColor = "#2563eb";
         icon = "💵";
         title = "Nova Fatura Disponível";
-        mainMessage = `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong>.`;
+        mainMessage = hasDependents
+          ? `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong> referente às aulas de <strong>${dependentNames.join(', ')}</strong>.`
+          : `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong>.`;
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Ver Fatura</a>`;
         break;
 
       case 'invoice_payment_reminder':
-        subject = `⏰ Lembrete: Fatura vence em breve`;
+        subject = `⏰ Lembrete: Fatura vence em breve${dependentSuffix}`;
         headerColor = "#f59e0b";
         icon = "⏰";
         title = "Lembrete de Pagamento";
-        mainMessage = `Sua fatura com o professor <strong>${teacher.name}</strong> vence em breve.`;
+        mainMessage = hasDependents
+          ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> vence em breve.`
+          : `Sua fatura com o professor <strong>${teacher.name}</strong> vence em breve.`;
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Pagar Agora</a>`;
         break;
 
       case 'invoice_paid':
-        subject = `✅ Pagamento confirmado`;
+        subject = `✅ Pagamento confirmado${dependentSuffix}`;
         headerColor = "#10b981";
         icon = "✅";
         title = "Pagamento Confirmado!";
-        mainMessage = `Seu pagamento para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`;
+        mainMessage = hasDependents
+          ? `Seu pagamento referente às aulas de <strong>${dependentNames.join(', ')}</strong> para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`
+          : `Seu pagamento para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`;
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Ver Comprovante</a>`;
         break;
 
       case 'invoice_overdue':
-        subject = `⚠️ Fatura vencida - Ação necessária`;
+        subject = `⚠️ Fatura vencida - Ação necessária${dependentSuffix}`;
         headerColor = "#ef4444";
         icon = "⚠️";
         title = "Fatura Vencida";
-        mainMessage = `Sua fatura com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`;
+        mainMessage = hasDependents
+          ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`
+          : `Sua fatura com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`;
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Pagar Agora</a>`;
         break;
     }
@@ -201,6 +238,7 @@ serve(async (req) => {
             .payment-link { display: inline-block; background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin: 5px 0; }
             .pix-code { background: #f3f4f6; padding: 15px; border-radius: 6px; font-family: monospace; word-break: break-all; margin: 10px 0; border: 2px dashed #d1d5db; }
             .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
+            .dependent-badge { background: #ede9fe; color: #7c3aed; padding: 8px 16px; border-radius: 8px; display: inline-block; margin-bottom: 15px; }
           </style>
         </head>
         <body>
@@ -211,6 +249,12 @@ serve(async (req) => {
             <div class="content">
               <p>Olá <strong>${recipientName}</strong>,</p>
               
+              ${hasDependents ? `
+                <div class="dependent-badge">
+                  📌 Fatura referente a: <strong>${dependentNames.join(', ')}</strong>
+                </div>
+              ` : ''}
+              
               <p>${mainMessage}</p>
               
               <div class="info-box">
@@ -219,6 +263,7 @@ serve(async (req) => {
                 <p><strong>Vencimento:</strong> ${formattedDueDate}</p>
                 <p><strong>Descrição:</strong> ${invoice.description || 'Aulas realizadas'}</p>
                 <p><strong>Professor:</strong> ${teacher.name}</p>
+                ${hasDependents ? `<p><strong>Alunos:</strong> ${dependentNames.join(', ')} <span style="color: #7c3aed;">(dependentes)</span></p>` : ''}
                 <p><strong>Status:</strong> ${invoice.status}</p>
               </div>
               

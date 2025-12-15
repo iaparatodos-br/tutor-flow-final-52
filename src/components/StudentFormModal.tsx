@@ -10,10 +10,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2 } from "lucide-react";
+import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2, ArrowLeft } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTranslation } from "react-i18next";
+import { StudentTypeSelector, StudentRegistrationType } from "@/components/StudentTypeSelector";
+import { InlineDependentForm, InlineDependent } from "@/components/InlineDependentForm";
 
 interface StudentFormData {
   name: string;
@@ -30,6 +32,9 @@ interface StudentFormData {
   guardian_address_postal_code: string;
   billing_day: number;
   business_profile_id: string | null;
+  // New fields for family registration
+  registrationType?: StudentRegistrationType;
+  dependents?: InlineDependent[];
 }
 
 interface StudentFormModalProps {
@@ -98,6 +103,9 @@ export function StudentFormModal({
   const hasFinancialModule = hasFeature('financial_module');
   const [teacherDefaultBillingDay, setTeacherDefaultBillingDay] = useState<number | undefined>();
   const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student, teacherDefaultBillingDay));
+  const [registrationType, setRegistrationType] = useState<StudentRegistrationType>(null);
+  const [inlineDependents, setInlineDependents] = useState<InlineDependent[]>([]);
+  const isEditing = !!student;
 
   const [validationErrors, setValidationErrors] = useState({
     name: false,
@@ -155,6 +163,9 @@ export function StudentFormModal({
     const newFormData = getInitialFormData(student, teacherDefaultBillingDay);
     console.log('StudentFormModal useEffect - new form data:', newFormData);
     setFormData(newFormData);
+    // Reset registration type for new students, set to individual for editing
+    setRegistrationType(student ? 'individual' : null);
+    setInlineDependents([]);
     // Reset validation errors when new data arrives
     setValidationErrors({
       name: false,
@@ -246,6 +257,11 @@ export function StudentFormModal({
         return;
       }
     }
+
+    // For family registration, validate at least one dependent
+    if (registrationType === 'family' && inlineDependents.length === 0) {
+      return;
+    }
     
     // Validate form
     const errors = {
@@ -269,7 +285,27 @@ export function StudentFormModal({
       return;
     }
 
-    onSubmit(formData);
+    // Include registration type and dependents in the submitted data
+    const submitData: StudentFormData = {
+      ...formData,
+      registrationType,
+      dependents: registrationType === 'family' ? inlineDependents : undefined,
+    };
+
+    onSubmit(submitData);
+  };
+
+  const handleTypeSelect = (type: StudentRegistrationType) => {
+    setRegistrationType(type);
+    
+    // For family type, always set isOwnResponsible to true (guardian IS the student account)
+    if (type === 'family') {
+      setFormData(prev => ({ ...prev, isOwnResponsible: true }));
+    }
+  };
+
+  const handleBack = () => {
+    setRegistrationType(null);
   };
 
   return (
@@ -317,12 +353,76 @@ export function StudentFormModal({
               
               return null;
             })()}
-            {/* Student Information Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">{t('form.sections.studentData')}</Label>
+
+            {/* Registration Type Selection - only for new students */}
+            {!isEditing && !registrationType && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">{t('registrationType.title', 'Tipo de Cadastro')}</Label>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {t('registrationType.description', 'Selecione o tipo de cadastro para este aluno')}
+                </p>
+                <StudentTypeSelector
+                  selectedType={registrationType}
+                  onSelect={handleTypeSelect}
+                  disabled={isSubmitting}
+                />
               </div>
+            )}
+
+            {/* Main Form - show when editing OR when type is selected */}
+            {(isEditing || registrationType) && (
+              <>
+                {/* Back button for new students */}
+                {!isEditing && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleBack}
+                    className="mb-2"
+                  >
+                    <ArrowLeft className="h-4 w-4 mr-1" />
+                    {t('registrationType.back', 'Voltar')}
+                  </Button>
+                )}
+
+                {/* Family Registration - Dependents Section First */}
+                {registrationType === 'family' && (
+                  <>
+                    <InlineDependentForm
+                      dependents={inlineDependents}
+                      onDependentsChange={setInlineDependents}
+                      disabled={isSubmitting}
+                    />
+                    {inlineDependents.length === 0 && (
+                      <p className="text-xs text-destructive">
+                        {t('registrationType.family.minOneDependentRequired', 'Adicione pelo menos um dependente')}
+                      </p>
+                    )}
+                    <Separator />
+                    <div className="flex items-center gap-2 mb-3">
+                      <UserCheck className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">
+                        {t('registrationType.family.guardianInfo', 'Dados do Responsável')}
+                      </Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-4">
+                      {t('registrationType.family.guardianInfoDescription', 'O responsável receberá acesso ao sistema e poderá acompanhar as aulas de todos os dependentes')}
+                    </p>
+                  </>
+                )}
+
+                {/* Student/Guardian Information Section */}
+                <div className="space-y-4">
+                  {registrationType !== 'family' && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <User className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">{t('form.sections.studentData')}</Label>
+                    </div>
+                  )}
               
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -610,20 +710,25 @@ export function StudentFormModal({
                      {t('form.noBusinessAction')}
                    </AlertDescription>
                  </Alert>
-               )}
-             </div>
-           </div>
-
+                )}
+              </div>
+            </>
+          )}
+          </div>
           <DialogFooter>
-            <Button 
-              type="submit" 
-              disabled={
-                isSubmitting || 
-                (!student && currentPlan?.slug === 'free' && getStudentOverageInfo(currentStudentCount).isOverLimit)
-              }
-            >
-              {isSubmitting ? t('actions.saving') : student ? t('actions.save') : t('actions.register')}
-            </Button>
+            {/* Only show submit button when type is selected or editing */}
+            {(isEditing || registrationType) && (
+              <Button 
+                type="submit" 
+                disabled={
+                  isSubmitting || 
+                  (!student && currentPlan?.slug === 'free' && getStudentOverageInfo(currentStudentCount).isOverLimit) ||
+                  (registrationType === 'family' && inlineDependents.length === 0)
+                }
+              >
+                {isSubmitting ? t('actions.saving') : student ? t('actions.save') : t('actions.register')}
+              </Button>
+            )}
           </DialogFooter>
         </form>
       </DialogContent>

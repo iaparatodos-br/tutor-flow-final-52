@@ -114,6 +114,27 @@
     "deleteError": "Error processing student removal",
     "profileLoadError": "Could not load student data"
   },
+  "registrationType": {
+    "title": "Registration Type",
+    "description": "Select the registration type for this student",
+    "individual": {
+      "title": "Student with Email",
+      "description": "Adult student or student with their own email for system access"
+    },
+    "family": {
+      "title": "Family / Minors",
+      "description": "Guardian with one or more minor dependents",
+      "dependentsLabel": "Dependents",
+      "addDependent": "Add",
+      "newDependent": "New Dependent",
+      "noDependentsYet": "No dependents added yet",
+      "addFirst": "Add first dependent",
+      "minOneDependentRequired": "Add at least one dependent",
+      "guardianInfo": "Guardian Information",
+      "guardianInfoDescription": "The guardian will receive system access and be able to monitor all dependents' classes"
+    },
+    "back": "Back"
+  },
   "dependents": {
     "title": "Dependents",
     "add": "Add",

@@ -34,10 +34,11 @@ serve(async (req) => {
     const user = userData.user;
 
     const body = await req.json();
-    console.log("Request body:", JSON.stringify(body, null, 2));
+    console.log("📚 Request body:", JSON.stringify(body, null, 2));
     
-    const { teacherId, datetime, serviceId, notes } = body;
-    console.log("Parsed values:", { teacherId, datetime, serviceId, notes });
+    // NEW: Accept dependent_id in payload
+    const { teacherId, datetime, serviceId, notes, dependent_id } = body;
+    console.log("Parsed values:", { teacherId, datetime, serviceId, notes, dependent_id });
     
     if (!teacherId || !datetime || !serviceId) {
       console.error("Missing required fields:", { teacherId, datetime, serviceId });
@@ -73,6 +74,52 @@ serve(async (req) => {
       throw new Error("Student is not assigned to this teacher");
     }
 
+    // NEW: If dependent_id is provided, validate ownership
+    let validatedDependentId: string | null = null;
+    let dependentName: string | null = null;
+    
+    if (dependent_id) {
+      console.log("🔍 Validating dependent ownership:", dependent_id);
+      
+      const { data: dependent, error: dependentError } = await supabase
+        .from('dependents')
+        .select('id, name, responsible_id, teacher_id')
+        .eq('id', dependent_id)
+        .maybeSingle();
+      
+      if (dependentError) {
+        console.error("Error fetching dependent:", dependentError);
+        throw new Error("Error validating dependent");
+      }
+      
+      if (!dependent) {
+        console.error("Dependent not found:", dependent_id);
+        throw new Error("Dependent not found");
+      }
+      
+      // Validate that the authenticated user is the responsible
+      if (dependent.responsible_id !== user.id) {
+        console.error("User is not the responsible for this dependent:", {
+          user_id: user.id,
+          responsible_id: dependent.responsible_id
+        });
+        throw new Error("You are not the responsible for this dependent");
+      }
+      
+      // Validate that the dependent belongs to this teacher
+      if (dependent.teacher_id !== teacherId) {
+        console.error("Dependent does not belong to this teacher:", {
+          dependent_teacher_id: dependent.teacher_id,
+          requested_teacher_id: teacherId
+        });
+        throw new Error("Dependent is not associated with this teacher");
+      }
+      
+      validatedDependentId = dependent.id;
+      dependentName = dependent.name;
+      console.log("✅ Dependent validated:", { id: validatedDependentId, name: dependentName });
+    }
+
     // Load service to get duration and name
     const { data: service, error: serviceError } = await supabase
       .from('class_services')
@@ -89,7 +136,6 @@ serve(async (req) => {
       .from('classes')
       .insert({
         teacher_id: teacherId,
-        // student_id removed - use class_participants instead
         class_date: new Date(datetime).toISOString(),
         duration_minutes: service.duration_minutes,
         service_id: serviceId,
@@ -103,24 +149,38 @@ serve(async (req) => {
 
     if (insertError) throw insertError;
 
-    // Create participant record
+    // Create participant record with optional dependent_id
+    const participantData: {
+      class_id: string;
+      student_id: string;
+      status: string;
+      dependent_id?: string;
+    } = {
+      class_id: newClass.id,
+      student_id: user.id,
+      status: 'pendente'
+    };
+    
+    if (validatedDependentId) {
+      participantData.dependent_id = validatedDependentId;
+    }
+    
     const { error: participantError } = await supabase
       .from('class_participants')
-      .insert({
-        class_id: newClass.id,
-        student_id: user.id,
-        status: 'pendente'
-      });
+      .insert(participantData);
 
     if (participantError) throw participantError;
 
-    // Enviar notificação ao professor (não-bloqueante)
+    // Send notification to teacher (non-blocking)
+    // NEW: Include dependent info in notification
     supabase.functions
       .invoke("send-class-request-notification", {
         body: {
           class_id: newClass.id,
           teacher_id: teacherId,
           student_id: user.id,
+          dependent_id: validatedDependentId,
+          dependent_name: dependentName,
           service_name: service.name || "Serviço",
           class_date: newClass.class_date,
           duration_minutes: service.duration_minutes,
@@ -138,12 +198,23 @@ serve(async (req) => {
         console.error("Error invoking notification function (non-critical):", err);
       });
 
-    return new Response(JSON.stringify({ success: true }), {
+    console.log("✅ Class request created successfully:", {
+      class_id: newClass.id,
+      dependent_id: validatedDependentId,
+      dependent_name: dependentName
+    });
+
+    return new Response(JSON.stringify({ 
+      success: true,
+      class_id: newClass.id,
+      dependent_id: validatedDependentId
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error("❌ Error in request-class:", message);
     return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,

@@ -10,6 +10,7 @@ interface MaterializeRequest {
   template_id: string;
   class_date: string;
   cancellation_reason?: string;
+  dependent_id?: string; // NEW: Optional dependent_id for responsible requesting for dependent
 }
 
 serve(async (req) => {
@@ -69,9 +70,9 @@ serve(async (req) => {
 
     // Parse request body
     const body: MaterializeRequest = await req.json();
-    const { template_id, class_date, cancellation_reason } = body;
+    const { template_id, class_date, cancellation_reason, dependent_id } = body;
 
-    console.log('🔍 Request details:', { template_id, class_date, student_id: user.id, cancellation_reason });
+    console.log('🔍 Request details:', { template_id, class_date, student_id: user.id, cancellation_reason, dependent_id });
 
     if (!template_id || !class_date) {
       console.error('❌ Missing required fields');
@@ -107,14 +108,55 @@ serve(async (req) => {
 
     console.log('✅ Template found:', template.id);
 
+    // NEW: Validate dependent if provided
+    let validatedDependentId: string | null = null;
+    if (dependent_id && profile.role === 'aluno') {
+      console.log('🔍 Validating dependent for responsible:', dependent_id);
+      
+      const { data: dependent, error: dependentError } = await supabaseClient
+        .from('dependents')
+        .select('id, name, responsible_id, teacher_id')
+        .eq('id', dependent_id)
+        .maybeSingle();
+      
+      if (dependentError || !dependent) {
+        console.error('❌ Dependent not found:', dependentError);
+        return new Response(
+          JSON.stringify({ error: 'Dependent not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Validate user is the responsible
+      if (dependent.responsible_id !== user.id) {
+        console.error('❌ User is not responsible for dependent');
+        return new Response(
+          JSON.stringify({ error: 'You are not the responsible for this dependent' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      // Validate dependent belongs to template's teacher
+      if (dependent.teacher_id !== template.teacher_id) {
+        console.error('❌ Dependent does not belong to template teacher');
+        return new Response(
+          JSON.stringify({ error: 'Dependent is not associated with this teacher' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      validatedDependentId = dependent.id;
+      console.log('✅ Dependent validated:', dependent.name);
+    }
+
     // Authorization check based on user role
     if (profile.role === 'aluno') {
-      // Students must be participants of the template
+      // Students must be participants of the template (or responsible for a dependent participant)
       const { data: participation, error: participationError } = await supabaseClient
         .from('class_participants')
-        .select('id')
+        .select('id, student_id, dependent_id')
         .eq('class_id', template_id)
-        .eq('student_id', user.id)
+        .or(`student_id.eq.${user.id},and(student_id.eq.${user.id},dependent_id.not.is.null)`)
         .maybeSingle();
 
       if (participationError) {
@@ -125,7 +167,25 @@ serve(async (req) => {
         );
       }
 
-      if (!participation) {
+      // If dependent_id provided, check if that specific dependent is a participant
+      if (validatedDependentId) {
+        const { data: dependentParticipation } = await supabaseClient
+          .from('class_participants')
+          .select('id')
+          .eq('class_id', template_id)
+          .eq('student_id', user.id)
+          .eq('dependent_id', validatedDependentId)
+          .maybeSingle();
+        
+        if (!dependentParticipation) {
+          console.error('❌ Dependent is not a participant of this template');
+          return new Response(
+            JSON.stringify({ error: 'Dependent is not a participant of this template' }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        console.log('✅ Dependent participation verified');
+      } else if (!participation) {
         console.error('❌ Student is not a participant of this template');
         return new Response(
           JSON.stringify({ error: 'Student is not a participant of this template' }),
@@ -133,7 +193,7 @@ serve(async (req) => {
         );
       }
 
-      console.log('✅ Student participation verified');
+      console.log('✅ Student/responsible participation verified');
       
     } else if (profile.role === 'professor') {
       // Professors must be the owner of the template
@@ -170,10 +230,10 @@ serve(async (req) => {
       }
     }
 
-    // Get all participants from the template
+    // Get all participants from the template (including dependent_id)
     const { data: templateParticipants, error: participantsError } = await supabaseClient
       .from('class_participants')
-      .select('student_id, status')
+      .select('student_id, status, dependent_id')
       .eq('class_id', template_id);
 
     if (participantsError || !templateParticipants || templateParticipants.length === 0) {
@@ -219,17 +279,32 @@ serve(async (req) => {
       template_status: template.status,
       materialized_status: template.status,
       participants_statuses: templateParticipants.map(p => ({ 
-        student_id: p.student_id, 
+        student_id: p.student_id,
+        dependent_id: p.dependent_id,
         status: p.status 
       }))
     });
 
-    // Copy all participants to the materialized class (preserving their status)
-    const participantsToInsert = templateParticipants.map(p => ({
-      class_id: materializedClass.id,
-      student_id: p.student_id,
-      status: p.status, // Preservar status original de cada participante
-    }));
+    // Copy all participants to the materialized class (preserving their status AND dependent_id)
+    const participantsToInsert = templateParticipants.map(p => {
+      const participant: {
+        class_id: string;
+        student_id: string;
+        status: string;
+        dependent_id?: string;
+      } = {
+        class_id: materializedClass.id,
+        student_id: p.student_id,
+        status: p.status, // Preservar status original de cada participante
+      };
+      
+      // NEW: Preserve dependent_id if exists
+      if (p.dependent_id) {
+        participant.dependent_id = p.dependent_id;
+      }
+      
+      return participant;
+    });
 
     const { error: participantInsertError } = await supabaseClient
       .from('class_participants')
@@ -245,21 +320,36 @@ serve(async (req) => {
       );
     }
 
-    console.log('✅ Copied participants:', participantsToInsert.length);
+    console.log('✅ Copied participants (with dependents):', participantsToInsert.length);
 
-    // Buscar perfis dos participantes para passar no retorno
+    // Buscar perfis dos participantes e dependentes para passar no retorno
     const participantsWithProfiles = [];
     for (const p of templateParticipants) {
-      const { data: profile } = await supabaseClient
+      const { data: studentProfile } = await supabaseClient
         .from('profiles')
         .select('id, name, email')
         .eq('id', p.student_id)
         .maybeSingle();
       
-      if (profile) {
+      let dependentInfo = null;
+      if (p.dependent_id) {
+        const { data: dependent } = await supabaseClient
+          .from('dependents')
+          .select('id, name')
+          .eq('id', p.dependent_id)
+          .maybeSingle();
+        
+        if (dependent) {
+          dependentInfo = { id: dependent.id, name: dependent.name };
+        }
+      }
+      
+      if (studentProfile) {
         participantsWithProfiles.push({
           student_id: p.student_id,
-          profile: profile
+          dependent_id: p.dependent_id,
+          profile: studentProfile,
+          dependent: dependentInfo
         });
       }
     }

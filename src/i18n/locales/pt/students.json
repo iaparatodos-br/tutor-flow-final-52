@@ -96,7 +96,7 @@
     "ownStudent": "Próprio aluno",
     "notConfigured": "Não configurado"
   },
-  "actions": {
+  "formActions": {
     "save": "Salvar Alterações",
     "register": "Cadastrar Aluno",
     "saving": "Salvando..."
@@ -175,12 +175,43 @@
       "updateFailed": "Erro ao atualizar dependente",
       "deleteFailed": "Erro ao remover dependente",
       "missingTeacherId": "Erro",
-      "teacherIdRequired": "ID do professor é necessário"
+      "teacherIdRequired": "ID do professor é necessário",
+      "saveFailed": "Erro ao salvar dependente",
+      "partialCreation": "Alguns dependentes não foram criados",
+      "partialCreationDescription": "Não foi possível criar: {{names}}"
     },
     "deleteConfirm": {
       "title": "Remover dependente?",
       "description": "Esta ação irá remover o dependente {{name}}. Aulas futuras associadas serão canceladas."
-    }
+    },
+    "confirmDelete": "Tem certeza que deseja remover {{name}}?",
+    "billedToResponsible": "Cobra via responsável",
+    "addAnother": "Adicionar mais um dependente"
+  },
+  "table": {
+    "name": "Nome",
+    "type": "Tipo",
+    "email": "E-mail",
+    "businessProfile": "Negócio Recebimento",
+    "billingDay": "Dia Cobrança",
+    "createdAt": "Data de Cadastro",
+    "actions": "Ações"
+  },
+  "badges": {
+    "student": "Aluno",
+    "family": "Família",
+    "dependent": "Dependente"
+  },
+  "status": {
+    "configured": "Configurado",
+    "notConfigured": "Não configurado"
+  },
+  "actions": {
+    "viewProfile": "Ver perfil",
+    "edit": "Editar",
+    "remove": "Remover",
+    "addDependent": "Adicionar Dependente",
+    "resendInvitation": "Reenviar convite"
   },
   "common": {
     "cancel": "Cancelar",

@@ -12,12 +12,15 @@ import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
 import { UpdatePaymentMethodModal } from "@/components/UpdatePaymentMethodModal";
 import { StudentImportDialog } from "@/components/students/StudentImportDialog";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw } from "lucide-react";
+import { DependentFormModal } from "@/components/DependentFormModal";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw, ChevronDown, ChevronRight, Users, UserPlus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { useTranslation } from "react-i18next";
+import { useDependents, Dependent } from "@/hooks/useDependents";
+
 interface Student {
   id: string;
   name: string;
@@ -64,9 +67,29 @@ export default function Alunos() {
   const [paymentErrorModalOpen, setPaymentErrorModalOpen] = useState(false);
   const [paymentErrorMessage, setPaymentErrorMessage] = useState("");
   const [pendingStudentData, setPendingStudentData] = useState<any>(null);
+  
+  // Dependent management state
+  const [expandedResponsibles, setExpandedResponsibles] = useState<Set<string>>(new Set());
+  const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
+  const [editingDependent, setEditingDependent] = useState<Dependent | null>(null);
+  const [selectedResponsibleId, setSelectedResponsibleId] = useState<string | null>(null);
+  
+  // Use the dependents hook
+  const { 
+    dependents, 
+    isLoading: dependentsLoading, 
+    fetchDependents, 
+    createDependent, 
+    updateDependent, 
+    deleteDependent,
+    getStudentAndDependentCount
+  } = useDependents({ teacherId: profile?.id });
+
+  // Load students and dependents on profile change
   useEffect(() => {
     if (profile?.id) {
       loadStudents();
+      fetchDependents();
     }
   }, [profile]);
   const loadStudents = async () => {
@@ -443,6 +466,92 @@ export default function Alunos() {
     }
   };
 
+  // Helper to get dependents for a specific responsible
+  const getDependentsForStudent = (studentId: string) => {
+    return dependents.filter(d => d.responsible_id === studentId);
+  };
+
+  // Toggle expansion of a responsible row
+  const toggleExpanded = (studentId: string) => {
+    setExpandedResponsibles(prev => {
+      const next = new Set(prev);
+      if (next.has(studentId)) {
+        next.delete(studentId);
+      } else {
+        next.add(studentId);
+      }
+      return next;
+    });
+  };
+
+  // Open modal to add dependent
+  const handleAddDependent = (responsibleId: string) => {
+    setSelectedResponsibleId(responsibleId);
+    setEditingDependent(null);
+    setIsDependentModalOpen(true);
+  };
+
+  // Open modal to edit dependent
+  const handleEditDependent = (dependent: Dependent) => {
+    setSelectedResponsibleId(dependent.responsible_id);
+    setEditingDependent(dependent);
+    setIsDependentModalOpen(true);
+  };
+
+  // Handle dependent form submission
+  const handleDependentSubmit = async (formData: { name: string; birth_date?: string; notes?: string }) => {
+    if (!selectedResponsibleId || !profile?.id) return;
+    
+    try {
+      if (editingDependent) {
+        await updateDependent(editingDependent.dependent_id, formData);
+        toast({
+          title: t('dependents.success.updated', 'Dependente atualizado'),
+          description: t('dependents.success.updatedDescription', 'As informações foram salvas com sucesso.'),
+        });
+      } else {
+        await createDependent(formData, selectedResponsibleId, profile.id);
+        toast({
+          title: t('dependents.success.created', 'Dependente adicionado'),
+          description: t('dependents.success.createdDescription', '{{name}} foi adicionado com sucesso.', { name: formData.name }),
+        });
+      }
+      setIsDependentModalOpen(false);
+      setEditingDependent(null);
+      fetchDependents();
+    } catch (error: any) {
+      toast({
+        title: t('common:messages.error'),
+        description: error.message || t('dependents.errors.saveFailed', 'Erro ao salvar dependente'),
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle dependent deletion
+  const handleDeleteDependent = async (dependent: Dependent) => {
+    const confirmMessage = t('dependents.confirmDelete', 'Tem certeza que deseja remover {{name}}?', { name: dependent.dependent_name });
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      await deleteDependent(dependent.dependent_id);
+      toast({
+        title: t('dependents.success.deleted', 'Dependente removido'),
+        description: t('dependents.success.deletedDescription', '{{name}} foi removido com sucesso.', { name: dependent.dependent_name }),
+      });
+      fetchDependents();
+    } catch (error: any) {
+      toast({
+        title: t('common:messages.error'),
+        description: error.message || t('dependents.errors.deleteFailed', 'Erro ao remover dependente'),
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Calculate total count (students + dependents) for plan limits
+  const totalCount = students.length + dependents.length;
+
   return <Layout>
     <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
       <UpgradeBanner />
@@ -541,7 +650,12 @@ export default function Alunos() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            Lista de Alunos ({students.length})
+            Lista de Alunos ({totalCount})
+            {dependents.length > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">
+                {students.length} alunos + {dependents.length} dependentes
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -563,107 +677,245 @@ export default function Alunos() {
           </div> : <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Responsável</TableHead>
+                <TableHead className="w-[40px]"></TableHead>
+                <TableHead>{t('table.name', 'Nome')}</TableHead>
+                <TableHead>{t('table.type', 'Tipo')}</TableHead>
+                <TableHead>{t('table.email', 'E-mail')}</TableHead>
                 {hasFeature('financial_module') && (
                   <>
-                    <TableHead>Negócio Recebimento</TableHead>
-                    <TableHead>Dia Cobrança</TableHead>
+                    <TableHead>{t('table.businessProfile', 'Negócio Recebimento')}</TableHead>
+                    <TableHead>{t('table.billingDay', 'Dia Cobrança')}</TableHead>
                   </>
                 )}
-                <TableHead>Data de Cadastro</TableHead>
-                <TableHead className="w-[120px]">Ações</TableHead>
+                <TableHead>{t('table.createdAt', 'Data de Cadastro')}</TableHead>
+                <TableHead className="w-[140px]">{t('table.actions', 'Ações')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {students.map(student => <TableRow key={student.id}>
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
-                      <User className="h-4 w-4 text-primary" />
-                    </div>
-                    {student.name}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Mail className="h-4 w-4" />
-                    {student.email}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {student.guardian_name ? <>
-                      {student.guardian_name === student.name ? <Badge variant="outline" className="text-xs">
-                        <UserCheck className="h-3 w-3 mr-1" />
-                        Próprio aluno
-                      </Badge> : <div>
-                        <p className="text-sm font-medium">{student.guardian_name}</p>
-                        <p className="text-xs text-muted-foreground">{student.guardian_email}</p>
-                      </div>}
-                    </> : <Badge variant="secondary" className="text-xs">
-                      Não configurado
-                    </Badge>}
-                  </div>
-                </TableCell>
-                {hasFeature('financial_module') && (
+              {students.map(student => {
+                const studentDependents = getDependentsForStudent(student.id);
+                const hasDependents = studentDependents.length > 0;
+                const isExpanded = expandedResponsibles.has(student.id);
+
+                return (
                   <>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {student.business_profile_id ? <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                          Configurado
-                        </Badge> : <Badge variant="destructive" className="text-xs">
-                          <AlertTriangle className="h-3 w-3 mr-1" />
-                          Não configurado
-                        </Badge>}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm">{student.billing_day || 15}</span>
-                      </div>
-                    </TableCell>
-                  </>
-                )}
-                <TableCell>
-                  {new Date(student.created_at).toLocaleDateString('pt-BR')}
-                </TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title="Ver perfil completo">
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title="Editar aluno">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    {!student.email_confirmed && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleResendInvitation(student)}
-                        title="Reenviar convite de confirmação"
-                        className="hover:bg-blue-50 dark:hover:bg-blue-950"
-                      >
-                        <RefreshCcw className="h-4 w-4" />
-                      </Button>
+                    {/* Student/Responsible Row */}
+                    <TableRow key={student.id} className={hasDependents ? 'cursor-pointer hover:bg-muted/50' : ''}>
+                      <TableCell className="w-[40px] px-2">
+                        {hasDependents ? (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 w-6 p-0"
+                            onClick={() => toggleExpanded(student.id)}
+                          >
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
+                            {hasDependents ? (
+                              <Users className="h-4 w-4 text-primary" />
+                            ) : (
+                              <User className="h-4 w-4 text-primary" />
+                            )}
+                          </div>
+                          <span>{student.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {hasDependents ? (
+                          <Badge variant="default" className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            <Users className="h-3 w-3 mr-1" />
+                            {t('badges.family', 'Família')} ({studentDependents.length})
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">
+                            <User className="h-3 w-3 mr-1" />
+                            {t('badges.student', 'Aluno')}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Mail className="h-4 w-4" />
+                          {student.email}
+                        </div>
+                      </TableCell>
+                      {hasFeature('financial_module') && (
+                        <>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              {student.business_profile_id ? (
+                                <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                  {t('status.configured', 'Configurado')}
+                                </Badge>
+                              ) : (
+                                <Badge variant="destructive" className="text-xs">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  {t('status.notConfigured', 'Não configurado')}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm">{student.billing_day || 15}</span>
+                            </div>
+                          </TableCell>
+                        </>
+                      )}
+                      <TableCell>
+                        {new Date(student.created_at).toLocaleDateString('pt-BR')}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title={t('actions.viewProfile', 'Ver perfil')}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title={t('actions.edit', 'Editar')}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleAddDependent(student.id)} 
+                            title={t('actions.addDependent', 'Adicionar Dependente')}
+                            className="hover:bg-blue-50 dark:hover:bg-blue-950"
+                          >
+                            <UserPlus className="h-4 w-4" />
+                          </Button>
+                          {!student.email_confirmed && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleResendInvitation(student)}
+                              title={t('actions.resendInvitation', 'Reenviar convite')}
+                              className="hover:bg-blue-50 dark:hover:bg-blue-950"
+                            >
+                              <RefreshCcw className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="hover:bg-destructive hover:text-destructive-foreground" 
+                            onClick={() => handleConfirmSmartDelete(student)} 
+                            title={t('actions.remove', 'Remover')}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Dependent Sub-Rows */}
+                    {isExpanded && studentDependents.map(dep => (
+                      <TableRow key={dep.dependent_id} className="bg-muted/30">
+                        <TableCell className="w-[40px] px-2"></TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2 pl-6">
+                            <div className="h-7 w-7 rounded-full bg-secondary flex items-center justify-center">
+                              <User className="h-3.5 w-3.5 text-secondary-foreground" />
+                            </div>
+                            <span className="text-sm">{dep.dependent_name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-xs">
+                            📌 {t('badges.dependent', 'Dependente')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted-foreground text-sm">—</span>
+                        </TableCell>
+                        {hasFeature('financial_module') && (
+                          <>
+                            <TableCell>
+                              <span className="text-muted-foreground text-xs italic">
+                                {t('dependents.billedToResponsible', 'Cobra via responsável')}
+                              </span>
+                            </TableCell>
+                            <TableCell>—</TableCell>
+                          </>
+                        )}
+                        <TableCell>
+                          {dep.created_at ? new Date(dep.created_at).toLocaleDateString('pt-BR') : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleEditDependent(dep)} 
+                              title={t('actions.edit', 'Editar')}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="hover:bg-destructive hover:text-destructive-foreground" 
+                              onClick={() => handleDeleteDependent(dep)} 
+                              title={t('actions.remove', 'Remover')}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                    {/* Add Dependent Row (when expanded and has dependents) */}
+                    {isExpanded && hasDependents && (
+                      <TableRow key={`${student.id}-add`} className="bg-muted/20">
+                        <TableCell colSpan={hasFeature('financial_module') ? 8 : 6}>
+                          <div className="flex items-center pl-8">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={() => handleAddDependent(student.id)}
+                              className="text-primary hover:text-primary-foreground hover:bg-primary"
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              {t('dependents.addAnother', 'Adicionar mais um dependente')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-                    <Button variant="ghost" size="sm" className="hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleConfirmSmartDelete(student)} title="Remover aluno">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>)}
+                  </>
+                );
+              })}
             </TableBody>
           </Table>}
         </CardContent>
       </Card>
 
       {/* Student Form Modals */}
-      <StudentFormModal isOpen={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} onSubmit={handleAddStudent} isSubmitting={submitting} currentStudentCount={students.length} title="Adicionar Novo Aluno" description="Insira os dados do aluno e configurações de cobrança" />
+      <StudentFormModal isOpen={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} onSubmit={handleAddStudent} isSubmitting={submitting} currentStudentCount={totalCount} title="Adicionar Novo Aluno" description="Insira os dados do aluno e configurações de cobrança" />
 
-      <StudentFormModal isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSubmit={handleUpdateStudent} isSubmitting={submitting} currentStudentCount={students.length} student={editingStudent || undefined} title="Editar Aluno" description="Altere os dados do aluno e configurações de cobrança" />
+      <StudentFormModal isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onSubmit={handleUpdateStudent} isSubmitting={submitting} currentStudentCount={totalCount} student={editingStudent || undefined} title="Editar Aluno" description="Altere os dados do aluno e configurações de cobrança" />
+
+      {/* Dependent Form Modal */}
+      <DependentFormModal
+        isOpen={isDependentModalOpen}
+        onOpenChange={setIsDependentModalOpen}
+        onSubmit={handleDependentSubmit}
+        dependent={editingDependent}
+        responsibleName={
+          editingDependent 
+            ? editingDependent.responsible_name 
+            : students.find(s => s.id === selectedResponsibleId)?.name
+        }
+      />
 
       {/* Business Profile Warning Modal */}
       {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={student => {

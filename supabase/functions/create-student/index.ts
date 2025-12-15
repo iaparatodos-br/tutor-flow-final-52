@@ -234,11 +234,21 @@ serve(async (req) => {
     // FIRST: Check if teacher needs to be charged for overage BEFORE creating relationship
     let billingResult = null;
     
-    // Get CURRENT student count for this teacher (before adding new student)
-    const { count: currentStudentCount } = await supabaseAdmin
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', body.teacher_id);
+    // Get CURRENT student + dependent count for this teacher (before adding new student)
+    // Uses RPC function that counts both students and dependents for plan limits
+    const { data: countData, error: countError } = await supabaseAdmin
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: body.teacher_id });
+    
+    if (countError) {
+      console.error('Error counting students and dependents:', countError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Erro ao verificar limite de alunos' }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    
+    const currentStudentCount = countData?.[0]?.total_students ?? 0;
+    console.log('Current student + dependent count:', currentStudentCount);
 
     // Get teacher's subscription and plan
     const { data: subscription } = await supabaseAdmin

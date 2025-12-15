@@ -144,19 +144,21 @@ serve(async (req) => {
     
     logStep("Plan found", { planId: plan.id, planName: plan.name, priceId: plan.stripe_price_id });
 
-    // Count teacher's students
-    const { count: studentCount, error: countError } = await supabaseClient
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', user.id);
+    // Count teacher's students AND dependents (both count towards plan limits)
+    const { data: countData, error: countError } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: user.id });
 
     if (countError) {
-      logStep("ERROR: Failed to count students", { error: countError.message });
+      logStep("ERROR: Failed to count students and dependents", { error: countError.message });
       throw new Error("Failed to count students");
     }
 
-    const totalStudents = studentCount || 0;
-    logStep("Student count retrieved", { totalStudents });
+    const totalStudents = countData?.[0]?.total_students ?? 0;
+    logStep("Student + dependent count retrieved", { 
+      totalStudents,
+      regularStudents: countData?.[0]?.regular_students,
+      dependentsCount: countData?.[0]?.dependents_count
+    });
 
     const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2023-10-16",

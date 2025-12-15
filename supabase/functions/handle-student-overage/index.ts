@@ -54,18 +54,21 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // Get total number of students for this teacher
-    const { count: totalStudents, error: countError } = await supabaseClient
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', userId);
+    // Get total number of students AND dependents for this teacher (for plan limits)
+    const { data: countData, error: countError } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: userId });
 
     if (countError) {
-      logStep("Error counting students", { error: countError });
+      logStep("Error counting students and dependents", { error: countError });
       throw new Error(`Failed to count students: ${countError.message}`);
     }
 
-    logStep("Total students counted", { totalStudents });
+    const totalStudents = countData?.[0]?.total_students ?? 0;
+    logStep("Total students + dependents counted", { 
+      totalStudents,
+      regularStudents: countData?.[0]?.regular_students,
+      dependentsCount: countData?.[0]?.dependents_count
+    });
 
     // Get current subscription
     const { data: subscriptionData, error: subError } = await supabaseClient

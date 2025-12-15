@@ -13,6 +13,7 @@ const logStep = (step: string, details?: any) => {
 
 interface CreateInvoiceRequest {
   student_id: string;
+  dependent_id?: string; // Novo campo para suporte a dependentes
   amount: number;
   description?: string;
   due_date?: string;
@@ -56,22 +57,91 @@ serve(async (req) => {
     
     logStep("Request data", body);
 
+    // ========== NOVO: Resolução automática de dependente → responsável ==========
+    let billingStudentId = body.student_id;
+    let dependentId: string | null = body.dependent_id || null;
+    let dependentName: string | null = null;
+
+    // Verificar se o student_id é na verdade um dependente
+    // Se for, resolver para o responsible_id automaticamente
+    const { data: dependentCheck, error: dependentCheckError } = await supabaseClient
+      .from('dependents')
+      .select('id, name, responsible_id, teacher_id')
+      .eq('id', body.student_id)
+      .eq('teacher_id', user.id)
+      .maybeSingle();
+
+    if (!dependentCheckError && dependentCheck) {
+      // O "student_id" fornecido é na verdade um dependente
+      // Redirecionar cobrança para o responsável
+      logStep("Detected dependent as student_id - redirecting to responsible", {
+        dependentId: dependentCheck.id,
+        dependentName: dependentCheck.name,
+        responsibleId: dependentCheck.responsible_id
+      });
+      
+      billingStudentId = dependentCheck.responsible_id;
+      dependentId = dependentCheck.id;
+      dependentName = dependentCheck.name;
+    } else if (body.dependent_id) {
+      // dependent_id foi fornecido explicitamente, verificar se é válido
+      const { data: explicitDependent, error: explicitDepError } = await supabaseClient
+        .from('dependents')
+        .select('id, name, responsible_id, teacher_id')
+        .eq('id', body.dependent_id)
+        .eq('teacher_id', user.id)
+        .maybeSingle();
+
+      if (!explicitDepError && explicitDependent) {
+        // Verificar se o responsible_id corresponde ao student_id
+        if (explicitDependent.responsible_id !== body.student_id) {
+          logStep("WARNING: dependent_id provided does not belong to student_id", {
+            dependentResponsible: explicitDependent.responsible_id,
+            providedStudent: body.student_id
+          });
+          // Corrigir automaticamente
+          billingStudentId = explicitDependent.responsible_id;
+        }
+        dependentId = explicitDependent.id;
+        dependentName = explicitDependent.name;
+        logStep("Explicit dependent_id resolved", {
+          dependentId,
+          dependentName,
+          billingTo: billingStudentId
+        });
+      } else {
+        logStep("WARNING: dependent_id provided not found or not accessible", { 
+          dependentId: body.dependent_id 
+        });
+        // Continuar sem dependente
+        dependentId = null;
+      }
+    }
+
+    logStep("Billing resolution complete", {
+      originalStudentId: body.student_id,
+      billingStudentId,
+      dependentId,
+      dependentName
+    });
+
     // Get the business_profile_id from teacher_student_relationships
+    // Usar billingStudentId (responsável) em vez de body.student_id
     const { data: relationship, error: relationshipError } = await supabaseClient
       .from('teacher_student_relationships')
       .select('business_profile_id, teacher_id')
-      .eq('student_id', body.student_id)
+      .eq('student_id', billingStudentId)
       .eq('teacher_id', user.id)
       .single();
 
     if (relationshipError || !relationship) {
-      logStep("Relationship not found", { error: relationshipError });
+      logStep("Relationship not found", { error: relationshipError, billingStudentId });
       throw new Error("Relacionamento professor-aluno não encontrado");
     }
 
     // Validate that business_profile_id is not null
     if (!relationship.business_profile_id) {
-      logStep("No business profile defined for student", { studentId: body.student_id });
+      logStep("No business profile defined for student", { studentId: billingStudentId });
       return new Response(JSON.stringify({
         success: false,
         error: "Por favor, defina um negócio de recebimento para este aluno em seu cadastro antes de gerar uma fatura."
@@ -83,18 +153,25 @@ serve(async (req) => {
 
     logStep("Business profile found", { 
       businessProfileId: relationship.business_profile_id,
-      studentId: body.student_id 
+      studentId: billingStudentId 
     });
 
     // Calculate due date if not provided
     const dueDate = body.due_date || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 15 days from now
 
+    // Criar descrição com nome do dependente se aplicável
+    let invoiceDescription = body.description || 'Fatura manual';
+    if (dependentName && !invoiceDescription.includes(dependentName)) {
+      invoiceDescription = `[${dependentName}] ${invoiceDescription}`;
+    }
+
     // Create the invoice with business_profile_id
+    // A fatura é sempre para o responsável (billingStudentId)
     const invoiceData = {
-      student_id: body.student_id,
+      student_id: billingStudentId, // Sempre o responsável
       teacher_id: user.id,
       amount: body.amount,
-      description: body.description || 'Fatura manual',
+      description: invoiceDescription,
       due_date: dueDate,
       status: 'pendente' as const,
       invoice_type: body.invoice_type || 'manual',
@@ -117,17 +194,22 @@ serve(async (req) => {
 
     logStep("Invoice created successfully", { 
       invoiceId: newInvoice.id,
-      businessProfileId: relationship.business_profile_id 
+      businessProfileId: relationship.business_profile_id,
+      billedTo: billingStudentId,
+      forDependent: dependentId
     });
 
     // Update classes if class_ids provided
     if (body.class_ids && body.class_ids.length > 0) {
       // Buscar dados das aulas e participantes
+      // Considerar tanto participantes do aluno quanto de dependentes
       const { data: classData, error: classDataError } = await supabaseClient
         .from('class_participants')
         .select(`
           id,
           class_id,
+          student_id,
+          dependent_id,
           classes!inner (
             id,
             class_date,
@@ -136,7 +218,7 @@ serve(async (req) => {
           )
         `)
         .in('class_id', body.class_ids)
-        .eq('student_id', body.student_id);
+        .or(`student_id.eq.${billingStudentId},dependent_id.not.is.null`);
 
       if (classDataError) {
         logStep("ERROR: Failed to fetch class data for invoice_classes", { error: classDataError });
@@ -145,18 +227,59 @@ serve(async (req) => {
         throw new Error(`Erro ao buscar dados das aulas: ${classDataError.message}`);
       }
 
-      if (!classData || classData.length === 0) {
+      // Filtrar participantes que pertencem ao responsável ou seus dependentes
+      let filteredClassData = classData || [];
+      if (dependentId) {
+        // Se há um dependente específico, filtrar apenas aulas desse dependente
+        filteredClassData = filteredClassData.filter(cp => cp.dependent_id === dependentId);
+      } else {
+        // Se não, incluir aulas do aluno e de todos os seus dependentes
+        // Primeiro buscar dependentes do responsável
+        const { data: responsibleDependents } = await supabaseClient
+          .from('dependents')
+          .select('id')
+          .eq('responsible_id', billingStudentId)
+          .eq('teacher_id', user.id);
+        
+        const dependentIds = responsibleDependents?.map(d => d.id) || [];
+        
+        filteredClassData = filteredClassData.filter(cp => 
+          cp.student_id === billingStudentId || 
+          (cp.dependent_id && dependentIds.includes(cp.dependent_id))
+        );
+      }
+
+      if (filteredClassData.length === 0) {
         logStep("ERROR: No class data found for the provided class_ids");
         // Rollback: delete the invoice that was just created
         await supabaseClient.from('invoices').delete().eq('id', newInvoice.id);
         throw new Error('Nenhuma aula encontrada para os IDs fornecidos');
       }
 
+      // Buscar nomes dos dependentes para descrição
+      const dependentIdsInClasses = [...new Set(
+        filteredClassData.filter(cp => cp.dependent_id).map(cp => cp.dependent_id)
+      )];
+      
+      let dependentNamesMap: Record<string, string> = {};
+      if (dependentIdsInClasses.length > 0) {
+        const { data: dependentsData } = await supabaseClient
+          .from('dependents')
+          .select('id, name')
+          .in('id', dependentIdsInClasses);
+        
+        if (dependentsData) {
+          dependentNamesMap = Object.fromEntries(
+            dependentsData.map(d => [d.id, d.name])
+          );
+        }
+      }
+
       // Preparar itens para invoice_classes
       const invoiceItems = [];
       let calculatedTotal = 0;
       
-      for (const cp of classData) {
+      for (const cp of filteredClassData) {
         const classInfo = Array.isArray(cp.classes) ? cp.classes[0] : cp.classes;
         const service = Array.isArray(classInfo.class_services) 
           ? classInfo.class_services[0] 
@@ -169,10 +292,16 @@ serve(async (req) => {
           itemAmount = Number(service.price);
         } else {
           // Se não tem preço, dividir proporcionalmente
-          itemAmount = body.amount / classData.length;
+          itemAmount = body.amount / filteredClassData.length;
         }
         
         calculatedTotal += itemAmount;
+        
+        // Descrição com nome do dependente se aplicável
+        let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`;
+        if (cp.dependent_id && dependentNamesMap[cp.dependent_id]) {
+          itemDescription = `[${dependentNamesMap[cp.dependent_id]}] ${itemDescription}`;
+        }
         
         invoiceItems.push({
           invoice_id: newInvoice.id,
@@ -180,7 +309,7 @@ serve(async (req) => {
           participant_id: cp.id,
           item_type: body.invoice_type === 'cancellation' ? 'cancellation_charge' : 'completed_class',
           amount: itemAmount,
-          description: `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
+          description: itemDescription,
           cancellation_policy_id: body.cancellation_policy_id || null,
           charge_percentage: body.invoice_type === 'cancellation' && body.original_amount 
             ? ((body.amount / body.original_amount) * 100) 
@@ -207,7 +336,10 @@ serve(async (req) => {
         throw new Error(`Erro ao criar itens da fatura: ${itemsError.message}`);
       }
       
-      logStep("Invoice items created successfully", { itemCount: invoiceItems.length });
+      logStep("Invoice items created successfully", { 
+        itemCount: invoiceItems.length,
+        dependentItemsCount: invoiceItems.filter(i => i.description.startsWith('[')).length
+      });
     }
 
     // Generate payment URL automatically
@@ -217,7 +349,7 @@ serve(async (req) => {
       const { data: relationshipData, error: relError } = await supabaseClient
         .from('teacher_student_relationships')
         .select('student_guardian_cpf, student_guardian_name, student_guardian_email, student_guardian_phone, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code')
-        .eq('student_id', body.student_id)
+        .eq('student_id', billingStudentId)
         .eq('teacher_id', user.id)
         .single();
       
@@ -314,7 +446,12 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       invoice: newInvoice,
-      message: 'Fatura criada com sucesso'
+      message: 'Fatura criada com sucesso',
+      billing_info: {
+        billed_to: billingStudentId,
+        for_dependent: dependentId,
+        dependent_name: dependentName
+      }
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

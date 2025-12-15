@@ -11,6 +11,7 @@ interface ConfirmationNotificationPayload {
   class_id: string;
   teacher_id: string;
   student_id: string;
+  dependent_id?: string; // NEW: Support for dependent
   service_name: string;
   class_date: string;
   duration_minutes: number;
@@ -32,7 +33,7 @@ serve(async (req) => {
     const payload: ConfirmationNotificationPayload = await req.json();
     console.log("📬 Processing class confirmation notification:", payload);
 
-    // 1. Buscar dados do aluno e preferências
+    // 1. Buscar dados do aluno/responsável e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
       .select("name, email, notification_preferences")
@@ -44,17 +45,32 @@ serve(async (req) => {
       throw new Error("Student not found or no email");
     }
 
-    // Verificar se aluno quer receber notificações de confirmação
+    // Verificar se aluno/responsável quer receber notificações de confirmação
     const preferences = student.notification_preferences as any;
     if (preferences?.class_confirmed === false) {
-      console.log(`⏭️ Aluno ${payload.student_id} desabilitou notificações de confirmação`);
+      console.log(`⏭️ Aluno/Responsável ${payload.student_id} desabilitou notificações de confirmação`);
       return new Response(
         JSON.stringify({ success: true, skipped: true, reason: "User preference disabled" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
     }
 
-    // 2. Buscar dados do relacionamento para pegar email do responsável (se houver)
+    // 2. NEW: Buscar dados do dependente se aplicável
+    let dependentName: string | null = null;
+    if (payload.dependent_id) {
+      const { data: dependent } = await supabase
+        .from("dependents")
+        .select("name")
+        .eq("id", payload.dependent_id)
+        .single();
+      
+      if (dependent) {
+        dependentName = dependent.name;
+        console.log(`📌 Confirmação para dependente: ${dependentName}`);
+      }
+    }
+
+    // 3. Buscar dados do relacionamento para pegar email do responsável (se houver)
     const { data: relationship } = await supabase
       .from("teacher_student_relationships")
       .select("student_guardian_email, student_guardian_name")
@@ -66,7 +82,7 @@ serve(async (req) => {
     const recipientEmail = relationship?.student_guardian_email || student.email;
     const recipientName = relationship?.student_guardian_name || student.name;
 
-    // 3. Formatar data e hora
+    // 4. Formatar data e hora
     const classDateTime = new Date(payload.class_date);
     const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
       day: "2-digit",
@@ -80,7 +96,7 @@ serve(async (req) => {
       timeZone: "America/Sao_Paulo",
     });
 
-    // 4. Construir email
+    // 5. Construir email
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -93,6 +109,7 @@ serve(async (req) => {
             .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
             .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981; }
             .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0; }
+            .dependent-badge { background: #d1fae5; color: #065f46; padding: 4px 12px; border-radius: 9999px; font-size: 12px; display: inline-block; margin-left: 8px; }
             .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
           </style>
         </head>
@@ -104,7 +121,10 @@ serve(async (req) => {
             <div class="content">
               <p>Olá <strong>${recipientName}</strong>,</p>
               
-              <p>O professor <strong>${payload.teacher_name}</strong> confirmou a aula solicitada!</p>
+              <p>${dependentName 
+                ? `A aula de <strong>${dependentName}</strong> com o professor <strong>${payload.teacher_name}</strong> foi confirmada!`
+                : `O professor <strong>${payload.teacher_name}</strong> confirmou a aula solicitada!`
+              }</p>
               
               <div class="info-box">
                 <h3 style="margin-top: 0;">📋 Detalhes da Aula</h3>
@@ -113,6 +133,7 @@ serve(async (req) => {
                 <p><strong>Horário:</strong> ${formattedTime}</p>
                 <p><strong>Duração:</strong> ${payload.duration_minutes} minutos</p>
                 <p><strong>Professor:</strong> ${payload.teacher_name}</p>
+                ${dependentName ? `<p><strong>Aluno:</strong> ${dependentName}<span class="dependent-badge">📌 Dependente</span></p>` : ''}
               </div>
               
               <p style="text-align: center; margin: 30px 0;">
@@ -122,7 +143,10 @@ serve(async (req) => {
               </p>
               
               <p style="font-size: 14px; color: #6b7280;">
-                💡 <strong>Lembrete:</strong> A aula está confirmada! Prepare-se para aproveitar ao máximo este momento de aprendizado.
+                💡 <strong>Lembrete:</strong> A aula está confirmada! ${dependentName 
+                  ? `Prepare ${dependentName} para aproveitar ao máximo este momento de aprendizado.`
+                  : 'Prepare-se para aproveitar ao máximo este momento de aprendizado.'
+                }
               </p>
             </div>
             <div class="footer">
@@ -134,10 +158,12 @@ serve(async (req) => {
       </html>
     `;
 
-    // 5. Enviar email
+    // 6. Enviar email
     const emailResult = await sendEmail({
       to: recipientEmail,
-      subject: `✅ Aula confirmada com ${payload.teacher_name}`,
+      subject: dependentName 
+        ? `✅ Aula de ${dependentName} confirmada com ${payload.teacher_name}`
+        : `✅ Aula confirmada com ${payload.teacher_name}`,
       html: emailHtml,
     });
 
@@ -148,7 +174,7 @@ serve(async (req) => {
 
     console.log("✅ Email sent successfully:", emailResult.messageId);
 
-    // 6. Registrar notificação no histórico
+    // 7. Registrar notificação no histórico
     const { error: notificationError } = await supabase
       .from("class_notifications")
       .insert({
@@ -163,7 +189,11 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: "Notification sent" }),
+      JSON.stringify({ 
+        success: true, 
+        message: "Notification sent",
+        dependent_name: dependentName
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

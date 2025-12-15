@@ -76,6 +76,12 @@ export default function Financeiro() {
     name: string;
     email: string;
   }[]>([]);
+  const [dependents, setDependents] = useState<{
+    id: string;
+    name: string;
+    responsible_id: string;
+    responsible_name: string;
+  }[]>([]);
   const [markAsPaidDialogOpen, setMarkAsPaidDialogOpen] = useState(false);
   const [invoiceToMarkPaid, setInvoiceToMarkPaid] = useState<string | null>(null);
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -107,6 +113,7 @@ export default function Financeiro() {
       if (isProfessor) {
         loadExpenseSummary();
         loadStudents();
+        loadDependents();
       }
     }
   }, [profile, isProfessor]);
@@ -135,6 +142,28 @@ export default function Financeiro() {
       setStudents(transformedData);
     } catch (error) {
       console.error('Error loading students:', error);
+    }
+  };
+  
+  const loadDependents = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      if (error) {
+        console.error('Error loading dependents:', error);
+        return;
+      }
+      const transformedData = (data || []).map((d: any) => ({
+        id: d.dependent_id,
+        name: d.dependent_name,
+        responsible_id: d.responsible_id,
+        responsible_name: d.responsible_name
+      }));
+      setDependents(transformedData);
+    } catch (error) {
+      console.error('Error loading dependents:', error);
     }
   };
   const loadExpenseSummary = async () => {
@@ -501,7 +530,7 @@ export default function Financeiro() {
                         const fullStudent = invoices.find(inv => inv.student?.email === s.email)?.student;
                         // For now, allow all students - we'll validate in the modal/function
                         return true;
-                      }).length > 0 && <CreateInvoiceModal students={students} onInvoiceCreated={loadInvoices} />}
+                      }).length > 0 && <CreateInvoiceModal students={students} dependents={dependents} onInvoiceCreated={loadInvoices} />}
                   </div>
                 </CardHeader>
                 <CardContent>

@@ -28,10 +28,14 @@
   "teacher": "Professor",
   "type": "Tipo",
   "dueDate": "Vencimento",
-  "actions": "Ações",
   "regularType": "Regular",
   "cancellationType": "Cancelamento",
   "originalAmount": "Valor original: {amount}",
+  "groups": {
+    "students": "Alunos",
+    "dependents": "Dependentes",
+    "childOf": "filho de"
+  },
   "fields": {
     "amount": "Valor",
     "date": "Data",
@@ -41,7 +45,21 @@
     "paymentDate": "Data de Pagamento",
     "method": "Método",
     "reference": "Referência",
-    "category": "Categoria"
+    "category": "Categoria",
+    "recipient": "Destinatário"
+  },
+  "placeholders": {
+    "selectRecipient": "Selecione um destinatário"
+  },
+  "modal": {
+    "createTitle": "Criar Nova Fatura",
+    "createDescription": "A fatura será direcionada automaticamente para a conta bancária configurada para o aluno selecionado."
+  },
+  "actions": {
+    "newInvoice": "Nova Fatura"
+  },
+  "errors": {
+    "studentAndAmountRequired": "Destinatário e valor são obrigatórios"
   },
   "status": {
     "paid": "Paga",

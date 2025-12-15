@@ -143,6 +143,11 @@
     "empty": "No dependents registered",
     "emptyState": "No dependents registered for this guardian.",
     "addFirst": "Add first dependent",
+    "noDependents": "No dependents registered",
+    "classes": "classes",
+    "classHistory": "Class History",
+    "noClasses": "No classes recorded",
+    "lastClass": "Last class",
     "modal": {
       "addTitle": "Add Dependent",
       "editTitle": "Edit Dependent",

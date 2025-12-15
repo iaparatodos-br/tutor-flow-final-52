@@ -143,6 +143,11 @@
     "empty": "Nenhum dependente cadastrado",
     "emptyState": "Nenhum dependente cadastrado para este responsável.",
     "addFirst": "Adicionar primeiro dependente",
+    "noDependents": "Nenhum dependente cadastrado",
+    "classes": "aulas",
+    "classHistory": "Histórico de Aulas",
+    "noClasses": "Nenhuma aula registrada",
+    "lastClass": "Última aula",
     "modal": {
       "addTitle": "Adicionar Dependente",
       "editTitle": "Editar Dependente",

@@ -10,12 +10,14 @@ interface SmartDeleteRequest {
   student_id: string;
   teacher_id: string;
   relationship_id: string;
+  force?: boolean; // Force deletion even if there are pending classes (for dependents)
 }
 
 interface SmartDeleteResponse {
   success: boolean;
   action: 'unlinked' | 'deleted';
   message: string;
+  dependents_deleted?: number;
   error?: string;
 }
 
@@ -25,13 +27,21 @@ async function updateStripeSubscriptionQuantity(
   stripe: Stripe
 ) {
   try {
-    // 1. Contar alunos restantes
-    const { count: totalStudents } = await supabaseAdmin
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', teacherId);
+    // 1. Contar alunos + dependentes restantes usando RPC
+    const { data: countData, error: countError } = await supabaseAdmin
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: teacherId });
 
-    console.log('Total students after deletion:', totalStudents);
+    if (countError) {
+      console.error('Error counting students and dependents:', countError);
+      throw countError;
+    }
+
+    const totalStudents = countData?.[0]?.total_students ?? 0;
+    console.log('Total students + dependents after deletion:', {
+      totalStudents,
+      regularStudents: countData?.[0]?.regular_students,
+      dependentsCount: countData?.[0]?.dependents_count
+    });
 
     // 2. Buscar subscription ativa
     const { data: subscription, error: subError } = await supabaseAdmin
@@ -59,7 +69,7 @@ async function updateStripeSubscriptionQuantity(
       return { success: false, message: 'No subscription item found' };
     }
 
-    // 5. Atualizar quantity com o total de alunos
+    // 5. Atualizar quantity com o total de alunos + dependentes
     const newQuantity = Math.max(1, totalStudents || 0);
     
     await stripe.subscriptionItems.update(mainItem.id, {
@@ -109,6 +119,134 @@ async function updateStripeSubscriptionQuantity(
   }
 }
 
+// Check if a student (or their dependents) has pending/active classes
+async function checkPendingClasses(
+  supabaseAdmin: any,
+  studentId: string,
+  teacherId: string
+): Promise<{ hasPending: boolean; pendingCount: number; dependentsPending: number }> {
+  // Check student's own pending classes
+  const { count: studentPending } = await supabaseAdmin
+    .from('class_participants')
+    .select('id', { count: 'exact', head: true })
+    .eq('student_id', studentId)
+    .in('status', ['pendente', 'confirmada']);
+
+  // Check dependents' pending classes
+  const { data: dependents } = await supabaseAdmin
+    .from('dependents')
+    .select('id')
+    .eq('responsible_id', studentId)
+    .eq('teacher_id', teacherId);
+
+  let dependentsPending = 0;
+  if (dependents && dependents.length > 0) {
+    const dependentIds = dependents.map((d: any) => d.id);
+    const { count } = await supabaseAdmin
+      .from('class_participants')
+      .select('id', { count: 'exact', head: true })
+      .in('dependent_id', dependentIds)
+      .in('status', ['pendente', 'confirmada']);
+    dependentsPending = count || 0;
+  }
+
+  const totalPending = (studentPending || 0) + dependentsPending;
+  
+  console.log('Pending classes check:', {
+    studentId,
+    studentPending,
+    dependentsPending,
+    totalPending
+  });
+
+  return {
+    hasPending: totalPending > 0,
+    pendingCount: studentPending || 0,
+    dependentsPending
+  };
+}
+
+// Delete all dependents of a responsible party
+async function deleteDependentsCascade(
+  supabaseAdmin: any,
+  responsibleId: string,
+  teacherId: string
+): Promise<{ success: boolean; deleted: number; error?: string }> {
+  try {
+    // Get all dependents for this responsible under this teacher
+    const { data: dependents, error: fetchError } = await supabaseAdmin
+      .from('dependents')
+      .select('id, name')
+      .eq('responsible_id', responsibleId)
+      .eq('teacher_id', teacherId);
+
+    if (fetchError) {
+      console.error('Error fetching dependents:', fetchError);
+      return { success: false, deleted: 0, error: fetchError.message };
+    }
+
+    if (!dependents || dependents.length === 0) {
+      console.log('No dependents found for this responsible');
+      return { success: true, deleted: 0 };
+    }
+
+    console.log(`Found ${dependents.length} dependents to delete:`, 
+      dependents.map((d: any) => ({ id: d.id, name: d.name })));
+
+    const dependentIds = dependents.map((d: any) => d.id);
+
+    // Delete dependent-related records in order (respecting foreign keys)
+    
+    // 1. Delete class_report_feedbacks for these dependents
+    const { error: feedbackError } = await supabaseAdmin
+      .from('class_report_feedbacks')
+      .delete()
+      .in('dependent_id', dependentIds);
+    
+    if (feedbackError) {
+      console.error('Error deleting class_report_feedbacks:', feedbackError);
+    }
+
+    // 2. Delete material_access for these dependents
+    const { error: materialError } = await supabaseAdmin
+      .from('material_access')
+      .delete()
+      .in('dependent_id', dependentIds);
+    
+    if (materialError) {
+      console.error('Error deleting material_access:', materialError);
+    }
+
+    // 3. Delete class_participants for these dependents
+    const { error: participantsError } = await supabaseAdmin
+      .from('class_participants')
+      .delete()
+      .in('dependent_id', dependentIds);
+    
+    if (participantsError) {
+      console.error('Error deleting class_participants:', participantsError);
+    }
+
+    // 4. Finally delete the dependents themselves
+    const { error: deleteError } = await supabaseAdmin
+      .from('dependents')
+      .delete()
+      .in('id', dependentIds);
+
+    if (deleteError) {
+      console.error('Error deleting dependents:', deleteError);
+      return { success: false, deleted: 0, error: deleteError.message };
+    }
+
+    console.log(`Successfully deleted ${dependents.length} dependents`);
+    return { success: true, deleted: dependents.length };
+
+  } catch (error) {
+    console.error('Error in deleteDependentsCascade:', error);
+    return { success: false, deleted: 0, error: String(error) };
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -122,7 +260,7 @@ Deno.serve(async (req) => {
     // Create admin client for database operations
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { student_id, teacher_id, relationship_id }: SmartDeleteRequest = await req.json();
+    const { student_id, teacher_id, relationship_id, force = false }: SmartDeleteRequest = await req.json();
 
     // Validate required fields
     if (!student_id || !teacher_id || !relationship_id) {
@@ -138,7 +276,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Smart delete request:', { student_id, teacher_id, relationship_id });
+    console.log('Smart delete request:', { student_id, teacher_id, relationship_id, force });
+
+    // Check for pending classes (student + dependents) unless force=true
+    if (!force) {
+      const pendingCheck = await checkPendingClasses(supabaseAdmin, student_id, teacher_id);
+      
+      if (pendingCheck.hasPending) {
+        const message = pendingCheck.dependentsPending > 0
+          ? `Este aluno possui ${pendingCheck.pendingCount} aula(s) pendente(s) e seus dependentes possuem ${pendingCheck.dependentsPending} aula(s) pendente(s). Cancele ou conclua as aulas antes de excluir.`
+          : `Este aluno possui ${pendingCheck.pendingCount} aula(s) pendente(s). Cancele ou conclua as aulas antes de excluir.`;
+        
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: message,
+            pending_count: pendingCheck.pendingCount,
+            dependents_pending: pendingCheck.dependentsPending
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400 
+          }
+        );
+      }
+    }
 
     // Check if student has other teacher relationships
     const { data: relationships, error: relationshipError } = await supabaseAdmin
@@ -165,9 +327,18 @@ Deno.serve(async (req) => {
     // Filter out the current relationship to see if there are others
     const otherRelationships = relationships?.filter(rel => rel.id !== relationship_id) || [];
     
+    let dependentsDeleted = 0;
+
     if (otherRelationships.length > 0) {
-      // Student has other teachers - just unlink
+      // Student has other teachers - just unlink (but still delete dependents for THIS teacher)
       console.log('Student has other teachers, unlinking only');
+      
+      // Delete dependents that belong to this teacher-responsible combination
+      const cascadeResult = await deleteDependentsCascade(supabaseAdmin, student_id, teacher_id);
+      if (!cascadeResult.success) {
+        console.error('Warning: Failed to delete some dependents:', cascadeResult.error);
+      }
+      dependentsDeleted = cascadeResult.deleted;
       
       const { error: unlinkError } = await supabaseAdmin
         .from('teacher_student_relationships')
@@ -208,11 +379,16 @@ Deno.serve(async (req) => {
         // Não falha - o aluno já foi removido com sucesso
       }
 
+      const message = dependentsDeleted > 0
+        ? `Aluno desvinculado e ${dependentsDeleted} dependente(s) excluído(s). O aluno continuará disponível para outros professores.`
+        : 'Aluno desvinculado. Ele continuará disponível para outros professores.';
+
       return new Response(
         JSON.stringify({
           success: true,
           action: 'unlinked',
-          message: 'Aluno desvinculado. Ele continuará disponível para outros professores.'
+          message,
+          dependents_deleted: dependentsDeleted
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -223,7 +399,35 @@ Deno.serve(async (req) => {
       // Student has no other teachers - delete completely
       console.log('Student has no other teachers, deleting completely');
       
-      // First, always delete the relationship to ensure it's removed
+      // First delete all dependents for this responsible (across all teachers since user is being deleted)
+      // Note: We need to delete dependents for ALL teachers since the user account is going away
+      const { data: allDependents } = await supabaseAdmin
+        .from('dependents')
+        .select('id')
+        .eq('responsible_id', student_id);
+
+      if (allDependents && allDependents.length > 0) {
+        const allDependentIds = allDependents.map((d: any) => d.id);
+        
+        // Delete dependent-related records
+        await supabaseAdmin.from('class_report_feedbacks').delete().in('dependent_id', allDependentIds);
+        await supabaseAdmin.from('material_access').delete().in('dependent_id', allDependentIds);
+        await supabaseAdmin.from('class_participants').delete().in('dependent_id', allDependentIds);
+        
+        const { error: deleteDepsError } = await supabaseAdmin
+          .from('dependents')
+          .delete()
+          .in('id', allDependentIds);
+        
+        if (deleteDepsError) {
+          console.error('Error deleting all dependents:', deleteDepsError);
+        } else {
+          dependentsDeleted = allDependents.length;
+          console.log(`Deleted ${dependentsDeleted} dependents for user being deleted`);
+        }
+      }
+
+      // Delete the relationship
       const { error: relationshipDeleteError } = await supabaseAdmin
         .from('teacher_student_relationships')
         .delete()
@@ -284,11 +488,16 @@ Deno.serve(async (req) => {
         // Não falha - o aluno já foi removido com sucesso
       }
 
+      const message = dependentsDeleted > 0
+        ? `Aluno e ${dependentsDeleted} dependente(s) excluídos permanentemente. O e-mail agora pode ser reutilizado.`
+        : 'Aluno excluído permanentemente. O e-mail agora pode ser reutilizado.';
+
       return new Response(
         JSON.stringify({
           success: true,
           action: 'deleted',
-          message: 'Aluno excluído permanentemente. O e-mail agora pode ser reutilizado.'
+          message,
+          dependents_deleted: dependentsDeleted
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

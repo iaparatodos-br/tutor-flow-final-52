@@ -28,10 +28,14 @@
   "teacher": "Teacher",
   "type": "Type",
   "dueDate": "Due Date",
-  "actions": "Actions",
   "regularType": "Regular",
   "cancellationType": "Cancellation",
   "originalAmount": "Original amount: {amount}",
+  "groups": {
+    "students": "Students",
+    "dependents": "Dependents",
+    "childOf": "child of"
+  },
   "fields": {
     "amount": "Amount",
     "date": "Date",
@@ -41,7 +45,21 @@
     "paymentDate": "Payment Date",
     "method": "Method",
     "reference": "Reference",
-    "category": "Category"
+    "category": "Category",
+    "recipient": "Recipient"
+  },
+  "placeholders": {
+    "selectRecipient": "Select a recipient"
+  },
+  "modal": {
+    "createTitle": "Create New Invoice",
+    "createDescription": "The invoice will be automatically directed to the bank account configured for the selected student."
+  },
+  "actions": {
+    "newInvoice": "New Invoice"
+  },
+  "errors": {
+    "studentAndAmountRequired": "Recipient and amount are required"
   },
   "status": {
     "paid": "Paid",

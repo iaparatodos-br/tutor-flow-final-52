@@ -5,12 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DollarSign, AlertTriangle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { calculateBoletoFees, formatCurrency } from "@/utils/stripe-fees";
+import { useTranslation } from "react-i18next";
 
 interface Student {
   id: string;
@@ -18,21 +19,59 @@ interface Student {
   email: string;
 }
 
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+}
+
 interface CreateInvoiceModalProps {
   students: Student[];
+  dependents?: Dependent[];
   onInvoiceCreated?: () => void;
 }
 
-export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoiceModalProps) {
+export function CreateInvoiceModal({ students, dependents = [], onInvoiceCreated }: CreateInvoiceModalProps) {
+  const { t } = useTranslation('financial');
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     student_id: "",
+    dependent_id: "",
     amount: "",
     description: "",
     due_date: "",
   });
+
+  // Parse selected value - format: "student:{id}" or "dependent:{id}"
+  const handleRecipientChange = (value: string) => {
+    const [type, id] = value.split(':');
+    if (type === 'student') {
+      setFormData(prev => ({ ...prev, student_id: id, dependent_id: "" }));
+    } else if (type === 'dependent') {
+      const dependent = dependents.find(d => d.id === id);
+      if (dependent) {
+        setFormData(prev => ({ 
+          ...prev, 
+          student_id: dependent.responsible_id, 
+          dependent_id: id 
+        }));
+      }
+    }
+  };
+
+  // Get current selection value for display
+  const getSelectedValue = () => {
+    if (formData.dependent_id) {
+      return `dependent:${formData.dependent_id}`;
+    }
+    if (formData.student_id && !formData.dependent_id) {
+      return `student:${formData.student_id}`;
+    }
+    return "";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,12 +80,13 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
 
     try {
       if (!formData.student_id || !formData.amount) {
-        throw new Error("Estudante e valor são obrigatórios");
+        throw new Error(t('errors.studentAndAmountRequired') || "Destinatário e valor são obrigatórios");
       }
 
       const { data, error } = await supabase.functions.invoke('create-invoice', {
         body: {
           student_id: formData.student_id,
+          dependent_id: formData.dependent_id || undefined,
           amount: parseFloat(formData.amount),
           description: formData.description || undefined,
           due_date: formData.due_date || undefined,
@@ -57,7 +97,6 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
       if (error) throw error;
 
       if (data && !data.success) {
-        // Check for business profile validation error
         if (data.error?.includes("defina um negócio de recebimento")) {
           setError(data.error);
           return;
@@ -65,10 +104,11 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
         throw new Error(data.error || "Erro ao criar fatura");
       }
 
-      toast.success("Fatura criada com sucesso!");
+      toast.success(t('messages.invoiceCreated') || "Fatura criada com sucesso!");
       setIsOpen(false);
       setFormData({
         student_id: "",
+        dependent_id: "",
         amount: "",
         description: "",
         due_date: "",
@@ -92,16 +132,15 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
       <DialogTrigger asChild>
         <Button className="flex items-center gap-2">
           <DollarSign className="h-4 w-4" />
-          Nova Fatura
+          {t('actions.newInvoice') || 'Nova Fatura'}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Criar Nova Fatura</DialogTitle>
+            <DialogTitle>{t('modal.createTitle') || 'Criar Nova Fatura'}</DialogTitle>
             <DialogDescription>
-              A fatura será direcionada automaticamente para a conta bancária 
-              configurada para o aluno selecionado.
+              {t('modal.createDescription') || 'A fatura será direcionada automaticamente para a conta bancária configurada para o aluno selecionado.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -116,21 +155,43 @@ export function CreateInvoiceModal({ students, onInvoiceCreated }: CreateInvoice
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="student">Aluno *</Label>
+              <Label htmlFor="recipient">{t('fields.recipient') || 'Destinatário'} *</Label>
               <Select
-                value={formData.student_id}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, student_id: value }))}
+                value={getSelectedValue()}
+                onValueChange={handleRecipientChange}
                 required
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Selecione um aluno" />
+                  <SelectValue placeholder={t('placeholders.selectRecipient') || 'Selecione um destinatário'} />
                 </SelectTrigger>
                 <SelectContent className="bg-background border z-50">
-                  {students.map((student) => (
-                    <SelectItem key={student.id} value={student.id}>
-                      {student.name} ({student.email})
-                    </SelectItem>
-                  ))}
+                  {/* Students Group */}
+                  {students.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('groups.students') || 'Alunos'}
+                      </SelectLabel>
+                      {students.map((student) => (
+                        <SelectItem key={`student-${student.id}`} value={`student:${student.id}`}>
+                          {student.name} ({student.email})
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  
+                  {/* Dependents Group */}
+                  {dependents.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('groups.dependents') || 'Dependentes'}
+                      </SelectLabel>
+                      {dependents.map((dependent) => (
+                        <SelectItem key={`dependent-${dependent.id}`} value={`dependent:${dependent.id}`}>
+                          📌 {dependent.name} ({t('groups.childOf') || 'filho de'} {dependent.responsible_name})
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
             </div>

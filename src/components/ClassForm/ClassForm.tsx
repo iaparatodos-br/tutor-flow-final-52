@@ -21,6 +21,13 @@ interface Student {
   name: string;
 }
 
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+}
+
 interface ClassService {
   id: string;
   name: string;
@@ -28,8 +35,17 @@ interface ClassService {
   duration_minutes: number;
 }
 
+// Participant selection: can be student or dependent
+interface ParticipantSelection {
+  student_id: string;
+  dependent_id?: string;
+  name: string;
+  type: 'student' | 'dependent';
+}
+
 interface ClassFormData {
   selectedStudents: string[];
+  selectedParticipants: ParticipantSelection[];
   service_id: string;
   class_date: string;
   time: string;
@@ -49,6 +65,7 @@ interface ClassFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   students: Student[];
+  dependents?: Dependent[];
   services: ClassService[];
   existingClasses: Array<{
     id: string;
@@ -60,11 +77,12 @@ interface ClassFormProps {
   loading?: boolean;
 }
 
-export function ClassForm({ open, onOpenChange, students, services, existingClasses, onSubmit, loading }: ClassFormProps) {
+export function ClassForm({ open, onOpenChange, students, dependents = [], services, existingClasses, onSubmit, loading }: ClassFormProps) {
   const { hasFeature, currentPlan } = useSubscription();
   const { t } = useTranslation('classes');
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
+    selectedParticipants: [],
     service_id: '',
     class_date: '',
     time: '',
@@ -92,6 +110,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
   const resetForm = () => {
     setFormData({
       selectedStudents: [],
+      selectedParticipants: [],
       service_id: '',
       class_date: '',
       time: '',
@@ -109,32 +128,89 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
     setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false, timeConflict: false });
   };
 
+  // Handle student selection
   const handleStudentSelection = (studentId: string, checked: boolean) => {
     setFormData(prev => {
-      const selectedStudents = checked
-        ? [...prev.selectedStudents, studentId]
-        : prev.selectedStudents.filter(id => id !== studentId);
+      const student = students.find(s => s.id === studentId);
+      if (!student) return prev;
+
+      let newParticipants: ParticipantSelection[];
+      let newSelectedStudents: string[];
+
+      if (checked) {
+        newParticipants = [...prev.selectedParticipants, {
+          student_id: studentId,
+          name: student.name,
+          type: 'student' as const
+        }];
+        newSelectedStudents = [...prev.selectedStudents, studentId];
+      } else {
+        newParticipants = prev.selectedParticipants.filter(
+          p => !(p.student_id === studentId && p.type === 'student')
+        );
+        newSelectedStudents = prev.selectedStudents.filter(id => id !== studentId);
+      }
 
       return {
         ...prev,
-        selectedStudents,
-        is_group_class: selectedStudents.length > 1
+        selectedStudents: newSelectedStudents,
+        selectedParticipants: newParticipants,
+        is_group_class: newParticipants.length > 1
       };
     });
     setValidationErrors(prev => ({ ...prev, students: false }));
   };
 
+  // Handle dependent selection
+  const handleDependentSelection = (dependent: Dependent, checked: boolean) => {
+    setFormData(prev => {
+      let newParticipants: ParticipantSelection[];
+
+      if (checked) {
+        newParticipants = [...prev.selectedParticipants, {
+          student_id: dependent.responsible_id,
+          dependent_id: dependent.id,
+          name: dependent.name,
+          type: 'dependent' as const
+        }];
+      } else {
+        newParticipants = prev.selectedParticipants.filter(
+          p => !(p.dependent_id === dependent.id)
+        );
+      }
+
+      return {
+        ...prev,
+        selectedParticipants: newParticipants,
+        is_group_class: newParticipants.length > 1
+      };
+    });
+    setValidationErrors(prev => ({ ...prev, students: false }));
+  };
+
+  // Check if a student is selected
+  const isStudentSelected = (studentId: string) => {
+    return formData.selectedParticipants.some(
+      p => p.student_id === studentId && p.type === 'student'
+    );
+  };
+
+  // Check if a dependent is selected
+  const isDependentSelected = (dependentId: string) => {
+    return formData.selectedParticipants.some(p => p.dependent_id === dependentId);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check if it's a group class (more than 1 student) and user is on free plan
-    if (formData.selectedStudents.length > 1 && currentPlan?.slug === 'free') {
+    // Check if it's a group class (more than 1 participant) and user is on free plan
+    if (formData.selectedParticipants.length > 1 && currentPlan?.slug === 'free') {
       toast.error(t('groupClassNote'));
       return;
     }
 
     const errors = {
-      students: formData.selectedStudents.length === 0,
+      students: formData.selectedParticipants.length === 0,
       service: !formData.is_experimental && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
@@ -231,9 +307,11 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
     }
   };
 
-  const selectedStudentNames = formData.selectedStudents
-    .map(id => students.find(s => s.id === id)?.name)
-    .filter(Boolean);
+  // Get selected participant names for display
+  const selectedParticipantNames = formData.selectedParticipants.map(p => ({
+    name: p.name,
+    type: p.type
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -257,43 +335,86 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 {t('selectStudentsDescription')}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {students.length === 0 ? (
+            <CardContent className="space-y-4">
+              {students.length === 0 && dependents.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t('noStudentsRegistered')}
                 </p>
               ) : (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {students.map((student) => (
-                    <div key={student.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={student.id}
-                        checked={formData.selectedStudents.includes(student.id)}
-                        onCheckedChange={(checked) =>
-                          handleStudentSelection(student.id, checked as boolean)
-                        }
-                      />
-                      <Label
-                        htmlFor={student.id}
-                        className="text-sm font-normal cursor-pointer flex-1"
-                      >
-                        {student.name}
+                <div className="space-y-4 max-h-60 overflow-y-auto">
+                  {/* Regular Students Section */}
+                  {students.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('participantGroups.students')}
                       </Label>
+                      {students.map((student) => (
+                        <div key={student.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`student-${student.id}`}
+                            checked={isStudentSelected(student.id)}
+                            onCheckedChange={(checked) =>
+                              handleStudentSelection(student.id, checked as boolean)
+                            }
+                          />
+                          <Label
+                            htmlFor={`student-${student.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {student.name}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {/* Dependents Section */}
+                  {dependents.length > 0 && (
+                    <div className="space-y-2">
+                      {students.length > 0 && <Separator className="my-3" />}
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('participantGroups.dependents')}
+                      </Label>
+                      {dependents.map((dependent) => (
+                        <div key={dependent.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`dependent-${dependent.id}`}
+                            checked={isDependentSelected(dependent.id)}
+                            onCheckedChange={(checked) =>
+                              handleDependentSelection(dependent, checked as boolean)
+                            }
+                          />
+                          <Label
+                            htmlFor={`dependent-${dependent.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            <span>📌 {dependent.name}</span>
+                            <span className="text-xs text-muted-foreground ml-1">
+                              ({t('participantGroups.childOf')} {dependent.responsible_name})
+                            </span>
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {formData.selectedStudents.length > 0 && (
+              {formData.selectedParticipants.length > 0 && (
                 <div className="mt-3 pt-3 border-t">
                   <div className="flex flex-wrap gap-1">
-                    {selectedStudentNames.map((name, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {name}
+                    {selectedParticipantNames.map((participant, index) => (
+                      <Badge 
+                        key={index} 
+                        variant={participant.type === 'dependent' ? 'outline' : 'secondary'} 
+                        className="text-xs"
+                      >
+                        {participant.type === 'dependent' && '📌 '}
+                        {participant.name}
                       </Badge>
                     ))}
                   </div>
-                   {formData.selectedStudents.length > 1 && currentPlan?.slug === 'free' && (
+                   {formData.selectedParticipants.length > 1 && currentPlan?.slug === 'free' && (
                      <Badge variant="destructive" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
                        {t('groupClassPremium')}

@@ -12,6 +12,11 @@
   "experimental": "Aula Experimental (gratuita)",
   "experimentalNote": "Esta aula não será cobrada e será marcada como experimental",
   "groupClass": "Aula em Grupo",
+  "participantGroups": {
+    "students": "Alunos",
+    "dependents": "Dependentes",
+    "childOf": "filho(a) de"
+  },
   "groupClassPremium": "Aula em Grupo - Premium",
   "groupClassNote": "Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.",
   "noStudentsRegistered": "Nenhum aluno cadastrado",

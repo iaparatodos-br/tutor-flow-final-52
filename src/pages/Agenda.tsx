@@ -57,6 +57,12 @@ interface Student {
   id: string;
   name: string;
 }
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+}
 interface ClassService {
   id: string;
   name: string;
@@ -90,6 +96,7 @@ export default function Agenda() {
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
   const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
   const [visibleRange, setVisibleRange] = useState<{
@@ -164,6 +171,7 @@ export default function Agenda() {
       }
       if (isProfessor) {
         loadStudents();
+        loadDependents();
         loadAvailabilityBlocks();
         loadServices();
       }
@@ -899,6 +907,28 @@ export default function Agenda() {
       console.error('Erro ao carregar alunos:', error);
     }
   };
+  
+  const loadDependents = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      if (error) {
+        console.error('Erro ao carregar dependentes:', error);
+        return;
+      }
+      const mapped = (data || []).map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        responsible_id: d.responsible_id,
+        responsible_name: d.responsible_name
+      }));
+      setDependents(mapped);
+    } catch (error) {
+      console.error('Erro ao carregar dependentes:', error);
+    }
+  };
   const loadServices = async () => {
     if (!profile?.id) return;
     try {
@@ -1233,12 +1263,21 @@ export default function Agenda() {
       }
 
       // ROLLBACK: Insert participants with error handling
-      if (formData.selectedStudents.length > 0) {
+      // Use selectedParticipants if available (new format), fallback to selectedStudents (legacy)
+      const participantsToInsert = formData.selectedParticipants?.length > 0 
+        ? formData.selectedParticipants 
+        : formData.selectedStudents?.map((studentId: string) => ({
+            student_id: studentId,
+            type: 'student' as const
+          })) || [];
+
+      if (participantsToInsert.length > 0) {
         try {
           for (const classInstance of insertedClasses) {
-            const participantInserts = formData.selectedStudents.map((studentId: string) => ({
+            const participantInserts = participantsToInsert.map((participant: any) => ({
               class_id: classInstance.id,
-              student_id: studentId,
+              student_id: participant.student_id,
+              dependent_id: participant.dependent_id || null,
               status: 'confirmada' // Professor-created classes are confirmed by default
             }));
             const {
@@ -1259,7 +1298,7 @@ export default function Agenda() {
         }
       }
       // Note: Individual classes without selectedStudents are now handled 
-      // by the selectedStudents array above (no separate logic needed)
+      // by the selectedParticipants array above (no separate logic needed)
       if (formData.recurrence) {
         toast({
           title: t('messages.recurringConfirmed'),
@@ -1497,7 +1536,7 @@ export default function Agenda() {
         {isProfessor && <AvailabilityManager />}
 
         {/* Class Form Dialog */}
-        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} services={services} existingClasses={classes} />
+        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} dependents={dependents} services={services} existingClasses={classes} />
 
         {/* Cancellation Modal */}
         <CancellationModal 

@@ -12,6 +12,11 @@
   "experimental": "Experimental Class (free)",
   "experimentalNote": "This class will not be charged and will be marked as experimental",
   "groupClass": "Group Class",
+  "participantGroups": {
+    "students": "Students",
+    "dependents": "Dependents",
+    "childOf": "child of"
+  },
   "groupClassPremium": "Group Class - Premium",
   "groupClassNote": "Group classes are a premium feature. Upgrade your plan to use this functionality.",
   "noStudentsRegistered": "No students registered",

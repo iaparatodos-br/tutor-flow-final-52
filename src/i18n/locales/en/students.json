@@ -113,5 +113,58 @@
     "relationshipNotFound": "Could not find student relationship",
     "deleteError": "Error processing student removal",
     "profileLoadError": "Could not load student data"
+  },
+  "dependents": {
+    "title": "Dependents",
+    "add": "Add",
+    "addButton": "Add Dependent",
+    "description": "Minors under {{name}}'s responsibility",
+    "empty": "No dependents registered",
+    "emptyState": "No dependents registered for this guardian.",
+    "addFirst": "Add first dependent",
+    "modal": {
+      "addTitle": "Add Dependent",
+      "editTitle": "Edit Dependent",
+      "responsibleLabel": "Guardian",
+      "addDescription": "Add a dependent for this guardian.",
+      "editDescription": "Update dependent information.",
+      "addButton": "Add"
+    },
+    "fields": {
+      "name": "Dependent Name",
+      "birthDate": "Birth Date",
+      "birthDateHint": "Optional, for internal control",
+      "notes": "Notes"
+    },
+    "placeholders": {
+      "name": "Full name",
+      "notes": "Notes about the dependent..."
+    },
+    "success": {
+      "created": "Dependent added",
+      "createdDescription": "Dependent was added successfully.",
+      "updated": "Dependent updated",
+      "updatedDescription": "Dependent information was updated.",
+      "deleted": "Dependent removed",
+      "deletedDescription": "Dependent was removed successfully."
+    },
+    "errors": {
+      "nameRequired": "Name is required",
+      "createFailed": "Error adding dependent",
+      "updateFailed": "Error updating dependent",
+      "deleteFailed": "Error removing dependent",
+      "missingTeacherId": "Error",
+      "teacherIdRequired": "Teacher ID is required"
+    },
+    "deleteConfirm": {
+      "title": "Remove dependent?",
+      "description": "This action will remove dependent {{name}}. Future classes associated will be cancelled."
+    }
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Remove"
   }
 }

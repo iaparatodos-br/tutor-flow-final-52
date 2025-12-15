@@ -1958,6 +1958,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      count_teacher_students_and_dependents: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          dependents_count: number
+          regular_students: number
+          total_students: number
+        }[]
+      }
       create_invoice_and_mark_classes_billed: {
         Args: { p_class_items: Json; p_invoice_data: Json }
         Returns: Json
@@ -2031,6 +2039,10 @@ export type Database = {
         }[]
       }
       get_current_user_role_safe: { Args: never; Returns: string }
+      get_dependent_responsible: {
+        Args: { p_dependent_id: string }
+        Returns: string
+      }
       get_group_class_classmates: {
         Args: { _user_id: string }
         Returns: {
@@ -2046,6 +2058,19 @@ export type Database = {
           teacher_email: string
           teacher_id: string
           teacher_name: string
+        }[]
+      }
+      get_teacher_dependents: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          birth_date: string
+          created_at: string
+          dependent_id: string
+          dependent_name: string
+          notes: string
+          responsible_email: string
+          responsible_id: string
+          responsible_name: string
         }[]
       }
       get_teacher_students: {
@@ -2078,6 +2103,21 @@ export type Database = {
           class_id: string
           class_services: Json
           participant_id: string
+          service_id: string
+          student_id: string
+        }[]
+      }
+      get_unbilled_participants_v2: {
+        Args: { p_status?: string; p_student_id?: string; p_teacher_id: string }
+        Returns: {
+          charge_applied: boolean
+          class_date: string
+          class_id: string
+          class_services: Json
+          dependent_id: string
+          dependent_name: string
+          participant_id: string
+          responsible_id: string
           service_id: string
           student_id: string
         }[]

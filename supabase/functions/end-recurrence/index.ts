@@ -79,6 +79,38 @@ serve(async (req) => {
 
     console.log(`[end-recurrence] Deleted ${deletedClasses?.length || 0} future classes`);
 
+    // 4. NEW: Notify participants (including responsibles for dependents) about recurrence ending
+    const { data: participants } = await supabase
+      .from('class_participants')
+      .select('student_id, dependent_id')
+      .eq('class_id', templateId);
+
+    if (participants && participants.length > 0) {
+      // Collect unique responsible parties to notify
+      const notifyUserIds = new Set<string>();
+      
+      for (const p of participants) {
+        if (p.dependent_id) {
+          // Get the responsible for this dependent
+          const { data: dependent } = await supabase
+            .from('dependents')
+            .select('responsible_id, name')
+            .eq('id', p.dependent_id)
+            .maybeSingle();
+          
+          if (dependent?.responsible_id) {
+            notifyUserIds.add(dependent.responsible_id);
+            console.log(`[end-recurrence] Will notify responsible ${dependent.responsible_id} for dependent ${dependent.name}`);
+          }
+        } else {
+          notifyUserIds.add(p.student_id);
+        }
+      }
+
+      console.log(`[end-recurrence] ${notifyUserIds.size} unique users to notify about recurrence end`);
+      // Note: Actual notification sending can be added here if needed
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

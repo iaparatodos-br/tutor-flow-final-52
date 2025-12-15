@@ -17,10 +17,13 @@ interface ArchiveData {
     [period: string]: {
       classes: any[];
       reports: any[];
+      dependents?: any[];
+      dependentIds?: Set<string>;
       metadata: {
         archivedAt: string;
         totalClasses: number;
         totalReports: number;
+        totalDependents: number;
         period: string;
       };
     };
@@ -47,10 +50,13 @@ function groupDataByUserAndMonth(classes: any[]): ArchiveData {
       grouped[userId][period] = {
         classes: [],
         reports: [],
+        dependents: [],
+        dependentIds: new Set<string>(),
         metadata: {
           archivedAt: new Date().toISOString(),
           totalClasses: 0,
           totalReports: 0,
+          totalDependents: 0,
           period
         }
       };
@@ -62,14 +68,27 @@ function groupDataByUserAndMonth(classes: any[]): ArchiveData {
     if (classItem.class_reports && classItem.class_reports.length > 0) {
       grouped[userId][period].reports.push(...classItem.class_reports);
     }
+    
+    // Coletar IDs únicos de dependentes participantes
+    if (classItem.class_participants) {
+      const dependentIds = classItem.class_participants
+        .filter((p: any) => p.dependent_id)
+        .map((p: any) => p.dependent_id);
+      
+      if (!grouped[userId][period].dependentIds) {
+        grouped[userId][period].dependentIds = new Set();
+      }
+      dependentIds.forEach((id: string) => grouped[userId][period].dependentIds.add(id));
+    }
   }
   
-  // Atualizar metadados
+  // Atualizar metadados (totalDependents será calculado após enriquecimento)
   for (const userId in grouped) {
     for (const period in grouped[userId]) {
       const data = grouped[userId][period];
       data.metadata.totalClasses = data.classes.length;
       data.metadata.totalReports = data.reports.length;
+      data.metadata.totalDependents = data.dependentIds ? data.dependentIds.size : 0;
     }
   }
   
@@ -104,7 +123,7 @@ serve(async (req) => {
     
     console.log(`Arquivando dados anteriores a: ${eighteenMonthsAgo.toISOString()}`);
     
-    // Buscar aulas antigas com seus relatórios e participantes
+    // Buscar aulas antigas com seus relatórios e participantes (incluindo dependent_id)
     const { data: oldClasses, error: fetchError } = await supabaseAdmin
       .from('classes')
       .select(`
@@ -121,6 +140,7 @@ serve(async (req) => {
         class_participants (
           id,
           student_id,
+          dependent_id,
           status,
           cancelled_at,
           cancelled_by,
@@ -140,6 +160,15 @@ serve(async (req) => {
       `)
       .lt('class_date', eighteenMonthsAgo.toISOString())
       .order('class_date', { ascending: true });
+    
+    // Buscar nomes dos dependentes para incluir no arquivo
+    const { data: dependentsList } = await supabaseAdmin
+      .from('dependents')
+      .select('id, name, responsible_id, teacher_id');
+    
+    const dependentsMap = new Map(
+      (dependentsList || []).map(d => [d.id, d])
+    );
 
     if (fetchError) {
       console.error("Erro ao buscar aulas antigas:", fetchError);
@@ -165,6 +194,22 @@ serve(async (req) => {
     
     // Agrupar dados por usuário e período
     const archivesByUser = groupDataByUserAndMonth(oldClasses);
+    
+    // Enriquecer dados com informações dos dependentes
+    for (const userId in archivesByUser) {
+      for (const period in archivesByUser[userId]) {
+        const data = archivesByUser[userId][period];
+        if (data.dependentIds && data.dependentIds.size > 0) {
+          // Converter Set para array de objetos com dados do dependente
+          data.dependents = Array.from(data.dependentIds)
+            .map((depId: string) => dependentsMap.get(depId))
+            .filter(Boolean);
+          data.metadata.totalDependents = data.dependents.length;
+        }
+        // Remover o Set antes de serializar (Set não serializa em JSON)
+        delete data.dependentIds;
+      }
+    }
     
     let totalArchived = 0;
     let totalErrors = 0;

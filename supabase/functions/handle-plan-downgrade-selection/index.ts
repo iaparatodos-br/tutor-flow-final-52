@@ -119,7 +119,18 @@ serve(async (req) => {
       planLimit: newPlan.student_limit 
     });
 
-    // Validate selection count against plan limit
+    // Get total count using RPC that includes dependents
+    const { data: countData, error: countError } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: user.id });
+    
+    if (countError) {
+      logStep("Error counting students+dependents", { error: countError });
+    }
+    
+    const totalCount = countData?.[0] || { total_students: 0, regular_students: 0, dependents_count: 0 };
+    logStep("Total count (students + dependents)", totalCount);
+
+    // Validate selection count against plan limit (considering total including dependents)
     if (selected_student_ids.length > newPlan.student_limit) {
       throw new Error(`Too many students selected. Plan limit: ${newPlan.student_limit}, Selected: ${selected_student_ids.length}`);
     }
@@ -134,12 +145,35 @@ serve(async (req) => {
       throw new Error(`Error fetching students: ${studentsError.message}`);
     }
 
-    logStep("Current students fetched", { totalCount: allStudents?.length || 0 });
+    // Get all dependents for this teacher
+    const { data: allDependents, error: dependentsError } = await supabaseClient
+      .rpc('get_teacher_dependents', { p_teacher_id: user.id });
+
+    if (dependentsError) {
+      logStep("Error fetching dependents", { error: dependentsError });
+    }
+
+    logStep("Current students and dependents fetched", { 
+      studentsCount: allStudents?.length || 0,
+      dependentsCount: allDependents?.length || 0
+    });
 
     // Identify students to be removed (not in selected list)
+    // Note: When a responsible is deleted, their dependents are cascade-deleted via smart-delete-student
     const studentsToRemove = allStudents?.filter(
       student => !selected_student_ids.includes(student.student_id)
     ) || [];
+    
+    // Count dependents that will be removed (children of removed responsibles)
+    const removedResponsibleIds = studentsToRemove.map(s => s.student_id);
+    const dependentsToRemove = (allDependents || []).filter(
+      (dep: any) => removedResponsibleIds.includes(dep.responsible_id)
+    );
+    
+    logStep("Entities to remove", { 
+      studentsCount: studentsToRemove.length,
+      dependentsCount: dependentsToRemove.length 
+    });
 
     logStep("Students to remove identified", { removeCount: studentsToRemove.length });
 
@@ -244,6 +278,7 @@ serve(async (req) => {
       newPlanId: new_plan_id,
       studentsKept: selected_student_ids.length,
       studentsDeleted: deletedCount,
+      dependentsDeleted: dependentsToRemove.length,
       deleteResults: deleteResults
     });
 
@@ -252,6 +287,7 @@ serve(async (req) => {
       target_plan_id: new_plan_id,
       students_kept_count: selected_student_ids.length,
       students_deleted_count: deletedCount,
+      dependents_deleted_count: dependentsToRemove.length,
       kept_student_ids: selected_student_ids,
       delete_results: deleteResults,
     }, {

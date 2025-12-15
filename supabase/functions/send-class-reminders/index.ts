@@ -81,12 +81,13 @@ serve(async (req) => {
           continue;
         }
 
-        // Buscar participantes confirmados
+        // Buscar participantes confirmados (incluindo dependent_id)
         const { data: participants, error: participantsError } = await supabase
           .from("class_participants")
           .select(`
             id,
             student_id,
+            dependent_id,
             profiles (
               name,
               email
@@ -103,17 +104,32 @@ serve(async (req) => {
         // 3. Enviar lembrete para cada participante
         for (const participant of participants) {
           try {
-            // Buscar preferências de notificação do aluno
+            // NEW: Buscar dados do dependente se aplicável
+            let dependentName: string | null = null;
+            if (participant.dependent_id) {
+              const { data: dependent } = await supabase
+                .from("dependents")
+                .select("name")
+                .eq("id", participant.dependent_id)
+                .single();
+              
+              if (dependent) {
+                dependentName = dependent.name;
+                console.log(`📌 Lembrete para dependente: ${dependentName}`);
+              }
+            }
+
+            // Buscar preferências de notificação do aluno/responsável
             const { data: studentProfile } = await supabase
               .from("profiles")
               .select("notification_preferences")
               .eq("id", participant.student_id)
               .single();
 
-            // Verificar se aluno quer receber lembretes
+            // Verificar se aluno/responsável quer receber lembretes
             const preferences = studentProfile?.notification_preferences as any;
             if (preferences?.class_reminder === false) {
-              console.log(`⏭️ Aluno ${participant.student_id} desabilitou lembretes de aula`);
+              console.log(`⏭️ Aluno/Responsável ${participant.student_id} desabilitou lembretes de aula`);
               continue;
             }
 
@@ -174,6 +190,7 @@ serve(async (req) => {
                     .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f59e0b; }
                     .highlight { background: #fef3c7; padding: 15px; border-radius: 6px; margin: 15px 0; text-align: center; }
                     .button { display: inline-block; background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0; }
+                    .dependent-badge { background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 9999px; font-size: 12px; display: inline-block; margin-left: 8px; }
                     .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
                   </style>
                 </head>
@@ -186,7 +203,12 @@ serve(async (req) => {
                       <p>Olá <strong>${recipientName}</strong>,</p>
                       
                       <div class="highlight">
-                        <h3 style="margin: 0; color: #f59e0b;">🔔 Você tem aula em ${hoursUntilClass}h!</h3>
+                        <h3 style="margin: 0; color: #f59e0b;">
+                          🔔 ${dependentName 
+                            ? `${dependentName} tem aula em ${hoursUntilClass}h!`
+                            : `Você tem aula em ${hoursUntilClass}h!`
+                          }
+                        </h3>
                       </div>
                       
                       <div class="info-box">
@@ -196,6 +218,7 @@ serve(async (req) => {
                         <p><strong>Horário:</strong> ${formattedTime}</p>
                         <p><strong>Duração:</strong> ${classData.duration_minutes} minutos</p>
                         <p><strong>Professor:</strong> ${teacher.name}</p>
+                        ${dependentName ? `<p><strong>Aluno:</strong> ${dependentName}<span class="dependent-badge">📌 Dependente</span></p>` : ''}
                       </div>
                       
                       <p style="text-align: center; margin: 30px 0;">
@@ -205,7 +228,10 @@ serve(async (req) => {
                       </p>
                       
                       <p style="font-size: 14px; color: #6b7280;">
-                        💡 <strong>Dica:</strong> Prepare seus materiais e chegue com alguns minutos de antecedência para aproveitar melhor a aula!
+                        💡 <strong>Dica:</strong> ${dependentName 
+                          ? `Prepare os materiais de ${dependentName} e chegue com alguns minutos de antecedência para aproveitar melhor a aula!`
+                          : 'Prepare seus materiais e chegue com alguns minutos de antecedência para aproveitar melhor a aula!'
+                        }
                       </p>
                     </div>
                     <div class="footer">
@@ -220,7 +246,9 @@ serve(async (req) => {
             // Enviar email
             const emailResult = await sendEmail({
               to: recipientEmail,
-              subject: `⏰ Lembrete: Aula com ${teacher.name} em ${hoursUntilClass}h`,
+              subject: dependentName 
+                ? `⏰ Lembrete: Aula de ${dependentName} com ${teacher.name} em ${hoursUntilClass}h`
+                : `⏰ Lembrete: Aula com ${teacher.name} em ${hoursUntilClass}h`,
               html: emailHtml,
             });
 
@@ -245,7 +273,7 @@ serve(async (req) => {
             }
 
             remindersSent++;
-            console.log(`✅ Lembrete enviado para ${recipientName} (${recipientEmail})`);
+            console.log(`✅ Lembrete enviado para ${recipientName} (${recipientEmail})${dependentName ? ` - Dependente: ${dependentName}` : ''}`);
 
           } catch (participantError) {
             console.error(`Erro ao processar participante:`, participantError);

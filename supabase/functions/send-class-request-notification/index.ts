@@ -11,6 +11,7 @@ interface RequestNotificationPayload {
   class_id: string;
   teacher_id: string;
   student_id: string;
+  dependent_id?: string; // NEW: Support for dependent
   service_name: string;
   class_date: string;
   duration_minutes: number;
@@ -44,7 +45,7 @@ serve(async (req) => {
       throw new Error("Teacher not found or no email");
     }
 
-    // 2. Buscar dados do aluno
+    // 2. Buscar dados do aluno/responsável
     const { data: student, error: studentError } = await supabase
       .from("profiles")
       .select("name, email")
@@ -56,7 +57,27 @@ serve(async (req) => {
       throw new Error("Student not found");
     }
 
-    // 3. Formatar data e hora
+    // 3. NEW: Buscar dados do dependente se aplicável
+    let dependentName: string | null = null;
+    if (payload.dependent_id) {
+      const { data: dependent } = await supabase
+        .from("dependents")
+        .select("name")
+        .eq("id", payload.dependent_id)
+        .single();
+      
+      if (dependent) {
+        dependentName = dependent.name;
+        console.log(`📌 Aula solicitada para dependente: ${dependentName}`);
+      }
+    }
+
+    // Determinar nome do aluno para exibição
+    const displayStudentName = dependentName 
+      ? `${dependentName} (dependente de ${student.name})`
+      : student.name;
+
+    // 4. Formatar data e hora
     const classDateTime = new Date(payload.class_date);
     const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
       day: "2-digit",
@@ -70,7 +91,7 @@ serve(async (req) => {
       timeZone: "America/Sao_Paulo",
     });
 
-    // 4. Construir email
+    // 5. Construir email
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -84,6 +105,7 @@ serve(async (req) => {
             .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #2563eb; }
             .button { display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0; }
             .notes { background: #fef3c7; padding: 15px; border-radius: 6px; margin: 15px 0; }
+            .dependent-badge { background: #dbeafe; color: #1e40af; padding: 4px 12px; border-radius: 9999px; font-size: 12px; display: inline-block; margin-left: 8px; }
             .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
           </style>
         </head>
@@ -95,7 +117,10 @@ serve(async (req) => {
             <div class="content">
               <p>Olá <strong>${teacher.name}</strong>,</p>
               
-              <p>O aluno <strong>${student.name}</strong> solicitou uma aula com você!</p>
+              <p>${dependentName 
+                ? `O responsável <strong>${student.name}</strong> solicitou uma aula para o dependente <strong>${dependentName}</strong>!`
+                : `O aluno <strong>${student.name}</strong> solicitou uma aula com você!`
+              }</p>
               
               <div class="info-box">
                 <h3 style="margin-top: 0;">📋 Detalhes da Aula</h3>
@@ -103,12 +128,13 @@ serve(async (req) => {
                 <p><strong>Data:</strong> ${formattedDate}</p>
                 <p><strong>Horário:</strong> ${formattedTime}</p>
                 <p><strong>Duração:</strong> ${payload.duration_minutes} minutos</p>
-                <p><strong>Aluno:</strong> ${student.name} (${student.email})</p>
+                <p><strong>Aluno:</strong> ${dependentName || student.name}${dependentName ? `<span class="dependent-badge">📌 Dependente</span>` : ''}</p>
+                ${dependentName ? `<p><strong>Responsável:</strong> ${student.name} (${student.email})</p>` : `<p><strong>Email:</strong> ${student.email}</p>`}
               </div>
               
               ${payload.notes ? `
                 <div class="notes">
-                  <h4 style="margin-top: 0;">💬 Observações do Aluno:</h4>
+                  <h4 style="margin-top: 0;">💬 Observações:</h4>
                   <p>${payload.notes}</p>
                 </div>
               ` : ""}
@@ -132,10 +158,10 @@ serve(async (req) => {
       </html>
     `;
 
-    // 5. Enviar email
+    // 6. Enviar email
     const emailResult = await sendEmail({
       to: teacher.email,
-      subject: `🔔 Nova solicitação de aula de ${student.name}`,
+      subject: `🔔 Nova solicitação de aula ${dependentName ? `para ${dependentName}` : `de ${student.name}`}`,
       html: emailHtml,
     });
 
@@ -146,7 +172,7 @@ serve(async (req) => {
 
     console.log("✅ Email sent successfully:", emailResult.messageId);
 
-    // 6. Registrar notificação no histórico
+    // 7. Registrar notificação no histórico
     const { error: notificationError } = await supabase
       .from("class_notifications")
       .insert({
@@ -161,7 +187,11 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, message: "Notification sent" }),
+      JSON.stringify({ 
+        success: true, 
+        message: "Notification sent",
+        dependent_name: dependentName
+      }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,

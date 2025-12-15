@@ -135,6 +135,10 @@ export default function Alunos() {
       // Don't send localhost URLs - let the function handle the redirect URL
       const redirectUrl = window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`;
       console.log('Calling create-student function...');
+      
+      // For family registration, guardian info IS the student info
+      const isFamily = formData.registrationType === 'family';
+      
       const {
         data,
         error
@@ -144,14 +148,14 @@ export default function Alunos() {
           email: formData.email,
           teacher_id: profile.id,
           redirect_url: redirectUrl,
-          guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
-          guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
-          guardian_cpf: formData.isOwnResponsible ? null : formData.guardian_cpf || null,
-          guardian_address_street: formData.isOwnResponsible ? null : formData.guardian_address_street || null,
-          guardian_address_city: formData.isOwnResponsible ? null : formData.guardian_address_city || null,
-          guardian_address_state: formData.isOwnResponsible ? null : formData.guardian_address_state || null,
-          guardian_address_postal_code: formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
+          guardian_name: isFamily || formData.isOwnResponsible ? formData.name : formData.guardian_name,
+          guardian_email: isFamily || formData.isOwnResponsible ? formData.email : formData.guardian_email,
+          guardian_phone: isFamily || formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
+          guardian_cpf: isFamily || formData.isOwnResponsible ? null : formData.guardian_cpf || null,
+          guardian_address_street: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_street || null,
+          guardian_address_city: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_city || null,
+          guardian_address_state: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_state || null,
+          guardian_address_postal_code: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
           billing_day: formData.billing_day,
           notify_professor_email: profile.email,
           professor_name: profile.name,
@@ -197,10 +201,50 @@ export default function Alunos() {
         return;
       }
 
+      // If this is a family registration, create the dependents
+      if (isFamily && formData.dependents && formData.dependents.length > 0 && data?.student_id) {
+        console.log('Creating dependents for family registration...');
+        const dependentErrors: string[] = [];
+        
+        for (const dep of formData.dependents) {
+          try {
+            const { data: depData, error: depError } = await supabase.functions.invoke('create-dependent', {
+              body: {
+                responsible_id: data.student_id,
+                teacher_id: profile.id,
+                name: dep.name,
+                birth_date: dep.birth_date || null,
+                notes: null,
+              },
+            });
+            
+            if (depError || (depData && depData.error)) {
+              console.error('Error creating dependent:', dep.name, depError || depData?.error);
+              dependentErrors.push(dep.name);
+            }
+          } catch (depErr) {
+            console.error('Exception creating dependent:', dep.name, depErr);
+            dependentErrors.push(dep.name);
+          }
+        }
+        
+        if (dependentErrors.length > 0) {
+          toast({
+            title: t('dependents.errors.partialCreation', 'Alguns dependentes não foram criados'),
+            description: t('dependents.errors.partialCreationDescription', 'Não foi possível criar: {{names}}', { names: dependentErrors.join(', ') }),
+            variant: 'destructive',
+          });
+        }
+      }
+
       // Success case - check if there's billing info or warning in the response
       let successMessage = data?.is_new_student
         ? `${formData.name} receberá um e-mail para concluir o cadastro.`
         : `${formData.name} foi vinculado à sua conta.`;
+
+      if (isFamily && formData.dependents?.length > 0) {
+        successMessage += ` ${formData.dependents.length} dependente(s) adicionado(s).`;
+      }
 
       if (data?.billing_warning) {
         successMessage += ` ⚠️ ${data.billing_warning}`;
@@ -209,7 +253,7 @@ export default function Alunos() {
       }
 
       toast({
-        title: 'Aluno convidado com sucesso!',
+        title: isFamily ? 'Família cadastrada com sucesso!' : 'Aluno convidado com sucesso!',
         description: successMessage,
         duration: data?.billing_warning || data?.billing ? 5000 : 3000,
       });

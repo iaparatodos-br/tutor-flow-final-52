@@ -114,6 +114,27 @@
     "deleteError": "Erro ao processar a remoção do aluno",
     "profileLoadError": "Não foi possível carregar os dados do aluno"
   },
+  "registrationType": {
+    "title": "Tipo de Cadastro",
+    "description": "Selecione o tipo de cadastro para este aluno",
+    "individual": {
+      "title": "Aluno com Email",
+      "description": "Aluno adulto ou com email próprio para acesso ao sistema"
+    },
+    "family": {
+      "title": "Família / Menores",
+      "description": "Responsável com um ou mais dependentes menores de idade",
+      "dependentsLabel": "Dependentes",
+      "addDependent": "Adicionar",
+      "newDependent": "Novo Dependente",
+      "noDependentsYet": "Nenhum dependente adicionado",
+      "addFirst": "Adicionar primeiro dependente",
+      "minOneDependentRequired": "Adicione pelo menos um dependente",
+      "guardianInfo": "Dados do Responsável",
+      "guardianInfoDescription": "O responsável receberá acesso ao sistema e poderá acompanhar as aulas de todos os dependentes"
+    },
+    "back": "Voltar"
+  },
   "dependents": {
     "title": "Dependentes",
     "add": "Adicionar",

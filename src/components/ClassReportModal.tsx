@@ -29,6 +29,7 @@ interface ClassReport {
 
 interface StudentFeedback {
   student_id: string;
+  dependent_id?: string | null;
   feedback: string;
 }
 

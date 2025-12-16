@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2, Users } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2, Users, Baby } from "lucide-react";
 
 interface TestResult {
   test_name: string;
@@ -217,7 +217,11 @@ export function PaymentRoutingTest() {
                     </SelectLabel>
                     {dependents.map((dependent) => (
                       <SelectItem key={`dep_${dependent.id}`} value={`dep_${dependent.id}`}>
-                        📌 {dependent.name} (resp: {dependent.responsible_name})
+                        <span className="flex items-center gap-1.5">
+                          <Baby className="h-3.5 w-3.5 text-purple-600" />
+                          {dependent.name}
+                          <span className="text-muted-foreground">(resp: {dependent.responsible_name})</span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectGroup>

@@ -34,7 +34,7 @@
       "chargeApplied": "The charge will be applied normally."
     },
     "dependent": {
-      "title": "📌 Dependent's Class",
+      "title": "Dependent's Class",
       "description": "You are canceling the class for {{dependentName}}.",
       "chargeToResponsible": "The charge will be directed to the responsible party ({{responsibleName}})."
     }

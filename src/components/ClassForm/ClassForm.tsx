@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
+import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -386,10 +386,11 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                           />
                           <Label
                             htmlFor={`dependent-${dependent.id}`}
-                            className="text-sm font-normal cursor-pointer flex-1"
+                            className="text-sm font-normal cursor-pointer flex-1 flex items-center gap-1.5"
                           >
-                            <span>📌 {dependent.name}</span>
-                            <span className="text-xs text-muted-foreground ml-1">
+                            <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                            <span>{dependent.name}</span>
+                            <span className="text-xs text-muted-foreground">
                               ({t('participantGroups.childOf')} {dependent.responsible_name})
                             </span>
                           </Label>
@@ -403,16 +404,16 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
               {formData.selectedParticipants.length > 0 && (
                 <div className="mt-3 pt-3 border-t">
                   <div className="flex flex-wrap gap-1">
-                    {selectedParticipantNames.map((participant, index) => (
-                      <Badge 
-                        key={index} 
-                        variant={participant.type === 'dependent' ? 'outline' : 'secondary'} 
-                        className="text-xs"
-                      >
-                        {participant.type === 'dependent' && '📌 '}
-                        {participant.name}
-                      </Badge>
-                    ))}
+                      {selectedParticipantNames.map((participant, index) => (
+                        <Badge 
+                          key={index} 
+                          variant={participant.type === 'dependent' ? 'dependent' : 'secondary'} 
+                          className="text-xs"
+                        >
+                          {participant.type === 'dependent' && <Baby className="h-3 w-3 mr-1" />}
+                          {participant.name}
+                        </Badge>
+                      ))}
                   </div>
                    {formData.selectedParticipants.length > 1 && currentPlan?.slug === 'free' && (
                      <Badge variant="destructive" className="mt-2">

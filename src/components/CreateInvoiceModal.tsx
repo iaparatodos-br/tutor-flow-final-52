@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { DollarSign, AlertTriangle, AlertCircle } from "lucide-react";
+import { DollarSign, AlertTriangle, AlertCircle, Baby } from "lucide-react";
 import { toast } from "sonner";
 import { calculateBoletoFees, formatCurrency } from "@/utils/stripe-fees";
 import { useTranslation } from "react-i18next";
@@ -187,7 +187,13 @@ export function CreateInvoiceModal({ students, dependents = [], onInvoiceCreated
                       </SelectLabel>
                       {dependents.map((dependent) => (
                         <SelectItem key={`dependent-${dependent.id}`} value={`dependent:${dependent.id}`}>
-                          📌 {dependent.name} ({t('groups.childOf') || 'filho de'} {dependent.responsible_name})
+                          <span className="flex items-center gap-1.5">
+                            <Baby className="h-3.5 w-3.5 text-purple-600" />
+                            {dependent.name}
+                            <span className="text-muted-foreground">
+                              ({t('groups.childOf') || 'filho de'} {dependent.responsible_name})
+                            </span>
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectGroup>

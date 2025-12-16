@@ -15,6 +15,20 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
+        // Student types variants
+        student:
+          "border-transparent bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+        family:
+          "border-transparent bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200",
+        dependent:
+          "border-transparent bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
+        // Status variants
+        success:
+          "border-transparent bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200",
+        warning:
+          "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200",
+        info:
+          "border-transparent bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",
       },
     },
     defaultVariants: {

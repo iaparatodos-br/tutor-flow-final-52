@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Users, CreditCard, Loader2 } from 'lucide-react';
+import { AlertTriangle, Users, CreditCard, Loader2, Baby } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
@@ -14,6 +14,18 @@ interface Student {
   student_name: string;
   student_email: string;
   pendingInvoices: number;
+}
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_name: string;
+}
+
+interface StudentMetrics {
+  total_students: number;
+  regular_students: number;
+  dependents_count: number;
 }
 
 interface SubscriptionCancellationModalProps {
@@ -31,6 +43,8 @@ export function SubscriptionCancellationModal({
   const { currentPlan } = useSubscription();
   const [confirmationText, setConfirmationText] = useState('');
   const [students, setStudents] = useState<Student[]>([]);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [metrics, setMetrics] = useState<StudentMetrics | null>(null);
   const [totalPendingInvoices, setTotalPendingInvoices] = useState(0);
   const [loading, setLoading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -48,15 +62,37 @@ export function SubscriptionCancellationModal({
   const loadStudentsAndInvoices = async () => {
     setLoading(true);
     try {
-      // Buscar alunos do professor
+      const userId = (await supabase.auth.getUser()).data.user?.id;
+      if (!userId) throw new Error('User not found');
+
+      // Use count_teacher_students_and_dependents for accurate metrics
+      const { data: metricsData, error: metricsError } = await supabase.rpc(
+        'count_teacher_students_and_dependents',
+        { p_teacher_id: userId }
+      );
+      
+      if (metricsError) throw metricsError;
+      setMetrics(metricsData?.[0] || { total_students: 0, regular_students: 0, dependents_count: 0 });
+
+      // Fetch students
       const { data: studentsData, error: studentsError } = await supabase
-        .rpc('get_teacher_students', {
-          teacher_user_id: (await supabase.auth.getUser()).data.user?.id
-        });
+        .rpc('get_teacher_students', { teacher_user_id: userId });
 
       if (studentsError) throw studentsError;
 
-      // Para cada aluno, buscar faturas pendentes
+      // Fetch dependents
+      const { data: dependentsData, error: dependentsError } = await supabase
+        .rpc('get_teacher_dependents', { p_teacher_id: userId });
+      
+      if (dependentsError) throw dependentsError;
+      
+      setDependents(dependentsData?.map((d: any) => ({
+        id: d.dependent_id,
+        name: d.dependent_name,
+        responsible_name: d.responsible_name
+      })) || []);
+
+      // For each student, fetch pending invoices
       const studentsWithInvoices = await Promise.all(
         (studentsData || []).map(async (student: any) => {
           const { count } = await supabase
@@ -105,6 +141,8 @@ export function SubscriptionCancellationModal({
   const resetModal = () => {
     setConfirmationText('');
     setStudents([]);
+    setDependents([]);
+    setMetrics(null);
     setTotalPendingInvoices(0);
   };
 
@@ -151,6 +189,30 @@ export function SubscriptionCancellationModal({
                 </div>
               )}
 
+              {/* Metrics Summary */}
+              {!loading && metrics && (
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="bg-muted p-3 rounded-lg">
+                    <div className="text-2xl font-bold">{metrics.total_students}</div>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-lg">
+                    <div className="text-2xl font-bold flex items-center justify-center gap-1">
+                      <Users className="h-4 w-4" />
+                      {metrics.regular_students}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Alunos</p>
+                  </div>
+                  <div className="bg-muted p-3 rounded-lg">
+                    <div className="text-2xl font-bold flex items-center justify-center gap-1">
+                      <Baby className="h-4 w-4" />
+                      {metrics.dependents_count}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Dependentes</p>
+                  </div>
+                </div>
+              )}
+
               {/* Students and Invoices Info */}
               {!loading && students.length > 0 && (
                 <>
@@ -170,6 +232,26 @@ export function SubscriptionCancellationModal({
                       ))}
                     </div>
                   </div>
+
+                  {/* Dependents Info */}
+                  {dependents.length > 0 && (
+                    <div className="bg-muted p-4 rounded-lg">
+                      <h4 className="font-semibold flex items-center gap-2 mb-3">
+                        <Baby className="h-4 w-4" />
+                        Dependentes Afetados ({dependents.length})
+                      </h4>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {dependents.map((dependent) => (
+                          <div key={dependent.id} className="flex justify-between text-sm">
+                            <span>{dependent.name}</span>
+                            <span className="text-muted-foreground">
+                              resp: {dependent.responsible_name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {totalPendingInvoices > 0 && (
                     <Alert>

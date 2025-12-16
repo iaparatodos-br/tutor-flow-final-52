@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProgressModal } from './ProgressModal';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface Student {
   id: string;
@@ -19,6 +20,23 @@ interface Student {
   name: string;
   email: string;
   created_at: string;
+}
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+  created_at: string;
+}
+
+interface SelectableEntity {
+  id: string;
+  name: string;
+  email?: string;
+  created_at: string;
+  type: 'student' | 'dependent';
+  responsibleName?: string;
 }
 
 interface PaymentFailureStudentSelectionModalProps {
@@ -43,40 +61,89 @@ export function PaymentFailureStudentSelectionModal({
   needToRemove
 }: PaymentFailureStudentSelectionModalProps) {
   const { t } = useTranslation('subscription');
-  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const { profile } = useProfile();
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [progressSteps, setProgressSteps] = useState<any[]>([]);
   const [progress, setProgress] = useState(0);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [loadingDependents, setLoadingDependents] = useState(false);
 
-  const handleStudentToggle = (studentId: string) => {
-    setSelectedStudents(prev => {
-      if (prev.includes(studentId)) {
-        return prev.filter(id => id !== studentId);
+  // Fetch dependents when modal opens
+  useEffect(() => {
+    if (open && profile?.id) {
+      loadDependents();
+    }
+  }, [open, profile?.id]);
+
+  const loadDependents = async () => {
+    if (!profile?.id) return;
+    setLoadingDependents(true);
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      if (error) throw error;
+      setDependents(data?.map((d: any) => ({
+        id: d.dependent_id,
+        name: d.dependent_name,
+        responsible_id: d.responsible_id,
+        responsible_name: d.responsible_name,
+        created_at: d.created_at
+      })) || []);
+    } catch (error) {
+      console.error('Error loading dependents:', error);
+    } finally {
+      setLoadingDependents(false);
+    }
+  };
+
+  // Combine students and dependents into selectable entities
+  const allEntities: SelectableEntity[] = [
+    ...students.map(s => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      created_at: s.created_at,
+      type: 'student' as const
+    })),
+    ...dependents.map(d => ({
+      id: `dep_${d.id}`,
+      name: d.name,
+      created_at: d.created_at,
+      type: 'dependent' as const,
+      responsibleName: d.responsible_name
+    }))
+  ];
+
+  const handleEntityToggle = (entityId: string) => {
+    setSelectedEntities(prev => {
+      if (prev.includes(entityId)) {
+        return prev.filter(id => id !== entityId);
       } else if (prev.length < targetLimit) {
-        return [...prev, studentId];
+        return [...prev, entityId];
       }
-      return prev; // Don't add if already at limit
+      return prev;
     });
   };
 
   const handleSelectAll = () => {
-    if (selectedStudents.length === targetLimit) {
-      setSelectedStudents([]);
+    if (selectedEntities.length === targetLimit) {
+      setSelectedEntities([]);
     } else {
-      // Select first students up to limit (could be based on creation date)
-      const sortedStudents = [...students].sort((a, b) => 
+      const sortedEntities = [...allEntities].sort((a, b) => 
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
-      setSelectedStudents(sortedStudents.slice(0, targetLimit).map(s => s.id));
+      setSelectedEntities(sortedEntities.slice(0, targetLimit).map(e => e.id));
     }
   };
 
   const handleConfirmSelection = async () => {
-    if (selectedStudents.length !== targetLimit) {
+    if (selectedEntities.length !== targetLimit) {
       toast({
         title: "Seleção incompleta",
-        description: `Você deve selecionar exatamente ${targetLimit} aluno(s).`,
+        description: `Você deve selecionar exatamente ${targetLimit} aluno(s)/dependente(s).`,
         variant: "destructive",
       });
       return;
@@ -85,13 +152,12 @@ export function PaymentFailureStudentSelectionModal({
     setProcessing(true);
     setShowProgress(true);
     
-    // Initialize progress steps
     const steps = [
       {
         id: 'validate',
         label: 'Validando seleção',
         status: 'in-progress' as const,
-        description: 'Verificando alunos selecionados'
+        description: 'Verificando alunos e dependentes selecionados'
       },
       {
         id: 'cancel-invoices',
@@ -101,9 +167,9 @@ export function PaymentFailureStudentSelectionModal({
       },
       {
         id: 'delete',
-        label: 'Removendo alunos',
+        label: 'Removendo alunos/dependentes',
         status: 'pending' as const,
-        description: 'Excluindo alunos não selecionados'
+        description: 'Excluindo itens não selecionados'
       },
       {
         id: 'update',
@@ -123,7 +189,6 @@ export function PaymentFailureStudentSelectionModal({
     setProgress(10);
 
     try {
-      // Step 1: Validation
       await new Promise(resolve => setTimeout(resolve, 1000));
       setProgressSteps(prev => prev.map(step => 
         step.id === 'validate' 
@@ -134,10 +199,14 @@ export function PaymentFailureStudentSelectionModal({
       ));
       setProgress(25);
 
-      // Step 2: Process payment failure downgrade (handles everything)
+      // Separate student IDs and dependent IDs
+      const selectedStudentIds = selectedEntities.filter(id => !id.startsWith('dep_'));
+      const selectedDependentIds = selectedEntities.filter(id => id.startsWith('dep_')).map(id => id.replace('dep_', ''));
+
       const { data, error } = await supabase.functions.invoke('process-payment-failure-downgrade', {
         body: {
-          selectedStudentIds: selectedStudents,
+          selectedStudentIds,
+          selectedDependentIds,
           reason: 'payment_failure'
         }
       });
@@ -173,7 +242,6 @@ export function PaymentFailureStudentSelectionModal({
       ));
       setProgress(90);
 
-      // Step 4: Complete
       await new Promise(resolve => setTimeout(resolve, 500));
       setProgressSteps(prev => prev.map(step => 
         step.id === 'complete' 
@@ -188,9 +256,8 @@ export function PaymentFailureStudentSelectionModal({
           description: "Suas faturas pendentes foram canceladas e você foi movido para o plano gratuito.",
         });
         
-        // Wait a bit to show completion
         await new Promise(resolve => setTimeout(resolve, 1000));
-        onClose(true); // Signal completion
+        onClose(true);
       } else {
         throw new Error(data?.message || 'Erro desconhecido');
       }
@@ -217,8 +284,8 @@ export function PaymentFailureStudentSelectionModal({
     }
   };
 
-  const selectedCount = selectedStudents.length;
-  const studentsToRemove = students.filter(s => !selectedStudents.includes(s.id));
+  const selectedCount = selectedEntities.length;
+  const entitiesToRemove = allEntities.filter(e => !selectedEntities.includes(e.id));
 
   return (
     <Dialog open={open} onOpenChange={() => !processing && onClose()}>
@@ -297,7 +364,7 @@ export function PaymentFailureStudentSelectionModal({
             </Card>
             <Card>
               <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-red-600">{studentsToRemove.length}</div>
+                <div className="text-2xl font-bold text-red-600">{entitiesToRemove.length}</div>
                 <p className="text-sm text-muted-foreground">Serão Excluídos</p>
               </CardContent>
             </Card>
@@ -308,69 +375,92 @@ export function PaymentFailureStudentSelectionModal({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               <span className="font-medium">
-                Selecione {targetLimit} aluno(s) para manter
+                Selecione {targetLimit} aluno(s)/dependente(s) para manter
               </span>
             </div>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleSelectAll}
-              disabled={processing}
+              disabled={processing || loadingDependents}
             >
               {selectedCount === targetLimit ? 'Limpar Seleção' : 'Selecionar Primeiros'}
             </Button>
           </div>
 
-          {/* Students List */}
+          {/* Entities List (Students + Dependents) */}
           <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {students.map((student) => {
-              const isSelected = selectedStudents.includes(student.id);
-              const canSelect = isSelected || selectedStudents.length < targetLimit;
-              
-              return (
-                <div
-                  key={student.id}
-                  className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    isSelected 
-                      ? 'border-green-500 bg-green-50' 
-                      : canSelect 
-                        ? 'border-gray-200 hover:border-gray-300' 
-                        : 'border-gray-100 bg-gray-50 opacity-50'
-                  }`}
-                  onClick={() => canSelect && handleStudentToggle(student.id)}
-                >
-                  <Checkbox 
-                    checked={isSelected}
-                    disabled={!canSelect || processing}
-                    className="pointer-events-none"
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium">{student.name}</p>
-                    <p className="text-sm text-muted-foreground">{student.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Aluno desde {format(new Date(student.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                    </p>
+            {loadingDependents ? (
+              <div className="text-center py-4 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                Carregando dependentes...
+              </div>
+            ) : (
+              allEntities.map((entity) => {
+                const isSelected = selectedEntities.includes(entity.id);
+                const canSelect = isSelected || selectedEntities.length < targetLimit;
+                
+                return (
+                  <div
+                    key={entity.id}
+                    className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      isSelected 
+                        ? 'border-green-500 bg-green-50 dark:bg-green-950' 
+                        : canSelect 
+                          ? 'border-border hover:border-muted-foreground' 
+                          : 'border-muted bg-muted/50 opacity-50'
+                    }`}
+                    onClick={() => canSelect && handleEntityToggle(entity.id)}
+                  >
+                    <Checkbox 
+                      checked={isSelected}
+                      disabled={!canSelect || processing}
+                      className="pointer-events-none"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{entity.name}</p>
+                        {entity.type === 'dependent' && (
+                          <Badge variant="outline" className="text-xs">
+                            <Baby className="h-3 w-3 mr-1" />
+                            Dependente
+                          </Badge>
+                        )}
+                      </div>
+                      {entity.type === 'student' && entity.email && (
+                        <p className="text-sm text-muted-foreground">{entity.email}</p>
+                      )}
+                      {entity.type === 'dependent' && entity.responsibleName && (
+                        <p className="text-sm text-muted-foreground">Responsável: {entity.responsibleName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {entity.type === 'student' ? 'Aluno' : 'Cadastrado'} desde {format(new Date(entity.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <Badge variant="default" className="bg-green-500">
+                        Selecionado
+                      </Badge>
+                    )}
                   </div>
-                  {isSelected && (
-                    <Badge variant="default" className="bg-green-500">
-                      Selecionado
-                    </Badge>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
-          {/* Students to be removed warning */}
-          {studentsToRemove.length > 0 && (
+          {/* Entities to be removed warning */}
+          {entitiesToRemove.length > 0 && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Alunos que serão excluídos permanentemente:</AlertTitle>
+              <AlertTitle>Alunos/dependentes que serão excluídos permanentemente:</AlertTitle>
               <AlertDescription>
                 <div className="space-y-1 mt-2">
-                  {studentsToRemove.map(student => (
-                    <div key={student.id} className="text-sm">
-                      • {student.name} ({student.email})
+                  {entitiesToRemove.map(entity => (
+                    <div key={entity.id} className="text-sm flex items-center gap-1">
+                      • {entity.name} 
+                      {entity.type === 'dependent' && <Baby className="h-3 w-3" />}
+                      {entity.email && `(${entity.email})`}
+                      {entity.responsibleName && `(resp: ${entity.responsibleName})`}
                     </div>
                   ))}
                 </div>

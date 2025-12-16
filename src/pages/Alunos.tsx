@@ -13,7 +13,8 @@ import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarning
 import { UpdatePaymentMethodModal } from "@/components/UpdatePaymentMethodModal";
 import { StudentImportDialog } from "@/components/students/StudentImportDialog";
 import { DependentFormModal } from "@/components/DependentFormModal";
-import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw, ChevronDown, ChevronRight, Users, UserPlus } from "lucide-react";
+import { Plus, Edit, Trash2, Mail, User, Calendar, UserCheck, Eye, AlertTriangle, DollarSign, RefreshCcw, ChevronDown, ChevronRight, Users, UserPlus, Baby } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
 import { useSubscription } from "@/contexts/SubscriptionContext";
@@ -730,17 +731,31 @@ export default function Alunos() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {hasDependents ? (
-                          <Badge variant="default" className="text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                            <Users className="h-3 w-3 mr-1" />
-                            {t('badges.family', 'Família')} ({studentDependents.length})
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">
-                            <User className="h-3 w-3 mr-1" />
-                            {t('badges.student', 'Aluno')}
-                          </Badge>
-                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              {hasDependents ? (
+                                <Badge variant="family" className="text-xs cursor-help">
+                                  <Users className="h-3 w-3 mr-1" />
+                                  {t('badges.family', 'Família')} ({studentDependents.length})
+                                </Badge>
+                              ) : (
+                                <Badge variant="student" className="text-xs cursor-help">
+                                  <User className="h-3 w-3 mr-1" />
+                                  {t('badges.student', 'Aluno')}
+                                </Badge>
+                              )}
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p className="text-xs">
+                                {hasDependents 
+                                  ? t('dependents.description', 'Menores sob responsabilidade de {{name}}', { name: student.name })
+                                  : t('registrationType.individual.description', 'Aluno adulto ou com email próprio para acesso ao sistema')
+                                }
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-muted-foreground">
@@ -829,9 +844,21 @@ export default function Alunos() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-xs">
-                            📌 {t('badges.dependent', 'Dependente')}
-                          </Badge>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge variant="dependent" className="text-xs cursor-help">
+                                  <Baby className="h-3 w-3 mr-1" />
+                                  {t('badges.dependent', 'Dependente')}
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="text-xs">
+                                  {t('dependents.billedToResponsible', 'Cobra via responsável')}
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </TableCell>
                         <TableCell>
                           <span className="text-muted-foreground text-sm">—</span>

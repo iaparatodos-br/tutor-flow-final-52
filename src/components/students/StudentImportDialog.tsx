@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, FileSpreadsheet, Check, AlertTriangle, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
+import { Upload, FileSpreadsheet, Check, AlertTriangle, Loader2, ArrowRight, ArrowLeft, Baby } from "lucide-react";
 import * as XLSX from 'xlsx';
 
 interface StudentImportDialogProps {
@@ -533,8 +533,9 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
                             </TableCell>
                             <TableCell>
                               {row._dependentCount > 0 ? (
-                                <span className="text-purple-600 dark:text-purple-400 font-medium">
-                                  📌 {row._dependentCount} {row._dependentCount === 1 ? 'dependente' : 'dependentes'}
+                                <span className="text-purple-600 dark:text-purple-400 font-medium inline-flex items-center gap-1">
+                                  <Baby className="h-3.5 w-3.5" />
+                                  {row._dependentCount} {row._dependentCount === 1 ? 'dependente' : 'dependentes'}
                                 </span>
                               ) : (
                                 "-"

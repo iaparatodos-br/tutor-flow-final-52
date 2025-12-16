@@ -34,7 +34,7 @@
       "chargeApplied": "A cobrança será aplicada normalmente."
     },
     "dependent": {
-      "title": "📌 Aula de Dependente",
+      "title": "Aula de Dependente",
       "description": "Você está cancelando a aula de {{dependentName}}.",
       "chargeToResponsible": "A cobrança será direcionada ao responsável ({{responsibleName}})."
     }

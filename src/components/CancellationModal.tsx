@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, Clock, DollarSign } from "lucide-react";
+import { AlertTriangle, Clock, DollarSign, Baby } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface VirtualClassData {
@@ -273,9 +273,14 @@ export function CancellationModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
             {t('title')}
-            {dependentInfo && <span className="text-purple-600 dark:text-purple-400 ml-2 text-sm font-normal">📌 {dependentInfo.name}</span>}
+            {dependentInfo && (
+              <span className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 text-sm font-normal">
+                <Baby className="h-3.5 w-3.5" />
+                {dependentInfo.name}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             {className} - {new Date(classDate).toLocaleDateString()} {t('at')} {new Date(classDate).toLocaleTimeString()} {t('timezone')}

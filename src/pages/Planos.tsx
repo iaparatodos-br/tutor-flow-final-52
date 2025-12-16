@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 export default function Planos() {
   const { t } = useTranslation('plans');
   const { plans, currentPlan, createCheckoutSession, subscription } = useSubscription();
-  const { studentCount } = useStudentCount();
+  const { totalStudents: studentCount } = useStudentCount();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [downgradeWarning, setDowngradeWarning] = useState<{
     open: boolean;

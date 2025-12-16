@@ -313,6 +313,7 @@ export default function Agenda() {
             class_template_id,
             class_participants!inner (
               student_id,
+              dependent_id,
               status,
               cancelled_at,
               charge_applied,
@@ -361,6 +362,7 @@ export default function Agenda() {
             class_template_id,
           class_participants!inner (
             student_id,
+            dependent_id,
             status,
             cancelled_at,
             charge_applied,
@@ -409,6 +411,7 @@ export default function Agenda() {
             class_template_id,
             class_participants!inner (
               student_id,
+              dependent_id,
               status,
               cancelled_at,
               charge_applied,
@@ -456,6 +459,7 @@ export default function Agenda() {
             class_template_id,
           class_participants!inner (
             student_id,
+            dependent_id,
             status,
             cancelled_at,
             charge_applied,
@@ -522,7 +526,7 @@ export default function Agenda() {
           // Buscar participantes de aulas em grupo (sem perfis)
           const { data: allParticipants, error: participantsError } = await supabase
             .from('class_participants')
-            .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+            .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
             .in('class_id', groupClassIds);
 
           if (participantsError) {
@@ -593,7 +597,7 @@ export default function Agenda() {
             // Buscar TODOS os participantes desses templates (sem filtro de student_id)
             const { data: allTemplateParticipants } = await supabase
               .from('class_participants')
-              .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+              .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
               .in('class_id', templateIds);
 
             // Extrair student_ids únicos
@@ -683,6 +687,7 @@ export default function Agenda() {
           // For students: Get participants from class_participants (no legacy fallback)
           const participants = item.class_participants?.map((p: any) => ({
             student_id: p.student_id,
+            dependent_id: p.dependent_id,
             status: p.status,
             cancelled_at: p.cancelled_at,
             cancelled_by: p.cancelled_by,
@@ -748,12 +753,14 @@ export default function Agenda() {
           ? (Array.isArray(template.participants)
               ? template.participants.map((p: any) => ({
                   student_id: p.student_id,
+                  dependent_id: p.dependent_id,
                   student: p.profiles
                 }))
               : [])
           : (Array.isArray(template.class_participants)
               ? template.class_participants.map((p: any) => ({
                   student_id: p.student_id,
+                  dependent_id: p.dependent_id,
                   student: p.profiles
                 }))
               : []);

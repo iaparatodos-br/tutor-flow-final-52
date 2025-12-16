@@ -22,6 +22,12 @@ interface VirtualClassData {
   // student_id REMOVED - use class_participants instead
 }
 
+interface DependentInfo {
+  id: string;
+  name: string;
+  responsible_name: string;
+}
+
 interface CancellationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -30,6 +36,7 @@ interface CancellationModalProps {
   classDate: string;
   onCancellationComplete: () => void;
   virtualClassData?: VirtualClassData;
+  dependentInfo?: DependentInfo;
 }
 
 interface CancellationPolicy {
@@ -45,7 +52,8 @@ export function CancellationModal({
   className, 
   classDate,
   onCancellationComplete,
-  virtualClassData
+  virtualClassData,
+  dependentInfo
 }: CancellationModalProps) {
   const { profile, isProfessor } = useAuth();
   const { hasTeacherFeature } = useSubscription();
@@ -232,7 +240,9 @@ export function CancellationModal({
           cancelled_by: profile!.id,
           reason: reason.trim(),
           cancelled_by_type: isProfessor ? 'teacher' : 'student',
-          participants: materializedParticipants.length > 0 ? materializedParticipants : undefined
+          participants: materializedParticipants.length > 0 ? materializedParticipants : undefined,
+          dependent_id: dependentInfo?.id || undefined,
+          dependent_name: dependentInfo?.name || undefined
         }
       });
 
@@ -263,7 +273,10 @@ export function CancellationModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogTitle>
+            {t('title')}
+            {dependentInfo && <span className="text-purple-600 dark:text-purple-400 ml-2 text-sm font-normal">📌 {dependentInfo.name}</span>}
+          </DialogTitle>
           <DialogDescription>
             {className} - {new Date(classDate).toLocaleDateString()} {t('at')} {new Date(classDate).toLocaleTimeString()} {t('timezone')}
           </DialogDescription>
@@ -321,7 +334,7 @@ export function CancellationModal({
           )}
           
           {classData?.is_group_class && !isProfessor && (
-            <Alert className="border-blue-200 bg-blue-50">
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
               <AlertDescription>
                 <div className="flex items-center gap-2">
                   <div>
@@ -335,6 +348,25 @@ export function CancellationModal({
                       )}
                     </p>
                   </div>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Dependent Info Alert */}
+          {dependentInfo && (
+            <Alert className="border-purple-200 bg-purple-50 dark:border-purple-800 dark:bg-purple-950">
+              <AlertDescription>
+                <div>
+                  <strong className="text-purple-800 dark:text-purple-200">{t('alert.dependent.title')}</strong>
+                  <p className="text-sm mt-1 text-purple-700 dark:text-purple-300">
+                    {t('alert.dependent.description', { dependentName: dependentInfo.name })}
+                    {willBeCharged && (
+                      <span className="block mt-1 text-orange-600 dark:text-orange-400 font-medium">
+                        {t('alert.dependent.chargeToResponsible', { responsibleName: dependentInfo.responsible_name })}
+                      </span>
+                    )}
+                  </p>
                 </div>
               </AlertDescription>
             </Alert>

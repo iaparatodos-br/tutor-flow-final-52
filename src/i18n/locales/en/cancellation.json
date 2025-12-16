@@ -32,6 +32,11 @@
       "title": "Group Class",
       "description": "By canceling, you will be removed from this group class.",
       "chargeApplied": "The charge will be applied normally."
+    },
+    "dependent": {
+      "title": "📌 Dependent's Class",
+      "description": "You are canceling the class for {{dependentName}}.",
+      "chargeToResponsible": "The charge will be directed to the responsible party ({{responsibleName}})."
     }
   },
   "fields": {

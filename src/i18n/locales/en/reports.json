@@ -65,6 +65,8 @@
     },
     "updatedAt": "Updated on {{date}}",
     "error": "No report found for this class",
-    "studentLabel": "Student"
+    "studentLabel": "Student",
+    "dependentLabel": "Dependent",
+    "feedbackForDependent": "Feedback for {{name}}"
   }
 }

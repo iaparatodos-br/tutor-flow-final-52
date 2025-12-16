@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar, Clock, Plus, User, AlertCircle } from "lucide-react";
+import { Calendar, Clock, Plus, User, AlertCircle, Baby } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useProfile } from "@/contexts/ProfileContext";
 
 interface WorkingHour {
   id: string;
@@ -42,6 +43,12 @@ interface TimeSlot {
   reason?: string;
 }
 
+interface Dependent {
+  id: string;
+  name: string;
+  birth_date: string | null;
+}
+
 interface StudentScheduleRequestProps {
   teacherId: string;
 }
@@ -53,6 +60,7 @@ const DAYS_OF_WEEK = [
 
 export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProps) {
   const { toast } = useToast();
+  const { profile } = useProfile();
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [existingClasses, setExistingClasses] = useState<ExistingClass[]>([]);
@@ -70,10 +78,40 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
+  
+  // Dependent selection state
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [selectedDependentId, setSelectedDependentId] = useState<string>("self");
 
   useEffect(() => {
     loadTeacherAvailability();
+    loadDependents();
   }, [teacherId]);
+
+  const loadDependents = async () => {
+    if (!teacherId || !profile?.id) return;
+    
+    console.log('🧒 Loading dependents for responsible:', profile.id, 'teacher:', teacherId);
+    
+    try {
+      const { data, error } = await supabase
+        .from('dependents')
+        .select('id, name, birth_date')
+        .eq('responsible_id', profile.id)
+        .eq('teacher_id', teacherId)
+        .order('name');
+      
+      if (error) {
+        console.error('Error loading dependents:', error);
+        return;
+      }
+      
+      console.log('🧒 Dependents loaded:', data);
+      setDependents(data || []);
+    } catch (error) {
+      console.error('Error loading dependents:', error);
+    }
+  };
 
   useEffect(() => {
     if (workingHours.length > 0) {
@@ -218,13 +256,29 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
 
     setSubmitting(true);
     try {
+      // Prepare payload with optional dependent_id
+      const payload: {
+        teacherId: string;
+        datetime: string;
+        serviceId: string;
+        notes: string;
+        dependent_id?: string;
+      } = {
+        teacherId,
+        datetime: selectedTimeSlot,
+        serviceId: selectedService,
+        notes
+      };
+      
+      // Add dependent_id if a dependent is selected (not "self")
+      if (selectedDependentId && selectedDependentId !== "self") {
+        payload.dependent_id = selectedDependentId;
+      }
+      
+      console.log('📤 Requesting class with payload:', payload);
+      
       const { error } = await supabase.functions.invoke('request-class', {
-        body: {
-          teacherId,
-          datetime: selectedTimeSlot,
-          serviceId: selectedService,
-          notes
-        }
+        body: payload
       });
 
       if (error) throw error;
@@ -237,6 +291,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setIsDialogOpen(false);
       setSelectedTimeSlot("");
       setNotes("");
+      setSelectedDependentId("self");
       
       // Reload data to update available slots
       loadTeacherAvailability();
@@ -461,6 +516,37 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                               {services.find(s => s.id === selectedService)?.duration_minutes}min
                             </p>
                           </div>
+                          
+                          {/* Dependent Selection - only show if user has dependents */}
+                          {dependents.length > 0 && (
+                            <div>
+                              <Label htmlFor="class-for">Para quem é a aula?</Label>
+                              <Select 
+                                value={selectedDependentId} 
+                                onValueChange={setSelectedDependentId}
+                              >
+                                <SelectTrigger id="class-for" className="mt-1">
+                                  <SelectValue placeholder="Selecione o aluno" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="self">
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4" />
+                                      <span>Para mim</span>
+                                    </div>
+                                  </SelectItem>
+                                  {dependents.map((dep) => (
+                                    <SelectItem key={dep.id} value={dep.id}>
+                                      <div className="flex items-center gap-2">
+                                        <Baby className="h-4 w-4" />
+                                        <span>{dep.name}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                           
                           <div>
                             <Label htmlFor="notes">Observações (opcional)</Label>

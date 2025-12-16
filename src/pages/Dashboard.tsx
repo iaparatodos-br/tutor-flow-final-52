@@ -45,10 +45,10 @@ export default function Dashboard() {
     if (!profile?.id) return;
 
     try {
-      // Buscar total de alunos
-      const { data: teacherStudents } = await supabase
-        .rpc('get_teacher_students', { teacher_user_id: profile.id });
-      const studentsCount = (teacherStudents || []).length;
+      // Buscar total de alunos (incluindo dependentes)
+      const { data: countData } = await supabase
+        .rpc('count_teacher_students_and_dependents', { p_teacher_id: profile.id });
+      const studentsCount = countData?.[0]?.total_students || 0;
 
       // Buscar aulas futuras
       const { count: classesCount } = await supabase

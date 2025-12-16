@@ -294,6 +294,19 @@ export default function Agenda() {
         }
       } else {
         // For students, get classes where they are active participants (via class_participants)
+        // Also include classes where their dependents are participants
+        
+        // First, fetch the user's dependents for the selected teacher
+        let userDependentIds: string[] = [];
+        if (selectedTeacherId) {
+          const { data: userDependents } = await supabase
+            .from('dependents')
+            .select('id')
+            .eq('responsible_id', profile.id)
+            .eq('teacher_id', selectedTeacherId);
+          userDependentIds = userDependents?.map(d => d.id) || [];
+        }
+
         // Query 1: Aulas materializadas individuais (com filtro de 30 dias)
         let individualQuery = supabase
           .from('classes')
@@ -488,12 +501,105 @@ export default function Agenda() {
           throw groupTemplatesError;
         }
 
-        // Consolidar todos os resultados (aulas materializadas + templates)
+        // Query 5-8: Buscar aulas dos dependentes do usuário
+        let dependentClasses: any[] = [];
+        let dependentTemplates: any[] = [];
+        
+        if (userDependentIds.length > 0) {
+          // Query 5: Aulas materializadas de dependentes (com filtro de 30 dias)
+          const { data: depMaterializedClasses, error: depMaterializedError } = await supabase
+            .from('classes')
+            .select(`
+              id,
+              class_date,
+              duration_minutes,
+              status,
+              notes,
+              is_experimental,
+              is_group_class,
+              service_id,
+              teacher_id,
+              recurrence_pattern,
+              is_template,
+              recurrence_end_date,
+              class_template_id,
+              class_participants!inner (
+                student_id,
+                dependent_id,
+                status,
+                cancelled_at,
+                charge_applied,
+                confirmed_at,
+                completed_at,
+                cancellation_reason,
+                profiles!class_participants_student_id_fkey (
+                  name,
+                  email
+                )
+              )
+            `)
+            .in('class_participants.dependent_id', userDependentIds)
+            .eq('is_template', false)
+            .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+            .order('class_date');
+
+          if (depMaterializedError) {
+            console.error('Error loading dependent materialized classes:', depMaterializedError);
+          } else {
+            dependentClasses = depMaterializedClasses || [];
+          }
+
+          // Query 6: Templates de dependentes (SEM filtro de 30 dias)
+          const { data: depTemplateClasses, error: depTemplatesError } = await supabase
+            .from('classes')
+            .select(`
+              id,
+              class_date,
+              duration_minutes,
+              status,
+              notes,
+              is_experimental,
+              is_group_class,
+              service_id,
+              teacher_id,
+              recurrence_pattern,
+              is_template,
+              recurrence_end_date,
+              class_template_id,
+              class_participants!inner (
+                student_id,
+                dependent_id,
+                status,
+                cancelled_at,
+                charge_applied,
+                confirmed_at,
+                completed_at,
+                cancellation_reason,
+                profiles!class_participants_student_id_fkey (
+                  name,
+                  email
+                )
+              )
+            `)
+            .in('class_participants.dependent_id', userDependentIds)
+            .eq('is_template', true)
+            .order('class_date');
+
+          if (depTemplatesError) {
+            console.error('Error loading dependent template classes:', depTemplatesError);
+          } else {
+            dependentTemplates = depTemplateClasses || [];
+          }
+        }
+
+        // Consolidar todos os resultados (aulas materializadas + templates + dependentes)
         const allClasses = [
           ...(individualClasses || []),
           ...(groupClasses || []),
           ...(individualTemplates || []),
-          ...(groupTemplates || [])
+          ...(groupTemplates || []),
+          ...dependentClasses,
+          ...dependentTemplates
         ];
         const uniqueClassesMap = new Map(allClasses.map(c => [c.id, c]));
         const studentData = Array.from(uniqueClassesMap.values());

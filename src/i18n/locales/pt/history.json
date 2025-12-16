@@ -17,7 +17,7 @@
     "april": "Abril",
     "may": "Maio",
     "june": "Junho",
-    "july": "July",
+    "july": "Julho",
     "august": "Agosto",
     "september": "Setembro",
     "october": "Outubro",
@@ -54,5 +54,12 @@
     "fetchSuccess": "Encontrados {count} registros arquivados",
     "fetchError": "Erro ao buscar dados arquivados. Tente novamente",
     "loading": "Carregando..."
+  },
+  "tabs": {
+    "myClasses": "Minhas Aulas",
+    "classesCount": "{{count}} aula(s)"
+  },
+  "dependents": {
+    "noClassesForPeriod": "Não há aulas arquivadas para este dependente neste período."
   }
 }

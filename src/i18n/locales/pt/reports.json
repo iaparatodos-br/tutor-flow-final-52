@@ -65,6 +65,8 @@
     },
     "updatedAt": "Atualizado em {{date}}",
     "error": "Nenhum relato encontrado para esta aula",
-    "studentLabel": "Aluno"
+    "studentLabel": "Aluno",
+    "dependentLabel": "Dependente",
+    "feedbackForDependent": "Feedback de {{name}}"
   }
 }

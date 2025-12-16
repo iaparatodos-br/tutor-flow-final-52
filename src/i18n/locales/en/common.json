@@ -114,5 +114,12 @@
   "notFound": {
     "message": "Oops! Page not found",
     "returnHome": "Return to Home"
+  },
+  "dependent": {
+    "label": "Dependent",
+    "of": "of",
+    "childOf": "child of",
+    "responsible": "Responsible",
+    "minor": "Minor"
   }
 }

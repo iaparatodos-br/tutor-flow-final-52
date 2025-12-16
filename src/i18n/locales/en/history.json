@@ -54,5 +54,12 @@
     "fetchSuccess": "Found {count} archived records",
     "fetchError": "Error fetching archived data. Please try again",
     "loading": "Loading..."
+  },
+  "tabs": {
+    "myClasses": "My Classes",
+    "classesCount": "{{count}} class(es)"
+  },
+  "dependents": {
+    "noClassesForPeriod": "No archived classes for this dependent in this period."
   }
 }

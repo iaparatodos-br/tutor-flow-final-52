@@ -72,5 +72,17 @@
     "materialShared": "Material shared successfully!",
     "confirmDelete": "Are you sure you want to delete this material?",
     "noMaterials": "No materials found"
+  },
+  "tabs": {
+    "myMaterials": "My Materials",
+    "materialsCount": "{{count}} material(s)"
+  },
+  "sharing": {
+    "selectStudents": "Select Students",
+    "selectDependents": "Select Dependents",
+    "studentsGroup": "Students",
+    "dependentsGroup": "Dependents",
+    "childOf": "child of",
+    "shareWith": "Share with"
   }
 }

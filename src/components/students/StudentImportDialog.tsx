@@ -17,11 +17,13 @@ interface StudentImportDialogProps {
   currentStudentCount: number;
 }
 
-type SystemField = 'name' | 'email' | 'phone' | 'guardian_name' | 'guardian_email' | 'guardian_phone' | 'cpf' | 'billing_day' | 'guardian_address_street' | 'guardian_address_city' | 'guardian_address_state' | 'guardian_address_postal_code';
+type SystemField = 'name' | 'email' | 'phone' | 'guardian_name' | 'guardian_email' | 'guardian_phone' | 'cpf' | 'billing_day' | 'guardian_address_street' | 'guardian_address_city' | 'guardian_address_state' | 'guardian_address_postal_code' | 'tipo_cadastro' | 'dependentes';
 
-const SYSTEM_FIELDS: { key: SystemField; label: string; required: boolean }[] = [
-  { key: 'name', label: 'Nome do Aluno', required: true },
-  { key: 'email', label: 'E-mail do Aluno', required: true },
+const SYSTEM_FIELDS: { key: SystemField; label: string; required: boolean; helpText?: string }[] = [
+  { key: 'name', label: 'Nome do Aluno/Responsável', required: true },
+  { key: 'email', label: 'E-mail do Aluno/Responsável', required: true },
+  { key: 'tipo_cadastro', label: 'Tipo de Cadastro', required: false, helpText: '"aluno" ou "familia"' },
+  { key: 'dependentes', label: 'Dependentes (Menores)', required: false, helpText: 'Nomes separados por vírgula' },
   { key: 'phone', label: 'Telefone/Celular', required: false },
   { key: 'billing_day', label: 'Dia de Cobrança', required: false },
   { key: 'guardian_name', label: 'Nome do Responsável', required: false },
@@ -100,6 +102,8 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
     const rules: Record<SystemField, string[]> = {
       name: ['nome', 'aluno', 'estudante', 'name', 'student', 'completo'],
       email: ['email', 'e-mail', 'correio', 'mail'],
+      tipo_cadastro: ['tipo', 'tipocadastro', 'type', 'categoria', 'category'],
+      dependentes: ['dependentes', 'filhos', 'menores', 'criancas', 'dependents', 'children', 'kids'],
       phone: ['telefone', 'celular', 'whatsapp', 'phone', 'mobile', 'tel'],
       billing_day: ['dia', 'vencimento', 'cobranca', 'pagamento', 'billing', 'day'],
       guardian_name: ['responsavel', 'pai', 'mae', 'guardian', 'parent'],
@@ -141,34 +145,52 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
           mappedRow[field.key] = row[header];
         }
       });
+      // Determine registration type
+      const tipoValue = mappedRow.tipo_cadastro?.toString().toLowerCase().trim();
+      const dependentesValue = mappedRow.dependentes;
+      mappedRow._isFamily = tipoValue === 'familia' || tipoValue === 'família' || (dependentesValue && dependentesValue.toString().trim().length > 0);
+      mappedRow._dependentCount = dependentesValue ? dependentesValue.toString().split(',').filter((n: string) => n.trim()).length : 0;
       return mappedRow;
     });
+  };
+
+  // Parse dependents from comma-separated string
+  const parseDependents = (dependentesStr: string | undefined): string[] => {
+    if (!dependentesStr) return [];
+    return dependentesStr.toString().split(',').map(n => n.trim()).filter(n => n.length > 0);
+  };
+
+  // Calculate total students + dependents for plan limit
+  const getTotalStudentsWithDependents = (): number => {
+    let total = 0;
+    rawData.forEach(row => {
+      total += 1; // Count the main student/responsible
+      const dependentesValue = mapping.dependentes ? row[mapping.dependentes] : undefined;
+      const dependentNames = parseDependents(dependentesValue);
+      total += dependentNames.length;
+    });
+    return total;
   };
 
   const handleImport = async () => {
     if (!profile?.id) return;
 
-    // Check limits
-    const totalNewStudents = rawData.length;
-    const projectedTotal = currentStudentCount + totalNewStudents;
+    // Check limits including dependents
+    const totalNewEntities = getTotalStudentsWithDependents();
+    const projectedTotal = currentStudentCount + totalNewEntities;
     const overageInfo = getStudentOverageInfo(projectedTotal);
 
     if (overageInfo.isOverLimit) {
       if (currentPlan?.slug === 'free') {
         toast({
           title: "Limite do Plano Gratuito Excedido",
-          description: `Você pode ter no máximo 3 alunos no plano gratuito. Esta importação resultaria em ${projectedTotal} alunos.`,
+          description: `Você pode ter no máximo 3 alunos no plano gratuito. Esta importação resultaria em ${projectedTotal} alunos (incluindo dependentes).`,
           variant: "destructive"
         });
         return;
       }
 
       if (!overageConfirmed) {
-        // This should be handled by UI state to show confirmation dialog, 
-        // but for now we'll use a simple confirm (or better, add a step 4 or modal)
-        // Since we are inside the function, let's use a state to show a warning in the UI instead of blocking here if we want a custom UI.
-        // However, to keep it simple within the dialog flow:
-        // We will block here and require a specific "Confirmar Custos" button in the UI if overage is detected.
         return;
       }
     }
@@ -178,10 +200,12 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
 
     let successCount = 0;
     let failCount = 0;
+    let dependentSuccessCount = 0;
+    let dependentFailCount = 0;
 
     // Throttling configuration to prevent AWS SES rate limiting
-    const BATCH_SIZE = 10; // Process 10 students at a time
-    const DELAY_BETWEEN_BATCHES_MS = 2000; // 2 seconds delay between batches
+    const BATCH_SIZE = 10;
+    const DELAY_BETWEEN_BATCHES_MS = 2000;
 
     const totalBatches = Math.ceil(rawData.length / BATCH_SIZE);
 
@@ -202,14 +226,20 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
           const name = row[mapping.name];
           const email = row[mapping.email];
           const phone = mapping.phone ? row[mapping.phone] : undefined;
+          
+          // Check if it's a family registration
+          const tipoValue = mapping.tipo_cadastro ? row[mapping.tipo_cadastro]?.toString().toLowerCase().trim() : '';
+          const dependentesValue = mapping.dependentes ? row[mapping.dependentes] : undefined;
+          const dependentNames = parseDependents(dependentesValue);
+          const isFamily = tipoValue === 'familia' || tipoValue === 'família' || dependentNames.length > 0;
 
           // Guardian logic: if guardian_name is missing, use student data (self-responsible)
           const mappedGuardianName = mapping.guardian_name ? row[mapping.guardian_name] : undefined;
-          const isOwnResponsible = !mappedGuardianName;
+          const isOwnResponsible = !mappedGuardianName && !isFamily;
 
-          const guardian_name = isOwnResponsible ? name : mappedGuardianName;
-          const guardian_email = isOwnResponsible ? email : (mapping.guardian_email ? row[mapping.guardian_email] : undefined);
-          const guardian_phone = isOwnResponsible ? phone : (mapping.guardian_phone ? row[mapping.guardian_phone] : undefined);
+          const guardian_name = isOwnResponsible ? name : (mappedGuardianName || name);
+          const guardian_email = isOwnResponsible ? email : (mapping.guardian_email ? row[mapping.guardian_email] : email);
+          const guardian_phone = isOwnResponsible ? phone : (mapping.guardian_phone ? row[mapping.guardian_phone] : phone);
 
           // Billing day logic
           let billing_day = 15; // Default
@@ -244,24 +274,54 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
           // Basic validation
           if (!studentData.name || !studentData.email) {
             console.error(`Error importing row ${i}: Missing name or email`);
-            return { success: false };
+            return { success: false, dependentsCreated: 0, dependentsFailed: 0 };
           }
 
-          // Call Supabase function
+          // Call Supabase function to create student
           const { data, error } = await supabase.functions.invoke('create-student', {
             body: studentData
           });
 
           if (error || (data && !data.success)) {
             console.error(`Error importing row ${i}:`, error || data?.error);
-            return { success: false };
+            return { success: false, dependentsCreated: 0, dependentsFailed: 0 };
           }
 
-          return { success: true };
+          // If it's a family and has dependents, create them
+          let dependentsCreated = 0;
+          let dependentsFailed = 0;
+          
+          if (isFamily && dependentNames.length > 0 && data?.student_id) {
+            console.log(`Creating ${dependentNames.length} dependents for student ${data.student_id}`);
+            
+            for (const dependentName of dependentNames) {
+              try {
+                const { data: depData, error: depError } = await supabase.functions.invoke('create-dependent', {
+                  body: {
+                    responsible_id: data.student_id,
+                    teacher_id: profile.id,
+                    name: dependentName.trim()
+                  }
+                });
+                
+                if (depError || (depData && !depData.success)) {
+                  console.error(`Error creating dependent "${dependentName}":`, depError || depData?.error);
+                  dependentsFailed++;
+                } else {
+                  dependentsCreated++;
+                }
+              } catch (depErr) {
+                console.error(`Exception creating dependent "${dependentName}":`, depErr);
+                dependentsFailed++;
+              }
+            }
+          }
+
+          return { success: true, dependentsCreated, dependentsFailed };
 
         } catch (err) {
           console.error(`Exception importing row ${i}:`, err);
-          return { success: false };
+          return { success: false, dependentsCreated: 0, dependentsFailed: 0 };
         }
       });
 
@@ -272,6 +332,8 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
       batchResults.forEach(result => {
         if (result.status === 'fulfilled' && result.value.success) {
           successCount++;
+          dependentSuccessCount += result.value.dependentsCreated || 0;
+          dependentFailCount += result.value.dependentsFailed || 0;
         } else {
           failCount++;
         }
@@ -287,9 +349,21 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
     setImporting(false);
     setProgress(prev => ({ ...prev, success: successCount, failed: failCount }));
 
+    // Build result message
+    let resultMessage = `${successCount} alunos/responsáveis importados com sucesso.`;
+    if (dependentSuccessCount > 0) {
+      resultMessage += ` ${dependentSuccessCount} dependentes criados.`;
+    }
+    if (failCount > 0) {
+      resultMessage += ` ${failCount} falhas.`;
+    }
+    if (dependentFailCount > 0) {
+      resultMessage += ` ${dependentFailCount} dependentes não criados.`;
+    }
+
     toast({
       title: "Importação concluída",
-      description: `${successCount} alunos importados com sucesso. ${failCount} falhas.`,
+      description: resultMessage,
       variant: successCount > 0 ? "default" : "destructive"
     });
 
@@ -375,6 +449,9 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
                         {field.label}
                         {field.required && <span className="text-destructive ml-1">*</span>}
                       </Label>
+                      {field.helpText && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{field.helpText}</p>
+                      )}
                     </div>
                     <div className="col-span-1 flex justify-center">
                       <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -427,13 +504,14 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
               ) : (
                 <>
                   <h3 className="font-medium mb-2">Pré-visualização (5 primeiros registros)</h3>
-                  <div className="border rounded-md overflow-hidden">
+                  <div className="border rounded-md overflow-hidden overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Nome</TableHead>
                           <TableHead>E-mail</TableHead>
-                          <TableHead>Telefone</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Dependentes</TableHead>
                           <TableHead>Responsável</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -442,16 +520,40 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
                           <TableRow key={i}>
                             <TableCell>{row.name || <span className="text-destructive italic">Ausente</span>}</TableCell>
                             <TableCell>{row.email || <span className="text-destructive italic">Ausente</span>}</TableCell>
-                            <TableCell>{row.phone || "-"}</TableCell>
+                            <TableCell>
+                              {row._isFamily ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                                  👨‍👩‍👧 Família
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                  Aluno
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {row._dependentCount > 0 ? (
+                                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                                  📌 {row._dependentCount} {row._dependentCount === 1 ? 'dependente' : 'dependentes'}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
                             <TableCell>{row.guardian_name || "-"}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Total de registros a importar: <strong>{rawData.length}</strong>
-                  </p>
+                  <div className="flex gap-4 text-sm text-muted-foreground mt-2">
+                    <span>
+                      Total de registros: <strong>{rawData.length}</strong>
+                    </span>
+                    <span>
+                      Total para limite de plano: <strong>{getTotalStudentsWithDependents()}</strong> (alunos + dependentes)
+                    </span>
+                  </div>
 
                   {(!mapping.name || !mapping.email) && (
                     <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm flex items-center gap-2 mt-4">
@@ -462,8 +564,8 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
 
                   {/* Limit Warning */}
                   {(() => {
-                    const totalNewStudents = rawData.length;
-                    const projectedTotal = currentStudentCount + totalNewStudents;
+                    const totalNewEntities = getTotalStudentsWithDependents();
+                    const projectedTotal = currentStudentCount + totalNewEntities;
                     const overageInfo = getStudentOverageInfo(projectedTotal);
 
                     if (overageInfo.isOverLimit) {
@@ -474,7 +576,7 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
                             <div>
                               <p className="font-bold mb-1">Limite do Plano Gratuito Excedido</p>
                               <p>
-                                O plano gratuito permite apenas 3 alunos. Você já tem {currentStudentCount} e está tentando importar mais {totalNewStudents}, totalizando {projectedTotal}.
+                                O plano gratuito permite apenas 3 alunos. Você já tem {currentStudentCount} e está tentando importar {totalNewEntities} (alunos + dependentes), totalizando {projectedTotal}.
                               </p>
                               <p className="mt-2 font-medium">
                                 Faça upgrade do seu plano para importar estes alunos.
@@ -542,8 +644,8 @@ export function StudentImportDialog({ onSuccess, currentStudentCount }: StudentI
                 disabled={
                   !mapping.name ||
                   !mapping.email ||
-                  (getStudentOverageInfo(currentStudentCount + rawData.length).isOverLimit && currentPlan?.slug === 'free') ||
-                  (getStudentOverageInfo(currentStudentCount + rawData.length).isOverLimit && currentPlan?.slug !== 'free' && !overageConfirmed)
+                  (getStudentOverageInfo(currentStudentCount + getTotalStudentsWithDependents()).isOverLimit && currentPlan?.slug === 'free') ||
+                  (getStudentOverageInfo(currentStudentCount + getTotalStudentsWithDependents()).isOverLimit && currentPlan?.slug !== 'free' && !overageConfirmed)
                 }
               >
                 <Check className="h-4 w-4 mr-2" />

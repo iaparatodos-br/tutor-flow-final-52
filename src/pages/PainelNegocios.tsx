@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3, Trash2, AlertTriangle } from "lucide-react";
+import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3, Trash2, AlertTriangle, UserCheck, Baby, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { PaymentRoutingTest } from "@/components/PaymentRoutingTest";
 import { ConfirmationDialog } from "@/components/ui/alert-confirmation";
 import { SystemHealthAlert } from "@/components/SystemHealthAlert";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
 interface BusinessProfile {
   id: string;
@@ -98,6 +99,53 @@ export default function PainelNegocios() {
       }));
     },
     enabled: isProfessor && !!businessProfiles,
+  });
+
+  // Query para métricas de alunos e dependentes
+  const { data: studentMetrics } = useQuery({
+    queryKey: ["student-dependent-metrics", profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return null;
+      
+      const { data, error } = await supabase.rpc('count_teacher_students_and_dependents', {
+        p_teacher_id: profile.id
+      });
+      
+      if (error) throw error;
+      return data?.[0] || { total_students: 0, regular_students: 0, dependents_count: 0 };
+    },
+    enabled: isProfessor && !!profile?.id,
+  });
+
+  // Query para dependentes por responsável (para gráfico de distribuição)
+  const { data: dependentsByResponsible } = useQuery({
+    queryKey: ["dependents-by-responsible", profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      
+      if (error) throw error;
+      
+      // Agrupar por responsável
+      const groupedMap = new Map<string, { name: string; count: number }>();
+      data?.forEach((dep: any) => {
+        const existing = groupedMap.get(dep.responsible_id);
+        if (existing) {
+          existing.count++;
+        } else {
+          groupedMap.set(dep.responsible_id, {
+            name: dep.responsible_name,
+            count: 1
+          });
+        }
+      });
+      
+      return Array.from(groupedMap.values()).sort((a, b) => b.count - a.count);
+    },
+    enabled: isProfessor && !!profile?.id,
   });
 
   // Mutation para criar novo perfil de negócio
@@ -607,6 +655,156 @@ export default function PainelNegocios() {
 
           {/* Aba 3: Relatórios Financeiros */}
           <TabsContent value="reports" className="space-y-6">
+            {/* Métricas de Alunos e Dependentes */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    Total de Alunos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">
+                    {studentMetrics?.total_students || 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Contagem para limite do plano
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <UserCheck className="h-4 w-4 text-blue-500" />
+                    Alunos Regulares
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-blue-600">
+                    {studentMetrics?.regular_students || 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Alunos com conta própria
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Baby className="h-4 w-4 text-green-500" />
+                    Dependentes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-green-600">
+                    {studentMetrics?.dependents_count || 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Vinculados a responsáveis
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Gráfico de Distribuição */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" />
+                    Distribuição: Alunos vs Dependentes
+                  </CardTitle>
+                  <CardDescription>
+                    Proporção entre alunos regulares e dependentes
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {studentMetrics && (studentMetrics.regular_students > 0 || studentMetrics.dependents_count > 0) ? (
+                    <div className="h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Alunos Regulares', value: studentMetrics.regular_students, color: 'hsl(var(--primary))' },
+                              { name: 'Dependentes', value: studentMetrics.dependents_count, color: 'hsl(142, 76%, 36%)' }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={90}
+                            paddingAngle={2}
+                            dataKey="value"
+                          >
+                            <Cell fill="hsl(var(--primary))" />
+                            <Cell fill="hsl(142, 76%, 36%)" />
+                          </Pie>
+                          <Tooltip 
+                            formatter={(value: number) => [`${value} aluno(s)`, '']}
+                          />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Nenhum aluno cadastrado</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Baby className="h-5 w-5" />
+                    Dependentes por Responsável
+                  </CardTitle>
+                  <CardDescription>
+                    Famílias com mais dependentes cadastrados
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {dependentsByResponsible && dependentsByResponsible.length > 0 ? (
+                    <div className="space-y-3">
+                      {dependentsByResponsible.slice(0, 5).map((item, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                              {index + 1}
+                            </div>
+                            <span className="text-sm font-medium">{item.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {item.count} dependente{item.count > 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                      {dependentsByResponsible.length > 5 && (
+                        <p className="text-xs text-muted-foreground text-center pt-2">
+                          +{dependentsByResponsible.length - 5} responsável(is) com dependentes
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <Baby className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground">Nenhum dependente cadastrado</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Cadastre famílias para ver estatísticas
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Relatórios Financeiros por Negócio */}
             <Card>
               <CardHeader>
                 <CardTitle>Relatórios Financeiros por Negócio</CardTitle>

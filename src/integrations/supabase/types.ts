@@ -741,6 +741,7 @@ export type Database = {
           charge_percentage: number | null
           class_id: string
           created_at: string
+          dependent_id: string | null
           description: string | null
           id: string
           invoice_id: string
@@ -753,6 +754,7 @@ export type Database = {
           charge_percentage?: number | null
           class_id: string
           created_at?: string
+          dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id: string
@@ -765,6 +767,7 @@ export type Database = {
           charge_percentage?: number | null
           class_id?: string
           created_at?: string
+          dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id?: string
@@ -791,6 +794,13 @@ export type Database = {
             columns: ["class_id"]
             isOneToOne: false
             referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
             referencedColumns: ["id"]
           },
           {

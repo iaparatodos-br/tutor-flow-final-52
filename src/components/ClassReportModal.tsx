@@ -118,6 +118,7 @@ export function ClassReportModal({
             const existingFeedback = feedbackData.find(f => f.student_id === p.student_id);
             return {
               student_id: p.student_id,
+              dependent_id: (p as any).dependent_id || null,
               feedback: existingFeedback?.feedback || ''
             };
           });
@@ -144,6 +145,7 @@ export function ClassReportModal({
 
     const initialFeedbacks = participants.map(p => ({
       student_id: p.student_id,
+      dependent_id: (p as any).dependent_id || null,
       feedback: ''
     }));
 
@@ -286,13 +288,14 @@ export function ClassReportModal({
 
         if (deleteError) throw deleteError;
 
-        // Insert new feedbacks
+        // Insert new feedbacks with dependent_id
         const { error: feedbackError } = await supabase
           .from('class_report_feedbacks')
           .insert(
             feedbacksToSave.map(f => ({
               report_id: reportId!,
               student_id: f.student_id,
+              dependent_id: f.dependent_id || null,
               feedback: f.feedback
             }))
           );

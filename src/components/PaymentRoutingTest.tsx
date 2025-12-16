@@ -3,40 +3,45 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useProfile } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2, Users } from "lucide-react";
+
 interface TestResult {
   test_name: string;
   status: 'success' | 'error' | 'warning';
   message: string;
   details?: any;
 }
+
 interface Student {
   student_id: string;
   student_name: string;
   business_profile_id: string | null;
   relationship_id: string;
 }
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name?: string;
+}
+
 export function PaymentRoutingTest() {
-  const {
-    profile
-  } = useProfile();
-  const [selectedStudent, setSelectedStudent] = useState<string>("");
+  const { profile } = useProfile();
+  const [selectedEntity, setSelectedEntity] = useState<string>("");
+  const [entityType, setEntityType] = useState<'student' | 'dependent'>('student');
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
 
   // Buscar alunos
-  const {
-    data: students
-  } = useQuery({
-    queryKey: ["students-test"],
+  const { data: students } = useQuery({
+    queryKey: ["students-test", profile?.id],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.rpc('get_teacher_students', {
+      const { data } = await supabase.rpc('get_teacher_students', {
         teacher_user_id: profile?.id
       });
       return data as Student[];
@@ -44,15 +49,43 @@ export function PaymentRoutingTest() {
     enabled: !!profile?.id
   });
 
+  // Buscar dependentes
+  const { data: dependents } = useQuery({
+    queryKey: ["dependents-test", profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
+      
+      const { data: deps } = await supabase
+        .from('dependents')
+        .select('id, name, responsible_id')
+        .eq('teacher_id', profile.id);
+
+      if (!deps || deps.length === 0) return [];
+
+      // Buscar nomes dos responsáveis
+      const responsibleIds = [...new Set(deps.map(d => d.responsible_id))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', responsibleIds);
+
+      const responsibleMap = new Map(profiles?.map(p => [p.id, p.name]) || []);
+
+      return deps.map(d => ({
+        ...d,
+        responsible_name: responsibleMap.get(d.responsible_id) || 'Desconhecido'
+      })) as Dependent[];
+    },
+    enabled: !!profile?.id
+  });
+
   // Executar testes de roteamento usando a edge function
   const runTestsMutation = useMutation({
-    mutationFn: async (studentId: string) => {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('validate-payment-routing', {
+    mutationFn: async ({ studentId, dependentId }: { studentId: string; dependentId?: string }) => {
+      const { data, error } = await supabase.functions.invoke('validate-payment-routing', {
         body: {
-          student_id: studentId
+          student_id: studentId,
+          dependent_id: dependentId
         }
       });
       if (error) {
@@ -79,15 +112,40 @@ export function PaymentRoutingTest() {
       setIsRunning(false);
     }
   });
+
   const handleRunTests = () => {
-    if (!selectedStudent) {
-      toast.error("Selecione um aluno para executar os testes");
+    if (!selectedEntity) {
+      toast.error("Selecione um aluno ou dependente para executar os testes");
       return;
     }
     setIsRunning(true);
     setTestResults([]);
-    runTestsMutation.mutate(selectedStudent);
+
+    if (entityType === 'dependent') {
+      // Para dependentes, encontrar o responsável e passar ambos IDs
+      const dependent = dependents?.find(d => d.id === selectedEntity);
+      if (dependent) {
+        runTestsMutation.mutate({ 
+          studentId: dependent.responsible_id, 
+          dependentId: dependent.id 
+        });
+      }
+    } else {
+      runTestsMutation.mutate({ studentId: selectedEntity });
+    }
   };
+
+  const handleSelectChange = (value: string) => {
+    // Determinar se é aluno ou dependente pelo prefixo
+    if (value.startsWith('dep_')) {
+      setEntityType('dependent');
+      setSelectedEntity(value.replace('dep_', ''));
+    } else {
+      setEntityType('student');
+      setSelectedEntity(value);
+    }
+  };
+
   const getStatusIcon = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -100,6 +158,7 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
+
   const getStatusBadge = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -112,6 +171,12 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
+
+  const getCurrentValue = () => {
+    if (!selectedEntity) return "";
+    return entityType === 'dependent' ? `dep_${selectedEntity}` : selectedEntity;
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -120,33 +185,60 @@ export function PaymentRoutingTest() {
           Testes de Integridade de Pagamentos
         </CardTitle>
         <CardDescription>
-          Valida o roteamento correto de pagamentos para contas Stripe Connect
+          Valida o roteamento correto de pagamentos para contas Stripe Connect (alunos e dependentes)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex gap-4">
           <div className="flex-1">
-            <Select value={selectedStudent} onValueChange={setSelectedStudent}>
+            <Select value={getCurrentValue()} onValueChange={handleSelectChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Selecione um aluno" />
+                <SelectValue placeholder="Selecione um aluno ou dependente" />
               </SelectTrigger>
               <SelectContent>
-                {students?.map((student) => (
-                  <SelectItem key={student.student_id} value={student.student_id}>
-                    {student.student_name}
-                  </SelectItem>
-                ))}
+                {students && students.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel className="flex items-center gap-2">
+                      <Users className="h-3 w-3" />
+                      Alunos
+                    </SelectLabel>
+                    {students.map((student) => (
+                      <SelectItem key={student.student_id} value={student.student_id}>
+                        {student.student_name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {dependents && dependents.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel className="flex items-center gap-2">
+                      <Users className="h-3 w-3" />
+                      Dependentes
+                    </SelectLabel>
+                    {dependents.map((dependent) => (
+                      <SelectItem key={`dep_${dependent.id}`} value={`dep_${dependent.id}`}>
+                        📌 {dependent.name} (resp: {dependent.responsible_name})
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
           </div>
           <Button 
             onClick={handleRunTests}
-            disabled={!selectedStudent || isRunning}
+            disabled={!selectedEntity || isRunning}
           >
             {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Executar Testes
           </Button>
         </div>
+
+        {entityType === 'dependent' && selectedEntity && (
+          <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
+            💡 Testando dependente: a cobrança será roteada para o responsável
+          </div>
+        )}
 
         {testResults.length > 0 && (
           <div className="space-y-2 mt-4">

@@ -41,6 +41,7 @@ interface ClassWithParticipants {
   recurrence_end_date?: string;
   participants: Array<{
     student_id: string;
+    dependent_id?: string | null;
     status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
     cancelled_at?: string;
     charge_applied?: boolean;
@@ -119,6 +120,11 @@ export default function Agenda() {
       class_template_id: string;
       duration_minutes: number;
       // student_id REMOVED
+    };
+    dependentInfo?: {
+      id: string;
+      name: string;
+      responsible_name: string;
     };
   }>({
     isOpen: false,
@@ -1456,12 +1462,30 @@ export default function Agenda() {
       // student_id REMOVED - no longer needed
     } : undefined;
     
+    // Check if any participant is a dependent and extract dependent info
+    let dependentInfo: { id: string; name: string; responsible_name: string } | undefined;
+    if (fullClassData?.participants) {
+      const participantWithDependent = fullClassData.participants.find(p => p.dependent_id);
+      if (participantWithDependent?.dependent_id) {
+        // Find the dependent info from the dependents array
+        const dependent = dependents.find(d => d.id === participantWithDependent.dependent_id);
+        if (dependent) {
+          dependentInfo = {
+            id: dependent.id,
+            name: dependent.name,
+            responsible_name: dependent.responsible_name
+          };
+        }
+      }
+    }
+    
     setCancellationModal({
       isOpen: true,
       classId,
       className,
       classDate,
-      virtualClassData: virtualData
+      virtualClassData: virtualData,
+      dependentInfo
     });
   };
   if (loading) {
@@ -1549,6 +1573,7 @@ export default function Agenda() {
           className={cancellationModal.className} 
           classDate={cancellationModal.classDate} 
           virtualClassData={cancellationModal.virtualClassData}
+          dependentInfo={cancellationModal.dependentInfo}
           onCancellationComplete={loadClasses} 
         />
 

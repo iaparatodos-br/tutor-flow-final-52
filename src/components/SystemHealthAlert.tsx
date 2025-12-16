@@ -6,8 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, CheckCircle, XCircle, RefreshCw, Users, Building2 } from "lucide-react";
-import { toast } from "sonner";
+import { AlertTriangle, CheckCircle, XCircle, Users, Building2 } from "lucide-react";
 
 interface SystemHealthIssue {
   type: "critical" | "warning" | "info";
@@ -51,6 +50,48 @@ export function SystemHealthAlert() {
     enabled: isProfessor && !!profile?.id,
   });
 
+  // Query para verificar integridade de dependentes
+  const { data: dependentIntegrityData } = useQuery({
+    queryKey: ["system-health-dependents", profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return { orphanDependents: [], dependentsWithoutClasses: 0 };
+      
+      // Buscar dependentes do professor
+      const { data: dependents } = await supabase
+        .from('dependents')
+        .select(`
+          id,
+          name,
+          responsible_id,
+          teacher_id
+        `)
+        .eq('teacher_id', profile.id);
+
+      if (!dependents || dependents.length === 0) {
+        return { orphanDependents: [], dependentsWithoutClasses: 0 };
+      }
+
+      // Verificar dependentes órfãos (responsável não existe mais no relacionamento)
+      const responsibleIds = [...new Set(dependents.map(d => d.responsible_id))];
+      
+      const { data: relationships } = await supabase
+        .from('teacher_student_relationships')
+        .select('student_id')
+        .eq('teacher_id', profile.id)
+        .in('student_id', responsibleIds);
+
+      const validResponsibleIds = new Set(relationships?.map(r => r.student_id) || []);
+      const orphanDependents = dependents.filter(d => !validResponsibleIds.has(d.responsible_id));
+
+      return {
+        orphanDependents,
+        totalDependents: dependents.length
+      };
+    },
+    enabled: isProfessor && !!profile?.id,
+    refetchInterval: 60000, // Atualiza a cada 60 segundos
+  });
+
   useEffect(() => {
     if (!isProfessor || isLoading) return;
 
@@ -75,8 +116,18 @@ export function SystemHealthAlert() {
       });
     }
 
+    // Verificar dependentes órfãos (responsável removido)
+    if (dependentIntegrityData?.orphanDependents && dependentIntegrityData.orphanDependents.length > 0) {
+      newIssues.push({
+        type: "critical",
+        title: "Dependentes sem Responsável Válido",
+        description: `${dependentIntegrityData.orphanDependents.length} dependente(s) estão vinculados a responsáveis que não existem mais como seus alunos. Isso pode causar problemas de faturamento e notificações.`,
+        count: dependentIntegrityData.orphanDependents.length,
+      });
+    }
+
     setIssues(newIssues);
-  }, [orphanStudents, businessProfiles, isProfessor, isLoading]);
+  }, [orphanStudents, businessProfiles, dependentIntegrityData, isProfessor, isLoading]);
 
   if (!isProfessor || issues.length === 0) {
     return null;

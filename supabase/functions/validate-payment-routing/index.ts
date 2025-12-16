@@ -39,12 +39,62 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { student_id } = await req.json();
+    const { student_id, dependent_id } = await req.json();
     if (!student_id) {
       throw new Error('student_id is required');
     }
 
     const results: ValidationResult[] = [];
+
+    // Teste 0: Se dependent_id fornecido, verificar dependente
+    if (dependent_id) {
+      const { data: dependent, error: depError } = await supabase
+        .from('dependents')
+        .select('id, name, responsible_id, teacher_id')
+        .eq('id', dependent_id)
+        .eq('teacher_id', user.id)
+        .single();
+
+      if (depError || !dependent) {
+        results.push({
+          test_name: "Dependent Validation",
+          status: "error",
+          message: "Dependente não encontrado ou não pertence ao professor"
+        });
+        return new Response(JSON.stringify({ results }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Verificar se o responsável é o student_id fornecido
+      if (dependent.responsible_id !== student_id) {
+        results.push({
+          test_name: "Dependent Validation",
+          status: "error",
+          message: "Dependente não pertence ao responsável informado",
+          details: {
+            dependent_id: dependent.id,
+            dependent_name: dependent.name,
+            expected_responsible: student_id,
+            actual_responsible: dependent.responsible_id
+          }
+        });
+        return new Response(JSON.stringify({ results }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      results.push({
+        test_name: "Dependent Validation",
+        status: "success",
+        message: `Dependente "${dependent.name}" validado - cobrança será direcionada ao responsável`,
+        details: {
+          dependent_id: dependent.id,
+          dependent_name: dependent.name,
+          responsible_id: dependent.responsible_id
+        }
+      });
+    }
 
     // Teste 1: Verificar se o aluno existe e está vinculado ao professor
     const { data: studentRelation, error: studentError } = await supabase
@@ -67,9 +117,11 @@ serve(async (req) => {
 
     if (studentError || !studentRelation) {
       results.push({
-        test_name: "Student Relationship Validation",
+        test_name: dependent_id ? "Responsible Relationship Validation" : "Student Relationship Validation",
         status: "error",
-        message: "Aluno não encontrado ou não vinculado ao professor"
+        message: dependent_id 
+          ? "Responsável do dependente não encontrado ou não vinculado ao professor"
+          : "Aluno não encontrado ou não vinculado ao professor"
       });
       return new Response(JSON.stringify({ results }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -79,13 +131,16 @@ serve(async (req) => {
     const profile = Array.isArray(studentRelation.profiles) ? studentRelation.profiles[0] : studentRelation.profiles;
     
     results.push({
-      test_name: "Student Relationship Validation",
+      test_name: dependent_id ? "Responsible Relationship Validation" : "Student Relationship Validation",
       status: "success",
-      message: `Aluno ${studentRelation.student_name || profile?.name} validado`,
+      message: dependent_id 
+        ? `Responsável ${studentRelation.student_name || profile?.name} validado (receberá a cobrança)`
+        : `Aluno ${studentRelation.student_name || profile?.name} validado`,
       details: {
         student_id: studentRelation.student_id,
         teacher_id: studentRelation.teacher_id,
-        business_profile_id: studentRelation.business_profile_id
+        business_profile_id: studentRelation.business_profile_id,
+        is_responsible: !!dependent_id
       }
     });
 

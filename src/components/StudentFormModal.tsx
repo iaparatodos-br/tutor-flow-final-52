@@ -183,6 +183,30 @@ export function StudentFormModal({
     });
   }, [student, teacherDefaultBillingDay]);
 
+  // Reset form when modal opens for new student registration
+  useEffect(() => {
+    if (isOpen && !student) {
+      console.log('StudentFormModal - Resetting form for new student');
+      setFormData(getInitialFormData(undefined, teacherDefaultBillingDay));
+      setRegistrationType(null);
+      setInlineDependents([]);
+      setValidationErrors({
+        name: false,
+        email: false,
+        phone: false,
+        guardian_name: false,
+        guardian_email: false,
+        guardian_cpf: false,
+        guardian_address_street: false,
+        guardian_address_city: false,
+        guardian_address_state: false,
+        guardian_address_postal_code: false,
+        billing_day: false,
+        business_profile_id: false
+      });
+    }
+  }, [isOpen, student, teacherDefaultBillingDay]);
+
   const handleIsOwnResponsibleChange = (checked: boolean) => {
     const newFormData = {
       ...formData,
@@ -726,7 +750,7 @@ export function StudentFormModal({
                   (registrationType === 'family' && inlineDependents.length === 0)
                 }
               >
-                {isSubmitting ? t('actions.saving') : student ? t('actions.save') : t('actions.register')}
+                {isSubmitting ? t('formActions.saving') : student ? t('formActions.save') : t('formActions.register')}
               </Button>
             )}
           </DialogFooter>

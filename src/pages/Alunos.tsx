@@ -226,7 +226,7 @@ export default function Alunos() {
       }
 
       // If this is a family registration, create the dependents
-      if (isFamily && formData.dependents && formData.dependents.length > 0 && data?.student_id) {
+      if (isFamily && formData.dependents && formData.dependents.length > 0 && data?.user_id) {
         console.log('Creating dependents for family registration...');
         const dependentErrors: string[] = [];
         
@@ -234,7 +234,7 @@ export default function Alunos() {
           try {
             const { data: depData, error: depError } = await supabase.functions.invoke('create-dependent', {
               body: {
-                responsible_id: data.student_id,
+                responsible_id: data.user_id,
                 teacher_id: profile.id,
                 name: dep.name,
                 birth_date: dep.birth_date || null,

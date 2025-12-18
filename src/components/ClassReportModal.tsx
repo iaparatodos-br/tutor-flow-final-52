@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { CalendarClass } from '@/components/Calendar/CalendarView';
 import { useProfile } from '@/contexts/ProfileContext';
-import { BookOpen, FileText, Link, MessageSquare } from 'lucide-react';
+import { BookOpen, FileText, Link, MessageSquare, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface ClassReportModalProps {
@@ -159,6 +159,22 @@ export function ClassReportModal({
         f.student_id === studentId ? { ...f, feedback } : f
       )
     );
+  };
+
+  // Helper para obter nome do participante (dependente ou aluno)
+  const getParticipantName = (participant: any): string => {
+    if (participant.dependent_id && participant.dependent_name) {
+      return participant.dependent_name;
+    }
+    return participant.student?.name || participant.profiles?.name || 'Nome não disponível';
+  };
+
+  // Helper para obter nome do responsável (quando é dependente)
+  const getResponsibleName = (participant: any): string | null => {
+    if (participant.dependent_id && participant.dependent_name) {
+      return participant.student?.name || participant.profiles?.name || null;
+    }
+    return null;
   };
 
   const handleSubmit = async () => {
@@ -371,7 +387,14 @@ export function ClassReportModal({
             <CardContent className="space-y-2 text-sm">
               <div>
                 <strong>{t('modal.classInfo.students')}</strong>{' '}
-                {participants.map(p => p.student.name).join(', ')}
+                {participants.map(p => {
+                  const name = getParticipantName(p);
+                  const responsibleName = getResponsibleName(p);
+                  if (responsibleName) {
+                    return `${name} (Resp: ${responsibleName})`;
+                  }
+                  return name;
+                }).join(', ')}
               </div>
               <div>
                 <strong>{t('modal.classInfo.date')}</strong>{' '}
@@ -470,16 +493,25 @@ export function ClassReportModal({
                 
                 {participants.map((participant) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
-                  console.log('🎨 Rendering feedback for:', participant.student.name, 'value:', feedback?.feedback || '(empty)', 'found:', !!feedback);
+                  const displayName = getParticipantName(participant);
+                  const responsibleName = getResponsibleName(participant);
+                  const isDependent = !!responsibleName;
+                  console.log('🎨 Rendering feedback for:', displayName, 'value:', feedback?.feedback || '(empty)', 'found:', !!feedback);
                   
                   return (
                     <div key={participant.student_id} className="space-y-2">
-                      <Label className="text-sm font-medium">
-                        {participant.student.name}
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
+                        {isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                        {displayName}
+                        {responsibleName && (
+                          <span className="text-xs text-muted-foreground font-normal ml-1">
+                            (Responsável: {responsibleName})
+                          </span>
+                        )}
                       </Label>
                       <Textarea
                         key={`feedback-${participant.student_id}-${existingReport?.id || 'new'}`}
-                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
+                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: displayName })}
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
                         className="min-h-[80px]"

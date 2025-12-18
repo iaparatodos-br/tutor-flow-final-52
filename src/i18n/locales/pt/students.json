@@ -183,7 +183,10 @@
       "teacherIdRequired": "ID do professor é necessário",
       "saveFailed": "Erro ao salvar dependente",
       "partialCreation": "Alguns dependentes não foram criados",
-      "partialCreationDescription": "Não foi possível criar: {{names}}"
+      "partialCreationDescription": "Não foi possível criar: {{names}}",
+      "limitReached": "Limite atingido",
+      "limitReachedDescription": "Você atingiu o limite de alunos/dependentes do plano gratuito. Faça upgrade para adicionar mais.",
+      "upgradeToPlan": "Limite atingido. Faça upgrade para adicionar mais."
     },
     "deleteConfirm": {
       "title": "Remover dependente?",

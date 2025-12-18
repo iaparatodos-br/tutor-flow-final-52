@@ -13,7 +13,7 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from '@/components/ui/alert-dialog';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, Loader2, Baby } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
@@ -453,11 +453,18 @@ export function SimpleCalendar({
                             )}
                           >
                             <div>
-                              <div className={cn("font-medium", isCancelled && "text-destructive")}>
-                                {participant.profiles?.name || participant.student?.name || 'Nome não disponível'}
+                              <div className={cn("font-medium flex items-center gap-1.5", isCancelled && "text-destructive")}>
+                                {participant.dependent_id && participant.dependent_name && (
+                                  <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                                )}
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? participant.dependent_name 
+                                  : (participant.profiles?.name || participant.student?.name || 'Nome não disponível')}
                               </div>
                               <div className="text-sm text-muted-foreground">
-                                {participant.profiles?.email || participant.student?.email || 'Email não disponível'}
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? `(Responsável: ${participant.profiles?.name || participant.student?.name})`
+                                  : (participant.profiles?.email || participant.student?.email || 'Email não disponível')}
                               </div>
                             </div>
                             

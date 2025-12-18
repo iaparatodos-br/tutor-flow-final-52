@@ -767,17 +767,13 @@ export default function Agenda() {
       // Process participants data from RPC response
       let classesWithDetails;
       if (isProfessor) {
-        // RPC already returns participants as JSONB array, just parse it
+        // RPC already returns participants as JSONB array with dependent_name included
         classesWithDetails = materializedClasses.map((cls: any) => {
           const participants = Array.isArray(cls.participants) 
-            ? cls.participants.map((p: any) => {
-                const dependentInfo = p.dependent_id 
-                  ? dependents.find(d => d.id === p.dependent_id)
-                  : null;
-                return {
+            ? cls.participants.map((p: any) => ({
                   student_id: p.student_id,
                   dependent_id: p.dependent_id,
-                  dependent_name: dependentInfo?.name || null,
+                  dependent_name: p.dependent_name || null, // Agora vem diretamente da RPC
                   status: p.status,
                   cancelled_at: p.cancelled_at,
                   cancelled_by: p.cancelled_by,
@@ -786,8 +782,7 @@ export default function Agenda() {
                   completed_at: p.completed_at,
                   cancellation_reason: p.cancellation_reason,
                   student: p.profiles
-                };
-              })
+                }))
             : [];
           return {
             ...cls,
@@ -797,7 +792,8 @@ export default function Agenda() {
       } else {
         // For students, data already comes with relations
         classesWithDetails = materializedClasses.map((item: any) => {
-          // For students: Get participants from class_participants (no legacy fallback)
+          // For students: Get participants from class_participants
+          // Note: Students query doesn't use the RPC, so we need to fetch dependent name separately
           const participants = item.class_participants?.map((p: any) => {
             const dependentInfo = p.dependent_id 
               ? dependents.find(d => d.id === p.dependent_id)

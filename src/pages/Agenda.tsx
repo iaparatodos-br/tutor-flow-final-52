@@ -770,17 +770,24 @@ export default function Agenda() {
         // RPC already returns participants as JSONB array, just parse it
         classesWithDetails = materializedClasses.map((cls: any) => {
           const participants = Array.isArray(cls.participants) 
-            ? cls.participants.map((p: any) => ({
-                student_id: p.student_id,
-                status: p.status,
-                cancelled_at: p.cancelled_at,
-                cancelled_by: p.cancelled_by,
-                charge_applied: p.charge_applied,
-                confirmed_at: p.confirmed_at,
-                completed_at: p.completed_at,
-                cancellation_reason: p.cancellation_reason,
-                student: p.profiles
-              }))
+            ? cls.participants.map((p: any) => {
+                const dependentInfo = p.dependent_id 
+                  ? dependents.find(d => d.id === p.dependent_id)
+                  : null;
+                return {
+                  student_id: p.student_id,
+                  dependent_id: p.dependent_id,
+                  dependent_name: dependentInfo?.name || null,
+                  status: p.status,
+                  cancelled_at: p.cancelled_at,
+                  cancelled_by: p.cancelled_by,
+                  charge_applied: p.charge_applied,
+                  confirmed_at: p.confirmed_at,
+                  completed_at: p.completed_at,
+                  cancellation_reason: p.cancellation_reason,
+                  student: p.profiles
+                };
+              })
             : [];
           return {
             ...cls,
@@ -791,18 +798,24 @@ export default function Agenda() {
         // For students, data already comes with relations
         classesWithDetails = materializedClasses.map((item: any) => {
           // For students: Get participants from class_participants (no legacy fallback)
-          const participants = item.class_participants?.map((p: any) => ({
-            student_id: p.student_id,
-            dependent_id: p.dependent_id,
-            status: p.status,
-            cancelled_at: p.cancelled_at,
-            cancelled_by: p.cancelled_by,
-            charge_applied: p.charge_applied,
-            confirmed_at: p.confirmed_at,
-            completed_at: p.completed_at,
-            cancellation_reason: p.cancellation_reason,
-            student: p.profiles
-          })) || [];
+          const participants = item.class_participants?.map((p: any) => {
+            const dependentInfo = p.dependent_id 
+              ? dependents.find(d => d.id === p.dependent_id)
+              : null;
+            return {
+              student_id: p.student_id,
+              dependent_id: p.dependent_id,
+              dependent_name: dependentInfo?.name || null,
+              status: p.status,
+              cancelled_at: p.cancelled_at,
+              cancelled_by: p.cancelled_by,
+              charge_applied: p.charge_applied,
+              confirmed_at: p.confirmed_at,
+              completed_at: p.completed_at,
+              cancellation_reason: p.cancellation_reason,
+              student: p.profiles
+            };
+          }) || [];
           
           return {
             ...item,
@@ -857,18 +870,30 @@ export default function Agenda() {
         // ✅ OTIMIZAÇÃO FASE 1.1: Participantes já vêm do RPC (professor) ou class_participants (aluno)
         const participantsFormatted = isProfessor
           ? (Array.isArray(template.participants)
-              ? template.participants.map((p: any) => ({
-                  student_id: p.student_id,
-                  dependent_id: p.dependent_id,
-                  student: p.profiles
-                }))
+              ? template.participants.map((p: any) => {
+                  const dependentInfo = p.dependent_id 
+                    ? dependents.find(d => d.id === p.dependent_id)
+                    : null;
+                  return {
+                    student_id: p.student_id,
+                    dependent_id: p.dependent_id,
+                    dependent_name: dependentInfo?.name || null,
+                    student: p.profiles
+                  };
+                })
               : [])
           : (Array.isArray(template.class_participants)
-              ? template.class_participants.map((p: any) => ({
-                  student_id: p.student_id,
-                  dependent_id: p.dependent_id,
-                  student: p.profiles
-                }))
+              ? template.class_participants.map((p: any) => {
+                  const dependentInfo = p.dependent_id 
+                    ? dependents.find(d => d.id === p.dependent_id)
+                    : null;
+                  return {
+                    student_id: p.student_id,
+                    dependent_id: p.dependent_id,
+                    dependent_name: dependentInfo?.name || null,
+                    student: p.profiles
+                  };
+                })
               : []);
         
         const templateWithParticipants = {

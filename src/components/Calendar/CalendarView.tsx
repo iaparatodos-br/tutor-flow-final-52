@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle, Baby } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,8 @@ const localizer = momentLocalizer(moment);
 
 export interface ClassParticipant {
   student_id: string;
+  dependent_id?: string | null;
+  dependent_name?: string | null;
   status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
   student: {
     name: string;
@@ -359,8 +361,19 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                             )}
                           >
                             <div>
-                              <div className="font-medium">{participant.student.name}</div>
-                              <div className="text-muted-foreground text-xs">{participant.student.email}</div>
+                              <div className="font-medium flex items-center gap-1.5">
+                                {participant.dependent_id && participant.dependent_name && (
+                                  <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                                )}
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? participant.dependent_name 
+                                  : participant.student.name}
+                              </div>
+                              <div className="text-muted-foreground text-xs">
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? `(Responsável: ${participant.student.name})`
+                                  : participant.student.email}
+                              </div>
                             </div>
                             
                             {/* Status Badge */}

@@ -1063,8 +1063,8 @@ export default function Agenda() {
         return;
       }
       const mapped = (data || []).map((d: any) => ({
-        id: d.id,
-        name: d.name,
+        id: d.dependent_id,
+        name: d.dependent_name,
         responsible_id: d.responsible_id,
         responsible_name: d.responsible_name
       }));

@@ -119,20 +119,32 @@ async function updateStripeSubscriptionQuantity(
   }
 }
 
-// Check if a student (or their dependents) has pending/active classes
+// Check if a student (or their dependents) has pending/active classes WITH THIS TEACHER ONLY
 async function checkPendingClasses(
   supabaseAdmin: any,
   studentId: string,
   teacherId: string
 ): Promise<{ hasPending: boolean; pendingCount: number; dependentsPending: number }> {
-  // Check student's own pending classes
-  const { count: studentPending } = await supabaseAdmin
+  // Check student's own pending classes WITH THIS TEACHER ONLY
+  // Need to join with classes table to filter by teacher_id
+  const { data: studentClasses, error: studentError } = await supabaseAdmin
     .from('class_participants')
-    .select('id', { count: 'exact', head: true })
+    .select(`
+      id,
+      status,
+      classes!inner(teacher_id)
+    `)
     .eq('student_id', studentId)
+    .eq('classes.teacher_id', teacherId)
     .in('status', ['pendente', 'confirmada']);
 
-  // Check dependents' pending classes
+  if (studentError) {
+    console.error('Error checking student pending classes:', studentError);
+  }
+
+  const studentPending = studentClasses?.length || 0;
+
+  // Check dependents' pending classes WITH THIS TEACHER ONLY
   const { data: dependents } = await supabaseAdmin
     .from('dependents')
     .select('id')
@@ -142,18 +154,30 @@ async function checkPendingClasses(
   let dependentsPending = 0;
   if (dependents && dependents.length > 0) {
     const dependentIds = dependents.map((d: any) => d.id);
-    const { count } = await supabaseAdmin
+    
+    const { data: depClasses, error: depError } = await supabaseAdmin
       .from('class_participants')
-      .select('id', { count: 'exact', head: true })
+      .select(`
+        id,
+        status,
+        classes!inner(teacher_id)
+      `)
       .in('dependent_id', dependentIds)
+      .eq('classes.teacher_id', teacherId)
       .in('status', ['pendente', 'confirmada']);
-    dependentsPending = count || 0;
+
+    if (depError) {
+      console.error('Error checking dependent pending classes:', depError);
+    }
+
+    dependentsPending = depClasses?.length || 0;
   }
 
-  const totalPending = (studentPending || 0) + dependentsPending;
+  const totalPending = studentPending + dependentsPending;
   
   console.log('Pending classes check:', {
     studentId,
+    teacherId,
     studentPending,
     dependentsPending,
     totalPending
@@ -161,7 +185,7 @@ async function checkPendingClasses(
 
   return {
     hasPending: totalPending > 0,
-    pendingCount: studentPending || 0,
+    pendingCount: studentPending,
     dependentsPending
   };
 }

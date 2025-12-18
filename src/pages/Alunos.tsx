@@ -372,29 +372,55 @@ export default function Alunos() {
           relationship_id: student.relationship_id
         }
       });
+
+      // Handle HTTP errors (status 400, 500, etc.)
       if (error) {
         console.error('Smart delete error:', error);
+        
+        // Try to extract error details from the response
+        let errorMessage = "Erro ao processar a remoção do aluno";
+        
+        try {
+          // For FunctionsHttpError, the context contains the response
+          if (error.context && typeof error.context.json === 'function') {
+            const errorBody = await error.context.json();
+            if (errorBody?.error) {
+              errorMessage = errorBody.error;
+            }
+          }
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+        
         toast({
-          title: "Erro",
-          description: "Erro ao processar a remoção do aluno",
+          title: "Não foi possível remover",
+          description: errorMessage,
           variant: "destructive"
         });
         return;
       }
+
+      // Handle business logic errors (success: false)
       if (data && !data.success) {
         toast({
-          title: "Erro",
+          title: "Não foi possível remover",
           description: data.error || "Erro ao processar a remoção do aluno",
           variant: "destructive"
         });
         return;
       }
 
-      // Show generic success message
+      // Success - show appropriate message based on action
+      const dependentsDeleted = data?.dependents_deleted || 0;
+      const successMessage = dependentsDeleted > 0
+        ? `${student.name} e ${dependentsDeleted} dependente(s) foram removidos.`
+        : `${student.name} perdeu acesso à sua área da plataforma.`;
+
       toast({
-        title: "Aluno removido com sucesso",
-        description: `${student.name} perdeu acesso à sua área da plataforma`
+        title: data?.action === 'deleted' ? "Aluno excluído" : "Aluno desvinculado",
+        description: successMessage
       });
+      
       loadStudents();
     } catch (error: any) {
       console.error('Erro ao remover aluno:', error);

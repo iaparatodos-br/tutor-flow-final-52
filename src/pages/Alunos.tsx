@@ -512,8 +512,21 @@ export default function Alunos() {
     });
   };
 
-  // Open modal to add dependent
+  // Open modal to add dependent (with plan limit validation)
   const handleAddDependent = (responsibleId: string) => {
+    // Check if user has reached the plan limit (for free plan)
+    if (currentPlan?.slug === 'free') {
+      const { isOverLimit } = getStudentOverageInfo(totalCount);
+      if (isOverLimit) {
+        toast({
+          title: t('dependents.errors.limitReached', 'Limite atingido'),
+          description: t('dependents.errors.limitReachedDescription', 'Você atingiu o limite de alunos/dependentes do plano gratuito. Faça upgrade para adicionar mais.'),
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+    
     setSelectedResponsibleId(responsibleId);
     setEditingDependent(null);
     setIsDependentModalOpen(true);
@@ -932,15 +945,36 @@ export default function Alunos() {
                       <TableRow key={`${student.id}-add`} className="bg-muted/20">
                         <TableCell colSpan={hasFeature('financial_module') ? 8 : 6}>
                           <div className="flex items-center pl-8">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleAddDependent(student.id)}
-                              className="text-primary hover:text-primary-foreground hover:bg-primary"
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              {t('dependents.addAnother', 'Adicionar mais um dependente')}
-                            </Button>
+                            {currentPlan?.slug === 'free' && getStudentOverageInfo(totalCount).isOverLimit ? (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm" 
+                                      disabled
+                                      className="text-muted-foreground cursor-not-allowed"
+                                    >
+                                      <Plus className="h-4 w-4 mr-2" />
+                                      {t('dependents.addAnother', 'Adicionar mais um dependente')}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{t('dependents.errors.upgradeToPlan', 'Limite atingido. Faça upgrade para adicionar mais.')}</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            ) : (
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={() => handleAddDependent(student.id)}
+                                className="text-primary hover:text-primary-foreground hover:bg-primary"
+                              >
+                                <Plus className="h-4 w-4 mr-2" />
+                                {t('dependents.addAnother', 'Adicionar mais um dependente')}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

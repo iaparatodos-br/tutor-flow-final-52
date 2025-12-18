@@ -82,6 +82,33 @@ export function SimpleCalendar({
     return d1 <= d2;
   };
 
+  // Helper para obter nome do aluno/dependente corretamente
+  const getDisplayName = (event: CalendarClass): { name: string; isDependent: boolean; responsibleName?: string } => {
+    // Para aulas em grupo, retorna o texto de grupo
+    if (event.is_group_class) {
+      return { 
+        name: t('calendar.groupWithCount', { count: event.participants?.length || 1 }), 
+        isDependent: false 
+      };
+    }
+    
+    // Verificar se o primeiro participante é um dependente
+    const firstParticipant = event.participants?.[0];
+    if (firstParticipant?.dependent_id && firstParticipant?.dependent_name) {
+      return { 
+        name: firstParticipant.dependent_name, 
+        isDependent: true,
+        responsibleName: firstParticipant.profiles?.name || event.student?.name
+      };
+    }
+    
+    // Caso padrão: usar nome do student
+    return { 
+      name: event.student?.name || 'Nome não disponível', 
+      isDependent: false 
+    };
+  };
+
   const DAYS_OF_WEEK = [
     t('daysOfWeek.sun'), 
     t('daysOfWeek.mon'), 
@@ -304,11 +331,16 @@ export function SimpleCalendar({
                         getStatusColor(event.status)
                       )}
                     >
-                      <div className="font-medium truncate">
-                        {event.is_group_class 
-                          ? t('calendar.groupShort', { count: event.participants?.length || 1 })
-                          : event.student.name
-                        }
+                    <div className="font-medium truncate flex items-center gap-1">
+                        {(() => {
+                          const displayInfo = getDisplayName(event);
+                          return (
+                            <>
+                              {displayInfo.isDependent && <Baby className="h-3 w-3 flex-shrink-0 text-purple-600" />}
+                              <span>{event.is_group_class ? t('calendar.groupShort', { count: event.participants?.length || 1 }) : displayInfo.name}</span>
+                            </>
+                          );
+                        })()}
                       </div>
                       <div className="opacity-90">
                         {formatTime(event.start)} - {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))}min
@@ -401,12 +433,20 @@ export function SimpleCalendar({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <User className="h-5 w-5 text-muted-foreground" />
-                      <span className="font-medium">
-                        {(selectedEvent as CalendarClass).is_group_class 
-                          ? t('calendar.groupWithCount', { count: (selectedEvent as CalendarClass).participants?.length || 1 })
-                          : (selectedEvent as CalendarClass).student.name
-                        }
-                      </span>
+                      {(() => {
+                        const displayInfo = getDisplayName(selectedEvent as CalendarClass);
+                        return (
+                          <span className="font-medium flex items-center gap-1.5">
+                            {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                            <span>{displayInfo.name}</span>
+                            {displayInfo.isDependent && displayInfo.responsibleName && (
+                              <span className="text-sm text-muted-foreground font-normal ml-1">
+                                (Responsável: {displayInfo.responsibleName})
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div className="flex gap-2">
                       <Badge className={getStatusColor((selectedEvent as CalendarClass).status)}>
@@ -694,11 +734,21 @@ export function SimpleCalendar({
                         )}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <div className="font-medium">
-                            {event.is_group_class 
-                              ? t('calendar.groupWithCount', { count: event.participants?.length || 1 })
-                              : event.student.name
-                            }
+                          <div className="font-medium flex items-center gap-1.5">
+                            {(() => {
+                              const displayInfo = getDisplayName(event);
+                              return (
+                                <>
+                                  {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                                  <span>{displayInfo.name}</span>
+                                  {displayInfo.isDependent && displayInfo.responsibleName && (
+                                    <span className="text-sm text-muted-foreground font-normal ml-1">
+                                      (Resp: {displayInfo.responsibleName})
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
                           </div>
                           <div className="flex gap-2">
                             <Badge className={cn("text-xs", getStatusColor(event.status))}>

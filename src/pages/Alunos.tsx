@@ -283,6 +283,7 @@ export default function Alunos() {
       });
       setIsAddDialogOpen(false);
       loadStudents();
+      fetchDependents(); // Atualizar lista de dependentes após cadastro de família
     } catch (error: any) {
       console.error('Erro ao adicionar aluno:', error);
       toast({

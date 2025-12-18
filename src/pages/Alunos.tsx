@@ -572,7 +572,7 @@ export default function Alunos() {
             isOverLimit,
             additionalCost,
             message
-          } = getStudentOverageInfo(students.length);
+          } = getStudentOverageInfo(totalCount);
           if (isOverLimit && currentPlan.slug !== 'free') {
             return <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/20 dark:to-yellow-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
@@ -584,13 +584,13 @@ export default function Alunos() {
                     Limite de Alunos Atingido
                   </h4>
                   <p className="text-sm text-amber-700 dark:text-amber-300">
-                    Você está com {students.length} alunos de {currentPlan?.student_limit ?? 0} incluídos no seu plano atual.
+                    Você está com {totalCount} alunos/dependentes de {currentPlan?.student_limit ?? 0} incluídos no seu plano atual.
                   </p>
                 </div>
               </div>
             </div>;
           }
-          if (currentPlan.slug === 'free' && students.length >= (currentPlan?.student_limit ?? 0) - 1) {
+          if (currentPlan.slug === 'free' && totalCount >= (currentPlan?.student_limit ?? 0) - 1) {
             return <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center">
@@ -601,7 +601,7 @@ export default function Alunos() {
                     Plano Gratuito
                   </h4>
                   <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Você está usando {students.length} de {currentPlan?.student_limit ?? 0} alunos do plano gratuito.
+                    Você está usando {totalCount} de {currentPlan?.student_limit ?? 0} alunos/dependentes do plano gratuito.
                   </p>
                 </div>
               </div>
@@ -631,14 +631,14 @@ export default function Alunos() {
 
       {/* Action Buttons */}
       <div className="flex justify-end gap-2">
-        <StudentImportDialog onSuccess={loadStudents} currentStudentCount={students.length} />
+        <StudentImportDialog onSuccess={loadStudents} currentStudentCount={totalCount} />
 
         {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
           id: s.id,
           name: s.name,
           email: s.email
         }))} />}
-        <FeatureGate studentCount={students.length} showUpgrade={true}>
+        <FeatureGate studentCount={totalCount} showUpgrade={true}>
           <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
             <Plus className="h-4 w-4 mr-2" />
             Adicionar Aluno

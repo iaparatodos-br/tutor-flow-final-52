@@ -142,12 +142,13 @@ serve(async (req) => {
     // Validate that business_profile_id is not null
     if (!relationship.business_profile_id) {
       logStep("No business profile defined for student", { studentId: billingStudentId });
+      // Return status 200 with success: false to allow frontend to display error properly
       return new Response(JSON.stringify({
         success: false,
         error: "Por favor, defina um negócio de recebimento para este aluno em seu cadastro antes de gerar uma fatura."
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
+        status: 200,
       });
     }
 

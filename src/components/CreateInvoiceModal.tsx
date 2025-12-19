@@ -120,7 +120,27 @@ export function CreateInvoiceModal({ students, dependents = [], onInvoiceCreated
 
     } catch (error: any) {
       console.error('Erro ao criar fatura:', error);
-      setError(error.message || "Erro inesperado ao criar fatura");
+      
+      // Tentar extrair mensagem amigável do FunctionsHttpError
+      let errorMessage = "Erro inesperado ao criar fatura";
+      
+      // Se o erro tem context.body (FunctionsHttpError), tentar parsear
+      if (error?.context?.body) {
+        try {
+          const body = typeof error.context.body === 'string' 
+            ? JSON.parse(error.context.body) 
+            : error.context.body;
+          if (body?.error) {
+            errorMessage = body.error;
+          }
+        } catch {
+          // Se não conseguir parsear, usar mensagem padrão
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

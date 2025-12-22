@@ -164,5 +164,11 @@
     "previewTitle": "Previsão de Recebimento",
     "invoiceAmount": "Valor da fatura",
     "deducted": "Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá."
+  },
+  "boleto": {
+    "minimumAmountError": "O valor mínimo para geração de boleto é R$ 5,00",
+    "maximumAmountError": "O valor máximo para boleto é R$ 49.999,99",
+    "amountBelowMinimum": "Valor abaixo do mínimo para boleto",
+    "amountBelowMinimumStudent": "O valor desta fatura está abaixo do mínimo de R$ 5,00 para geração de boleto. Entre em contato com o professor."
   }
 }

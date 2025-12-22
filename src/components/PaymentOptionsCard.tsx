@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Invoice {
   id: string;
@@ -210,6 +212,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
   const isOverdue = new Date(invoice.due_date) < new Date();
   const isPaid = invoice.status === 'paga';
+  const isBelowMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
 
   return (
     <StripeAccountGuard requireChargesEnabled={true}>
@@ -240,6 +243,17 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
       {!isPaid && (
         <CardContent className="space-y-4">
           <Separator />
+          
+          {isBelowMinimum && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                O valor desta fatura ({formatCurrency(invoice.amount)}) está abaixo do 
+                mínimo de R$ {MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} para geração de boleto. 
+                Entre em contato com o professor.
+              </AlertDescription>
+            </Alert>
+          )}
           
           <div>
             <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -307,7 +321,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     size="sm"
                     variant="outline"
                     onClick={() => createPaymentIntent('pix')}
-                    disabled={loading && activePaymentMethod === 'pix'}
+                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'pix')}
                   >
                     {loading && activePaymentMethod === 'pix' ? (
                       "Gerando..."
@@ -348,7 +362,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     size="sm"
                     variant="outline"
                     onClick={() => createPaymentIntent('card')}
-                    disabled={loading && activePaymentMethod === 'card'}
+                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'card')}
                   >
                     {loading && activePaymentMethod === 'card' ? (
                       "Processando..."

@@ -54,6 +54,19 @@ serve(async (req) => {
     if (!body.student_id || !body.amount) {
       throw new Error("student_id and amount are required");
     }
+
+    // Validate minimum boleto amount (Stripe requirement: R$ 5.00)
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+    if (body.amount < MINIMUM_BOLETO_AMOUNT) {
+      logStep("Amount below minimum for boleto", { amount: body.amount, minimum: MINIMUM_BOLETO_AMOUNT });
+      return new Response(JSON.stringify({
+        success: false,
+        error: `O valor mínimo para geração de fatura com boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
     
     logStep("Request data", body);
 

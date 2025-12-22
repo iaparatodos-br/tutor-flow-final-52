@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { DollarSign, AlertTriangle, AlertCircle, Baby } from "lucide-react";
 import { toast } from "sonner";
-import { calculateBoletoFees, formatCurrency } from "@/utils/stripe-fees";
+import { calculateBoletoFees, formatCurrency, validateBoletoAmount, MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
 import { useTranslation } from "react-i18next";
 
 interface Student {
@@ -228,16 +228,21 @@ export function CreateInvoiceModal({ students, dependents = [], onInvoiceCreated
                 id="amount"
                 type="number"
                 step="0.01"
-                min="0"
-                placeholder="0,00"
+                min={MINIMUM_BOLETO_AMOUNT}
+                placeholder="5,00"
                 value={formData.amount}
                 onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
                 required
               />
+              {formData.amount && parseFloat(formData.amount) > 0 && !validateBoletoAmount(parseFloat(formData.amount)).valid && (
+                <p className="text-sm text-destructive">
+                  {validateBoletoAmount(parseFloat(formData.amount)).error}
+                </p>
+              )}
             </div>
 
             {/* Fee Breakdown */}
-            {formData.amount && parseFloat(formData.amount) > 0 && (
+            {formData.amount && parseFloat(formData.amount) >= MINIMUM_BOLETO_AMOUNT && (
               <Alert className="bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
                 <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 <AlertTitle className="text-sm text-amber-900 dark:text-amber-100">Previsão de Recebimento</AlertTitle>
@@ -293,7 +298,7 @@ export function CreateInvoiceModal({ students, dependents = [], onInvoiceCreated
             </Button>
             <Button 
               type="submit" 
-              disabled={isSubmitting}
+              disabled={isSubmitting || (formData.amount && parseFloat(formData.amount) > 0 && !validateBoletoAmount(parseFloat(formData.amount)).valid)}
             >
               {isSubmitting ? "Criando..." : "Criar Fatura"}
             </Button>

@@ -59,7 +59,10 @@
     "newInvoice": "Nova Fatura"
   },
   "errors": {
-    "studentAndAmountRequired": "Destinatário e valor são obrigatórios"
+    "studentAndAmountRequired": "Destinatário e valor são obrigatórios",
+    "amountMustBePositive": "O valor deve ser maior que zero",
+    "amountBelowMinimum": "O valor mínimo para geração de boleto é R$ 5,00",
+    "amountAboveMaximum": "O valor máximo para boleto é R$ 49.999,99"
   },
   "status": {
     "paid": "Paga",

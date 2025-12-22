@@ -59,7 +59,10 @@
     "newInvoice": "New Invoice"
   },
   "errors": {
-    "studentAndAmountRequired": "Recipient and amount are required"
+    "studentAndAmountRequired": "Recipient and amount are required",
+    "amountMustBePositive": "Amount must be greater than zero",
+    "amountBelowMinimum": "Minimum amount for boleto is R$ 5.00",
+    "amountAboveMaximum": "Maximum amount for boleto is R$ 49,999.99"
   },
   "status": {
     "paid": "Paid",

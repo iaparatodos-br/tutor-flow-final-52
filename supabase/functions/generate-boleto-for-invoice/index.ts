@@ -48,6 +48,15 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
+    // VALIDAÇÃO DE VALOR MÍNIMO PARA BOLETO
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+    const invoiceAmount = parseFloat(invoice.amount);
+
+    if (invoiceAmount < MINIMUM_BOLETO_AMOUNT) {
+      logStep("Amount below minimum for boleto", { amount: invoiceAmount, minimum: MINIMUM_BOLETO_AMOUNT });
+      throw new Error(`O valor mínimo para geração de boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`);
+    }
+
     // Get guardian data from teacher_student_relationships
     const { data: relationship, error: relationshipError } = await supabaseClient
       .from("teacher_student_relationships")

@@ -55,6 +55,35 @@ serve(async (req) => {
     }
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
+
+    // VALIDAÇÃO DE VALOR MÍNIMO E MÁXIMO PARA BOLETO
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+    const MAXIMUM_BOLETO_AMOUNT = 49999.99;
+    const invoiceAmount = parseFloat(invoice.amount);
+
+    if (payment_method === 'boleto') {
+      if (invoiceAmount < MINIMUM_BOLETO_AMOUNT) {
+        logStep("Amount below minimum for boleto", { amount: invoiceAmount, minimum: MINIMUM_BOLETO_AMOUNT });
+        return new Response(JSON.stringify({
+          error: `O valor mínimo para geração de boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
+
+      if (invoiceAmount > MAXIMUM_BOLETO_AMOUNT) {
+        logStep("Amount above maximum for boleto", { amount: invoiceAmount, maximum: MAXIMUM_BOLETO_AMOUNT });
+        return new Response(JSON.stringify({
+          error: `O valor máximo para boleto é R$ ${MAXIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
+    }
     
     // Fetch guardian data from teacher_student_relationships
     const { data: relationship, error: relError } = await supabaseClient

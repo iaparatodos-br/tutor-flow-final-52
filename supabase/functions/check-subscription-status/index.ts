@@ -326,27 +326,195 @@ serve(async (req) => {
       logStep("Found subscription in database (no active with future period)", { 
         subscriptionId: subscription.id, 
         status: subscription.status,
-        currentPeriodEnd: subscription.current_period_end 
+        currentPeriodEnd: subscription.current_period_end,
+        stripeSubscriptionId: subscription.stripe_subscription_id
       });
       
       let paymentFailure = null;
 
+      // ============= CRITICAL FIX: Check for NEW active subscription in Stripe =============
+      // When subscription is expired/canceled in DB, check if there's a NEW active subscription in Stripe
+      const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+      
+      // Get Stripe customer
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      
+      if (customers.data.length > 0) {
+        const customerId = customers.data[0].id;
+        logStep("Found Stripe customer, checking for active subscriptions", { customerId });
+        
+        // Get ALL active subscriptions from Stripe
+        const activeStripeSubscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'active',
+          limit: 5
+        });
+        
+        logStep("Active Stripe subscriptions found", { 
+          count: activeStripeSubscriptions.data.length,
+          ids: activeStripeSubscriptions.data.map(s => s.id)
+        });
+        
+        // Check if there's an active subscription DIFFERENT from the one in DB
+        const newActiveSub = activeStripeSubscriptions.data.find(
+          s => s.id !== subscription.stripe_subscription_id
+        );
+        
+        if (newActiveSub) {
+          logStep("🔄 NEW ACTIVE SUBSCRIPTION FOUND IN STRIPE - syncing", { 
+            oldDbSubscriptionId: subscription.stripe_subscription_id,
+            newStripeSubscriptionId: newActiveSub.id,
+            dbStatus: subscription.status
+          });
+          
+          // Get price_id and map to subscription plan
+          const priceId = newActiveSub.items.data[0].price.id;
+          logStep("Found price_id for new subscription", { priceId });
+          
+          const { data: plan, error: planError } = await supabaseClient
+            .from('subscription_plans')
+            .select('*')
+            .eq('stripe_price_id', priceId)
+            .single();
+          
+          if (!planError && plan) {
+            // Update subscription record with NEW subscription data
+            const subscriptionData = {
+              user_id: user.id,
+              plan_id: plan.id,
+              status: 'active',
+              stripe_customer_id: customerId,
+              stripe_subscription_id: newActiveSub.id,
+              current_period_start: new Date(newActiveSub.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(newActiveSub.current_period_end * 1000).toISOString(),
+              cancel_at_period_end: newActiveSub.cancel_at_period_end,
+              extra_students: 0,
+              extra_cost_cents: 0,
+              updated_at: new Date().toISOString(),
+              // Clear boleto fields from old subscription
+              boleto_url: null,
+              boleto_barcode: null,
+              boleto_due_date: null,
+              pending_payment_method: null
+            };
+
+            const { data: updatedSubscription, error: upsertError } = await supabaseClient
+              .from('user_subscriptions')
+              .upsert(subscriptionData, { onConflict: 'user_id' })
+              .select(`*, subscription_plans (*)`)
+              .single();
+
+            if (!upsertError && updatedSubscription) {
+              // Update user profile
+              await supabaseClient
+                .from('profiles')
+                .update({
+                  current_plan_id: plan.id,
+                  subscription_status: 'active',
+                  subscription_end_date: subscriptionData.current_period_end,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', user.id);
+
+              logStep("✅ Successfully synced NEW subscription from Stripe", { 
+                subscriptionId: updatedSubscription.id,
+                planId: plan.id,
+                planName: plan.name
+              });
+
+              return new Response(JSON.stringify({
+                subscription: {
+                  id: updatedSubscription.id,
+                  plan_id: updatedSubscription.plan_id,
+                  status: updatedSubscription.status,
+                  current_period_end: updatedSubscription.current_period_end,
+                  cancel_at_period_end: updatedSubscription.cancel_at_period_end,
+                  extra_students: updatedSubscription.extra_students,
+                  extra_cost_cents: updatedSubscription.extra_cost_cents
+                },
+                plan: plan
+              }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            } else {
+              logStep("Error upserting new subscription", { error: upsertError });
+            }
+          } else {
+            logStep("Plan not found for new subscription", { priceId, error: planError });
+          }
+        } else if (activeStripeSubscriptions.data.length > 0) {
+          // Same subscription ID is active in Stripe - resync status
+          const sameSub = activeStripeSubscriptions.data[0];
+          logStep("Same subscription is ACTIVE in Stripe but expired/inactive in DB - resyncing", {
+            stripeId: sameSub.id,
+            dbStatus: subscription.status
+          });
+          
+          // Get the plan for this subscription
+          const priceId = sameSub.items.data[0].price.id;
+          const { data: plan } = await supabaseClient
+            .from('subscription_plans')
+            .select('*')
+            .eq('stripe_price_id', priceId)
+            .single();
+            
+          if (plan) {
+            // Update subscription to active
+            const { data: updatedSub, error: updateErr } = await supabaseClient
+              .from('user_subscriptions')
+              .update({
+                status: 'active',
+                current_period_start: new Date(sameSub.current_period_start * 1000).toISOString(),
+                current_period_end: new Date(sameSub.current_period_end * 1000).toISOString(),
+                cancel_at_period_end: sameSub.cancel_at_period_end,
+                updated_at: new Date().toISOString(),
+                boleto_url: null,
+                boleto_barcode: null,
+                boleto_due_date: null,
+                pending_payment_method: null
+              })
+              .eq('id', subscription.id)
+              .select(`*, subscription_plans (*)`)
+              .single();
+              
+            if (!updateErr && updatedSub) {
+              // Update profile too
+              await supabaseClient
+                .from('profiles')
+                .update({
+                  current_plan_id: plan.id,
+                  subscription_status: 'active',
+                  subscription_end_date: new Date(sameSub.current_period_end * 1000).toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', user.id);
+                
+              logStep("✅ Resynced existing subscription to ACTIVE", { subscriptionId: updatedSub.id });
+              
+              return new Response(JSON.stringify({
+                subscription: {
+                  id: updatedSub.id,
+                  plan_id: updatedSub.plan_id,
+                  status: updatedSub.status,
+                  current_period_end: updatedSub.current_period_end,
+                  cancel_at_period_end: updatedSub.cancel_at_period_end,
+                  extra_students: updatedSub.extra_students,
+                  extra_cost_cents: updatedSub.extra_cost_cents
+                },
+                plan: plan
+              }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            }
+          }
+        }
+      }
+      // ============= END CRITICAL FIX =============
+
       // If we have a Stripe subscription ID, check its status for payment failures
       if (subscription.stripe_subscription_id) {
-        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-        if (!stripeKey) {
-          logStep("Stripe secret key not found");
-          return new Response(
-            JSON.stringify({ error: "Stripe configuration missing" }),
-            { 
-              status: 500, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
-        }
-
-        const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-        
         try {
           const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
           logStep("Retrieved Stripe subscription", { 
@@ -451,6 +619,7 @@ serve(async (req) => {
             subscription: null,
             plan: freePlan,
             needs_student_selection: true,
+            student_selection: needsStudentSelection,
             current_students: needsStudentSelection.students,
             previous_plan: subscription.subscription_plans
           }), {

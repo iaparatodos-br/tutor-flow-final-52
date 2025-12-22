@@ -9,7 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User } from 'lucide-react';
+import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -103,7 +104,6 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     service: false,
     date: false,
     time: false,
-    pastDateTime: false,
     timeConflict: false,
   });
 
@@ -125,7 +125,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     });
     setShowRecurrence(false);
     setRecurrenceType('date');
-    setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false, timeConflict: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false, timeConflict: false });
   };
 
   // Handle student selection
@@ -214,17 +214,12 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       service: !formData.is_experimental && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
-      pastDateTime: false,
       timeConflict: false,
     };
 
-    // Check if date/time is in the past
+    // Check for time conflicts (past date validation removed - teachers can schedule past classes)
     if (formData.class_date && formData.time) {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
-      const now = new Date();
-      if (classDateTime <= now) {
-        errors.pastDateTime = true;
-      }
 
       // Get duration from selected service or use form value for experimental classes
       let duration = formData.is_experimental 
@@ -610,9 +605,9 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                 value={formData.class_date}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, class_date: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, date: false, pastDateTime: false, timeConflict: false }));
+                  setValidationErrors(prev => ({ ...prev, date: false, timeConflict: false }));
                 }}
-                className={validationErrors.date || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
+                className={validationErrors.date || validationErrors.timeConflict ? "border-destructive" : ""}
                 required
               />
             </div>
@@ -625,18 +620,22 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                 value={formData.time}
                 onChange={(e) => {
                   setFormData(prev => ({ ...prev, time: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, time: false, pastDateTime: false, timeConflict: false }));
+                  setValidationErrors(prev => ({ ...prev, time: false, timeConflict: false }));
                 }}
-                className={validationErrors.time || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
+                className={validationErrors.time || validationErrors.timeConflict ? "border-destructive" : ""}
                 required
               />
             </div>
           </div>
 
-          {validationErrors.pastDateTime && (
-            <p className="text-sm text-destructive">
-              {t('pastDateTimeError')}
-            </p>
+          {/* Past date warning (informative, not blocking) */}
+          {formData.class_date && formData.time && new Date(`${formData.class_date}T${formData.time}`) < new Date() && (
+            <Alert variant="default" className="border-warning bg-warning/10">
+              <Info className="h-4 w-4 text-warning" />
+              <AlertDescription className="text-warning-foreground">
+                {t('pastDateTimeWarning')}
+              </AlertDescription>
+            </Alert>
           )}
           
           {validationErrors.timeConflict && (

@@ -28,6 +28,7 @@
   "selectServicePlaceholder": "Selecione um serviço",
   "selectServiceError": "Selecione um serviço para definir o preço da aula",
   "pastDateTimeError": "Não é possível agendar aulas para data/horário passado",
+  "pastDateTimeWarning": "Você está cadastrando uma aula no passado. Ela será criada normalmente para fins de registro.",
   "timeConflictError": "Já existe uma aula agendada neste horário",
   "selectStudentError": "Selecione pelo menos um aluno",
   "recurrence": "Recorrência",

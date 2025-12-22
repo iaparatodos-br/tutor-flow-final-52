@@ -28,6 +28,7 @@
   "selectServicePlaceholder": "Select a service",
   "selectServiceError": "Select a service to set the class price",
   "pastDateTimeError": "Cannot schedule classes for past date/time",
+  "pastDateTimeWarning": "You are scheduling a class in the past. It will be created normally for record-keeping purposes.",
   "timeConflictError": "There is already a class scheduled at this time",
   "selectStudentError": "Select at least one student",
   "recurrence": "Recurrence",

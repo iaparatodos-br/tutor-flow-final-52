@@ -311,6 +311,9 @@ serve(async (req) => {
           dependentClassesCount 
         });
 
+        // Validate minimum boleto amount (Stripe requirement: R$ 5.00)
+        const MINIMUM_BOLETO_AMOUNT = 5.00;
+        const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
         const now = new Date();
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
@@ -397,6 +400,15 @@ serve(async (req) => {
           }
         }
 
+        // Adicionar nota se valor abaixo do mínimo para boleto
+        if (skipBoletoGeneration) {
+          description += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
+          logStep(`Invoice amount ${totalAmount} is below minimum ${MINIMUM_BOLETO_AMOUNT} for boleto - will skip boleto generation`, {
+            student: studentInfo.student_name,
+            amount: totalAmount
+          });
+        }
+
         const invoiceData = {
           student_id: studentInfo.student_id, // Responsável recebe a fatura
           teacher_id: studentInfo.teacher_id,
@@ -437,49 +449,59 @@ serve(async (req) => {
         });
 
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
-        logStep(`Generating payment URL for invoice ${invoiceId}`);
-        try {
-          const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
-            'create-payment-intent-connect',
-            {
-              body: {
-                invoice_id: invoiceId,
-                payment_method: 'boleto' // Default to boleto for automated billing
+        // PULAR se valor abaixo do mínimo para boleto
+        if (skipBoletoGeneration) {
+          logStep(`Skipping boleto generation for invoice ${invoiceId} - amount ${totalAmount} below minimum ${MINIMUM_BOLETO_AMOUNT}`, {
+            invoiceId,
+            amount: totalAmount,
+            student: studentInfo.student_name
+          });
+        } else {
+          logStep(`Generating payment URL for invoice ${invoiceId}`);
+          try {
+            const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
+              'create-payment-intent-connect',
+              {
+                body: {
+                  invoice_id: invoiceId,
+                  payment_method: 'boleto' // Default to boleto for automated billing
+                }
               }
-            }
-          );
+            );
 
-          if (!paymentError && paymentResult?.boleto_url) {
-            // Atualizar fatura com URL de pagamento gerada
-            const { error: updateError } = await supabaseAdmin
-              .from('invoices')
-              .update({ 
-                stripe_hosted_invoice_url: paymentResult.boleto_url,
-                boleto_url: paymentResult.boleto_url,
-                linha_digitavel: paymentResult.linha_digitavel,
-                stripe_payment_intent_id: paymentResult.payment_intent_id
-              })
-              .eq('id', invoiceId);
+            if (!paymentError && paymentResult?.boleto_url) {
+              // Atualizar fatura com URL de pagamento gerada
+              const { error: updateError } = await supabaseAdmin
+                .from('invoices')
+                .update({ 
+                  stripe_hosted_invoice_url: paymentResult.boleto_url,
+                  boleto_url: paymentResult.boleto_url,
+                  linha_digitavel: paymentResult.linha_digitavel,
+                  stripe_payment_intent_id: paymentResult.payment_intent_id
+                })
+                .eq('id', invoiceId);
 
-            if (!updateError) {
-              logStep(`Payment URL generated and saved`, { 
-                invoiceId,
-                paymentUrl: paymentResult.boleto_url 
-              });
+              if (!updateError) {
+                logStep(`Payment URL generated and saved`, { 
+                  invoiceId,
+                  paymentUrl: paymentResult.boleto_url 
+                });
+              } else {
+                logStep(`Warning: Could not update invoice with payment URL`, updateError);
+              }
             } else {
-              logStep(`Warning: Could not update invoice with payment URL`, updateError);
+              logStep(`Warning: Could not generate payment URL`, paymentError);
             }
-          } else {
-            logStep(`Warning: Could not generate payment URL`, paymentError);
+          } catch (paymentGenerationError) {
+            logStep(`Warning: Failed to generate payment URL`, paymentGenerationError);
+            // Continue without failing the invoice creation
           }
-        } catch (paymentGenerationError) {
-          logStep(`Warning: Failed to generate payment URL`, paymentGenerationError);
-          // Continue without failing the invoice creation
         }
 
         logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`, {
           totalItems: completedClassesCount + cancellationChargesCount,
-          dependentItems: dependentClassesCount
+          dependentItems: dependentClassesCount,
+          boletoSkipped: skipBoletoGeneration
         });
         processedCount++;
 

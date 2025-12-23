@@ -639,10 +639,115 @@ WHERE is_template = false;
 | 27 | Filtro `invoice_type` em relatórios | Como filtrar faturas por tipo nos relatórios? | Adicionar opção "Tipo" com valores: "Todas", "Mensalidade", "Aula Avulsa" |
 | 29 | Auditoria de aulas excedentes | Como registrar aulas cobradas além do limite? | Descrição da fatura inclui "Mensalidade + X aulas excedentes". Aulas excedentes registradas em `invoice_classes` com `item_type = 'overage'` |
 | 30 | RLS para alunos verem suas mensalidades | Aluno pode ver detalhes da própria mensalidade? | Sim. Política de SELECT em `student_monthly_subscriptions` onde `relationship_id` pertence ao aluno |
+| 31 | Notificação de fatura de mensalidade | Como notificar aluno sobre fatura de mensalidade? | Reusar `send-invoice-notification` existente. A fatura já terá `description` adequada com nome do plano |
+| 32 | Aluno ver detalhes da mensalidade | Aluno precisa ver nome, valor e limite da mensalidade? | Sim. RLS de SELECT em `monthly_subscriptions` para alunos vinculados (ver seção 3.5) |
+| 33 | Fatura + dependentes na descrição | Fatura de família deve listar dependentes? | Sim. Description: "Mensalidade - Plano X (João, Maria)" incluindo nomes dos dependentes ativos |
+| 34 | Timezone na contagem de aulas | Qual timezone usar para contar aulas do mês? | UTC (timezone do servidor). Contagem baseada em `class_date` no banco. Documentar para usuários |
+| 35 | Mensalidade com valor R$ 0,00 | Gerar fatura para mensalidade gratuita? | **Não**. Mensalidades gratuitas NÃO geram fatura. Apenas registrar internamente para controle de limite |
+| 36 | Reativação de mensalidade | Alunos são reativados automaticamente ao reativar mensalidade? | **Não**. Alunos NÃO são reativados automaticamente. Professor deve re-adicionar manualmente |
+| 37 | Remover aluno individual da mensalidade | Como remover um aluno sem desativar a mensalidade toda? | Permitir soft delete (`is_active = false`) por aluno individual via interface de edição |
+| 38 | Proteção contra faturas duplicadas | Como evitar gerar duas faturas de mensalidade no mesmo mês? | Verificar existência de fatura `invoice_type = 'monthly_subscription'` para mesmo aluno/mês antes de criar |
+| 39 | Integração com relatórios financeiros | Relatórios devem distinguir receita de mensalidades? | Sim. Incluir coluna "Tipo" em `Financeiro.tsx`. Filtrar por `invoice_type` nos relatórios |
+| 40 | SQL de contagem inconsistente no Apêndice | Função no Apêndice A não exclui aulas experimentais | Corrigido: adicionado `c.is_experimental = false` na função `count_completed_classes_in_month` do Apêndice A |
 
 ---
 
 ## 5. Casos de Uso Adicionais
+
+### 5.0 Interfaces TypeScript
+
+```typescript
+// ============================================
+// ARQUIVO: src/types/monthly-subscriptions.ts
+// ============================================
+
+/**
+ * Representa uma mensalidade criada pelo professor
+ */
+export interface MonthlySubscription {
+  id: string;
+  teacher_id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  max_classes: number | null;
+  overage_price: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Representa o vínculo de um aluno a uma mensalidade
+ */
+export interface StudentMonthlySubscription {
+  id: string;
+  subscription_id: string;
+  relationship_id: string;
+  starts_at: string;
+  ends_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Dados agregados (quando join)
+  subscription?: MonthlySubscription;
+  student?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+/**
+ * Dados do formulário de criação/edição de mensalidade
+ */
+export interface MonthlySubscriptionFormData {
+  name: string;
+  description: string;
+  price: number;
+  hasLimit: boolean;
+  maxClasses: number | null;
+  overagePrice: number | null;
+  selectedStudents: string[]; // relationship_ids
+}
+
+/**
+ * Detalhes da mensalidade para o Dashboard do aluno
+ * Retornado pela função get_student_subscription_details
+ */
+export interface StudentSubscriptionDetails {
+  teacher_id: string;
+  teacher_name: string;
+  subscription_name: string;
+  monthly_value: number;
+  max_classes: number | null;
+  overage_price: number | null;
+  classes_used: number;
+  classes_remaining: number | null;
+  billing_day: number;
+  starts_at: string;
+}
+
+/**
+ * Mensalidade com contagem de alunos (para listagem)
+ */
+export interface MonthlySubscriptionWithCount extends MonthlySubscription {
+  students_count: number;
+}
+
+/**
+ * Aluno atribuído a uma mensalidade
+ */
+export interface AssignedStudent {
+  assignment_id: string;
+  relationship_id: string;
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  starts_at: string;
+  is_active: boolean;
+}
+```
 
 ### 5.1 Histórico de Mudanças na Mensalidade
 
@@ -1356,6 +1461,19 @@ USING (
   )
 );
 
+-- RLS para alunos verem detalhes da mensalidade em monthly_subscriptions
+CREATE POLICY "Alunos podem ver detalhes de suas mensalidades"
+ON public.monthly_subscriptions
+FOR SELECT
+USING (
+  id IN (
+    SELECT subscription_id 
+    FROM public.student_monthly_subscriptions sms
+    JOIN public.teacher_student_relationships tsr ON tsr.id = sms.relationship_id
+    WHERE tsr.student_id = auth.uid()
+  )
+);
+
 CREATE TRIGGER update_student_monthly_subscriptions_updated_at
 BEFORE UPDATE ON public.student_monthly_subscriptions
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1449,12 +1567,68 @@ AS $$
   LEFT JOIN dependents d ON d.id = cp.dependent_id
   WHERE c.teacher_id = p_teacher_id
     AND cp.status = 'concluida'
+    AND c.is_experimental = false  -- Aulas experimentais não contam
     AND EXTRACT(YEAR FROM c.class_date) = p_year
     AND EXTRACT(MONTH FROM c.class_date) = p_month
     AND (
       cp.student_id = p_student_id
       OR d.responsible_id = p_student_id
     );
+$$;
+
+-- Função para Dashboard do aluno
+CREATE OR REPLACE FUNCTION public.get_student_subscription_details(
+  p_student_id UUID
+)
+RETURNS TABLE (
+  teacher_id UUID,
+  teacher_name TEXT,
+  subscription_name TEXT,
+  monthly_value NUMERIC,
+  max_classes INTEGER,
+  overage_price NUMERIC,
+  classes_used INTEGER,
+  classes_remaining INTEGER,
+  billing_day INTEGER,
+  starts_at DATE
+)
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT 
+    tsr.teacher_id,
+    p.name as teacher_name,
+    ms.name as subscription_name,
+    ms.price as monthly_value,
+    ms.max_classes,
+    ms.overage_price,
+    public.count_completed_classes_in_month(
+      tsr.teacher_id, 
+      p_student_id, 
+      EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER,
+      EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER
+    ) as classes_used,
+    CASE 
+      WHEN ms.max_classes IS NULL THEN NULL
+      ELSE GREATEST(0, ms.max_classes - public.count_completed_classes_in_month(
+        tsr.teacher_id, 
+        p_student_id, 
+        EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER,
+        EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER
+      ))
+    END as classes_remaining,
+    COALESCE(tsr.billing_day, p.default_billing_day, 5) as billing_day,
+    sms.starts_at
+  FROM student_monthly_subscriptions sms
+  JOIN monthly_subscriptions ms ON ms.id = sms.subscription_id
+  JOIN teacher_student_relationships tsr ON tsr.id = sms.relationship_id
+  JOIN profiles p ON p.id = tsr.teacher_id
+  WHERE tsr.student_id = p_student_id
+    AND sms.is_active = true
+    AND ms.is_active = true
+    AND sms.starts_at <= CURRENT_DATE
+    AND (sms.ends_at IS NULL OR sms.ends_at >= CURRENT_DATE);
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_subscription_students_count(
@@ -1634,6 +1808,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 |--------|------|-------|-----------|
 | 1.0 | 2025-01-XX | Lovable AI | Versão inicial do documento |
 | 1.1 | 2025-01-XX | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
+| 1.2 | 2025-01-23 | Lovable AI | Adicionados: pontas soltas 31-40, interfaces TypeScript, query `get_student_subscription_details` para Dashboard do aluno, correção SQL `is_experimental = false` no Apêndice A, RLS adicional para alunos em `monthly_subscriptions` |
 
 ---
 

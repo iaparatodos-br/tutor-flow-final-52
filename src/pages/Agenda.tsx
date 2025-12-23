@@ -1315,17 +1315,7 @@ export default function Agenda() {
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
 
-      // VALIDAÇÃO 1: Data no passado
-      const now = new Date();
-      if (classDateTime < now) {
-        toast({
-          title: "❌ Data Inválida",
-          description: "Não é possível agendar aulas no passado.",
-          variant: "destructive",
-        });
-        setSubmitting(false);
-        return;
-      }
+      // Permitir cadastro de aulas no passado (para registros retroativos)
 
       // VALIDAÇÃO 2: Conflito de horário (warning, não bloqueio)
       const classEndTime = new Date(classDateTime.getTime() + formData.duration_minutes * 60000);

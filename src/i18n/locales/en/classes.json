@@ -85,7 +85,12 @@
     "groupShort": "Group ({{count}})",
     "partialCancellation": "Partial Cancellation",
     "activeParticipants": "Active Participants",
-    "cancelledParticipants": "Cancelled Participants"
+    "cancelledParticipants": "Cancelled Participants",
+    "noEventsThisDay": "No events today"
+  },
+  "mobile": {
+    "viewDetails": "View details",
+    "swipeForActions": "Swipe for actions"
   },
   "fields": {
     "student": "Student",

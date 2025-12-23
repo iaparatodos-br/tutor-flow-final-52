@@ -4,6 +4,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerClose
+} from '@/components/ui/drawer';
+import { 
   AlertDialog, 
   AlertDialogAction, 
   AlertDialogCancel, 
@@ -18,6 +25,9 @@ import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
 import { useTranslation } from 'react-i18next';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { MobileCalendarList } from './MobileCalendarList';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface SimpleCalendarProps {
   classes: CalendarClass[];
@@ -51,6 +61,7 @@ export function SimpleCalendar({
   onVisibleRangeChange
 }: SimpleCalendarProps) {
   const { t } = useTranslation('classes');
+  const isMobile = useIsMobile();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState<{
@@ -245,8 +256,329 @@ export function SimpleCalendar({
     );
   }
 
+  // Conteúdo dos modais - usado tanto em Dialog quanto Drawer
+  const renderEventDetails = () => {
+    if (!selectedEvent) return null;
+
+    return (
+      <div className="space-y-6">
+        {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' ? (
+          // Availability Block Details
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5 text-muted-foreground" />
+              <span className="font-medium">{selectedEvent.title}</span>
+              <Badge variant="secondary">{t('calendar.blocked')}</Badge>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                <span>{selectedEvent.start.toLocaleDateString('pt-BR')}</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
+                  <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Class Details
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <User className="h-5 w-5 text-muted-foreground" />
+                {(() => {
+                  const displayInfo = getDisplayName(selectedEvent as CalendarClass);
+                  return (
+                    <span className="font-medium flex items-center gap-1.5">
+                      {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                      <span>{displayInfo.name}</span>
+                      {displayInfo.isDependent && displayInfo.responsibleName && (
+                        <span className="text-sm text-muted-foreground font-normal ml-1">
+                          (Resp: {displayInfo.responsibleName})
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Badge className={getStatusColor((selectedEvent as CalendarClass).status)}>
+                  {getStatusLabel((selectedEvent as CalendarClass).status)}
+                </Badge>
+                {(selectedEvent as CalendarClass).is_experimental && (
+                  <Badge variant="outline" className="border-warning text-warning">
+                    {t('experimental')}
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                <span>{(selectedEvent as CalendarClass).start.toLocaleDateString('pt-BR')}</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span>
+                  {formatTime((selectedEvent as CalendarClass).start)} - {formatTime((selectedEvent as CalendarClass).end)}
+                  <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Participants */}
+            <div>
+              <p className="text-sm text-muted-foreground mb-2">
+                {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
+              </p>
+              <div className="space-y-2">
+                {(selectedEvent as CalendarClass).participants?.map((participant, index) => {
+                  const isCancelled = participant.status === 'cancelada' || participant.status === 'removida';
+                  
+                  return (
+                    <div 
+                      key={index} 
+                      className={cn(
+                        "p-3 rounded-lg flex items-center justify-between",
+                        isCancelled ? "bg-destructive/10 line-through opacity-60" : "bg-muted"
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className={cn("font-medium flex items-center gap-1.5 truncate", isCancelled && "text-destructive")}>
+                          {participant.dependent_id && participant.dependent_name && (
+                            <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {participant.dependent_id && participant.dependent_name 
+                              ? participant.dependent_name 
+                              : (participant.profiles?.name || participant.student?.name || 'Nome não disponível')}
+                          </span>
+                        </div>
+                        <div className="text-sm text-muted-foreground truncate">
+                          {participant.dependent_id && participant.dependent_name 
+                            ? `(Resp: ${participant.profiles?.name || participant.student?.name})`
+                            : (participant.profiles?.email || participant.student?.email || '')}
+                        </div>
+                      </div>
+                      
+                      {/* Status Badge */}
+                      <div className="flex-shrink-0 ml-2">
+                        {isCancelled && (
+                          <Badge variant="destructive" className="text-xs">
+                            {t('status.cancelled')}
+                          </Badge>
+                        )}
+                        {participant.status === 'confirmada' && (
+                          <Badge variant="default" className="text-xs">
+                            {t('status.confirmed')}
+                          </Badge>
+                        )}
+                        {participant.status === 'concluida' && (
+                          <Badge variant="outline" className="text-xs">
+                            {t('status.completed')}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }) || (
+                  <div className="bg-muted p-3 rounded-lg">
+                    <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
+                    <div className="text-sm text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {(selectedEvent as CalendarClass).notes && (
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">{t('calendar.notes')}:</p>
+                <p className="text-sm bg-muted p-3 rounded-lg">{(selectedEvent as CalendarClass).notes}</p>
+              </div>
+            )}
+
+            {/* Class Report Section */}
+            {(() => {
+              const classEvent = selectedEvent as CalendarClass;
+              
+              // Don't show report section for virtual classes
+              if (classEvent.id?.includes('_virtual_')) {
+                return null;
+              }
+              
+              return (
+                <div className="pt-4 border-t">
+                  <ClassReportView
+                    classId={classEvent.id}
+                    onEditReport={() => {
+                      setSelectedEvent(null);
+                      if (onEditReport) {
+                        onEditReport(classEvent);
+                      }
+                    }}
+                    showEditButton={isProfessor}
+                  />
+                </div>
+              );
+            })()}
+
+            {/* Action Buttons */}
+            <div className="space-y-4 pt-6">
+              {/* Primary Actions */}
+              <div className="space-y-2">
+                {/* Confirm Button */}
+                {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
+                  <Button
+                    onClick={() => {
+                      onConfirmClass((selectedEvent as CalendarClass).id);
+                      setSelectedEvent(null);
+                    }}
+                    className="w-full h-12 bg-gradient-success text-base font-semibold"
+                    size="lg"
+                  >
+                    <CheckCircle className="h-5 w-5 mr-2" />
+                    {t('actions.confirmClass')}
+                  </Button>
+                )}
+                
+                {/* Complete Class Button */}
+                {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
+                  <Button
+                    onClick={() => {
+                      onCompleteClass(selectedEvent as CalendarClass);
+                      setSelectedEvent(null);
+                    }}
+                    className="w-full h-12 bg-gradient-primary text-base font-semibold"
+                    size="lg"
+                  >
+                    <CheckCircle className="h-5 w-5 mr-2" />
+                    {t('actions.markAsCompleted')}
+                  </Button>
+                )}
+                
+                {/* Create Report Button */}
+                {isProfessor && onManageReport && !(selectedEvent as CalendarClass).has_report && (
+                  <Button
+                    onClick={() => {
+                      onManageReport(selectedEvent as CalendarClass);
+                      setSelectedEvent(null);
+                    }}
+                    variant="outline"
+                    className="w-full h-12 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground text-base font-semibold"
+                    size="lg"
+                  >
+                    <FileText className="h-5 w-5 mr-2" />
+                    {t('actions.createReport')}
+                  </Button>
+                )}
+              </div>
+
+              {/* Secondary Actions */}
+              {(
+                (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass) ||
+                (isProfessor && onEndRecurrence && (() => {
+                  const classEvent = selectedEvent as CalendarClass;
+                  const isVirtual = classEvent.isVirtual;
+                  const hasTemplate = classEvent.class_template_id;
+                  const recurrenceEndDate = (classEvent as any).recurrence_end_date;
+                  const isRecurrenceActive = !recurrenceEndDate;
+                  
+                  return isVirtual || (hasTemplate && isRecurrenceActive);
+                })())
+              ) && (
+                <div className="pt-2 border-t space-y-2">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                    Ações Secundárias
+                  </p>
+                  
+                  {/* Cancel Button */}
+                  {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
+                    <Button
+                      variant="outline"
+                      className="w-full h-11 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={() => {
+                        const classEvent = selectedEvent as CalendarClass;
+                        onCancelClass(
+                          classEvent.id, 
+                          classEvent.title, 
+                          classEvent.start.toISOString()
+                        );
+                        setSelectedEvent(null);
+                      }}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      {t('actions.cancelClass')}
+                    </Button>
+                  )}
+                  
+                  {/* End Recurrence Button */}
+                  {isProfessor && onEndRecurrence && (() => {
+                    const classEvent = selectedEvent as CalendarClass;
+                    const isVirtual = classEvent.isVirtual;
+                    const hasTemplate = classEvent.class_template_id;
+                    const recurrenceEndDate = (classEvent as any).recurrence_end_date;
+                    const isRecurrenceActive = !recurrenceEndDate;
+                    
+                    return (isVirtual || hasTemplate) && isRecurrenceActive;
+                  })() && (
+                    <Button
+                      variant="destructive"
+                      className="w-full h-11"
+                      disabled={isProcessing}
+                      onClick={() => {
+                        const classEvent = selectedEvent as CalendarClass;
+                        const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
+                        const endDate = classEvent.start.toISOString();
+                        
+                        setEndRecurrenceData({ templateId, endDate });
+                        setShowEndRecurrenceDialog(true);
+                      }}
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        <>
+                          🛑 <span className="ml-2">Encerrar Recorrência</span>
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
+      {/* Mobile: Lista vertical / Desktop: Grid tradicional */}
+      {isMobile ? (
+        <MobileCalendarList
+          classes={classes}
+          availabilityBlocks={availabilityBlocks}
+          isProfessor={isProfessor}
+          currentDate={currentDate}
+          onNavigateMonth={navigateMonth}
+          onGoToToday={goToToday}
+          onEventClick={handleEventClick}
+          onScheduleClass={onScheduleClass}
+          loading={loading}
+        />
+      ) : (
       <Card className="shadow-card">
         <CardContent className="p-6">
           {/* Header */}
@@ -388,448 +720,262 @@ export function SimpleCalendar({
           )}
         </CardContent>
       </Card>
+      )}
 
-      {/* Event Details Modal */}
-      <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-        <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' 
-                ? t('calendar.blockedTime')
-                : t('calendar.eventDetails')
-              }
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedEvent && (
-            <div className="space-y-6">
-              {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' ? (
-                // Availability Block Details
+      {/* Event Details Modal - Usar Drawer em mobile, Dialog em desktop */}
+      {isMobile ? (
+        <Drawer open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+          <DrawerContent className="max-h-[85vh]">
+            <DrawerHeader className="pb-2">
+              <DrawerTitle>
+                {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' 
+                  ? t('calendar.blockedTime')
+                  : t('calendar.eventDetails')
+                }
+              </DrawerTitle>
+            </DrawerHeader>
+            <ScrollArea className="px-4 pb-6 max-h-[70vh]">
+              {renderEventDetails()}
+            </ScrollArea>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedEvent && 'type' in selectedEvent && selectedEvent.type === 'block' 
+                  ? t('calendar.blockedTime')
+                  : t('calendar.eventDetails')
+                }
+              </DialogTitle>
+            </DialogHeader>
+            {renderEventDetails()}
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Day Events Modal - Também adaptar para mobile */}
+      {isMobile ? (
+        <Drawer open={!!selectedDayEvents} onOpenChange={() => setSelectedDayEvents(null)}>
+          <DrawerContent className="max-h-[85vh]">
+            <DrawerHeader className="pb-2">
+              <DrawerTitle>
+                {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+              </DrawerTitle>
+            </DrawerHeader>
+            <ScrollArea className="px-4 pb-6 max-h-[70vh]">
+              {selectedDayEvents && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="h-5 w-5 text-muted-foreground" />
-                    <span className="font-medium">{selectedEvent.title}</span>
-                    <Badge variant="secondary">{t('calendar.blocked')}</Badge>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{selectedEvent.start.toLocaleDateString('pt-BR')}</span>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span>
-                        {formatTime(selectedEvent.start)} - {formatTime(selectedEvent.end)}
-                        <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                // Class Details
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <User className="h-5 w-5 text-muted-foreground" />
-                      {(() => {
-                        const displayInfo = getDisplayName(selectedEvent as CalendarClass);
-                        return (
-                          <span className="font-medium flex items-center gap-1.5">
-                            {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
-                            <span>{displayInfo.name}</span>
-                            {displayInfo.isDependent && displayInfo.responsibleName && (
-                              <span className="text-sm text-muted-foreground font-normal ml-1">
-                                (Responsável: {displayInfo.responsibleName})
-                              </span>
-                            )}
-                          </span>
-                        );
-                      })()}
-                    </div>
-                    <div className="flex gap-2">
-                      <Badge className={getStatusColor((selectedEvent as CalendarClass).status)}>
-                        {getStatusLabel((selectedEvent as CalendarClass).status)}
-                      </Badge>
-                      {(selectedEvent as CalendarClass).is_experimental && (
-                        <Badge variant="outline" className="border-warning text-warning">
-                          {t('experimental')}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{(selectedEvent as CalendarClass).start.toLocaleDateString('pt-BR')}</span>
-                    </div>
-                    
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span>
-                          {formatTime((selectedEvent as CalendarClass).start)} - {formatTime((selectedEvent as CalendarClass).end)}
-                          <span className="text-xs text-muted-foreground ml-2">{t('brasilia_timezone')}</span>
-                        </span>
-                      </div>
-                  </div>
-
-                  {/* Participants */}
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      {(selectedEvent as CalendarClass).is_group_class ? t('calendar.participants') : t('calendar.student')}:
-                    </p>
-                    <div className="space-y-2">
-                      {(selectedEvent as CalendarClass).participants?.map((participant, index) => {
-                        const isCancelled = participant.status === 'cancelada' || participant.status === 'removida';
-                        
-                        return (
-                          <div 
-                            key={index} 
+                  {/* All Classes */}
+                  {selectedDayEvents.events.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-3">{t('calendar.classes')} ({selectedDayEvents.events.length})</h3>
+                      <div className="space-y-2">
+                        {selectedDayEvents.events.map((event) => (
+                          <div
+                            key={event.id}
+                            onClick={() => {
+                              setSelectedEvent(event);
+                              setSelectedDayEvents(null);
+                            }}
                             className={cn(
-                              "p-3 rounded-lg flex items-center justify-between",
-                              isCancelled ? "bg-destructive/10 line-through opacity-60" : "bg-muted"
+                              "p-3 rounded-lg cursor-pointer transition-all active:scale-[0.98]",
+                              getStatusColor(event.status),
                             )}
                           >
-                            <div>
-                              <div className={cn("font-medium flex items-center gap-1.5", isCancelled && "text-destructive")}>
-                                {participant.dependent_id && participant.dependent_name && (
-                                  <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
-                                )}
-                                {participant.dependent_id && participant.dependent_name 
-                                  ? participant.dependent_name 
-                                  : (participant.profiles?.name || participant.student?.name || 'Nome não disponível')}
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-medium flex items-center gap-1.5 text-sm">
+                                {(() => {
+                                  const displayInfo = getDisplayName(event);
+                                  return (
+                                    <>
+                                      {displayInfo.isDependent && <Baby className="h-3.5 w-3.5 text-purple-600" />}
+                                      <span className="truncate">{displayInfo.name}</span>
+                                    </>
+                                  );
+                                })()}
                               </div>
-                              <div className="text-sm text-muted-foreground">
-                                {participant.dependent_id && participant.dependent_name 
-                                  ? `(Responsável: ${participant.profiles?.name || participant.student?.name})`
-                                  : (participant.profiles?.email || participant.student?.email || 'Email não disponível')}
-                              </div>
+                              <Badge className={cn("text-xs", getStatusColor(event.status))}>
+                                {getStatusLabel(event.status)}
+                              </Badge>
                             </div>
-                            
-                            {/* Status Badge */}
-                            <div>
-                              {isCancelled && (
-                                <Badge variant="destructive" className="text-xs">
-                                  {t('status.cancelled')}
-                                </Badge>
-                              )}
-                              {participant.status === 'confirmada' && (
-                                <Badge variant="default" className="text-xs">
-                                  {t('status.confirmed')}
-                                </Badge>
-                              )}
-                              {participant.status === 'concluida' && (
-                                <Badge variant="outline" className="text-xs">
-                                  {t('status.completed')}
-                                </Badge>
-                              )}
+                            <div className="flex items-center gap-1 text-xs opacity-90">
+                              <Clock className="h-3 w-3" />
+                              <span>{formatTime(event.start)} - {formatTime(event.end)}</span>
                             </div>
                           </div>
-                        );
-                      }) || (
-                        <div className="bg-muted p-3 rounded-lg">
-                          <div className="font-medium">{(selectedEvent as CalendarClass).student.name}</div>
-                          <div className="text-sm text-muted-foreground">{(selectedEvent as CalendarClass).student.email}</div>
-            </div>
-          )}
-                    </div>
-                  </div>
-
-                  {(selectedEvent as CalendarClass).notes && (
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-2">{t('calendar.notes')}:</p>
-                      <p className="text-sm bg-muted p-3 rounded-lg">{(selectedEvent as CalendarClass).notes}</p>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* Class Report Section */}
-                  {(() => {
-                    const classEvent = selectedEvent as CalendarClass;
-                    
-                    // Don't show report section for virtual classes
-                    if (classEvent.id?.includes('_virtual_')) {
-                      return null;
-                    }
-                    
-                    // Always show report section - ClassReportView handles its own loading/empty states
-                    return (
-                      <div className="pt-4 border-t">
-                        <ClassReportView
-                          classId={classEvent.id}
-                          onEditReport={() => {
-                            setSelectedEvent(null);
-                            if (onEditReport) {
-                              onEditReport(classEvent);
-                            }
-                          }}
-                          showEditButton={isProfessor}
-                        />
+                  {/* Availability Blocks */}
+                  {selectedDayEvents.blocks.length > 0 && (
+                    <div>
+                      <h3 className="font-semibold mb-3">{t('calendar.blockedTimes')} ({selectedDayEvents.blocks.length})</h3>
+                      <div className="space-y-2">
+                        {selectedDayEvents.blocks.map((block) => (
+                          <div
+                            key={block.id}
+                            onClick={() => {
+                              setSelectedEvent(block);
+                              setSelectedDayEvents(null);
+                            }}
+                            className="p-3 rounded-lg cursor-pointer transition-all active:scale-[0.98] bg-muted text-muted-foreground"
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="font-medium text-sm">{block.title}</div>
+                              <Badge variant="secondary" className="text-xs">{t('calendar.blocked')}</Badge>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs">
+                              <Clock className="h-3 w-3" />
+                              <span>{formatTime(block.start)} - {formatTime(block.end)}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })()}
-
-                  {/* Action Buttons - Redesigned for better UX */}
-                  <div className="space-y-4 pt-6">
-                    {/* Primary Actions */}
-                    <div className="space-y-2">
-                      {/* Confirm Button - Only for pending classes */}
-                      {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
-                        <Button
-                          onClick={() => {
-                            onConfirmClass((selectedEvent as CalendarClass).id);
-                            setSelectedEvent(null);
-                          }}
-                          className="w-full h-12 bg-gradient-success text-base font-semibold"
-                          size="lg"
-                        >
-                          <CheckCircle className="h-5 w-5 mr-2" />
-                          {t('actions.confirmClass')}
-                        </Button>
-                      )}
-                      
-                      {/* Complete Class Button - Only for confirmed classes */}
-                      {isProfessor && (selectedEvent as CalendarClass).status === 'confirmada' && onCompleteClass && (
-                        <Button
-                          onClick={() => {
-                            onCompleteClass(selectedEvent as CalendarClass);
-                            setSelectedEvent(null);
-                          }}
-                          className="w-full h-12 bg-gradient-primary text-base font-semibold"
-                          size="lg"
-                        >
-                          <CheckCircle className="h-5 w-5 mr-2" />
-                          {t('actions.markAsCompleted')}
-                        </Button>
-                      )}
-                      
-                      {/* Create Report Button - Only show when no report exists */}
-                      {isProfessor && onManageReport && !(selectedEvent as CalendarClass).has_report && (
-                        <Button
-                          onClick={() => {
-                            onManageReport(selectedEvent as CalendarClass);
-                            setSelectedEvent(null);
-                          }}
-                          variant="outline"
-                          className="w-full h-12 border-2 border-primary text-primary hover:bg-primary hover:text-primary-foreground text-base font-semibold"
-                          size="lg"
-                        >
-                          <FileText className="h-5 w-5 mr-2" />
-                          {t('actions.createReport')}
-                        </Button>
-                      )}
                     </div>
+                  )}
 
-                    {/* Secondary Actions - Destructive */}
-                    {(
-                      (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass) ||
-                      (isProfessor && onEndRecurrence && (() => {
-                        const classEvent = selectedEvent as CalendarClass;
-                        const isVirtual = classEvent.isVirtual;
-                        const hasTemplate = classEvent.class_template_id;
-                        const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                        const isRecurrenceActive = !recurrenceEndDate;
-                        
-                        return isVirtual || (hasTemplate && isRecurrenceActive);
-                      })())
-                    ) && (
-                      <div className="pt-2 border-t space-y-2">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
-                          Ações Secundárias
-                        </p>
-                        
-                        {/* Cancel Button */}
-                        {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
-                          <Button
-                            variant="outline"
-                            className="w-full h-11 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => {
-                              const classEvent = selectedEvent as CalendarClass;
-                              onCancelClass(
-                                classEvent.id, 
-                                classEvent.title, 
-                                classEvent.start.toISOString()
-                              );
-                              setSelectedEvent(null);
-                            }}
-                          >
-                            <X className="h-4 w-4 mr-2" />
-                            {t('actions.cancelClass')}
-                          </Button>
-                        )}
-                        
-                        {/* End Recurrence Button */}
-                        {isProfessor && onEndRecurrence && (() => {
-                          const classEvent = selectedEvent as CalendarClass;
-                          const isVirtual = classEvent.isVirtual;
-                          const hasTemplate = classEvent.class_template_id;
-                          const recurrenceEndDate = (classEvent as any).recurrence_end_date;
-                          const isRecurrenceActive = !recurrenceEndDate;
-                          
-                          return (isVirtual || hasTemplate) && isRecurrenceActive;
-                        })() && (
-                          <Button
-                            variant="destructive"
-                            className="w-full h-11"
-                            disabled={isProcessing}
-                            onClick={() => {
-                              const classEvent = selectedEvent as CalendarClass;
-                              const templateId = (classEvent as any).class_template_id || classEvent.id.split('_virtual_')[0];
-                              const endDate = classEvent.start.toISOString();
-                              
-                              setEndRecurrenceData({ templateId, endDate });
-                              setShowEndRecurrenceDialog(true);
-                            }}
-                          >
-                            {isProcessing ? (
-                              <>
-                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                Processando...
-                              </>
-                            ) : (
-                              <>
-                                🛑 <span className="ml-2">Encerrar Recorrência</span>
-                              </>
-                            )}
-                           </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  {selectedDayEvents.events.length === 0 && selectedDayEvents.blocks.length === 0 && (
+                    <div className="text-center py-8">
+                      <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                      <p className="text-muted-foreground">{t('calendar.noEventsThisDay')}</p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Day Events Modal */}
-      <Dialog open={!!selectedDayEvents} onOpenChange={() => setSelectedDayEvents(null)}>
-        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
-            </DialogTitle>
-          </DialogHeader>
-          
-          {selectedDayEvents && (
-            <div className="space-y-4">
-              {/* All Classes */}
-              {selectedDayEvents.events.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3 text-lg">{t('calendar.classes')} ({selectedDayEvents.events.length})</h3>
-                  <div className="space-y-3">
-                    {selectedDayEvents.events.map((event) => (
-                      <div
-                        key={event.id}
-                        onClick={() => {
-                          setSelectedEvent(event);
-                          setSelectedDayEvents(null);
-                        }}
-                        className={cn(
-                          "p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] border",
-                          getStatusColor(event.status),
-                          "hover:shadow-md"
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-medium flex items-center gap-1.5">
-                            {(() => {
-                              const displayInfo = getDisplayName(event);
-                              return (
-                                <>
-                                  {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
-                                  <span>{displayInfo.name}</span>
-                                  {displayInfo.isDependent && displayInfo.responsibleName && (
-                                    <span className="text-sm text-muted-foreground font-normal ml-1">
-                                      (Resp: {displayInfo.responsibleName})
-                                    </span>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </div>
-                          <div className="flex gap-2">
-                            <Badge className={cn("text-xs", getStatusColor(event.status))}>
-                              {getStatusLabel(event.status)}
-                            </Badge>
-                            {event.is_experimental && (
-                              <Badge variant="outline" className="border-warning text-warning text-xs">
-                                {t('experimental')}
+            </ScrollArea>
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        <Dialog open={!!selectedDayEvents} onOpenChange={() => setSelectedDayEvents(null)}>
+          <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {selectedDayEvents && (
+              <div className="space-y-4">
+                {/* All Classes */}
+                {selectedDayEvents.events.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-3 text-lg">{t('calendar.classes')} ({selectedDayEvents.events.length})</h3>
+                    <div className="space-y-3">
+                      {selectedDayEvents.events.map((event) => (
+                        <div
+                          key={event.id}
+                          onClick={() => {
+                            setSelectedEvent(event);
+                            setSelectedDayEvents(null);
+                          }}
+                          className={cn(
+                            "p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] border",
+                            getStatusColor(event.status),
+                            "hover:shadow-md"
+                          )}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="font-medium flex items-center gap-1.5">
+                              {(() => {
+                                const displayInfo = getDisplayName(event);
+                                return (
+                                  <>
+                                    {displayInfo.isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                                    <span>{displayInfo.name}</span>
+                                    {displayInfo.isDependent && displayInfo.responsibleName && (
+                                      <span className="text-sm text-muted-foreground font-normal ml-1">
+                                        (Resp: {displayInfo.responsibleName})
+                                      </span>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </div>
+                            <div className="flex gap-2">
+                              <Badge className={cn("text-xs", getStatusColor(event.status))}>
+                                {getStatusLabel(event.status)}
                               </Badge>
-                            )}
+                              {event.is_experimental && (
+                                <Badge variant="outline" className="border-warning text-warning text-xs">
+                                  {t('experimental')}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
+                          
+                          <div className="flex items-center gap-4 text-sm opacity-90">
+                            <div className="flex items-center gap-1">
+                              <Clock className="h-4 w-4" />
+                              <span>
+                                {formatTime(event.start)} - {formatTime(event.end)}
+                              </span>
+                            </div>
+                            <div>
+                              {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))} {t('calendar.minutes')}
+                            </div>
+                          </div>
+
+                          {event.notes && (
+                            <div className="mt-2 text-sm opacity-80">
+                              <span className="font-medium">{t('calendar.note')}:</span> {event.notes}
+                            </div>
+                          )}
                         </div>
-                        
-                        <div className="flex items-center gap-4 text-sm opacity-90">
-                          <div className="flex items-center gap-1">
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Availability Blocks */}
+                {selectedDayEvents.blocks.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold mb-3 text-lg">{t('calendar.blockedTimes')} ({selectedDayEvents.blocks.length})</h3>
+                    <div className="space-y-3">
+                      {selectedDayEvents.blocks.map((block) => (
+                        <div
+                          key={block.id}
+                          onClick={() => {
+                            setSelectedEvent(block);
+                            setSelectedDayEvents(null);
+                          }}
+                          className="p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] bg-muted text-muted-foreground border hover:shadow-md"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="font-medium">{block.title}</div>
+                            <Badge variant="secondary">{t('calendar.blocked')}</Badge>
+                          </div>
+                          
+                          <div className="flex items-center gap-1 text-sm">
                             <Clock className="h-4 w-4" />
                             <span>
-                              {formatTime(event.start)} - {formatTime(event.end)}
+                              {formatTime(block.start)} - {formatTime(block.end)}
                             </span>
                           </div>
-                          <div>
-                            {Math.round((event.end.getTime() - event.start.getTime()) / (1000 * 60))} {t('calendar.minutes')}
-                          </div>
                         </div>
-
-                        {event.notes && (
-                          <div className="mt-2 text-sm opacity-80">
-                            <span className="font-medium">{t('calendar.note')}:</span> {event.notes}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Availability Blocks */}
-              {selectedDayEvents.blocks.length > 0 && (
-                <div>
-                  <h3 className="font-semibold mb-3 text-lg">{t('calendar.blockedTimes')} ({selectedDayEvents.blocks.length})</h3>
-                  <div className="space-y-3">
-                    {selectedDayEvents.blocks.map((block) => (
-                      <div
-                        key={block.id}
-                        onClick={() => {
-                          setSelectedEvent(block);
-                          setSelectedDayEvents(null);
-                        }}
-                        className="p-4 rounded-lg cursor-pointer transition-all hover:scale-[1.02] bg-muted text-muted-foreground border hover:shadow-md"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="font-medium">{block.title}</div>
-                          <Badge variant="secondary">{t('calendar.blocked')}</Badge>
-                        </div>
-                        
-                        <div className="flex items-center gap-1 text-sm">
-                          <Clock className="h-4 w-4" />
-                          <span>
-                            {formatTime(block.start)} - {formatTime(block.end)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                {selectedDayEvents.events.length === 0 && selectedDayEvents.blocks.length === 0 && (
+                  <div className="text-center py-8">
+                    <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-muted-foreground">{t('calendar.noEventsThisDay')}</p>
                   </div>
-                </div>
-              )}
-
-              {selectedDayEvents.events.length === 0 && selectedDayEvents.blocks.length === 0 && (
-                <div className="text-center py-8">
-                  <CalendarIcon className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">{t('calendar.noEventsThisDay')}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* End Recurrence Confirmation Dialog */}
       <AlertDialog open={showEndRecurrenceDialog} onOpenChange={setShowEndRecurrenceDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>🛑 Encerrar Recorrência</AlertDialogTitle>
             <AlertDialogDescription className="space-y-2">
@@ -842,11 +988,11 @@ export function SimpleCalendar({
               </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel disabled={isProcessing} className="w-full sm:w-auto">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               disabled={isProcessing}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={async () => {
                 if (!endRecurrenceData || !onEndRecurrence) return;
                 

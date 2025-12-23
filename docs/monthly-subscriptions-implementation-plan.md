@@ -18,21 +18,26 @@
    - 3.4 [Funções SQL](#34-funções-sql)
    - 3.5 [Índices e Constraints](#35-índices-e-constraints)
 4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
-5. [Implementação Frontend](#5-implementação-frontend)
-   - 5.1 [Estrutura de Arquivos](#51-estrutura-de-arquivos)
-   - 5.2 [Componentes](#52-componentes)
-   - 5.3 [Alterações em Componentes Existentes](#53-alterações-em-componentes-existentes)
-6. [Implementação Backend](#6-implementação-backend)
-   - 6.1 [Alteração no Faturamento Automatizado](#61-alteração-no-faturamento-automatizado)
-   - 6.2 [Pseudocódigo do Novo Fluxo](#62-pseudocódigo-do-novo-fluxo)
-7. [Internacionalização (i18n)](#7-internacionalização-i18n)
-   - 7.1 [Português (pt)](#71-português-pt)
-   - 7.2 [English (en)](#72-english-en)
-8. [Testes e Validações](#8-testes-e-validações)
-9. [Cronograma de Implementação](#9-cronograma-de-implementação)
-10. [Riscos e Mitigações](#10-riscos-e-mitigações)
-11. [Apêndice A: SQL Completo](#11-apêndice-a-sql-completo)
-12. [Apêndice B: Checklist de Deploy](#12-apêndice-b-checklist-de-deploy)
+5. [Casos de Uso Adicionais](#5-casos-de-uso-adicionais)
+   - 5.1 [Histórico de Mudanças na Mensalidade](#51-histórico-de-mudanças-na-mensalidade)
+   - 5.2 [Mensalidades com Data de Início Futura](#52-mensalidades-com-data-de-início-futura)
+   - 5.3 [Exclusão de Aulas Experimentais do Limite](#53-exclusão-de-aulas-experimentais-do-limite)
+   - 5.4 [Soft Delete de Mensalidades](#54-soft-delete-de-mensalidades)
+6. [Implementação Frontend](#6-implementação-frontend)
+   - 6.1 [Estrutura de Arquivos](#61-estrutura-de-arquivos)
+   - 6.2 [Componentes](#62-componentes)
+   - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
+7. [Implementação Backend](#7-implementação-backend)
+   - 7.1 [Alteração no Faturamento Automatizado](#71-alteração-no-faturamento-automatizado)
+   - 7.2 [Pseudocódigo do Novo Fluxo](#72-pseudocódigo-do-novo-fluxo)
+8. [Internacionalização (i18n)](#8-internacionalização-i18n)
+   - 8.1 [Português (pt)](#81-português-pt)
+   - 8.2 [English (en)](#82-english-en)
+9. [Testes e Validações](#9-testes-e-validações)
+10. [Cronograma de Implementação](#10-cronograma-de-implementação)
+11. [Riscos e Mitigações](#11-riscos-e-mitigações)
+12. [Apêndice A: SQL Completo](#12-apêndice-a-sql-completo)
+13. [Apêndice B: Checklist de Deploy](#13-apêndice-b-checklist-de-deploy)
 
 ---
 
@@ -340,6 +345,16 @@ WITH CHECK (
   )
 );
 
+-- Política para alunos visualizarem suas próprias mensalidades
+CREATE POLICY "Alunos podem ver suas mensalidades"
+ON public.student_monthly_subscriptions
+FOR SELECT
+USING (
+  relationship_id IN (
+    SELECT id FROM public.teacher_student_relationships WHERE student_id = auth.uid()
+  )
+);
+
 -- Trigger para updated_at
 CREATE TRIGGER update_student_monthly_subscriptions_updated_at
 BEFORE UPDATE ON public.student_monthly_subscriptions
@@ -617,10 +632,145 @@ WHERE is_template = false;
 | 18 | Mensalidade com preço R$0 | Permitir? | Sim. Pode ser útil para testes ou cortesias |
 | 19 | Excedente com valor R$0 | Permitir? | Sim. Significa "aulas extras grátis" |
 | 20 | Aluno inativo com mensalidade | Cobrar mesmo assim? | Depende do professor. Se `is_active = true` na assinatura, cobra |
+| 21 | Badge "Mensalidade" em Financeiro.tsx | Como distinguir visualmente faturas de mensalidade? | Adicionar badge "Mensalidade" em faturas com `invoice_type = 'monthly_subscription'` |
+| 22 | Detalhes de fatura de mensalidade pura | O que exibir se não houver aulas avulsas? | Exibir "Mensalidade - [Nome do Plano]" como descrição principal |
+| 23 | Seção "Meu Plano" no StudentDashboard | Aluno precisa ver sua mensalidade? | Sim. Card informativo com: nome, valor, limite/uso de aulas. Apenas visualização |
+| 24 | Indicador de mensalidade no PerfilAluno | Professor precisa ver rapidamente se aluno tem mensalidade? | Sim. Badge no cabeçalho do perfil mostrando nome do plano ativo |
+| 27 | Filtro `invoice_type` em relatórios | Como filtrar faturas por tipo nos relatórios? | Adicionar opção "Tipo" com valores: "Todas", "Mensalidade", "Aula Avulsa" |
+| 29 | Auditoria de aulas excedentes | Como registrar aulas cobradas além do limite? | Descrição da fatura inclui "Mensalidade + X aulas excedentes". Aulas excedentes registradas em `invoice_classes` com `item_type = 'overage'` |
+| 30 | RLS para alunos verem suas mensalidades | Aluno pode ver detalhes da própria mensalidade? | Sim. Política de SELECT em `student_monthly_subscriptions` onde `relationship_id` pertence ao aluno |
 
 ---
 
-## 5. Implementação Frontend
+## 5. Casos de Uso Adicionais
+
+### 5.1 Histórico de Mudanças na Mensalidade
+
+Quando o professor edita uma mensalidade (valor, limite, etc.), as alterações entram em vigor **imediatamente**.
+
+**Comportamento:**
+- Faturas já emitidas NÃO são afetadas
+- Próximo ciclo de faturamento usa os novos valores
+- Opcional (fase futura): tabela `monthly_subscription_history` para auditoria completa
+
+**Frontend:**
+- Exibir aviso ao editar: "Alterações serão aplicadas a partir do próximo faturamento"
+
+### 5.2 Mensalidades com Data de Início Futura
+
+O campo `starts_at` em `student_monthly_subscriptions` pode ser configurado para uma data futura.
+
+**Validações:**
+- `starts_at` não pode ser no passado (exceto data atual)
+- Função `get_student_active_subscription` já filtra `starts_at <= CURRENT_DATE`
+
+**Comportamento:**
+- Aluno aparece na lista de atribuídos com indicador "Inicia em DD/MM/YYYY"
+- Cobrança só é ativada quando `starts_at <= CURRENT_DATE`
+
+**SQL de validação (trigger opcional):**
+```sql
+CREATE OR REPLACE FUNCTION validate_subscription_starts_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.starts_at < CURRENT_DATE THEN
+    -- Permitir apenas se for a data atual ou futura
+    IF NEW.starts_at != CURRENT_DATE THEN
+      RAISE EXCEPTION 'Data de início não pode ser no passado';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### 5.3 Exclusão de Aulas Experimentais do Limite
+
+Aulas marcadas como `is_experimental = true` **NÃO contam** para o limite de aulas (`max_classes`).
+
+**Justificativa:**
+- Aulas experimentais são "degustação" para novos alunos
+- Não faz sentido consumir o pacote com aulas de teste
+
+**Alteração na função `count_completed_classes_in_month`:**
+```sql
+CREATE OR REPLACE FUNCTION public.count_completed_classes_in_month(
+  p_teacher_id UUID,
+  p_student_id UUID,
+  p_year INTEGER DEFAULT EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER,
+  p_month INTEGER DEFAULT EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER
+)
+RETURNS INTEGER
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT COUNT(DISTINCT cp.id)::INTEGER
+  FROM class_participants cp
+  JOIN classes c ON c.id = cp.class_id
+  LEFT JOIN dependents d ON d.id = cp.dependent_id
+  WHERE c.teacher_id = p_teacher_id
+    AND cp.status = 'concluida'
+    AND c.is_experimental = false  -- NOVA CONDIÇÃO
+    AND EXTRACT(YEAR FROM c.class_date) = p_year
+    AND EXTRACT(MONTH FROM c.class_date) = p_month
+    AND (
+      cp.student_id = p_student_id
+      OR d.responsible_id = p_student_id
+    );
+$$;
+```
+
+### 5.4 Soft Delete de Mensalidades
+
+Mensalidades **nunca são deletadas** do banco de dados. Apenas **desativadas**.
+
+**Regras:**
+- Hard delete é proibido (remover opção do frontend)
+- Ao "excluir", apenas `is_active = false`
+- Mensalidades desativadas aparecem em seção "Arquivadas" (toggle no frontend)
+- Mensalidades desativadas não aceitam novos alunos
+- Alunos vinculados: `student_monthly_subscriptions.is_active = false` junto com a mensalidade
+
+**Trigger para impedir hard delete:**
+```sql
+CREATE OR REPLACE FUNCTION prevent_monthly_subscription_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Exclusão de mensalidades não é permitida. Use desativação (is_active = false).';
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER prevent_delete_monthly_subscriptions
+BEFORE DELETE ON public.monthly_subscriptions
+FOR EACH ROW EXECUTE FUNCTION prevent_monthly_subscription_delete();
+```
+
+**Comportamento de desativação em cascata:**
+```sql
+CREATE OR REPLACE FUNCTION deactivate_subscription_students()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.is_active = true AND NEW.is_active = false THEN
+    UPDATE public.student_monthly_subscriptions
+    SET is_active = false, updated_at = now()
+    WHERE subscription_id = NEW.id AND is_active = true;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cascade_deactivate_subscription_students
+AFTER UPDATE OF is_active ON public.monthly_subscriptions
+FOR EACH ROW
+WHEN (OLD.is_active = true AND NEW.is_active = false)
+EXECUTE FUNCTION deactivate_subscription_students();
+```
+
+---
+
+## 6. Implementação Frontend
 
 ### 5.1 Estrutura de Arquivos
 
@@ -1196,9 +1346,52 @@ WITH CHECK (
   )
 );
 
+-- Política para alunos visualizarem suas próprias mensalidades
+CREATE POLICY "Alunos podem ver suas mensalidades"
+ON public.student_monthly_subscriptions
+FOR SELECT
+USING (
+  relationship_id IN (
+    SELECT id FROM public.teacher_student_relationships WHERE student_id = auth.uid()
+  )
+);
+
 CREATE TRIGGER update_student_monthly_subscriptions_updated_at
 BEFORE UPDATE ON public.student_monthly_subscriptions
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 2.1 TRIGGERS PARA SOFT DELETE
+-- Impedir hard delete de mensalidades
+CREATE OR REPLACE FUNCTION prevent_monthly_subscription_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Exclusão de mensalidades não é permitida. Use desativação (is_active = false).';
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER prevent_delete_monthly_subscriptions
+BEFORE DELETE ON public.monthly_subscriptions
+FOR EACH ROW EXECUTE FUNCTION prevent_monthly_subscription_delete();
+
+-- Desativar alunos em cascata ao desativar mensalidade
+CREATE OR REPLACE FUNCTION deactivate_subscription_students()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.is_active = true AND NEW.is_active = false THEN
+    UPDATE public.student_monthly_subscriptions
+    SET is_active = false, updated_at = now()
+    WHERE subscription_id = NEW.id AND is_active = true;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cascade_deactivate_subscription_students
+AFTER UPDATE OF is_active ON public.monthly_subscriptions
+FOR EACH ROW
+WHEN (OLD.is_active = true AND NEW.is_active = false)
+EXECUTE FUNCTION deactivate_subscription_students();
 
 -- 3. ALTERAÇÃO: invoices
 ALTER TABLE public.invoices 
@@ -1440,6 +1633,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
 | 1.0 | 2025-01-XX | Lovable AI | Versão inicial do documento |
+| 1.1 | 2025-01-XX | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
 
 ---
 

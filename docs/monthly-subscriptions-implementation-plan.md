@@ -808,6 +808,18 @@ WHERE is_template = false;
 | 178 | Valores `invoice_type` usados no banco | Apenas `'manual'` (7) e `'automated'` (2) encontrados; `'cancellation'` **NUNCA USADO** | ✅ INFO: `'cancellation'` é verificado no código mas nunca inserido |
 | 179 | `password.json` existe mas não registrado em i18n | Arquivos existem em PT/EN, mas sem imports em `i18n/index.ts` | ⚠️ Bug existente (fora do escopo) - adicionar imports |
 | 180 | `notifications` no array `ns` sem imports | `i18n/index.ts` linha 118 declara namespace inexistente | ⚠️ Bug existente (fora do escopo) - remover ou criar arquivos |
+| 181 | `create-invoice` **suporta** `invoice_type = 'cancellation'` | Backend aceita e processa `'cancellation'` corretamente (linhas 322-330) | ✅ Confirmado via código - **NÃO É BUG**, é feature incompleta |
+| 182 | `process-cancellation` **não invoca** `create-invoice` | Quando `shouldCharge=true`, não chama edge function de fatura | ⚠️ FEATURE INCOMPLETA: Fluxo de cobrança de cancelamento não implementado |
+| 183 | `AmnestyButton` busca faturas que nunca existem | Linha 55 busca `invoice_type = 'cancellation'` mas 0 registros existem | ⚠️ Código inútil - depende de completar fluxo #182 |
+| 184 | Versão do Apêndice A sincronizada | Verificado Apêndice A está em v1.14 | ✅ OK |
+| 185 | `InvoiceWithStudent` já tem `invoice_type` opcional | Interface em Financeiro.tsx inclui `invoice_type?: string` | ✅ OK - campo existe |
+| 186 | Tabela 4.1 tem linhas duplicadas | Múltiplas entradas para LEFT JOIN, INNER JOIN, etc. | ⚠️ Limpar duplicatas nesta versão |
+| 187 | Checklist 4.2 Fase 0 incompleto | Não explica que `'cancellation'` É suportado pelo backend | ⚠️ Atualizar com contexto completo |
+| 188 | Namespace `notifications` no array `ns` | Confirmado em `i18n/index.ts` linha 118 | ✅ Já documentado - bug existente (#180) |
+| 189 | `password.json` sem imports | Confirmado - arquivos existem mas não registrados | ✅ Já documentado - bug existente (#179) |
+| 190 | Histórico v1.14 completo | Entrada de v1.14 presente e detalhada | ✅ OK |
+| 191 | `getInvoiceTypeBadge` falta case para `'cancellation'` | Exemplo na seção 6.3.2.1 não inclui `'cancellation'` | ⚠️ Adicionar case nesta versão |
+| 192 | Contradição documento vs código sobre `'cancellation'` | Documento diz "bug" mas código suporta valor | ✅ RECLASSIFICADO v1.15: Feature incompleta, não bug |
 
 ---
 
@@ -862,11 +874,14 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | `regular` como valor de `invoice_type` | ✅ CORRIGIDO v1.12 | **REVERTIDO**: `'regular'` É valor DEFAULT válido. Erro da v1.9 corrigido. |
 | Exemplos de código com namespace correto | ✅ CORRIGIDO v1.10 | Todos usam `useTranslation('monthlySubscriptions')` |
 | Hook `useStudentSubscriptionAssignment` documentado | ✅ CORRIGIDO v1.10 | Seção 6.4.1 com `useAvailableStudentsForSubscription` e `useBulkAssignStudents` |
-| **BUG**: `invoice_type === 'cancellation'` em `Financeiro.tsx` | ⚠️ **CRÍTICO v1.14** | Valor `'cancellation'` não existe no banco - investigar |
-| Função `getInvoiceTypeBadge` | ❌ Não existe | Criar conforme seção 6.3.2.1 |
+| **RECLASSIFICADO v1.15**: `invoice_type === 'cancellation'` | ⚠️ **FEATURE INCOMPLETA** | `create-invoice` SUPORTA, mas `process-cancellation` não invoca |
+| Função `getInvoiceTypeBadge` | ❌ Não existe | Criar conforme seção 6.3.2.1 (incluir case `'cancellation'`) |
 | Interface `InvoiceWithStudent` campos mensalidade | ❌ Falta `monthly_subscription_id` | Adicionar após migration |
+| Interface `InvoiceWithStudent` campo `invoice_type` | ✅ Existe (opcional) | Nenhuma ação |
 | Diretório `src/schemas` | ❌ Não existe | Criar diretório |
 | Arquivo `src/types/monthly-subscriptions.ts` | ❌ Não existe | Criar arquivo |
+| `process-cancellation` não cria faturas | ⚠️ Incompleto | Investigar se deve chamar `create-invoice` quando `shouldCharge=true` |
+| `AmnestyButton` busca faturas inexistentes | ⚠️ Código inútil | Depende de completar fluxo de `process-cancellation` |
 | Clarificação Tabs em Servicos.tsx | ✅ CORRIGIDO v1.10 | Seção 6.6.1 clarifica que Tabs vão em `Servicos.tsx`, não em `ClassServicesManager` |
 | Validação `overagePrice` quando `hasLimit = false` | ✅ CORRIGIDO v1.10 | Adicionado `.transform()` no schema Zod e validação nos hooks |
 | Versão do Apêndice A | ✅ CORRIGIDO v1.10 | Sincronizado para v1.10 |
@@ -883,9 +898,24 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 
 Antes de iniciar o desenvolvimento, execute na ordem:
 
-#### Fase 0: Correções de Bugs Existentes (ANTES de tudo)
-- [ ] **INVESTIGAR**: Uso de `invoice_type === 'cancellation'` em `Financeiro.tsx` linhas 580-582, 721-723 - valor **NÃO EXISTE** no banco
-- [ ] **DECIDIR**: O que `'cancellation'` deveria representar? Faturas de cobrança de cancelamento? Documentar decisão.
+#### Fase 0: Correções de Bugs e Features Incompletas (ANTES de tudo)
+
+**RECLASSIFICADO v1.15**: O uso de `invoice_type === 'cancellation'` **NÃO É BUG** - é uma feature incompleta:
+
+| Componente | Status | Descrição |
+|------------|--------|-----------|
+| `create-invoice/index.ts` | ✅ SUPORTA | Aceita `invoice_type='cancellation'`, cria `item_type='cancellation_charge'` (linhas 322-330) |
+| `Financeiro.tsx` | ✅ SUPORTA | Renderiza badge "Cancelamento" (linhas 580-582, 721-723) |
+| `AmnestyButton.tsx` | ✅ SUPORTA | Busca faturas com este tipo para atualizar (linha 55) |
+| `process-cancellation/index.ts` | ❌ INCOMPLETO | **NÃO invoca** `create-invoice` quando `shouldCharge=true` |
+| Banco de dados | ⚠️ 0 REGISTROS | Nenhuma fatura com `invoice_type='cancellation'` existe |
+
+**Resultado**: O backend está pronto para cobranças de cancelamento, mas o fluxo nunca é ativado.
+
+**Ações recomendadas:**
+- [ ] **DECISÃO**: Completar fluxo de cobrança de cancelamento OU remover código não utilizado
+- [ ] Se completar: Modificar `process-cancellation` para invocar `create-invoice` com `type: 'cancellation'`
+- [ ] Se remover: Deletar badge e busca de `'cancellation'` em `Financeiro.tsx` e `AmnestyButton.tsx`
 - [ ] **CORRIGIR**: Bug de namespace `notifications` em `i18n/index.ts` (remover do array `ns` ou criar arquivos)
 - [ ] **CORRIGIR**: `password.json` órfão (adicionar imports em `i18n/index.ts`)
 
@@ -1506,6 +1536,14 @@ const getInvoiceTypeBadge = (invoiceType: string | null | undefined): InvoiceTyp
         label: 'Mensalidade', 
         className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' 
       };
+    case 'cancellation':
+      // NOTA v1.15: Valor suportado pelo backend mas atualmente não utilizado
+      // Faturas de cancelamento seriam criadas por process-cancellation (feature incompleta)
+      return { 
+        label: 'Cancelamento', 
+        variant: 'destructive',
+        className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
+      };
     default:
       // null, undefined ou valor desconhecido
       return null;
@@ -1533,13 +1571,15 @@ return (
 );
 ```
 
-**Valores de `invoice_type` no banco (confirmado v1.11):**
+**Valores de `invoice_type` no banco (confirmado v1.15):**
+- `'regular'` - Valor DEFAULT válido (CORRIGIDO v1.12)
 - `'automated'` - Fatura gerada automaticamente pelo sistema
 - `'manual'` - Fatura criada manualmente pelo professor
-- `'monthly_subscription'` - Fatura de mensalidade fixa (NOVO)
+- `'cancellation'` - Fatura de cobrança de cancelamento (SUPORTADO pelo backend, mas feature incompleta - v1.15)
+- `'monthly_subscription'` - Fatura de mensalidade fixa (NOVO - a implementar)
 - `null` - Faturas antigas ou sem tipo definido
 
-**Nota v1.13 (CORRIGIDO):** O valor `'regular'` É o DEFAULT válido de `invoice_type` no banco. Foi incorretamente afirmado em v1.9 que não existia. Valores confirmados: `'regular'` (DEFAULT), `'automated'`, `'manual'`, e `'monthly_subscription'` (novo).
+**Nota v1.15 (RECLASSIFICADO):** O valor `'cancellation'` **É SUPORTADO** pelo backend (`create-invoice`), mas `process-cancellation` não invoca a criação de faturas quando `shouldCharge=true`. Isso explica por que 0 registros existem no banco. É uma **feature incompleta**, não um bug.
 
 > **⚠️ NOTA DE PRÉ-REQUISITOS v1.13:**
 > 
@@ -2624,7 +2664,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.14 - Sincronizado com documento principal v1.14
+-- Versão 1.15 - Sincronizado com documento principal v1.15
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -2656,21 +2696,29 @@ $$;
 -- - 'regular': valor DEFAULT - fatura padrão/avulsa (CORRIGIDO v1.12: valor válido, não removido)
 -- - 'automated': fatura gerada automaticamente pelo sistema (cobrança por aula)
 -- - 'manual': fatura criada manualmente pelo professor
+-- - 'cancellation': fatura de cobrança de cancelamento (RECLASSIFICADO v1.15: ver abaixo)
 -- - 'monthly_subscription': NOVO - fatura de mensalidade fixa (a ser implementado)
 -- NOTA: Não há constraint de CHECK em invoice_type; é apenas TEXT
 -- NOTA v1.12: 'regular' É o valor DEFAULT no banco (corrigido erro da v1.9)
 -- 
--- ⚠️ BUG CRÍTICO DESCOBERTO v1.14:
--- O código em `Financeiro.tsx` (linhas 580-582, 721-723) verifica `invoice_type === 'cancellation'`,
--- porém este valor **NÃO EXISTE** no banco de dados!
+-- ⚠️ RECLASSIFICADO v1.15 (NÃO É BUG - É FEATURE INCOMPLETA):
+-- O valor 'cancellation' **É SUPORTADO** pelo backend:
 -- 
+-- ✅ COMPONENTES QUE SUPORTAM 'cancellation':
+--   - create-invoice/index.ts: Aceita invoice_type='cancellation', cria item_type='cancellation_charge' (linhas 322-330)
+--   - Financeiro.tsx: Renderiza badge "Cancelamento" (linhas 580-582, 721-723)
+--   - AmnestyButton.tsx: Busca faturas com este tipo para atualizar (linha 55)
+--
+-- ❌ COMPONENTE INCOMPLETO:
+--   - process-cancellation/index.ts: NÃO invoca create-invoice quando shouldCharge=true
+--   - Resultado: Faturas de cancelamento NUNCA são criadas no fluxo atual
+--
 -- Valores encontrados via query direta:
 -- - 'manual': 7 registros
 -- - 'automated': 2 registros  
--- - 'cancellation': 0 registros (NUNCA USADO)
+-- - 'cancellation': 0 registros (backend pronto, fluxo não implementado)
 -- 
--- AÇÃO RECOMENDADA: Investigar propósito de 'cancellation' no código e corrigir
--- discrepância ANTES de implementar mensalidades.
+-- AÇÃO RECOMENDADA: Completar fluxo em process-cancellation OU remover código não utilizado
 
 -- 1. TABELA: monthly_subscriptions
 CREATE TABLE public.monthly_subscriptions (
@@ -3138,6 +3186,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.12 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 145-156 (`'regular'` É DEFAULT válido - erro v1.9, `password.json` órfão, `automated-billing` sem verificação, contradição ClassServicesManager na seção 6.1, `invoice_type` sem CHECK constraint, referências de linha desatualizadas, Apêndice A desincronizado, `pending_amount` não existe no banco, confirmação final `monthly_subscription_id` não existe). **CORREÇÕES CRÍTICAS**: Revertido erro da v1.9 - `'regular'` É valor DEFAULT válido de `invoice_type` (#145/#155), atualizado Apêndice A seção 0.3 para incluir `'regular'`. Corrigida seção 6.1 - `ClassServicesManager.tsx` marcado como INALTERADO (#149). Documentado `pending_amount` como não existente com recomendação de simplificar para MVP (#154). Documentado bug `password.json` como existente mas fora do escopo (#146). Atualizada tabela 4.1 com status corrigido para `'regular'`. |
 | 1.13 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 157-168 (namespace `notifications` órfão, `password.json` sem registro, confirmação `'regular'` é DEFAULT via query direta, valores de `invoice_type` usados vs. default, Apêndice A desatualizado, constraints NOT NULL confirmadas, arquivos i18n inexistentes, INNER JOIN confirmado, interface `InvoiceWithStudent` sem `monthly_subscription_id`, JOIN com tabela inexistente, filtro `invoice_type` não implementado). **CORREÇÕES**: Sincronizado Apêndice A para v1.13 (#161). Adicionada nota de PRÉ-REQUISITOS na seção 6.3.2 (#167). Documentada interface `InvoiceWithStudent` atualizada com `monthly_subscription_id` e `monthly_subscription` (#166). Corrigida nota sobre `'regular'` - agora documenta corretamente como DEFAULT válido (#159). Documentados bugs de i18n (`notifications` órfão, `password.json` sem registro) como issues separados (#157/#158). |
 | 1.14 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 169-180 (**BUG CRÍTICO** `invoice_type === 'cancellation'` usado em código mas inexistente no banco, `InvoiceStatusBadge` sem prop `invoiceType`, função `getInvoiceTypeBadge` inexistente, interface `InvoiceWithStudent` sem campos de mensalidade, diretório `src/schemas` inexistente, `src/types` sem `monthly-subscriptions.ts`, INNER JOIN confirmado linhas 276-284, constraints NOT NULL confirmadas, valores `invoice_type` usados: apenas `manual`(7) e `automated`(2), `password.json` órfão, `notifications` sem imports). **DESCOBERTA CRÍTICA**: Código em `Financeiro.tsx` verifica `'cancellation'` mas este valor **NUNCA FOI INSERIDO** no banco - comportamento indefinido! **CORREÇÕES**: Nova Fase 0 no checklist para correção de bugs existentes antes de implementação. Atualizado Apêndice A seção 0.3 com documentação do bug `'cancellation'`. Expandida tabela 4.1 com novos gaps identificados. Marcados itens confirmados via código/banco com status apropriado. |
+| 1.15 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 181-192 (`create-invoice` **SUPORTA** `'cancellation'`, `process-cancellation` não invoca `create-invoice`, `AmnestyButton` busca faturas inexistentes, versão Apêndice A OK, `InvoiceWithStudent` já tem `invoice_type`, tabela 4.1 com duplicatas, checklist Fase 0 incompleto, `notifications` já documentado, `password.json` já documentado, histórico v1.14 OK, `getInvoiceTypeBadge` sem case `'cancellation'`, contradição documento vs código). **RECLASSIFICAÇÃO CRÍTICA**: `invoice_type = 'cancellation'` **NÃO É BUG** - é uma **feature incompleta**. O backend (`create-invoice`) suporta o valor, mas `process-cancellation` não invoca a criação de faturas quando `shouldCharge=true`. **CORREÇÕES**: Atualizada Fase 0 do checklist com contexto completo sobre o suporte de backend. Adicionado case `'cancellation'` no exemplo `getInvoiceTypeBadge` (seção 6.3.2.1). Atualizada seção 0.3 do Apêndice A com documentação de componentes que suportam `'cancellation'`. Expandida tabela 4.1 com status de feature incompleta. Sincronizado Apêndice A para v1.15. |
 
 ---
 

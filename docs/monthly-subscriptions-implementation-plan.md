@@ -796,6 +796,18 @@ WHERE is_template = false;
 | 166 | Interface `InvoiceWithStudent` sem `monthly_subscription_id` | Interface atual em `Financeiro.tsx` não inclui campo para mensalidade | **Documentado v1.13**: Adicionar `monthly_subscription_id?: string; monthly_subscription?: { name: string; };` |
 | 167 | Seção 6.3.2 sugere JOIN com `monthly_subscriptions` inexistente | Query exemplo faz `monthly_subscriptions(name)` mas tabela não existe ainda | **Documentado v1.13**: Adicionada nota sobre PRÉ-REQUISITOS |
 | 168 | Filtro por `invoice_type` não implementado em relatórios | `Financeiro.tsx` não oferece opção de filtrar faturas por tipo | ⚠️ Funcionalidade futura: Adicionar dropdown de filtro após implementação |
+| 169 | **BUG CRÍTICO**: `invoice_type === 'cancellation'` usado em código | `Financeiro.tsx` (linhas 580-582, 721-723) verifica `'cancellation'` mas valor **NÃO EXISTE** no banco | ⚠️ **INVESTIGAR URGENTE**: Código usa valor inexistente - comportamento indefinido |
+| 170 | Discrepância documento vs. código sobre `invoice_type` | Documento não menciona `'cancellation'`, código o utiliza ativamente | ⚠️ Sincronizar documento com comportamento real do código |
+| 171 | `InvoiceStatusBadge.tsx` confirmado sem prop `invoiceType` | Componente atual não aceita `invoiceType` como prop | ✅ Confirmado via código - implementar conforme seção 6.3.1 |
+| 172 | Função `getInvoiceTypeBadge` não existe no código | Busca por `getInvoiceTypeBadge` retorna zero resultados | ✅ Confirmado via código - criar conforme seção 6.3.2.1 |
+| 173 | Interface `InvoiceWithStudent` falta campos de mensalidade | Interface atual em `Financeiro.tsx` não inclui `monthly_subscription_id` ou `monthly_subscription` | ✅ Confirmado via código - adicionar campos conforme seção 6.3.2 |
+| 174 | Diretório `src/schemas` não existe | Listagem retorna apenas diretórios padrão, sem `schemas` | ✅ Confirmado via listagem - criar diretório antes de arquivos |
+| 175 | `src/types` só tem `cookie-consent.d.ts` | Falta `monthly-subscriptions.ts` e outros tipos planejados | ✅ Confirmado via listagem - criar arquivo |
+| 176 | Query INNER JOIN em `Financeiro.tsx` linhas 276-284 | `classes!inner`, `class_participants!inner` falharão para mensalidades puras | ✅ Confirmado via código - alterar para LEFT JOIN |
+| 177 | Constraints NOT NULL confirmadas em `invoice_classes` | `class_id` e `participant_id` ainda são NOT NULL no banco | ✅ Confirmado via banco - executar DROP NOT NULL |
+| 178 | Valores `invoice_type` usados no banco | Apenas `'manual'` (7) e `'automated'` (2) encontrados; `'cancellation'` **NUNCA USADO** | ✅ INFO: `'cancellation'` é verificado no código mas nunca inserido |
+| 179 | `password.json` existe mas não registrado em i18n | Arquivos existem em PT/EN, mas sem imports em `i18n/index.ts` | ⚠️ Bug existente (fora do escopo) - adicionar imports |
+| 180 | `notifications` no array `ns` sem imports | `i18n/index.ts` linha 118 declara namespace inexistente | ⚠️ Bug existente (fora do escopo) - remover ou criar arquivos |
 
 ---
 
@@ -850,6 +862,11 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | `regular` como valor de `invoice_type` | ✅ CORRIGIDO v1.12 | **REVERTIDO**: `'regular'` É valor DEFAULT válido. Erro da v1.9 corrigido. |
 | Exemplos de código com namespace correto | ✅ CORRIGIDO v1.10 | Todos usam `useTranslation('monthlySubscriptions')` |
 | Hook `useStudentSubscriptionAssignment` documentado | ✅ CORRIGIDO v1.10 | Seção 6.4.1 com `useAvailableStudentsForSubscription` e `useBulkAssignStudents` |
+| **BUG**: `invoice_type === 'cancellation'` em `Financeiro.tsx` | ⚠️ **CRÍTICO v1.14** | Valor `'cancellation'` não existe no banco - investigar |
+| Função `getInvoiceTypeBadge` | ❌ Não existe | Criar conforme seção 6.3.2.1 |
+| Interface `InvoiceWithStudent` campos mensalidade | ❌ Falta `monthly_subscription_id` | Adicionar após migration |
+| Diretório `src/schemas` | ❌ Não existe | Criar diretório |
+| Arquivo `src/types/monthly-subscriptions.ts` | ❌ Não existe | Criar arquivo |
 | Clarificação Tabs em Servicos.tsx | ✅ CORRIGIDO v1.10 | Seção 6.6.1 clarifica que Tabs vão em `Servicos.tsx`, não em `ClassServicesManager` |
 | Validação `overagePrice` quando `hasLimit = false` | ✅ CORRIGIDO v1.10 | Adicionado `.transform()` no schema Zod e validação nos hooks |
 | Versão do Apêndice A | ✅ CORRIGIDO v1.10 | Sincronizado para v1.10 |
@@ -865,6 +882,12 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 ### 4.2 Checklist de Pré-Implementação
 
 Antes de iniciar o desenvolvimento, execute na ordem:
+
+#### Fase 0: Correções de Bugs Existentes (ANTES de tudo)
+- [ ] **INVESTIGAR**: Uso de `invoice_type === 'cancellation'` em `Financeiro.tsx` linhas 580-582, 721-723 - valor **NÃO EXISTE** no banco
+- [ ] **DECIDIR**: O que `'cancellation'` deveria representar? Faturas de cobrança de cancelamento? Documentar decisão.
+- [ ] **CORRIGIR**: Bug de namespace `notifications` em `i18n/index.ts` (remover do array `ns` ou criar arquivos)
+- [ ] **CORRIGIR**: `password.json` órfão (adicionar imports em `i18n/index.ts`)
 
 #### Fase 1: Banco de Dados (Obrigatório Primeiro)
 - [ ] **Backup do banco** antes de qualquer alteração
@@ -2601,7 +2624,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.13 - Sincronizado com documento principal v1.13
+-- Versão 1.14 - Sincronizado com documento principal v1.14
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -2636,6 +2659,18 @@ $$;
 -- - 'monthly_subscription': NOVO - fatura de mensalidade fixa (a ser implementado)
 -- NOTA: Não há constraint de CHECK em invoice_type; é apenas TEXT
 -- NOTA v1.12: 'regular' É o valor DEFAULT no banco (corrigido erro da v1.9)
+-- 
+-- ⚠️ BUG CRÍTICO DESCOBERTO v1.14:
+-- O código em `Financeiro.tsx` (linhas 580-582, 721-723) verifica `invoice_type === 'cancellation'`,
+-- porém este valor **NÃO EXISTE** no banco de dados!
+-- 
+-- Valores encontrados via query direta:
+-- - 'manual': 7 registros
+-- - 'automated': 2 registros  
+-- - 'cancellation': 0 registros (NUNCA USADO)
+-- 
+-- AÇÃO RECOMENDADA: Investigar propósito de 'cancellation' no código e corrigir
+-- discrepância ANTES de implementar mensalidades.
 
 -- 1. TABELA: monthly_subscriptions
 CREATE TABLE public.monthly_subscriptions (
@@ -3102,6 +3137,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.11 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 133-144 (mapeamento invoice_type incompleto em Financeiro.tsx, confirmação invoices.monthly_subscription_id não existe, confirmação constraints NOT NULL em invoice_classes, arquivos monthlySubscriptions.json não criados, namespace monthlySubscriptions não registrado em i18n/index.ts, InvoiceStatusBadge sem prop invoiceType confirmado, diretório src/schemas não existe confirmado, src/types sem monthly-subscriptions.ts, zero componentes de mensalidade implementados, default_billing_day nullable com fallback OK, datas consistentes no histórico, seção 6.1 usa subscriptions.json antigo). Corrigidos: seção 6.1 atualizada para usar `monthlySubscriptions.json` (#144), adicionado exemplo completo de mapeamento `getInvoiceTypeBadge` na seção 6.3.2.1 (#133), marcados itens confirmados via banco/código com status apropriado, atualizada tabela 4.1 com novos gaps identificados e status de confirmações. Atualizado checklist 4.2 Fase 3 com itens de criação de arquivos i18n. Atualizada seção 6.3.2 com função de mapeamento de invoice_type. |
 | 1.12 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 145-156 (`'regular'` É DEFAULT válido - erro v1.9, `password.json` órfão, `automated-billing` sem verificação, contradição ClassServicesManager na seção 6.1, `invoice_type` sem CHECK constraint, referências de linha desatualizadas, Apêndice A desincronizado, `pending_amount` não existe no banco, confirmação final `monthly_subscription_id` não existe). **CORREÇÕES CRÍTICAS**: Revertido erro da v1.9 - `'regular'` É valor DEFAULT válido de `invoice_type` (#145/#155), atualizado Apêndice A seção 0.3 para incluir `'regular'`. Corrigida seção 6.1 - `ClassServicesManager.tsx` marcado como INALTERADO (#149). Documentado `pending_amount` como não existente com recomendação de simplificar para MVP (#154). Documentado bug `password.json` como existente mas fora do escopo (#146). Atualizada tabela 4.1 com status corrigido para `'regular'`. |
 | 1.13 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 157-168 (namespace `notifications` órfão, `password.json` sem registro, confirmação `'regular'` é DEFAULT via query direta, valores de `invoice_type` usados vs. default, Apêndice A desatualizado, constraints NOT NULL confirmadas, arquivos i18n inexistentes, INNER JOIN confirmado, interface `InvoiceWithStudent` sem `monthly_subscription_id`, JOIN com tabela inexistente, filtro `invoice_type` não implementado). **CORREÇÕES**: Sincronizado Apêndice A para v1.13 (#161). Adicionada nota de PRÉ-REQUISITOS na seção 6.3.2 (#167). Documentada interface `InvoiceWithStudent` atualizada com `monthly_subscription_id` e `monthly_subscription` (#166). Corrigida nota sobre `'regular'` - agora documenta corretamente como DEFAULT válido (#159). Documentados bugs de i18n (`notifications` órfão, `password.json` sem registro) como issues separados (#157/#158). |
+| 1.14 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 169-180 (**BUG CRÍTICO** `invoice_type === 'cancellation'` usado em código mas inexistente no banco, `InvoiceStatusBadge` sem prop `invoiceType`, função `getInvoiceTypeBadge` inexistente, interface `InvoiceWithStudent` sem campos de mensalidade, diretório `src/schemas` inexistente, `src/types` sem `monthly-subscriptions.ts`, INNER JOIN confirmado linhas 276-284, constraints NOT NULL confirmadas, valores `invoice_type` usados: apenas `manual`(7) e `automated`(2), `password.json` órfão, `notifications` sem imports). **DESCOBERTA CRÍTICA**: Código em `Financeiro.tsx` verifica `'cancellation'` mas este valor **NUNCA FOI INSERIDO** no banco - comportamento indefinido! **CORREÇÕES**: Nova Fase 0 no checklist para correção de bugs existentes antes de implementação. Atualizado Apêndice A seção 0.3 com documentação do bug `'cancellation'`. Expandida tabela 4.1 com novos gaps identificados. Marcados itens confirmados via código/banco com status apropriado. |
 
 ---
 

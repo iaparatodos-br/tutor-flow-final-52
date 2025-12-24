@@ -653,14 +653,22 @@ WHERE is_template = false;
 | 42 | Valor mínimo para boleto com mensalidade gratuita | Mensalidade R$ 0 + excedentes < valor mínimo do boleto (ex: R$ 5) | Se valor total < R$ 5, não gerar boleto. Registrar internamente como "cortesia" ou acumular para próximo ciclo |
 | 43 | Badge "Mensalidade" em `Financeiro.tsx` | Como distinguir visualmente faturas de mensalidade? | Verificar `invoice_type === 'monthly_subscription'` e exibir badge colorido "Mensalidade" |
 | 44 | Query `invoice_classes` para mensalidades puras | INNER JOIN falha se mensalidade não tiver aulas avulsas | Alterar para LEFT JOIN em consultas que incluem `invoice_classes`. Mensalidade pura tem 0 registros em `invoice_classes` |
-| 45 | Hook `useMonthlySubscriptions` | Implementação detalhada faltando | Seção 6.5 adicionada com implementação completa usando react-query |
-| 46 | Zod schema para formulário de mensalidade | Validação frontend estruturada faltando | Seção 6.6 adicionada com schema completo incluindo validação condicional de `maxClasses` |
+| 45 | Hook `useMonthlySubscriptions` | Implementação detalhada faltando | Seção 6.4 adicionada com implementação completa usando react-query |
+| 46 | Zod schema para formulário de mensalidade | Validação frontend estruturada faltando | Seção 6.5 adicionada com schema completo incluindo validação condicional de `maxClasses` |
 | 47 | Distinção de `invoice_type` em relatórios | Como diferenciar `automated` vs `monthly_subscription`? | `automated` = fatura gerada automaticamente por aula. `monthly_subscription` = fatura de mensalidade fixa. Filtros separados nos relatórios |
 | 48 | RLS faltante em `monthly_subscriptions` para alunos | Alunos não conseguem ver detalhes da própria mensalidade | Política SELECT adicionada no Apêndice A para alunos via `student_monthly_subscriptions` |
 | 49 | Contagem de aulas de dependentes em meses diferentes | Dependente adicionado no meio do mês, como contar? | `count_completed_classes_in_month` já usa `class_date` para filtrar. Dependente adicionado = suas aulas daquele mês contam normalmente |
 | 50 | Mensalidade + aluno sem `business_profile_id` | Aluno com mensalidade mas sem perfil de negócio configurado | Logar warning e pular faturamento. Exigir `business_profile_id` no relacionamento antes de atribuir mensalidade |
 | 51 | Componente de progresso no `PerfilAluno.tsx` | Exibir "X/Y aulas usadas" para alunos com limite | Adicionar barra de progresso ou indicador textual usando dados de `get_student_subscription_details` |
 | 52 | Retry de fatura de mensalidade falha | Como reprocessar faturas que falharam? | Logar erro detalhado. Permitir reprocessamento manual via botão em `Financeiro.tsx` (chamar `automated-billing` com flag `force`) |
+| 53 | Badge de tipo inconsistente em `Financeiro.tsx` | Faturas `monthly_subscription` exibem "Regular" ao invés de "Mensalidade" | Atualizar função `getInvoiceTypeBadge` para mapear `monthly_subscription` → badge "Mensalidade" com cor distinta (ex: `bg-purple-100 text-purple-800`) |
+| 54 | Query `invoice_classes` com INNER JOIN | Consulta em `Financeiro.tsx` usa INNER JOIN e falha para mensalidades puras | Alterar para `LEFT JOIN invoice_classes` em todas as queries que buscam detalhes de fatura |
+| 55 | Registro "base de mensalidade" em `invoice_classes` | Mensalidades puras não têm registros em `invoice_classes` | Criar registro `item_type = 'monthly_base'` com `class_id = NULL` e `participant_id = NULL` para auditoria |
+| 56 | Constraint NOT NULL em `invoice_classes.class_id` | Impede criar `item_type = 'monthly_base'` sem aula | Alterar tabela: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL; ALTER TABLE invoice_classes ALTER COLUMN participant_id DROP NOT NULL;` |
+| 57 | RPC `create_invoice_and_mark_classes_billed` incompatível | Função espera `class_id` e `participant_id` obrigatórios | Adaptar função para aceitar NULL quando `item_type = 'monthly_base'`. Criar versão v2 ou sobrecarga |
+| 58 | Campo `dependent_id` em `invoice_classes` | Código de faturamento usa `dependent_id` mas não existe na tabela atual | **Verificar**: campo já existe em `invoice_classes`. Se não, adicionar: `ALTER TABLE invoice_classes ADD COLUMN dependent_id UUID REFERENCES dependents(id);` |
+| 59 | Regra de corte por data `starts_at` | Aulas realizadas antes de `starts_at` devem ser cobradas como? | Aulas anteriores a `starts_at` são cobradas por aula (fluxo tradicional). Mensalidade só cobre aulas a partir de `starts_at` |
+| 60 | RLS duplicada em `monthly_subscriptions` | Duas políticas similares no Apêndice A | Remover duplicata. Manter apenas uma política "Alunos podem ver suas mensalidades" em `monthly_subscriptions` |
 
 ---
 
@@ -1798,6 +1806,7 @@ async function processPerClassBilling(
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
+-- Versão 1.4 - Atualizado com correções
 -- ============================================
 
 -- 1. TABELA: monthly_subscriptions
@@ -1823,13 +1832,15 @@ CREATE INDEX idx_monthly_subscriptions_active ON public.monthly_subscriptions(te
 
 ALTER TABLE public.monthly_subscriptions ENABLE ROW LEVEL SECURITY;
 
+-- RLS: Professores gerenciam suas mensalidades
 CREATE POLICY "Professores podem gerenciar suas mensalidades"
 ON public.monthly_subscriptions
 FOR ALL
 USING (auth.uid() = teacher_id)
 WITH CHECK (auth.uid() = teacher_id);
 
--- RLS para alunos verem suas próprias mensalidades
+-- RLS: Alunos podem ver suas mensalidades (via student_monthly_subscriptions)
+-- NOTA: Apenas UMA política para alunos em monthly_subscriptions
 CREATE POLICY "Alunos podem ver suas mensalidades"
 ON public.monthly_subscriptions
 FOR SELECT
@@ -1893,19 +1904,6 @@ FOR SELECT
 USING (
   relationship_id IN (
     SELECT id FROM public.teacher_student_relationships WHERE student_id = auth.uid()
-  )
-);
-
--- RLS para alunos verem detalhes da mensalidade em monthly_subscriptions
-CREATE POLICY "Alunos podem ver detalhes de suas mensalidades"
-ON public.monthly_subscriptions
-FOR SELECT
-USING (
-  id IN (
-    SELECT subscription_id 
-    FROM public.student_monthly_subscriptions sms
-    JOIN public.teacher_student_relationships tsr ON tsr.id = sms.relationship_id
-    WHERE tsr.student_id = auth.uid()
   )
 );
 
@@ -2245,6 +2243,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.1 | 2025-01-XX | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
 | 1.2 | 2025-01-23 | Lovable AI | Adicionados: pontas soltas 31-40, interfaces TypeScript, query `get_student_subscription_details` para Dashboard do aluno, correção SQL `is_experimental = false` no Apêndice A, RLS adicional para alunos em `monthly_subscriptions` |
 | 1.3 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 41-52, corrigida numeração de seções (5.x → 6.x), implementação completa do hook `useMonthlySubscriptions` (seção 6.4), Zod schema de validação (seção 6.5), RLS para alunos em `monthly_subscriptions` no Apêndice A |
+| 1.4 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 53-60 (badge inconsistente, INNER JOIN, invoice_classes NULL, RPC v2, dependent_id, regra starts_at, RLS duplicada), correção SQL Apêndice A (removida RLS duplicada, adicionado comentário versão 1.4) |
 
 ---
 

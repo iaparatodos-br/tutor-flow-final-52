@@ -784,6 +784,18 @@ WHERE is_template = false;
 | 154 | `pending_amount` referenciado mas coluna não existe | Seção 5.6.5 menciona `pending_amount` em `teacher_student_relationships` | **Documentado v1.12**: Coluna não existe; simplificar para MVP ou criar migration futura |
 | 155 | **ERRO**: Remoção de `'regular'` na v1.9 foi incorreta | `'regular'` é valor DEFAULT válido de `invoice_type` | **CORRIGIDO v1.12**: Revertido. `'regular'` adicionado de volta à documentação. |
 | 156 | Confirmação final: `monthly_subscription_id` não existe | Verificado via banco: coluna não existe em `invoices` | ✅ Confirmado: Migration do Apêndice A é obrigatória |
+| 157 | Namespace `notifications` órfão em `i18n/index.ts` | Linha 118 declara `'notifications'` no array `ns`, mas não há import correspondente (linhas 1-48) e arquivos `notifications.json` não existem em PT/EN | ⚠️ Bug existente (não relacionado a mensalidades): Remover `'notifications'` do array `ns` ou criar imports e arquivos |
+| 158 | `password.json` órfão sem registro no namespace | Arquivos existem em `locales/pt/password.json` e `locales/en/password.json`, mas não há imports ou registro no objeto `resources` de `i18n/index.ts` | ⚠️ Bug existente (não relacionado a mensalidades): Adicionar imports e registrar no namespace |
+| 159 | Confirmação adicional: `'regular'` é DEFAULT de `invoice_type` | Query direta ao banco confirma: `status text NOT NULL DEFAULT 'regular'::text` | ✅ Confirmado via banco - query direta |
+| 160 | Valores de `invoice_type` USADOS no banco | Apenas `'automated'` e `'manual'` encontrados em registros reais; `'regular'` é DEFAULT mas não usado explicitamente | ✅ Confirmado via banco - valores de uso vs. default |
+| 161 | Apêndice A versão desatualizada | Cabeçalho SQL diz "Versão 1.10", documento é v1.12 (agora v1.13) | ✅ CORRIGIDO v1.13: Sincronizado para v1.13 |
+| 162 | `invoice_classes.class_id` ainda é NOT NULL | Confirmado via banco: constraint existe, impede `monthly_base` | ✅ Confirmado via banco - PRÉ-REQUISITO: Executar migration |
+| 163 | `invoice_classes.participant_id` ainda é NOT NULL | Confirmado via banco: constraint existe, impede `monthly_base` | ✅ Confirmado via banco - PRÉ-REQUISITO: Executar migration |
+| 164 | Arquivos `monthlySubscriptions.json` não existem | Confirmado via listagem: arquivos PT/EN não criados | ✅ Confirmado via código - PRÉ-REQUISITO: Criar arquivos |
+| 165 | Query INNER JOIN em `Financeiro.tsx` confirmada | `classes!inner` e `class_participants!inner` existem e falharão para mensalidades puras | ✅ Confirmado via código - Alterar para LEFT JOIN |
+| 166 | Interface `InvoiceWithStudent` sem `monthly_subscription_id` | Interface atual em `Financeiro.tsx` não inclui campo para mensalidade | **Documentado v1.13**: Adicionar `monthly_subscription_id?: string; monthly_subscription?: { name: string; };` |
+| 167 | Seção 6.3.2 sugere JOIN com `monthly_subscriptions` inexistente | Query exemplo faz `monthly_subscriptions(name)` mas tabela não existe ainda | **Documentado v1.13**: Adicionada nota sobre PRÉ-REQUISITOS |
+| 168 | Filtro por `invoice_type` não implementado em relatórios | `Financeiro.tsx` não oferece opção de filtrar faturas por tipo | ⚠️ Funcionalidade futura: Adicionar dropdown de filtro após implementação |
 
 ---
 
@@ -1504,7 +1516,28 @@ return (
 - `'monthly_subscription'` - Fatura de mensalidade fixa (NOVO)
 - `null` - Faturas antigas ou sem tipo definido
 
-**Nota:** O valor `'regular'` não existe no banco de dados (confirmado em v1.9) e foi removido da documentação.
+**Nota v1.13 (CORRIGIDO):** O valor `'regular'` É o DEFAULT válido de `invoice_type` no banco. Foi incorretamente afirmado em v1.9 que não existia. Valores confirmados: `'regular'` (DEFAULT), `'automated'`, `'manual'`, e `'monthly_subscription'` (novo).
+
+> **⚠️ NOTA DE PRÉ-REQUISITOS v1.13:**
+> 
+> O JOIN `monthly_subscriptions(name)` na query acima **SÓ FUNCIONARÁ** após execução da migration do Apêndice A.
+> Antes da migration, este código causará erro de tabela inexistente.
+> 
+> **Ordem de implementação:**
+> 1. Executar migration do Apêndice A (cria tabela `monthly_subscriptions`)
+> 2. Regenerar tipos TypeScript: `npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/types.ts`
+> 3. Implementar código frontend com JOIN
+> 
+> **Interface InvoiceWithStudent atualizada:**
+> ```typescript
+> interface InvoiceWithStudent {
+>   // ... campos existentes ...
+>   monthly_subscription_id?: string;      // NOVO: FK para mensalidade
+>   monthly_subscription?: {               // NOVO: dados da mensalidade via JOIN
+>     name: string;
+>   };
+> }
+> ```
 
 #### 6.3.3 StudentDashboard.tsx
 
@@ -2568,7 +2601,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.10 - Sincronizado com documento principal
+-- Versão 1.13 - Sincronizado com documento principal v1.13
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -3068,6 +3101,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.10 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 121-132 (namespace inconsistente nos exemplos de código, hook useStudentSubscriptionAssignment sem implementação documentada, clarificação Servicos.tsx vs ClassServicesManager, diagrama ASCII inconsistente, billing_day nullable sem fallback documentado, tipos TypeScript para novas tabelas, zero referências a monthly_subscription no código é PRÉ-REQUISITO, StudentDashboard sem "Meus Planos", namespace password não verificado, validação overagePrice quando hasLimit=false, datas inconsistentes no histórico, versão Apêndice A desincronizada). Corrigidos: todos os exemplos de código agora usam `useTranslation('monthlySubscriptions')` ao invés de `useTranslation('subscriptions')` (#121), adicionada implementação completa de `useStudentSubscriptionAssignment` na seção 6.4.1 (#122), clarificado que Tabs vão em `Servicos.tsx` e não em `ClassServicesManager.tsx` (#123), adicionada validação de `overagePrice = null` quando `hasLimit = false` no schema Zod (#130), sincronizada versão do Apêndice A para v1.10 (#132). Atualizada seção 6.4 com novo hook de atribuição. Atualizada seção 6.5 com validação adicional de overagePrice. Atualizado checklist 4.2 com novos itens de verificação. Atualizada tabela 4.1 com status de correções. |
 | 1.11 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 133-144 (mapeamento invoice_type incompleto em Financeiro.tsx, confirmação invoices.monthly_subscription_id não existe, confirmação constraints NOT NULL em invoice_classes, arquivos monthlySubscriptions.json não criados, namespace monthlySubscriptions não registrado em i18n/index.ts, InvoiceStatusBadge sem prop invoiceType confirmado, diretório src/schemas não existe confirmado, src/types sem monthly-subscriptions.ts, zero componentes de mensalidade implementados, default_billing_day nullable com fallback OK, datas consistentes no histórico, seção 6.1 usa subscriptions.json antigo). Corrigidos: seção 6.1 atualizada para usar `monthlySubscriptions.json` (#144), adicionado exemplo completo de mapeamento `getInvoiceTypeBadge` na seção 6.3.2.1 (#133), marcados itens confirmados via banco/código com status apropriado, atualizada tabela 4.1 com novos gaps identificados e status de confirmações. Atualizado checklist 4.2 Fase 3 com itens de criação de arquivos i18n. Atualizada seção 6.3.2 com função de mapeamento de invoice_type. |
 | 1.12 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 145-156 (`'regular'` É DEFAULT válido - erro v1.9, `password.json` órfão, `automated-billing` sem verificação, contradição ClassServicesManager na seção 6.1, `invoice_type` sem CHECK constraint, referências de linha desatualizadas, Apêndice A desincronizado, `pending_amount` não existe no banco, confirmação final `monthly_subscription_id` não existe). **CORREÇÕES CRÍTICAS**: Revertido erro da v1.9 - `'regular'` É valor DEFAULT válido de `invoice_type` (#145/#155), atualizado Apêndice A seção 0.3 para incluir `'regular'`. Corrigida seção 6.1 - `ClassServicesManager.tsx` marcado como INALTERADO (#149). Documentado `pending_amount` como não existente com recomendação de simplificar para MVP (#154). Documentado bug `password.json` como existente mas fora do escopo (#146). Atualizada tabela 4.1 com status corrigido para `'regular'`. |
+| 1.13 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 157-168 (namespace `notifications` órfão, `password.json` sem registro, confirmação `'regular'` é DEFAULT via query direta, valores de `invoice_type` usados vs. default, Apêndice A desatualizado, constraints NOT NULL confirmadas, arquivos i18n inexistentes, INNER JOIN confirmado, interface `InvoiceWithStudent` sem `monthly_subscription_id`, JOIN com tabela inexistente, filtro `invoice_type` não implementado). **CORREÇÕES**: Sincronizado Apêndice A para v1.13 (#161). Adicionada nota de PRÉ-REQUISITOS na seção 6.3.2 (#167). Documentada interface `InvoiceWithStudent` atualizada com `monthly_subscription_id` e `monthly_subscription` (#166). Corrigida nota sobre `'regular'` - agora documenta corretamente como DEFAULT válido (#159). Documentados bugs de i18n (`notifications` órfão, `password.json` sem registro) como issues separados (#157/#158). |
 
 ---
 

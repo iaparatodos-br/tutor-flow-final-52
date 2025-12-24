@@ -697,6 +697,18 @@ WHERE is_template = false;
 | 79 | Função `get_student_subscription_details` não existe | Documentada no Apêndice A mas não existe no banco atual | Incluir na migration do Apêndice A (já está no documento) |
 | 80 | StudentDashboard sem seção "Meu Plano" | **Consolidado com #71**: Mesma implementação necessária | Adicionar card informativo usando `get_student_subscription_details` |
 | 81 | Função `count_completed_classes_in_month` não existe | Usada no pseudocódigo mas não existe no banco atual | Incluir na migration do Apêndice A (já está no documento) |
+| 109 | `InvoiceStatusBadge.tsx` não trata `invoice_type` | Componente exibe status de pagamento mas não distingue faturas de mensalidade | Adicionar prop `invoiceType?: string \| null` e exibir badge "Mensalidade" quando `invoice_type = 'monthly_subscription'` |
+| 110 | Conflito de namespace i18n `subscription.json` | Arquivo `subscription.json` já existe para assinaturas do PROFESSOR (planos da plataforma) | **Decisão**: Criar `monthlySubscriptions.json` para mensalidades de ALUNOS. Manter `subscription.json` intacto |
+| 111 | Namespace `notifications` declarado mas arquivos não existem | `i18n/index.ts` declara namespace mas arquivos PT/EN não existem | **Bug existente**: Remover do array `ns` ou criar arquivos `notifications.json` |
+| 112 | `src/types` sem estrutura para tipos de mensalidade | Documento referencia `src/types/monthly-subscriptions.ts` mas diretório só tem `cookie-consent.d.ts` | Criar arquivo `src/types/monthly-subscriptions.ts` com interfaces |
+| 113 | `Servicos.tsx` é wrapper simples sem Tabs | Componente atual apenas renderiza `<ClassServicesManager />` diretamente | Modificar para usar `Tabs` conforme seção 6.6.2 |
+| 114 | `business_profile_id` nullable em `teacher_student_relationships` | Campo é nullable no schema atual | Validar existência antes de criar fatura com mensalidade; logar warning se null |
+| 115 | Nenhuma função SQL de mensalidade existe no banco | Funções `get_student_active_subscription`, `count_completed_classes_in_month`, etc. não existem | **PRÉ-REQUISITO**: Executar migration do Apêndice A antes de implementar código |
+| 116 | Confirmado: `invoice_classes.class_id` é NOT NULL | Constraint impede `item_type = 'monthly_base'` sem aula vinculada | Executar: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL;` |
+| 117 | Confirmado: `invoice_classes.participant_id` é NOT NULL | Constraint impede `item_type = 'monthly_base'` sem participante vinculado | Executar: `ALTER TABLE invoice_classes ALTER COLUMN participant_id DROP NOT NULL;` |
+| 118 | `regular` não existe como valor de `invoice_type` no banco | Valores encontrados no banco: apenas `'automated'` e `'manual'` | **CORREÇÃO**: Remover `'regular'` da documentação; usar apenas `automated`, `manual`, `monthly_subscription` |
+| 119 | Confirmado: INNER JOIN em `Financeiro.tsx` linhas 276-283 | `classes!inner` e `class_participants!inner` falharão para mensalidades puras | **Consolidado com #44, #54, #70**: Alterar para LEFT JOIN |
+| 120 | Regeneração de tipos TypeScript não documentada | Após migrations, tipos devem ser regenerados para refletir novas tabelas | Adicionar ao checklist de deploy: `npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/types.ts` |
 | 82 | Todas as funções SQL de mensalidade não existem | Funções documentadas não foram criadas no banco | **PRÉ-REQUISITO**: Executar SQL do Apêndice A para criar todas as funções |
 | 83 | Seção Backend numerada incorretamente | "## 6. Implementação Backend" deveria ser "## 7" | Corrigir numeração para manter sequência (Frontend=6, Backend=7) |
 | 84 | Referência circular no histórico de revisões | Menciona correções de numeração mas inconsistências persistem | Aplicar correções definitivas nesta revisão (v1.6) |
@@ -772,6 +784,10 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | `MIN_BOLETO_VALUE` definido | ✅ Definido | R$ 5,00 na seção 5.6.5 |
 | `StudentDashboard` múltiplos professores | ❌ Não implementado | Seguir exemplo em 5.6.3 |
 | Validação `business_profile_id` em mensalidades | ❌ Não implementado | Adicionar no hook de atribuição |
+| `InvoiceStatusBadge.tsx` com prop `invoiceType` | ❌ Não implementado | Adicionar prop e badge "Mensalidade" |
+| Namespace i18n para mensalidades de alunos | ⚠️ Decisão tomada | Criar `monthlySubscriptions.json` (separado de `subscription.json`) |
+| Bug: namespace `notifications` em `i18n/index.ts` | ⚠️ Bug existente | Remover do array `ns` ou criar arquivos |
+| `regular` como valor de `invoice_type` | ⚠️ Não existe no banco | Removido da documentação; usar `automated`, `manual`, `monthly_subscription` |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -796,9 +812,10 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 - [ ] Verificar função `getInvoiceTypeBadge` em `Financeiro.tsx` e adicionar case para `monthly_subscription`
 
 #### Fase 3: Internacionalização
-- [ ] Criar `src/i18n/locales/pt/subscriptions.json`
-- [ ] Criar `src/i18n/locales/en/subscriptions.json`
-- [ ] Registrar namespace em `src/i18n/index.ts`
+- [ ] **Decisão**: Criar `src/i18n/locales/pt/monthlySubscriptions.json` (separado de `subscription.json`)
+- [ ] Criar `src/i18n/locales/en/monthlySubscriptions.json`
+- [ ] Registrar namespace `monthlySubscriptions` em `src/i18n/index.ts`
+- [ ] **Bug**: Remover `notifications` do array `ns` em `i18n/index.ts` OU criar arquivos `notifications.json` faltantes
 
 #### Fase 4: Componentes
 - [ ] Criar `MonthlySubscriptionsManager`
@@ -1268,6 +1285,113 @@ interface MonthlySubscriptionFormData {
 ```
 
 ### 6.3 Alterações em Componentes Existentes
+
+#### 6.3.1 InvoiceStatusBadge.tsx
+
+O componente `InvoiceStatusBadge.tsx` precisa ser atualizado para exibir um badge visual distinguindo faturas de mensalidade.
+
+**Alterações necessárias:**
+
+```tsx
+// ============================================
+// ARQUIVO: src/components/InvoiceStatusBadge.tsx
+// Adicionar suporte para invoice_type
+// ============================================
+
+interface InvoiceStatusBadgeProps {
+  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
+  paymentOrigin?: string | null;
+  invoiceType?: string | null; // NOVO: tipo da fatura
+}
+
+export function InvoiceStatusBadge({ status, paymentOrigin, invoiceType }: InvoiceStatusBadgeProps) {
+  // ... código existente ...
+  
+  // Renderizar badge adicional para mensalidade
+  const isMonthlySubscription = invoiceType === 'monthly_subscription';
+  
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* Badge de status (existente) */}
+      <Badge className={cn('text-white gap-1', className)}>
+        {isPaid && isManual && <CheckCircle className="h-3 w-3" />}
+        {isPaid && isAutomatic && <Zap className="h-3 w-3" />}
+        {label}
+        {isPaid && isManual && <span className="text-xs opacity-80">(Manual)</span>}
+        {isPaid && isAutomatic && <span className="text-xs opacity-80">(Auto)</span>}
+      </Badge>
+      
+      {/* NOVO: Badge de tipo (mensalidade) */}
+      {isMonthlySubscription && (
+        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+          Mensalidade
+        </Badge>
+      )}
+    </div>
+  );
+}
+```
+
+**Nota:** A cor roxa foi escolhida para diferenciar visualmente das cores já usadas (verde=sucesso, azul=aberto, vermelho=vencido).
+
+#### 6.3.2 Financeiro.tsx
+
+Alterações necessárias em `Financeiro.tsx`:
+
+1. **LEFT JOIN em queries**: Alterar `classes!inner` e `class_participants!inner` para LEFT JOIN
+2. **Badge de tipo**: Passar prop `invoiceType` para `InvoiceStatusBadge`
+
+```tsx
+// Exemplo de query atualizada (linhas ~276-283)
+const { data: invoices } = await supabase
+  .from('invoices')
+  .select(`
+    *,
+    classes(*),                    // LEFT JOIN (remover !inner)
+    class_participants(*),         // LEFT JOIN (remover !inner)
+    monthly_subscriptions(name)    // NOVO: JOIN opcional para nome da mensalidade
+  `)
+  .eq('teacher_id', user.id);
+
+// Exemplo de uso do badge
+<InvoiceStatusBadge 
+  status={invoice.status} 
+  paymentOrigin={invoice.payment_origin}
+  invoiceType={invoice.invoice_type}  // NOVO
+/>
+```
+
+#### 6.3.3 StudentDashboard.tsx
+
+Adicionar seção "Meus Planos" conforme descrito em 5.6.3:
+
+```tsx
+// Buscar mensalidades do aluno
+const { data: subscriptions } = await supabase
+  .rpc('get_student_subscription_details', { p_student_id: user.id });
+
+// Renderizar cards múltiplos (um por professor)
+{subscriptions?.map((sub) => (
+  <Card key={`${sub.teacher_id}-${sub.subscription_name}`}>
+    <CardHeader>
+      <CardTitle>{sub.teacher_name}</CardTitle>
+      <CardDescription>{sub.subscription_name}</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <p className="text-2xl font-bold">
+        {formatCurrency(sub.monthly_value)}
+        <span className="text-sm text-muted-foreground">/mês</span>
+      </p>
+      {sub.max_classes ? (
+        <Progress value={(sub.classes_used / sub.max_classes) * 100} />
+        <p>{sub.classes_used}/{sub.max_classes} aulas usadas</p>
+      ) : (
+        <p>Aulas ilimitadas</p>
+      )}
+    </CardContent>
+  </Card>
+))}
+```
 
 ### 6.4 Hook useMonthlySubscriptions
 
@@ -1865,7 +1989,47 @@ async function processPerClassBilling(
 
 ## 8. Internacionalização (i18n)
 
+### 8.0 Nota sobre Namespaces
+
+**⚠️ IMPORTANTE: Conflito de Namespace Resolvido**
+
+O arquivo `src/i18n/locales/pt/subscription.json` **já existe** e contém traduções para **assinatura do PROFESSOR** (planos da plataforma TutorFlow: Free, Básico, Premium, etc.).
+
+**Decisão de design (v1.9):** As traduções de mensalidade do **ALUNO** devem usar um namespace **diferente** para evitar confusão:
+
+| Namespace | Propósito | Arquivo |
+|-----------|-----------|---------|
+| `subscription` (existente) | Planos da plataforma para professores | `subscription.json` |
+| `monthlySubscriptions` (NOVO) | Mensalidades fixas para alunos | `monthlySubscriptions.json` |
+
+**Exemplo de uso no código:**
+```tsx
+// Para assinaturas do professor (planos da plataforma)
+const { t } = useTranslation('subscription');
+t('plans.basic.title'); // "Plano Básico"
+
+// Para mensalidades de alunos
+const { t } = useTranslation('monthlySubscriptions');
+t('title'); // "Mensalidades"
+```
+
+**Nota adicional:** Os exemplos de código neste documento usam `useTranslation('subscriptions')` (plural). Isso deve ser atualizado para `useTranslation('monthlySubscriptions')` na implementação final.
+
+---
+
+**⚠️ Bug Existente: Namespace `notifications`**
+
+O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` (provavelmente na linha 118), mas os arquivos de tradução correspondentes **NÃO EXISTEM**:
+- ❌ `src/i18n/locales/pt/notifications.json`
+- ❌ `src/i18n/locales/en/notifications.json`
+
+**Ação recomendada:** Remover `'notifications'` do array `ns` ou criar os arquivos vazios para evitar warnings no console durante desenvolvimento.
+
+---
+
 ### 8.1 Português (pt)
+
+**Arquivo:** `src/i18n/locales/pt/monthlySubscriptions.json`
 
 ```json
 {
@@ -1942,6 +2106,8 @@ async function processPerClassBilling(
 ```
 
 ### 8.2 English (en)
+
+**Arquivo:** `src/i18n/locales/en/monthlySubscriptions.json`
 
 ```json
 {
@@ -2039,7 +2205,7 @@ async function processPerClassBilling(
 | ID | Cenário | Pré-condição | Ação | Resultado Esperado |
 |----|---------|--------------|------|-------------------|
 | I01 | Faturamento com mensalidade | Aluno com mensalidade ativa | Executar billing | Fatura tipo 'monthly_subscription' |
-| I02 | Faturamento sem mensalidade | Aluno sem mensalidade | Executar billing | Fatura tipo 'regular' |
+| I02 | Faturamento sem mensalidade | Aluno sem mensalidade | Executar billing | Fatura tipo 'automated' |
 | I03 | Faturamento com excedente | Aluno com limite=4, 6 aulas | Executar billing | Fatura = mensalidade + 2×excedente |
 | I04 | Faturamento ilimitado | Aluno com max_classes=null, 20 aulas | Executar billing | Fatura = apenas mensalidade |
 | I05 | Migração de mensalidade | Aluno troca de plano | Desativar antiga, ativar nova | Próxima fatura usa novo valor |
@@ -2143,11 +2309,11 @@ $$;
 -- ALTER TABLE public.invoice_classes ALTER COLUMN participant_id DROP NOT NULL;
 
 -- 0.3 Documentação de valores de invoice_type
--- Valores atuais aceitos no banco (campo TEXT sem constraint CHECK):
+-- Valores ATUAIS aceitos no banco (campo TEXT sem constraint CHECK):
 -- - 'automated': fatura gerada automaticamente pelo sistema (cobrança por aula)
 -- - 'manual': fatura criada manualmente pelo professor
--- - 'regular': alias para fatura padrão (usado em alguns lugares do código)
 -- - 'monthly_subscription': NOVO - fatura de mensalidade fixa (a ser implementado)
+-- NOTA: 'regular' NÃO existe como valor no banco de dados (removido na v1.9)
 -- NOTA: Não há constraint de CHECK em invoice_type; é apenas TEXT
 
 -- 1. TABELA: monthly_subscriptions
@@ -2536,6 +2702,7 @@ WHERE is_template = false;
 - [ ] Verificar criação de funções
 - [ ] Verificar índices
 - [ ] Testar RLS policies
+- [ ] **Regenerar tipos TypeScript**: `npx supabase gen types typescript --project-id=<PROJECT_ID> > src/integrations/supabase/types.ts`
 
 ### Deploy - Frontend
 - [ ] Build sem erros
@@ -2609,6 +2776,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.6 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 73-84 (numeração duplicada no sumário, seções Frontend/Backend ambas "6", subseção 5.3.1 mal posicionada, query `!inner` em Financeiro.tsx, automated-billing sem verificação de mensalidade, conflito invoice_type, funções SQL inexistentes, StudentDashboard sem "Meu Plano"). Corrigido: sumário sem duplicatas, numeração sequencial das seções (Frontend=6, Backend=7, i18n=8, Testes=9, Cronograma=10, Riscos=11, Apêndice A=12, Apêndice B=13), subseção 5.3.1 movida para 6.6. Atualizada tabela 4.1 com novos itens comparativos. Adicionados itens ao checklist 4.2 para verificações de numeração e testes de query. |
 | 1.7 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 85-96 (diretório src/schemas inexistente, invoice_type sem valor documentado, confirmações de constraints NOT NULL via banco, regras de cobrança para cenários específicos, comportamento de starts_at, múltiplos professores, cancelamento mid-month, verificação de getInvoiceTypeBadge, consistência de get_student_subscription_details, verificação de update_updated_at_column). Nova seção 5.6 "Regras de Cobrança Detalhadas" com 5 subseções cobrindo: mensalidade R$0 + excedentes, transição de starts_at, múltiplos professores, cancelamento no meio do mês, valor mínimo para boleto. Atualizado Apêndice A versão 1.5 com verificações pré-migração. Atualizado checklist 4.2 com itens de criação de diretório e testes de cenários específicos. Atualizada tabela 4.1 com status de itens corrigidos (✅) e novos gaps identificados. |
 | 1.8 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 97-108 (getInvoiceTypeBadge inexistente, ClassServicesManager não referenciado, conflito namespace i18n subscription/subscriptions, valores invoice_type incompletos, rollback script sem triggers, RLS policy duplicada, StudentDashboard sem múltiplos professores, DROP NOT NULL disperso, validação business_profile_id, placeholders de data, valor mínimo boleto indefinido). Corrigidos: rollback script completo com triggers (#101), RLS policy renomeada (#102), SQL consolidado no Apêndice A seção 0.2 (#104), datas no histórico (#106), MIN_BOLETO_VALUE=5.00 definido (#107), seção 6.6 atualizada com ClassServicesManager (#108). Atualizado Apêndice A para versão 1.6. Sumário atualizado para referenciar nova seção 6.6. |
+| 1.9 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 109-120 (InvoiceStatusBadge sem invoice_type, conflito namespace i18n confirmado, bug notifications em i18n/index.ts, src/types sem estrutura, Servicos.tsx wrapper simples, business_profile_id nullable, funções SQL inexistentes confirmadas, constraints NOT NULL confirmadas via banco, 'regular' não existe no banco, INNER JOIN confirmado em Financeiro.tsx, regeneração tipos não documentada). Corrigidos: removido 'regular' da documentação de invoice_type (#118), adicionada regeneração de tipos ao checklist de deploy (#120), decisão de namespace i18n tomada (usar `monthlySubscriptions.json` separado de `subscription.json`) (#110), documentado bug de namespace `notifications` (#111). Nova seção 8.0 "Nota sobre Namespaces" explicando conflito e decisão. Nova seção 6.3.1 "InvoiceStatusBadge.tsx" com implementação de prop invoiceType. Expandida seção 6.3 com alterações em Financeiro.tsx e StudentDashboard.tsx. Atualizado Apêndice A seção 0.3 removendo 'regular'. Atualizado checklist 4.2 Fase 3 com decisão de namespace e bug de notifications. Atualizada tabela 4.1 com novos itens de InvoiceStatusBadge, namespace i18n, e regeneração de tipos. |
 
 ---
 

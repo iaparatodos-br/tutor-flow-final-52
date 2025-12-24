@@ -649,6 +649,18 @@ WHERE is_template = false;
 | 38 | Proteção contra faturas duplicadas | Como evitar gerar duas faturas de mensalidade no mesmo mês? | Verificar existência de fatura `invoice_type = 'monthly_subscription'` para mesmo aluno/mês antes de criar |
 | 39 | Integração com relatórios financeiros | Relatórios devem distinguir receita de mensalidades? | Sim. Incluir coluna "Tipo" em `Financeiro.tsx`. Filtrar por `invoice_type` nos relatórios |
 | 40 | SQL de contagem inconsistente no Apêndice | Função no Apêndice A não exclui aulas experimentais | Corrigido: adicionado `c.is_experimental = false` na função `count_completed_classes_in_month` do Apêndice A |
+| 41 | Filtro `is_active` no faturamento | Verificar se aluno tem mensalidade ativa ou aulas não faturadas | Verificar `sms.is_active = true AND ms.is_active = true` antes de processar. Se ambos false, usar fluxo por aula |
+| 42 | Valor mínimo para boleto com mensalidade gratuita | Mensalidade R$ 0 + excedentes < valor mínimo do boleto (ex: R$ 5) | Se valor total < R$ 5, não gerar boleto. Registrar internamente como "cortesia" ou acumular para próximo ciclo |
+| 43 | Badge "Mensalidade" em `Financeiro.tsx` | Como distinguir visualmente faturas de mensalidade? | Verificar `invoice_type === 'monthly_subscription'` e exibir badge colorido "Mensalidade" |
+| 44 | Query `invoice_classes` para mensalidades puras | INNER JOIN falha se mensalidade não tiver aulas avulsas | Alterar para LEFT JOIN em consultas que incluem `invoice_classes`. Mensalidade pura tem 0 registros em `invoice_classes` |
+| 45 | Hook `useMonthlySubscriptions` | Implementação detalhada faltando | Seção 6.5 adicionada com implementação completa usando react-query |
+| 46 | Zod schema para formulário de mensalidade | Validação frontend estruturada faltando | Seção 6.6 adicionada com schema completo incluindo validação condicional de `maxClasses` |
+| 47 | Distinção de `invoice_type` em relatórios | Como diferenciar `automated` vs `monthly_subscription`? | `automated` = fatura gerada automaticamente por aula. `monthly_subscription` = fatura de mensalidade fixa. Filtros separados nos relatórios |
+| 48 | RLS faltante em `monthly_subscriptions` para alunos | Alunos não conseguem ver detalhes da própria mensalidade | Política SELECT adicionada no Apêndice A para alunos via `student_monthly_subscriptions` |
+| 49 | Contagem de aulas de dependentes em meses diferentes | Dependente adicionado no meio do mês, como contar? | `count_completed_classes_in_month` já usa `class_date` para filtrar. Dependente adicionado = suas aulas daquele mês contam normalmente |
+| 50 | Mensalidade + aluno sem `business_profile_id` | Aluno com mensalidade mas sem perfil de negócio configurado | Logar warning e pular faturamento. Exigir `business_profile_id` no relacionamento antes de atribuir mensalidade |
+| 51 | Componente de progresso no `PerfilAluno.tsx` | Exibir "X/Y aulas usadas" para alunos com limite | Adicionar barra de progresso ou indicador textual usando dados de `get_student_subscription_details` |
+| 52 | Retry de fatura de mensalidade falha | Como reprocessar faturas que falharam? | Logar erro detalhado. Permitir reprocessamento manual via botão em `Financeiro.tsx` (chamar `automated-billing` com flag `force`) |
 
 ---
 
@@ -877,7 +889,7 @@ EXECUTE FUNCTION deactivate_subscription_students();
 
 ## 6. Implementação Frontend
 
-### 5.1 Estrutura de Arquivos
+### 6.1 Estrutura de Arquivos
 
 ```
 src/
@@ -903,9 +915,9 @@ src/
             └── subscriptions.json        # NOVO
 ```
 
-### 5.2 Componentes
+### 6.2 Componentes
 
-#### 5.2.1 MonthlySubscriptionsManager
+#### 6.2.1 MonthlySubscriptionsManager
 
 ```tsx
 // Responsabilidades:
@@ -928,7 +940,7 @@ interface MonthlySubscription {
 }
 ```
 
-#### 5.2.2 MonthlySubscriptionModal
+#### 6.2.2 MonthlySubscriptionModal
 
 ```tsx
 // Responsabilidades:
@@ -949,7 +961,7 @@ interface MonthlySubscriptionFormData {
 }
 ```
 
-#### 5.2.3 MonthlySubscriptionCard
+#### 6.2.3 MonthlySubscriptionCard
 
 ```tsx
 // Responsabilidades:
@@ -959,7 +971,7 @@ interface MonthlySubscriptionFormData {
 // - Indicador visual ativo/inativo
 ```
 
-#### 5.2.4 StudentSubscriptionSelect
+#### 6.2.4 StudentSubscriptionSelect
 
 ```tsx
 // Responsabilidades:
@@ -969,7 +981,416 @@ interface MonthlySubscriptionFormData {
 // - Bloquear seleção se conflito
 ```
 
-### 5.3 Alterações em Componentes Existentes
+### 6.3 Alterações em Componentes Existentes
+
+### 6.4 Hook useMonthlySubscriptions
+
+```typescript
+// ============================================
+// ARQUIVO: src/hooks/useMonthlySubscriptions.ts
+// Hook completo para CRUD de mensalidades
+// ============================================
+
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
+import type { 
+  MonthlySubscription, 
+  MonthlySubscriptionWithCount,
+  MonthlySubscriptionFormData,
+  AssignedStudent
+} from '@/types/monthly-subscriptions';
+
+// ============================================
+// QUERY: Listar mensalidades do professor
+// ============================================
+export function useMonthlySubscriptions(includeInactive = false) {
+  const { user } = useAuth();
+  
+  return useQuery({
+    queryKey: ['monthly-subscriptions', user?.id, includeInactive],
+    queryFn: async (): Promise<MonthlySubscriptionWithCount[]> => {
+      if (!user?.id) return [];
+      
+      const { data, error } = await supabase
+        .rpc('get_subscriptions_with_students', { p_teacher_id: user.id });
+      
+      if (error) throw error;
+      
+      // Filtrar inativas se necessário
+      if (!includeInactive) {
+        return (data || []).filter(s => s.is_active);
+      }
+      
+      return data || [];
+    },
+    enabled: !!user?.id,
+  });
+}
+
+// ============================================
+// QUERY: Listar alunos de uma mensalidade
+// ============================================
+export function useSubscriptionStudents(subscriptionId: string | null) {
+  return useQuery({
+    queryKey: ['subscription-students', subscriptionId],
+    queryFn: async (): Promise<AssignedStudent[]> => {
+      if (!subscriptionId) return [];
+      
+      const { data, error } = await supabase
+        .rpc('get_subscription_assigned_students', { p_subscription_id: subscriptionId });
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!subscriptionId,
+  });
+}
+
+// ============================================
+// MUTATION: Criar mensalidade
+// ============================================
+export function useCreateMonthlySubscription() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { t } = useTranslation('subscriptions');
+  
+  return useMutation({
+    mutationFn: async (formData: MonthlySubscriptionFormData) => {
+      if (!user?.id) throw new Error('User not authenticated');
+      
+      // 1. Criar mensalidade
+      const { data: subscription, error: subscriptionError } = await supabase
+        .from('monthly_subscriptions')
+        .insert({
+          teacher_id: user.id,
+          name: formData.name.trim(),
+          description: formData.description?.trim() || null,
+          price: formData.price,
+          max_classes: formData.hasLimit ? formData.maxClasses : null,
+          overage_price: formData.hasLimit ? formData.overagePrice : null,
+        })
+        .select()
+        .single();
+      
+      if (subscriptionError) throw subscriptionError;
+      
+      // 2. Atribuir alunos selecionados
+      if (formData.selectedStudents.length > 0) {
+        const assignments = formData.selectedStudents.map(relationshipId => ({
+          subscription_id: subscription.id,
+          relationship_id: relationshipId,
+          starts_at: new Date().toISOString().split('T')[0],
+          is_active: true,
+        }));
+        
+        const { error: assignError } = await supabase
+          .from('student_monthly_subscriptions')
+          .insert(assignments);
+        
+        if (assignError) throw assignError;
+      }
+      
+      return subscription;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      toast.success(t('messages.createSuccess'));
+    },
+    onError: (error) => {
+      console.error('Error creating subscription:', error);
+      toast.error(t('messages.saveError'));
+    },
+  });
+}
+
+// ============================================
+// MUTATION: Atualizar mensalidade
+// ============================================
+export function useUpdateMonthlySubscription() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('subscriptions');
+  
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      formData 
+    }: { 
+      id: string; 
+      formData: Partial<MonthlySubscriptionFormData> 
+    }) => {
+      const updateData: Partial<MonthlySubscription> = {
+        name: formData.name?.trim(),
+        description: formData.description?.trim() || null,
+        price: formData.price,
+        max_classes: formData.hasLimit ? formData.maxClasses : null,
+        overage_price: formData.hasLimit ? formData.overagePrice : null,
+      };
+      
+      const { data, error } = await supabase
+        .from('monthly_subscriptions')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      toast.success(t('messages.updateSuccess'));
+    },
+    onError: (error) => {
+      console.error('Error updating subscription:', error);
+      toast.error(t('messages.saveError'));
+    },
+  });
+}
+
+// ============================================
+// MUTATION: Ativar/Desativar mensalidade
+// ============================================
+export function useToggleMonthlySubscription() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('subscriptions');
+  
+  return useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const { data, error } = await supabase
+        .from('monthly_subscriptions')
+        .update({ is_active: isActive })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      toast.success(
+        variables.isActive 
+          ? t('messages.activateSuccess') 
+          : t('messages.deactivateSuccess')
+      );
+    },
+    onError: (error) => {
+      console.error('Error toggling subscription:', error);
+      toast.error(t('messages.saveError'));
+    },
+  });
+}
+
+// ============================================
+// MUTATION: Atribuir aluno à mensalidade
+// ============================================
+export function useAssignStudentToSubscription() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('subscriptions');
+  
+  return useMutation({
+    mutationFn: async ({ 
+      subscriptionId, 
+      relationshipId,
+      startsAt 
+    }: { 
+      subscriptionId: string; 
+      relationshipId: string;
+      startsAt?: string;
+    }) => {
+      // Verificar se aluno já tem mensalidade ativa
+      const { data: hasActive } = await supabase
+        .rpc('check_student_has_active_subscription', { 
+          p_relationship_id: relationshipId 
+        });
+      
+      if (hasActive) {
+        throw new Error('STUDENT_ALREADY_HAS_SUBSCRIPTION');
+      }
+      
+      const { data, error } = await supabase
+        .from('student_monthly_subscriptions')
+        .insert({
+          subscription_id: subscriptionId,
+          relationship_id: relationshipId,
+          starts_at: startsAt || new Date().toISOString().split('T')[0],
+          is_active: true,
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['subscription-students', variables.subscriptionId] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+    },
+    onError: (error: Error) => {
+      if (error.message === 'STUDENT_ALREADY_HAS_SUBSCRIPTION') {
+        toast.error(t('messages.studentAlreadyHasSubscription'));
+      } else {
+        console.error('Error assigning student:', error);
+        toast.error(t('messages.saveError'));
+      }
+    },
+  });
+}
+
+// ============================================
+// MUTATION: Remover aluno da mensalidade
+// ============================================
+export function useRemoveStudentFromSubscription() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      assignmentId,
+      subscriptionId 
+    }: { 
+      assignmentId: string;
+      subscriptionId: string;
+    }) => {
+      const { error } = await supabase
+        .from('student_monthly_subscriptions')
+        .update({ is_active: false })
+        .eq('id', assignmentId);
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['subscription-students', variables.subscriptionId] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+    },
+  });
+}
+```
+
+### 6.5 Zod Schema de Validação
+
+```typescript
+// ============================================
+// ARQUIVO: src/schemas/monthly-subscription.schema.ts
+// Schema Zod para validação do formulário de mensalidade
+// ============================================
+
+import { z } from 'zod';
+
+/**
+ * Schema de validação para criação/edição de mensalidade
+ * 
+ * Regras:
+ * - nome: obrigatório, 1-100 caracteres
+ * - description: opcional, max 500 caracteres
+ * - price: obrigatório, >= 0
+ * - hasLimit: boolean para toggle de limite
+ * - maxClasses: obrigatório SE hasLimit = true, > 0
+ * - overagePrice: obrigatório SE hasLimit = true, >= 0
+ * - selectedStudents: array de relationship_ids (pode ser vazio)
+ */
+export const monthlySubscriptionSchema = z.object({
+  name: z
+    .string()
+    .min(1, { message: 'O nome da mensalidade é obrigatório.' })
+    .max(100, { message: 'O nome deve ter no máximo 100 caracteres.' })
+    .transform(val => val.trim()),
+  
+  description: z
+    .string()
+    .max(500, { message: 'A descrição deve ter no máximo 500 caracteres.' })
+    .optional()
+    .transform(val => val?.trim() || ''),
+  
+  price: z
+    .number({ invalid_type_error: 'Informe um valor válido.' })
+    .min(0, { message: 'O valor deve ser maior ou igual a zero.' }),
+  
+  hasLimit: z.boolean().default(false),
+  
+  maxClasses: z
+    .number({ invalid_type_error: 'Informe um número válido.' })
+    .int({ message: 'O limite deve ser um número inteiro.' })
+    .positive({ message: 'O limite de aulas deve ser maior que zero.' })
+    .nullable()
+    .optional(),
+  
+  overagePrice: z
+    .number({ invalid_type_error: 'Informe um valor válido.' })
+    .min(0, { message: 'O valor por aula excedente deve ser maior ou igual a zero.' })
+    .nullable()
+    .optional(),
+  
+  selectedStudents: z
+    .array(z.string().uuid())
+    .default([]),
+    
+}).refine(
+  // Validação condicional: se hasLimit = true, maxClasses é obrigatório
+  (data) => {
+    if (data.hasLimit && (data.maxClasses === null || data.maxClasses === undefined)) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'Informe o limite de aulas quando a opção estiver ativada.',
+    path: ['maxClasses'],
+  }
+).refine(
+  // Validação condicional: se hasLimit = true, overagePrice é obrigatório
+  (data) => {
+    if (data.hasLimit && (data.overagePrice === null || data.overagePrice === undefined)) {
+      return false;
+    }
+    return true;
+  },
+  {
+    message: 'Informe o valor por aula excedente quando o limite estiver ativado.',
+    path: ['overagePrice'],
+  }
+);
+
+// Tipo inferido do schema
+export type MonthlySubscriptionFormValues = z.infer<typeof monthlySubscriptionSchema>;
+
+// ============================================
+// Helpers para conversão de valores monetários
+// ============================================
+
+/**
+ * Converte string formatada (ex: "150,00") para número (150)
+ */
+export function parseCurrencyToNumber(value: string): number {
+  const cleaned = value
+    .replace(/[^\d,.-]/g, '')  // Remove tudo exceto dígitos, vírgula, ponto e hífen
+    .replace(',', '.');         // Troca vírgula por ponto
+  return parseFloat(cleaned) || 0;
+}
+
+/**
+ * Converte número para string formatada (ex: 150 → "150,00")
+ */
+export function formatNumberToCurrency(value: number): string {
+  return value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Formata valor em centavos para exibição (ex: 15000 → "R$ 150,00")
+ */
+export function formatCentsToDisplay(cents: number): string {
+  const reais = cents / 100;
+  return reais.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+```
 
 #### 5.3.1 Servicos.tsx
 
@@ -1408,6 +1829,20 @@ FOR ALL
 USING (auth.uid() = teacher_id)
 WITH CHECK (auth.uid() = teacher_id);
 
+-- RLS para alunos verem suas próprias mensalidades
+CREATE POLICY "Alunos podem ver suas mensalidades"
+ON public.monthly_subscriptions
+FOR SELECT
+USING (
+  id IN (
+    SELECT sms.subscription_id 
+    FROM public.student_monthly_subscriptions sms
+    JOIN public.teacher_student_relationships tsr ON tsr.id = sms.relationship_id
+    WHERE tsr.student_id = auth.uid()
+      AND sms.is_active = true
+  )
+);
+
 CREATE TRIGGER update_monthly_subscriptions_updated_at
 BEFORE UPDATE ON public.monthly_subscriptions
 FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -1809,6 +2244,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.0 | 2025-01-XX | Lovable AI | Versão inicial do documento |
 | 1.1 | 2025-01-XX | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
 | 1.2 | 2025-01-23 | Lovable AI | Adicionados: pontas soltas 31-40, interfaces TypeScript, query `get_student_subscription_details` para Dashboard do aluno, correção SQL `is_experimental = false` no Apêndice A, RLS adicional para alunos em `monthly_subscriptions` |
+| 1.3 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 41-52, corrigida numeração de seções (5.x → 6.x), implementação completa do hook `useMonthlySubscriptions` (seção 6.4), Zod schema de validação (seção 6.5), RLS para alunos em `monthly_subscriptions` no Apêndice A |
 
 ---
 

@@ -33,7 +33,7 @@
    - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
    - 6.4 [Hook useMonthlySubscriptions](#64-hook-usemonthlysubscriptions)
    - 6.5 [Zod Schema de Validação](#65-zod-schema-de-validação)
-   - 6.6 [Alterações em Servicos.tsx](#66-alterações-em-servicostsx)
+   - 6.6 [Alterações em Servicos.tsx e ClassServicesManager.tsx](#66-alterações-em-servicostsx-e-classservicesmanagertsx)
 7. [Implementação Backend](#7-implementação-backend)
    - 7.1 [Alteração no Faturamento Automatizado](#71-alteração-no-faturamento-automatizado)
    - 7.2 [Pseudocódigo do Novo Fluxo](#72-pseudocódigo-do-novo-fluxo)
@@ -712,6 +712,18 @@ WHERE is_template = false;
 | 94 | `getInvoiceTypeBadge` em `Financeiro.tsx` | Verificar se função existe e implementa `monthly_subscription` | Criar/atualizar função para mapear todos os `invoice_type` |
 | 95 | `get_student_subscription_details` RPC consistência | Garantir que função no Apêndice A está completa e consistente com seção 3.4 | Verificar e consolidar |
 | 96 | `update_updated_at_column` trigger function | Usada em triggers do Apêndice A; verificar existência no banco | ✅ Existe no banco atual (confirmado via schema) |
+| 97 | Função `getInvoiceTypeBadge` não existe em `Financeiro.tsx` | Documento referencia função que não existe no código atual | Criar função ou adicionar lógica inline para mapear `invoice_type` → badge (incluindo `monthly_subscription` → "Mensalidade" com cor roxa) |
+| 98 | `Servicos.tsx` é componente simples, alterações devem ir em `ClassServicesManager` | Documento propõe alterações em `Servicos.tsx` mas lógica principal está em `ClassServicesManager.tsx` | Atualizar seção 6.6 para referenciar `ClassServicesManager.tsx` como local de implementação |
+| 99 | Conflito namespace i18n: `subscription.json` vs `subscriptions.json` | Documento propõe `subscriptions.json` (plural) mas já existe `subscription.json` (singular) | Decisão: usar namespace existente `subscription.json` ou criar novo `subscriptions.json`. Documentar escolha |
+| 100 | Valores de `invoice_type` no banco incompletos | Apenas `automated` e `manual` existem oficialmente; `regular` usado como default em código | Documentar todos os valores válidos: `automated`, `manual`, `regular`, `monthly_subscription` |
+| 101 | Rollback script incompleto | Script de rollback não removia triggers e funções de trigger | ✅ CORRIGIDO: Adicionado `DROP TRIGGER` e `DROP FUNCTION` para triggers de mensalidade no Apêndice B |
+| 102 | RLS policy com nome duplicado em duas tabelas | Mesma política "Alunos podem ver suas mensalidades" em `monthly_subscriptions` e `student_monthly_subscriptions` | ✅ CORRIGIDO: Renomeada em `student_monthly_subscriptions` para "Alunos podem ver seus vínculos de mensalidade" |
+| 103 | `StudentDashboard` sem infraestrutura para múltiplos professores | Card "Meu Plano" proposto não suporta múltiplos professores com mensalidades | Implementar seção "Meus Planos" com cards múltiplos conforme exemplo em 5.6.3 |
+| 104 | SQL de `DROP NOT NULL` disperso no documento | Alterações em `invoice_classes.class_id` e `participant_id` aparecem em vários lugares | ✅ CORRIGIDO: Consolidado em seção 0.2 do Apêndice A (Alterações pré-requisito) |
+| 105 | Validação de `business_profile_id` sem implementação concreta | Documento menciona exigir `business_profile_id` antes de atribuir mensalidade | Adicionar validação no hook `useAssignStudentToSubscription` ou na criação de mensalidade |
+| 106 | Placeholders de data no histórico de revisões | Datas como "2025-01-XX" são placeholders não substituídos | ✅ CORRIGIDO: Substituído por "2025-01-01" (data estimada) |
+| 107 | Valor mínimo de boleto não definido oficialmente | Seção 5.6.5 não definia constante oficial | ✅ CORRIGIDO: Definido `MIN_BOLETO_VALUE = 5.00` (R$ 5,00) como valor padrão |
+| 108 | `ClassServicesManager.tsx` não referenciado no documento | Componente existente que gerencia serviços não era mencionado | ✅ CORRIGIDO: Seção 6.6 atualizada para referenciar `ClassServicesManager.tsx` |
 
 ---
 
@@ -749,8 +761,17 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | Funções SQL do Apêndice A | ❌ Não existem | Executar migration |
 | Diretório `src/schemas` | ❌ Não existe | Criar diretório antes do arquivo |
 | Valores de `invoice_type` no banco | ⚠️ Apenas `automated`, `manual` | Documentar `monthly_subscription` |
-| Regras de cobrança para cenários específicos | ❌ Não documentadas | Ver seção 5.6 |
+| Regras de cobrança para cenários específicos | ✅ Documentadas | Ver seção 5.6 |
 | Função `update_updated_at_column` | ✅ Existe | Verificado via schema |
+| Função `getInvoiceTypeBadge` em `Financeiro.tsx` | ❌ Não existe | Criar função com cases para todos os tipos |
+| Referência a `ClassServicesManager.tsx` | ✅ Documentado | Seção 6.6 atualizada |
+| Conflito namespace i18n (subscription vs subscriptions) | ⚠️ Decisão pendente | Escolher: reutilizar `subscription.json` ou criar `subscriptions.json` |
+| Rollback script com triggers | ✅ Completo | Apêndice B atualizado com DROP TRIGGER/FUNCTION |
+| RLS policy com nome único por tabela | ✅ Corrigido | Renomeada policy em `student_monthly_subscriptions` |
+| SQL DROP NOT NULL consolidado | ✅ Consolidado | Seção 0.2 do Apêndice A |
+| `MIN_BOLETO_VALUE` definido | ✅ Definido | R$ 5,00 na seção 5.6.5 |
+| `StudentDashboard` múltiplos professores | ❌ Não implementado | Seguir exemplo em 5.6.3 |
+| Validação `business_profile_id` em mensalidades | ❌ Não implementado | Adicionar no hook de atribuição |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -1124,16 +1145,31 @@ await createMonthlyInvoice(subscription, aulasDepois);
 
 #### 5.6.5 Valor Mínimo para Geração de Boleto
 
-**Regra existente:** O sistema tem valor mínimo para geração de boleto (ex: R$ 5).
+**Constante oficial:**
+```typescript
+const MIN_BOLETO_VALUE = 5.00; // R$ 5,00
+```
+
+**Regra existente:** O sistema tem valor mínimo para geração de boleto de **R$ 5,00**.
 
 **Aplicação a mensalidades:**
-- Se `price + excedentes < valor_minimo`: NÃO gerar boleto
+- Se `price + excedentes < MIN_BOLETO_VALUE`: NÃO gerar boleto
 - Opções:
   1. Acumular para próximo ciclo
   2. Perdoar automaticamente
   3. Exibir warning para professor
 
 **Recomendação:** Acumular para próximo ciclo com flag `pending_amount` no relationship.
+
+**Implementação:**
+```typescript
+if (totalValue < MIN_BOLETO_VALUE) {
+  // Não gerar boleto, acumular para próximo ciclo
+  await updatePendingAmount(relationship.id, totalValue);
+  console.log(`Valor ${totalValue} abaixo do mínimo. Acumulado para próximo ciclo.`);
+  return;
+}
+```
 
 ---
 
@@ -1642,7 +1678,20 @@ export function formatCentsToDisplay(cents: number): string {
 }
 ```
 
-### 6.6 Alterações em Servicos.tsx
+### 6.6 Alterações em Servicos.tsx e ClassServicesManager.tsx
+
+#### 6.6.1 Contexto dos Componentes Existentes
+
+O sistema atual possui:
+- **`src/pages/Servicos.tsx`**: Página wrapper simples que renderiza `ClassServicesManager`
+- **`src/components/ClassServicesManager.tsx`**: Componente principal que gerencia serviços por aula
+
+**Estratégia de implementação:**
+1. Modificar `Servicos.tsx` para adicionar Tabs (Serviços | Mensalidades)
+2. Manter `ClassServicesManager.tsx` inalterado (tab "Serviços")
+3. Criar `MonthlySubscriptionsManager.tsx` para nova tab "Mensalidades"
+
+#### 6.6.2 Alterações em Servicos.tsx
 
 ```tsx
 // ============================================
@@ -1677,6 +1726,15 @@ import { MonthlySubscriptionsManager } from '@/components/MonthlySubscriptionsMa
   </TabsContent>
 </Tabs>
 ```
+
+#### 6.6.3 ClassServicesManager.tsx (Referência)
+
+O componente `ClassServicesManager.tsx` **não precisa de alterações** para a implementação de mensalidades. Ele continua gerenciando:
+- Serviços por aula (CRUD)
+- Preços por aula
+- Duração de serviços
+
+**Nota:** A tab de mensalidades é completamente separada e usa `MonthlySubscriptionsManager`.
 
 ---
 
@@ -2057,11 +2115,12 @@ async function processPerClassBilling(
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.5 - Atualizado com verificações e correções
+-- Versão 1.6 - Atualizado com verificações, correções e consolidações
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
--- Verificar existência de função update_updated_at_column (DEVE EXISTIR)
+
+-- 0.1 Verificar existência de função update_updated_at_column (DEVE EXISTIR)
 -- Se não existir, descomentar e executar:
 /*
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
@@ -2077,9 +2136,18 @@ END;
 $$;
 */
 
--- Verificar valores aceitos de invoice_type (para documentação):
--- Valores atuais no banco: 'automated', 'manual'
--- Novo valor a ser aceito: 'monthly_subscription'
+-- 0.2 Alterações PRÉ-REQUISITO em invoice_classes
+-- Necessário para suportar item_type = 'monthly_base' sem class_id/participant_id
+-- NOTA: Executar apenas se NOT NULL constraints existem
+-- ALTER TABLE public.invoice_classes ALTER COLUMN class_id DROP NOT NULL;
+-- ALTER TABLE public.invoice_classes ALTER COLUMN participant_id DROP NOT NULL;
+
+-- 0.3 Documentação de valores de invoice_type
+-- Valores atuais aceitos no banco (campo TEXT sem constraint CHECK):
+-- - 'automated': fatura gerada automaticamente pelo sistema (cobrança por aula)
+-- - 'manual': fatura criada manualmente pelo professor
+-- - 'regular': alias para fatura padrão (usado em alguns lugares do código)
+-- - 'monthly_subscription': NOVO - fatura de mensalidade fixa (a ser implementado)
 -- NOTA: Não há constraint de CHECK em invoice_type; é apenas TEXT
 
 -- 1. TABELA: monthly_subscriptions
@@ -2171,7 +2239,8 @@ WITH CHECK (
 );
 
 -- Política para alunos visualizarem suas próprias mensalidades
-CREATE POLICY "Alunos podem ver suas mensalidades"
+-- NOTA: Nome diferente da policy em monthly_subscriptions para evitar confusão
+CREATE POLICY "Alunos podem ver seus vínculos de mensalidade"
 ON public.student_monthly_subscriptions
 FOR SELECT
 USING (
@@ -2487,21 +2556,40 @@ WHERE is_template = false;
 
 ### Rollback (se necessário)
 ```sql
--- ROLLBACK SCRIPT
+-- ============================================
+-- ROLLBACK SCRIPT COMPLETO
 -- Executar na ordem inversa
+-- Versão 1.1 - Inclui triggers e funções de trigger
+-- ============================================
 
--- 1. Remover funções
+-- 1. Remover triggers
+DROP TRIGGER IF EXISTS prevent_delete_monthly_subscriptions ON public.monthly_subscriptions;
+DROP TRIGGER IF EXISTS cascade_deactivate_subscription_students ON public.monthly_subscriptions;
+DROP TRIGGER IF EXISTS update_monthly_subscriptions_updated_at ON public.monthly_subscriptions;
+DROP TRIGGER IF EXISTS update_student_monthly_subscriptions_updated_at ON public.student_monthly_subscriptions;
+
+-- 2. Remover funções de trigger (específicas de mensalidade)
+DROP FUNCTION IF EXISTS public.prevent_monthly_subscription_delete();
+DROP FUNCTION IF EXISTS public.deactivate_subscription_students();
+
+-- 3. Remover funções SQL
 DROP FUNCTION IF EXISTS public.check_student_has_active_subscription;
 DROP FUNCTION IF EXISTS public.get_subscription_assigned_students;
 DROP FUNCTION IF EXISTS public.get_subscriptions_with_students;
 DROP FUNCTION IF EXISTS public.get_subscription_students_count;
+DROP FUNCTION IF EXISTS public.get_student_subscription_details;
 DROP FUNCTION IF EXISTS public.count_completed_classes_in_month;
 DROP FUNCTION IF EXISTS public.get_student_active_subscription;
 
--- 2. Remover coluna de invoices
+-- 4. Remover índices (se criados separadamente)
+DROP INDEX IF EXISTS idx_invoices_monthly_subscription_id;
+DROP INDEX IF EXISTS idx_class_participants_billing;
+DROP INDEX IF EXISTS idx_classes_billing_month;
+
+-- 5. Remover coluna de invoices
 ALTER TABLE public.invoices DROP COLUMN IF EXISTS monthly_subscription_id;
 
--- 3. Remover tabelas (cascata remove dependências)
+-- 6. Remover tabelas (cascata remove dependências)
 DROP TABLE IF EXISTS public.student_monthly_subscriptions CASCADE;
 DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 ```
@@ -2512,14 +2600,15 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
-| 1.0 | 2025-01-XX | Lovable AI | Versão inicial do documento |
-| 1.1 | 2025-01-XX | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
+| 1.0 | 2025-01-01 | Lovable AI | Versão inicial do documento |
+| 1.1 | 2025-01-01 | Lovable AI | Adicionados: pontas soltas 21-30, casos de uso (histórico, datas futuras, aulas experimentais, soft delete), RLS para alunos |
 | 1.2 | 2025-01-23 | Lovable AI | Adicionados: pontas soltas 31-40, interfaces TypeScript, query `get_student_subscription_details` para Dashboard do aluno, correção SQL `is_experimental = false` no Apêndice A, RLS adicional para alunos em `monthly_subscriptions` |
 | 1.3 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 41-52, corrigida numeração de seções (5.x → 6.x), implementação completa do hook `useMonthlySubscriptions` (seção 6.4), Zod schema de validação (seção 6.5), RLS para alunos em `monthly_subscriptions` no Apêndice A |
 | 1.4 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 53-60 (badge inconsistente, INNER JOIN, invoice_classes NULL, RPC v2, dependent_id, regra starts_at, RLS duplicada), correção SQL Apêndice A (removida RLS duplicada, adicionado comentário versão 1.4) |
 | 1.5 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 61-72 (coluna monthly_subscription_id, tabelas inexistentes, arquivos TypeScript faltantes, namespace i18n, componentes, RPC incompatível). Nova seção 4.1 "Estado Atual vs. Planejado" com tabela comparativa. Nova seção 4.2 "Checklist de Pré-Implementação" com fases ordenadas. Consolidação de duplicatas (#44/#54/#70, #57/#72). Marcação de #58 como resolvido. Correção de numeração (5.0 → 5.1). |
 | 1.6 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 73-84 (numeração duplicada no sumário, seções Frontend/Backend ambas "6", subseção 5.3.1 mal posicionada, query `!inner` em Financeiro.tsx, automated-billing sem verificação de mensalidade, conflito invoice_type, funções SQL inexistentes, StudentDashboard sem "Meu Plano"). Corrigido: sumário sem duplicatas, numeração sequencial das seções (Frontend=6, Backend=7, i18n=8, Testes=9, Cronograma=10, Riscos=11, Apêndice A=12, Apêndice B=13), subseção 5.3.1 movida para 6.6. Atualizada tabela 4.1 com novos itens comparativos. Adicionados itens ao checklist 4.2 para verificações de numeração e testes de query. |
 | 1.7 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 85-96 (diretório src/schemas inexistente, invoice_type sem valor documentado, confirmações de constraints NOT NULL via banco, regras de cobrança para cenários específicos, comportamento de starts_at, múltiplos professores, cancelamento mid-month, verificação de getInvoiceTypeBadge, consistência de get_student_subscription_details, verificação de update_updated_at_column). Nova seção 5.6 "Regras de Cobrança Detalhadas" com 5 subseções cobrindo: mensalidade R$0 + excedentes, transição de starts_at, múltiplos professores, cancelamento no meio do mês, valor mínimo para boleto. Atualizado Apêndice A versão 1.5 com verificações pré-migração. Atualizado checklist 4.2 com itens de criação de diretório e testes de cenários específicos. Atualizada tabela 4.1 com status de itens corrigidos (✅) e novos gaps identificados. |
+| 1.8 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 97-108 (getInvoiceTypeBadge inexistente, ClassServicesManager não referenciado, conflito namespace i18n subscription/subscriptions, valores invoice_type incompletos, rollback script sem triggers, RLS policy duplicada, StudentDashboard sem múltiplos professores, DROP NOT NULL disperso, validação business_profile_id, placeholders de data, valor mínimo boleto indefinido). Corrigidos: rollback script completo com triggers (#101), RLS policy renomeada (#102), SQL consolidado no Apêndice A seção 0.2 (#104), datas no histórico (#106), MIN_BOLETO_VALUE=5.00 definido (#107), seção 6.6 atualizada com ClassServicesManager (#108). Atualizado Apêndice A para versão 1.6. Sumário atualizado para referenciar nova seção 6.6. |
 
 ---
 

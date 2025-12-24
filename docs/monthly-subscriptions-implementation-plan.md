@@ -32,9 +32,7 @@
    - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
    - 6.4 [Hook useMonthlySubscriptions](#64-hook-usemonthlysubscriptions)
    - 6.5 [Zod Schema de Validação](#65-zod-schema-de-validação)
-   - 6.1 [Estrutura de Arquivos](#61-estrutura-de-arquivos)
-   - 6.2 [Componentes](#62-componentes)
-   - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
+   - 6.6 [Alterações em Servicos.tsx](#66-alterações-em-servicostsx)
 7. [Implementação Backend](#7-implementação-backend)
    - 7.1 [Alteração no Faturamento Automatizado](#71-alteração-no-faturamento-automatizado)
    - 7.2 [Pseudocódigo do Novo Fluxo](#72-pseudocódigo-do-novo-fluxo)
@@ -689,6 +687,18 @@ WHERE is_template = false;
 | 70 | Query `invoice_classes` com INNER JOIN em `Financeiro.tsx` | **Consolidado com #44 e #54**: Mesma correção de LEFT JOIN | Alterar para LEFT JOIN conforme solução em #44 |
 | 71 | Dashboard aluno sem "Meu Plano" | Não há implementação de seção mostrando mensalidade do aluno | Adicionar card "Meu Plano" em `StudentDashboard.tsx` usando RPC `get_student_subscription_details` |
 | 72 | RPC `create_invoice_and_mark_classes_billed` incompatível com mensalidades | Função requer `class_id` e `participant_id`, incompatível com `item_type = 'monthly_base'` | **Consolidado com #57**: Criar função v2 ou adaptar para aceitar NULL |
+| 73 | Numeração de seções duplicada no sumário | Linhas 35-37 repetem seções 6.1, 6.2, 6.3 | Remover linhas duplicadas do sumário |
+| 74 | Seção Frontend e Backend ambas numeradas como "6" | Numeração incorreta no corpo do documento | Renumerar: Frontend = 6, Backend = 7, i18n = 8, etc. |
+| 75 | Subseção 5.3.1 dentro de 6.5 | `#### 5.3.1 Servicos.tsx` aparece após seção 6.5 | Mover para `### 6.6 Alterações em Servicos.tsx` |
+| 76 | Query `!inner` em `Financeiro.tsx` para detalhes | `classes!inner` e `class_participants!inner` falham para mensalidades puras | Alterar para LEFT JOIN nas queries de detalhes de fatura |
+| 77 | `automated-billing` não verifica mensalidades ativas | Código atual usa `get_unbilled_participants_v2` sem verificar mensalidade | Adicionar verificação de `get_student_active_subscription` antes do processamento |
+| 78 | Conflito `invoice_type: 'automated'` vs `'monthly_subscription'` | `automated-billing` usa `invoice_type: 'automated'` mas documento propõe `'monthly_subscription'` | Distinguir: `automated` = por aula automático, `monthly_subscription` = mensalidade fixa |
+| 79 | Função `get_student_subscription_details` não existe | Documentada no Apêndice A mas não existe no banco atual | Incluir na migration do Apêndice A (já está no documento) |
+| 80 | StudentDashboard sem seção "Meu Plano" | **Consolidado com #71**: Mesma implementação necessária | Adicionar card informativo usando `get_student_subscription_details` |
+| 81 | Função `count_completed_classes_in_month` não existe | Usada no pseudocódigo mas não existe no banco atual | Incluir na migration do Apêndice A (já está no documento) |
+| 82 | Todas as funções SQL de mensalidade não existem | Funções documentadas não foram criadas no banco | **PRÉ-REQUISITO**: Executar SQL do Apêndice A para criar todas as funções |
+| 83 | Seção Backend numerada incorretamente | "## 6. Implementação Backend" deveria ser "## 7" | Corrigir numeração para manter sequência (Frontend=6, Backend=7) |
+| 84 | Referência circular no histórico de revisões | Menciona correções de numeração mas inconsistências persistem | Aplicar correções definitivas nesta revisão (v1.6) |
 
 ---
 
@@ -713,6 +723,13 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | Componente `MonthlySubscriptionsManager` | ❌ Não existe | Criar componente |
 | Componente `MonthlySubscriptionModal` | ❌ Não existe | Criar componente |
 | Badge "Mensalidade" em `Financeiro.tsx` | ❌ Não implementado | Adicionar case para `monthly_subscription` |
+| Query `!inner` em `Financeiro.tsx` | ⚠️ Usa INNER JOIN | Alterar para LEFT JOIN em queries de detalhes |
+| `automated-billing` verifica mensalidade | ❌ Não implementado | Adicionar verificação antes do processamento |
+| Funções SQL de mensalidade | ❌ Nenhuma existe | Executar migration do Apêndice A |
+| `StudentDashboard` seção "Meu Plano" | ❌ Não existe | Criar card informativo com dados da mensalidade |
+| Numeração do sumário | ⚠️ Linhas duplicadas | Remover duplicatas (corrigido nesta versão) |
+| Numeração de seções no corpo | ⚠️ Frontend e Backend ambos "6" | Renumerar corretamente (corrigido nesta versão) |
+| Subseção 5.3.1 mal posicionada | ⚠️ Dentro de 6.5 | Mover para 6.6 (corrigido nesta versão) |
 | Seção "Meu Plano" em `StudentDashboard.tsx` | ❌ Não implementado | Adicionar card com RPC |
 | Query LEFT JOIN em `Financeiro.tsx` | ⚠️ Usa INNER JOIN | Alterar para LEFT JOIN |
 | RPC `create_invoice_and_mark_classes_billed` | ⚠️ Requer class_id/participant_id | Adaptar ou criar v2 |
@@ -1485,13 +1502,22 @@ export function formatCentsToDisplay(cents: number): string {
 }
 ```
 
-#### 5.3.1 Servicos.tsx
+### 6.6 Alterações em Servicos.tsx
 
 ```tsx
+// ============================================
+// ARQUIVO: src/pages/Servicos.tsx
+// Modificação: Adicionar Tabs para Serviços e Mensalidades
+// ============================================
+
 // ANTES:
 <ClassServicesManager />
 
 // DEPOIS:
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MonthlySubscriptionsManager } from '@/components/MonthlySubscriptionsManager';
+
+// No JSX:
 <Tabs defaultValue="services">
   <TabsList className="mb-4">
     <TabsTrigger value="services">
@@ -1514,9 +1540,9 @@ export function formatCentsToDisplay(cents: number): string {
 
 ---
 
-## 6. Implementação Backend
+## 7. Implementação Backend
 
-### 6.1 Alteração no Faturamento Automatizado
+### 7.1 Alteração no Faturamento Automatizado
 
 O arquivo `supabase/functions/automated-billing/index.ts` precisa ser modificado para:
 
@@ -1524,7 +1550,7 @@ O arquivo `supabase/functions/automated-billing/index.ts` precisa ser modificado
 2. **Se tiver mensalidade**: cobrar valor fixo + excedentes (se aplicável)
 3. **Se NÃO tiver mensalidade**: manter comportamento atual (cobrar por aula)
 
-### 6.2 Pseudocódigo do Novo Fluxo
+### 7.2 Pseudocódigo do Novo Fluxo
 
 ```typescript
 // automated-billing/index.ts
@@ -1639,9 +1665,9 @@ async function processPerClassBilling(
 
 ---
 
-## 7. Internacionalização (i18n)
+## 8. Internacionalização (i18n)
 
-### 7.1 Português (pt)
+### 8.1 Português (pt)
 
 ```json
 {
@@ -1717,7 +1743,7 @@ async function processPerClassBilling(
 }
 ```
 
-### 7.2 English (en)
+### 8.2 English (en)
 
 ```json
 {
@@ -1795,9 +1821,9 @@ async function processPerClassBilling(
 
 ---
 
-## 8. Testes e Validações
+## 9. Testes e Validações
 
-### 8.1 Testes Unitários
+### 9.1 Testes Unitários
 
 | ID | Cenário | Input | Expected Output |
 |----|---------|-------|-----------------|
@@ -1810,7 +1836,7 @@ async function processPerClassBilling(
 | T07 | Contagem de aulas no mês | teacher_id, student_id | Número correto |
 | T08 | Contagem inclui dependentes | responsável com dependentes | Soma correta |
 
-### 8.2 Testes de Integração
+### 9.2 Testes de Integração
 
 | ID | Cenário | Pré-condição | Ação | Resultado Esperado |
 |----|---------|--------------|------|-------------------|
@@ -1821,7 +1847,7 @@ async function processPerClassBilling(
 | I05 | Migração de mensalidade | Aluno troca de plano | Desativar antiga, ativar nova | Próxima fatura usa novo valor |
 | I06 | Aluno removido | Relacionamento deletado | Verificar cascata | student_monthly_subscription deletado |
 
-### 8.3 Testes E2E
+### 9.3 Testes E2E
 
 | ID | Fluxo | Passos |
 |----|-------|--------|
@@ -1832,7 +1858,7 @@ async function processPerClassBilling(
 
 ---
 
-## 9. Cronograma de Implementação
+## 10. Cronograma de Implementação
 
 ### Fase 1: Banco de Dados (1-2 dias)
 - [ ] Criar tabela `monthly_subscriptions`
@@ -1872,7 +1898,7 @@ async function processPerClassBilling(
 
 ---
 
-## 10. Riscos e Mitigações
+## 11. Riscos e Mitigações
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|---------------|---------|-----------|
@@ -1885,7 +1911,7 @@ async function processPerClassBilling(
 
 ---
 
-## 11. Apêndice A: SQL Completo
+## 12. Apêndice A: SQL Completo
 
 ```sql
 -- ============================================
@@ -2264,7 +2290,7 @@ WHERE is_template = false;
 
 ---
 
-## 12. Apêndice B: Checklist de Deploy
+## 13. Apêndice B: Checklist de Deploy
 
 ### Pré-Deploy
 - [ ] Backup do banco de dados
@@ -2330,6 +2356,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.3 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 41-52, corrigida numeração de seções (5.x → 6.x), implementação completa do hook `useMonthlySubscriptions` (seção 6.4), Zod schema de validação (seção 6.5), RLS para alunos em `monthly_subscriptions` no Apêndice A |
 | 1.4 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 53-60 (badge inconsistente, INNER JOIN, invoice_classes NULL, RPC v2, dependent_id, regra starts_at, RLS duplicada), correção SQL Apêndice A (removida RLS duplicada, adicionado comentário versão 1.4) |
 | 1.5 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 61-72 (coluna monthly_subscription_id, tabelas inexistentes, arquivos TypeScript faltantes, namespace i18n, componentes, RPC incompatível). Nova seção 4.1 "Estado Atual vs. Planejado" com tabela comparativa. Nova seção 4.2 "Checklist de Pré-Implementação" com fases ordenadas. Consolidação de duplicatas (#44/#54/#70, #57/#72). Marcação de #58 como resolvido. Correção de numeração (5.0 → 5.1). |
+| 1.6 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 73-84 (numeração duplicada no sumário, seções Frontend/Backend ambas "6", subseção 5.3.1 mal posicionada, query `!inner` em Financeiro.tsx, automated-billing sem verificação de mensalidade, conflito invoice_type, funções SQL inexistentes, StudentDashboard sem "Meu Plano"). Corrigido: sumário sem duplicatas, numeração sequencial das seções (Frontend=6, Backend=7, i18n=8, Testes=9, Cronograma=10, Riscos=11, Apêndice A=12, Apêndice B=13), subseção 5.3.1 movida para 6.6. Atualizada tabela 4.1 com novos itens comparativos. Adicionados itens ao checklist 4.2 para verificações de numeração e testes de query. |
 
 ---
 

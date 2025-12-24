@@ -26,6 +26,7 @@
    - 5.3 [Mensalidades com Data de Início Futura](#53-mensalidades-com-data-de-início-futura)
    - 5.4 [Exclusão de Aulas Experimentais do Limite](#54-exclusão-de-aulas-experimentais-do-limite)
    - 5.5 [Soft Delete de Mensalidades](#55-soft-delete-de-mensalidades)
+   - 5.6 [Regras de Cobrança Detalhadas](#56-regras-de-cobrança-detalhadas)
 6. [Implementação Frontend](#6-implementação-frontend)
    - 6.1 [Estrutura de Arquivos](#61-estrutura-de-arquivos)
    - 6.2 [Componentes](#62-componentes)
@@ -699,6 +700,18 @@ WHERE is_template = false;
 | 82 | Todas as funções SQL de mensalidade não existem | Funções documentadas não foram criadas no banco | **PRÉ-REQUISITO**: Executar SQL do Apêndice A para criar todas as funções |
 | 83 | Seção Backend numerada incorretamente | "## 6. Implementação Backend" deveria ser "## 7" | Corrigir numeração para manter sequência (Frontend=6, Backend=7) |
 | 84 | Referência circular no histórico de revisões | Menciona correções de numeração mas inconsistências persistem | Aplicar correções definitivas nesta revisão (v1.6) |
+| 85 | Diretório `src/schemas` não existe | Documento referencia `src/schemas/monthly-subscription.schema.ts` mas diretório não existe | Criar diretório `src/schemas` antes de criar o arquivo |
+| 86 | `invoice_type` não tem valor `monthly_subscription` documentado | `types.ts` define como `string \| null` sem constraint; banco só tem `automated` e `manual` | Documentar `monthly_subscription` como valor aceito; considerar constraint futura |
+| 87 | Coluna `monthly_subscription_id` não existe em `invoices` | Confirmado via query direta ao banco que coluna não existe | Executar migration do Apêndice A |
+| 88 | `invoice_classes.class_id` é NOT NULL | Confirmado via banco; impede criar `item_type = 'monthly_base'` | Migration: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL;` |
+| 89 | `invoice_classes.participant_id` é NOT NULL | Confirmado via banco; impede criar `item_type = 'monthly_base'` | Migration: `ALTER TABLE invoice_classes ALTER COLUMN participant_id DROP NOT NULL;` |
+| 90 | Mensalidade R$0 com excedentes | Se `price = 0` mas há aulas excedentes, gerar fatura apenas com excedentes | Regra: `total = max(0, excedentes * overage_price)`; se zero, não gerar fatura |
+| 91 | Comportamento de `starts_at` no faturamento | Aulas antes de `starts_at` devem usar fluxo por aula ou mensalidade? | Regra: antes de `starts_at` = por aula; a partir de `starts_at` = mensalidade |
+| 92 | Múltiplos professores com mensalidades para mesmo aluno | `StudentDashboard` precisa listar múltiplas mensalidades | Exibir cards por professor com nome do professor visível |
+| 93 | Cancelamento de mensalidade no meio do mês | Se cancelado antes do `billing_day`, não cobrar; se após, já foi cobrado | Regra documentada na seção 5.6 |
+| 94 | `getInvoiceTypeBadge` em `Financeiro.tsx` | Verificar se função existe e implementa `monthly_subscription` | Criar/atualizar função para mapear todos os `invoice_type` |
+| 95 | `get_student_subscription_details` RPC consistência | Garantir que função no Apêndice A está completa e consistente com seção 3.4 | Verificar e consolidar |
+| 96 | `update_updated_at_column` trigger function | Usada em triggers do Apêndice A; verificar existência no banco | ✅ Existe no banco atual (confirmado via schema) |
 
 ---
 
@@ -727,13 +740,17 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | `automated-billing` verifica mensalidade | ❌ Não implementado | Adicionar verificação antes do processamento |
 | Funções SQL de mensalidade | ❌ Nenhuma existe | Executar migration do Apêndice A |
 | `StudentDashboard` seção "Meu Plano" | ❌ Não existe | Criar card informativo com dados da mensalidade |
-| Numeração do sumário | ⚠️ Linhas duplicadas | Remover duplicatas (corrigido nesta versão) |
-| Numeração de seções no corpo | ⚠️ Frontend e Backend ambos "6" | Renumerar corretamente (corrigido nesta versão) |
-| Subseção 5.3.1 mal posicionada | ⚠️ Dentro de 6.5 | Mover para 6.6 (corrigido nesta versão) |
+| Numeração do sumário | ✅ Corrigido | v1.6 |
+| Numeração de seções no corpo | ✅ Corrigido | v1.6 |
+| Subseção 5.3.1 mal posicionada | ✅ Movida para 6.6 | v1.6 |
 | Seção "Meu Plano" em `StudentDashboard.tsx` | ❌ Não implementado | Adicionar card com RPC |
 | Query LEFT JOIN em `Financeiro.tsx` | ⚠️ Usa INNER JOIN | Alterar para LEFT JOIN |
 | RPC `create_invoice_and_mark_classes_billed` | ⚠️ Requer class_id/participant_id | Adaptar ou criar v2 |
 | Funções SQL do Apêndice A | ❌ Não existem | Executar migration |
+| Diretório `src/schemas` | ❌ Não existe | Criar diretório antes do arquivo |
+| Valores de `invoice_type` no banco | ⚠️ Apenas `automated`, `manual` | Documentar `monthly_subscription` |
+| Regras de cobrança para cenários específicos | ❌ Não documentadas | Ver seção 5.6 |
+| Função `update_updated_at_column` | ✅ Existe | Verificado via schema |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -750,9 +767,12 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 - [ ] **Regenerar tipos TypeScript** (`npx supabase gen types typescript`)
 
 #### Fase 2: Arquivos TypeScript
+- [ ] **Criar diretório `src/schemas`** (não existe atualmente)
 - [ ] Criar `src/types/monthly-subscriptions.ts`
 - [ ] Criar `src/hooks/useMonthlySubscriptions.ts`
 - [ ] Criar `src/schemas/monthly-subscription.schema.ts`
+- [ ] Verificar existência de função `update_updated_at_column` no banco (✅ existe)
+- [ ] Verificar função `getInvoiceTypeBadge` em `Financeiro.tsx` e adicionar case para `monthly_subscription`
 
 #### Fase 3: Internacionalização
 - [ ] Criar `src/i18n/locales/pt/subscriptions.json`
@@ -771,6 +791,14 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 - [ ] Atualizar `StudentDashboard.tsx` (seção "Meu Plano")
 - [ ] Atualizar `PerfilAluno.tsx` (badge/indicador de mensalidade)
 - [ ] Atualizar `automated-billing/index.ts` (novo fluxo de faturamento)
+
+#### Fase 6: Validações Finais
+- [ ] Testar cenário: mensalidade R$0 com excedentes (deve gerar fatura apenas com excedentes)
+- [ ] Testar cenário: aulas antes de `starts_at` (deve usar fluxo por aula)
+- [ ] Testar cenário: múltiplos professores com mensalidades para mesmo aluno
+- [ ] Testar cenário: cancelamento de mensalidade antes/depois do `billing_day`
+- [ ] Verificar numeração sequencial de todas as seções do documento
+- [ ] Testar queries de `Financeiro.tsx` com mensalidades puras (sem aulas)
 
 ---
 
@@ -994,6 +1022,118 @@ FOR EACH ROW
 WHEN (OLD.is_active = true AND NEW.is_active = false)
 EXECUTE FUNCTION deactivate_subscription_students();
 ```
+
+### 5.6 Regras de Cobrança Detalhadas
+
+Esta seção documenta regras específicas para cenários de cobrança que requerem clareza.
+
+#### 5.6.1 Mensalidade R$0 com Excedentes
+
+**Cenário:** Professor cria mensalidade com `price = 0` e `max_classes = 4`, `overage_price = 50`.
+
+**Regra:**
+- Se aluno teve ≤ 4 aulas: **NÃO gerar fatura** (valor zero)
+- Se aluno teve > 4 aulas: **Gerar fatura apenas com excedentes**
+  - Exemplo: 6 aulas → fatura de R$ 100 (2 × R$ 50)
+
+**Pseudocódigo:**
+```typescript
+const baseValue = subscription.price; // 0
+const excedentes = Math.max(0, classesUsed - subscription.max_classes);
+const excedenteValue = excedentes * subscription.overage_price;
+const totalValue = baseValue + excedenteValue;
+
+if (totalValue <= 0) {
+  // Não gerar fatura, apenas registrar internamente
+  return null;
+}
+```
+
+#### 5.6.2 Transição de `starts_at` no Faturamento
+
+**Cenário:** Aluno tem mensalidade com `starts_at = 2025-01-15`, mas teve aulas no dia 10 e 12 de janeiro.
+
+**Regra:**
+- Aulas **antes de `starts_at`**: cobrar por aula (fluxo tradicional)
+- Aulas **a partir de `starts_at`**: cobertas pela mensalidade
+
+**Implementação no `automated-billing`:**
+```typescript
+// Verificar se mensalidade está ativa HOJE
+const subscriptionActive = sms.starts_at <= today;
+
+if (!subscriptionActive) {
+  // Usar fluxo por aula para TODAS as aulas
+  return processPerClassBilling(relationship);
+}
+
+// Separar aulas por período
+const aulasAntes = aulas.filter(a => a.class_date < sms.starts_at);
+const aulasDepois = aulas.filter(a => a.class_date >= sms.starts_at);
+
+// Aulas antes: faturar por aula
+if (aulasAntes.length > 0) {
+  await createPerClassInvoice(aulasAntes);
+}
+
+// Aulas depois: incluir na mensalidade
+await createMonthlyInvoice(subscription, aulasDepois);
+```
+
+#### 5.6.3 Múltiplos Professores com Mensalidades
+
+**Cenário:** Aluno tem aulas com Prof. A (mensalidade) e Prof. B (mensalidade diferente).
+
+**Regra:**
+- Cada professor tem sua própria mensalidade independente
+- `StudentDashboard` exibe um card por professor
+- Cada card mostra: nome do professor, nome do plano, valor, uso de aulas
+
+**UI sugerida:**
+```
+┌─────────────────────────────────────┐
+│ Meus Planos                          │
+├─────────────────────────────────────┤
+│ ┌───────────────────────────────┐   │
+│ │ Prof. João Silva              │   │
+│ │ Plano Básico - R$ 400/mês     │   │
+│ │ 3/8 aulas usadas              │   │
+│ │ ████████░░░░░░░░ 37%          │   │
+│ └───────────────────────────────┘   │
+│ ┌───────────────────────────────┐   │
+│ │ Profa. Maria Santos           │   │
+│ │ Plano Ilimitado - R$ 600/mês  │   │
+│ │ Aulas ilimitadas              │   │
+│ │ ∞                              │   │
+│ └───────────────────────────────┘   │
+└─────────────────────────────────────┘
+```
+
+#### 5.6.4 Cancelamento de Mensalidade no Meio do Mês
+
+**Cenário:** Professor cancela mensalidade do aluno no dia 20, `billing_day = 5`.
+
+**Regras:**
+| Situação | Comportamento |
+|----------|---------------|
+| Cancelamento **antes** do `billing_day` | Não gerar fatura neste ciclo |
+| Cancelamento **após** o `billing_day` | Fatura já foi gerada; manter como está |
+| Cancelamento **no** `billing_day` | Fatura é gerada; cancelamento efetivo no próximo ciclo |
+
+**Nota:** O campo `ends_at` em `student_monthly_subscriptions` pode ser preenchido para indicar a data de término. Se `ends_at < billing_day`, a fatura não é gerada.
+
+#### 5.6.5 Valor Mínimo para Geração de Boleto
+
+**Regra existente:** O sistema tem valor mínimo para geração de boleto (ex: R$ 5).
+
+**Aplicação a mensalidades:**
+- Se `price + excedentes < valor_minimo`: NÃO gerar boleto
+- Opções:
+  1. Acumular para próximo ciclo
+  2. Perdoar automaticamente
+  3. Exibir warning para professor
+
+**Recomendação:** Acumular para próximo ciclo com flag `pending_amount` no relationship.
 
 ---
 
@@ -1917,8 +2057,30 @@ async function processPerClassBilling(
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.4 - Atualizado com correções
+-- Versão 1.5 - Atualizado com verificações e correções
 -- ============================================
+
+-- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
+-- Verificar existência de função update_updated_at_column (DEVE EXISTIR)
+-- Se não existir, descomentar e executar:
+/*
+CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+*/
+
+-- Verificar valores aceitos de invoice_type (para documentação):
+-- Valores atuais no banco: 'automated', 'manual'
+-- Novo valor a ser aceito: 'monthly_subscription'
+-- NOTA: Não há constraint de CHECK em invoice_type; é apenas TEXT
 
 -- 1. TABELA: monthly_subscriptions
 CREATE TABLE public.monthly_subscriptions (
@@ -2357,6 +2519,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.4 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 53-60 (badge inconsistente, INNER JOIN, invoice_classes NULL, RPC v2, dependent_id, regra starts_at, RLS duplicada), correção SQL Apêndice A (removida RLS duplicada, adicionado comentário versão 1.4) |
 | 1.5 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 61-72 (coluna monthly_subscription_id, tabelas inexistentes, arquivos TypeScript faltantes, namespace i18n, componentes, RPC incompatível). Nova seção 4.1 "Estado Atual vs. Planejado" com tabela comparativa. Nova seção 4.2 "Checklist de Pré-Implementação" com fases ordenadas. Consolidação de duplicatas (#44/#54/#70, #57/#72). Marcação de #58 como resolvido. Correção de numeração (5.0 → 5.1). |
 | 1.6 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 73-84 (numeração duplicada no sumário, seções Frontend/Backend ambas "6", subseção 5.3.1 mal posicionada, query `!inner` em Financeiro.tsx, automated-billing sem verificação de mensalidade, conflito invoice_type, funções SQL inexistentes, StudentDashboard sem "Meu Plano"). Corrigido: sumário sem duplicatas, numeração sequencial das seções (Frontend=6, Backend=7, i18n=8, Testes=9, Cronograma=10, Riscos=11, Apêndice A=12, Apêndice B=13), subseção 5.3.1 movida para 6.6. Atualizada tabela 4.1 com novos itens comparativos. Adicionados itens ao checklist 4.2 para verificações de numeração e testes de query. |
+| 1.7 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 85-96 (diretório src/schemas inexistente, invoice_type sem valor documentado, confirmações de constraints NOT NULL via banco, regras de cobrança para cenários específicos, comportamento de starts_at, múltiplos professores, cancelamento mid-month, verificação de getInvoiceTypeBadge, consistência de get_student_subscription_details, verificação de update_updated_at_column). Nova seção 5.6 "Regras de Cobrança Detalhadas" com 5 subseções cobrindo: mensalidade R$0 + excedentes, transição de starts_at, múltiplos professores, cancelamento no meio do mês, valor mínimo para boleto. Atualizado Apêndice A versão 1.5 com verificações pré-migração. Atualizado checklist 4.2 com itens de criação de diretório e testes de cenários específicos. Atualizada tabela 4.1 com status de itens corrigidos (✅) e novos gaps identificados. |
 
 ---
 

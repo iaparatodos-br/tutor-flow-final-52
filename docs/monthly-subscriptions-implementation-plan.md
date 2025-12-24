@@ -736,6 +736,30 @@ WHERE is_template = false;
 | 106 | Placeholders de data no histórico de revisões | Datas como "2025-01-XX" são placeholders não substituídos | ✅ CORRIGIDO: Substituído por "2025-01-01" (data estimada) |
 | 107 | Valor mínimo de boleto não definido oficialmente | Seção 5.6.5 não definia constante oficial | ✅ CORRIGIDO: Definido `MIN_BOLETO_VALUE = 5.00` (R$ 5,00) como valor padrão |
 | 108 | `ClassServicesManager.tsx` não referenciado no documento | Componente existente que gerencia serviços não era mencionado | ✅ CORRIGIDO: Seção 6.6 atualizada para referenciar `ClassServicesManager.tsx` |
+| 109 | InvoiceStatusBadge.tsx sem invoice_type | Componente não tem prop para tipo de fatura | ✅ CORRIGIDO v1.9: Adicionada prop `invoiceType` na seção 6.3.1 |
+| 110 | Conflito namespace i18n | `subscription.json` existe para professor; documento sugere `subscriptions.json` | ✅ CORRIGIDO v1.9: Decisão documentada em seção 8.0 - usar `monthlySubscriptions.json` |
+| 111 | Bug namespace `notifications` | Declarado em `i18n/index.ts` mas arquivos não existem | Documentado em seção 8.0. Remover do array `ns` ou criar arquivos |
+| 112 | `src/types` sem estrutura | Falta `monthly-subscriptions.ts` | Criar arquivo com interfaces conforme seção 5.1 |
+| 113 | `Servicos.tsx` wrapper simples | Apenas renderiza `ClassServicesManager`, sem Tabs | Adicionar Tabs conforme seção 6.6.2 |
+| 114 | `business_profile_id` nullable | Em `teacher_student_relationships`, não há validação obrigatória | Logar warning e pular faturamento se NULL |
+| 115 | Funções SQL inexistentes | `get_student_active_subscription`, etc. não existem no banco | PRÉ-REQUISITO: Executar migration do Apêndice A |
+| 116 | `invoice_classes.class_id` NOT NULL | Confirmado via banco: constraint impede `monthly_base` | Migration: `ALTER COLUMN class_id DROP NOT NULL` |
+| 117 | `invoice_classes.participant_id` NOT NULL | Confirmado via banco: constraint impede `monthly_base` | Migration: `ALTER COLUMN participant_id DROP NOT NULL` |
+| 118 | `regular` não existe no banco | Apenas `automated` e `manual` em `invoice_type` | ✅ CORRIGIDO v1.9: Removido `regular` do documento |
+| 119 | INNER JOIN em `Financeiro.tsx` | Confirmado linhas 276-283: `classes!inner`, `class_participants!inner` | Alterar para LEFT JOIN |
+| 120 | Regeneração tipos não documentada | Após migrations, tipos TypeScript ficam desatualizados | ✅ CORRIGIDO v1.9: Adicionado ao Apêndice B |
+| 121 | Namespace inconsistente em exemplos de código | Exemplos usam `useTranslation('subscriptions')` ao invés de `'monthlySubscriptions'` | ✅ CORRIGIDO v1.10: Todos os exemplos atualizados |
+| 122 | Hook `useStudentSubscriptionAssignment` sem implementação | Listado em 6.1 mas sem código documentado | ✅ CORRIGIDO v1.10: Adicionada seção 6.4.1 com hooks `useAvailableStudentsForSubscription` e `useBulkAssignStudents` |
+| 123 | Tabs em Servicos.tsx vs ClassServicesManager | Alguns lugares dizem "Tabs em ClassServicesManager" | ✅ CORRIGIDO v1.10: Clarificado que Tabs vão em `Servicos.tsx`, `ClassServicesManager` permanece inalterado |
+| 124 | Diagrama ASCII em 5.6.3 | Inconsistente com padrão Mermaid usado no documento | Baixa prioridade: ASCII mais legível para UI mockup |
+| 125 | `billing_day` nullable sem fallback documentado | Em `teacher_student_relationships`, fallback não explícito | Já tratado: `COALESCE(billing_day, default_billing_day, 5)` em SQL |
+| 126 | Tipos TypeScript para novas tabelas | `types.ts` não inclui `monthly_subscriptions` | PRÉ-REQUISITO: Regenerar após migration |
+| 127 | Zero referências a `monthly_subscription` | Nenhum arquivo referencia as novas tabelas | ✅ ESPERADO: É PRÉ-REQUISITO, código será criado |
+| 128 | StudentDashboard sem "Meus Planos" | Seção 6.3.3 documenta mas implementação não existe | PRÉ-REQUISITO: Criar após migration |
+| 129 | Namespace `password` em i18n | Verificar registro em `i18n/index.ts` | Não relacionado a mensalidades |
+| 130 | Validação `overagePrice` quando `hasLimit = false` | `overagePrice` deve ser `null` se não tem limite | ✅ CORRIGIDO v1.10: Adicionada validação no Zod schema (seção 6.5) e hooks (seção 6.4) |
+| 131 | Datas inconsistentes no histórico | v1.0-v1.2 com datas estimadas | Mantido: datas retroativas para consistência |
+| 132 | Versão Apêndice A desincronizada | Apêndice dizia "Versão 1.6" | ✅ CORRIGIDO v1.10: Sincronizado para v1.10 |
 
 ---
 
@@ -777,17 +801,23 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | Função `update_updated_at_column` | ✅ Existe | Verificado via schema |
 | Função `getInvoiceTypeBadge` em `Financeiro.tsx` | ❌ Não existe | Criar função com cases para todos os tipos |
 | Referência a `ClassServicesManager.tsx` | ✅ Documentado | Seção 6.6 atualizada |
-| Conflito namespace i18n (subscription vs subscriptions) | ⚠️ Decisão pendente | Escolher: reutilizar `subscription.json` ou criar `subscriptions.json` |
+| Conflito namespace i18n (subscription vs subscriptions) | ✅ CORRIGIDO v1.9 | Decisão: criar `monthlySubscriptions.json` para alunos, manter `subscription.json` para professores |
 | Rollback script com triggers | ✅ Completo | Apêndice B atualizado com DROP TRIGGER/FUNCTION |
 | RLS policy com nome único por tabela | ✅ Corrigido | Renomeada policy em `student_monthly_subscriptions` |
 | SQL DROP NOT NULL consolidado | ✅ Consolidado | Seção 0.2 do Apêndice A |
 | `MIN_BOLETO_VALUE` definido | ✅ Definido | R$ 5,00 na seção 5.6.5 |
 | `StudentDashboard` múltiplos professores | ❌ Não implementado | Seguir exemplo em 5.6.3 |
 | Validação `business_profile_id` em mensalidades | ❌ Não implementado | Adicionar no hook de atribuição |
-| `InvoiceStatusBadge.tsx` com prop `invoiceType` | ❌ Não implementado | Adicionar prop e badge "Mensalidade" |
-| Namespace i18n para mensalidades de alunos | ⚠️ Decisão tomada | Criar `monthlySubscriptions.json` (separado de `subscription.json`) |
+| `InvoiceStatusBadge.tsx` com prop `invoiceType` | ⚠️ Documentado | Implementação na seção 6.3.1 |
+| Namespace i18n para mensalidades de alunos | ✅ CORRIGIDO v1.9 | Criar `monthlySubscriptions.json` (separado de `subscription.json`) |
 | Bug: namespace `notifications` em `i18n/index.ts` | ⚠️ Bug existente | Remover do array `ns` ou criar arquivos |
-| `regular` como valor de `invoice_type` | ⚠️ Não existe no banco | Removido da documentação; usar `automated`, `manual`, `monthly_subscription` |
+| `regular` como valor de `invoice_type` | ✅ CORRIGIDO v1.9 | Removido da documentação |
+| Exemplos de código com namespace correto | ✅ CORRIGIDO v1.10 | Todos usam `useTranslation('monthlySubscriptions')` |
+| Hook `useStudentSubscriptionAssignment` documentado | ✅ CORRIGIDO v1.10 | Seção 6.4.1 com `useAvailableStudentsForSubscription` e `useBulkAssignStudents` |
+| Clarificação Tabs em Servicos.tsx | ✅ CORRIGIDO v1.10 | Seção 6.6.1 clarifica que Tabs vão em `Servicos.tsx`, não em `ClassServicesManager` |
+| Validação `overagePrice` quando `hasLimit = false` | ✅ CORRIGIDO v1.10 | Adicionado `.transform()` no schema Zod e validação nos hooks |
+| Versão do Apêndice A | ✅ CORRIGIDO v1.10 | Sincronizado para v1.10 |
+| Mensagens i18n para remoção de alunos | ✅ CORRIGIDO v1.10 | Adicionadas `studentRemovedSuccess` e `studentsUpdatedSuccess` |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -806,16 +836,17 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 #### Fase 2: Arquivos TypeScript
 - [ ] **Criar diretório `src/schemas`** (não existe atualmente)
 - [ ] Criar `src/types/monthly-subscriptions.ts`
-- [ ] Criar `src/hooks/useMonthlySubscriptions.ts`
-- [ ] Criar `src/schemas/monthly-subscription.schema.ts`
-- [ ] Verificar existência de função `update_updated_at_column` no banco (✅ existe)
+- [ ] Criar `src/hooks/useMonthlySubscriptions.ts` (conforme seção 6.4)
+- [ ] **Criar `src/hooks/useStudentSubscriptionAssignment.ts`** (conforme seção 6.4.1 - hooks `useAvailableStudentsForSubscription`, `useBulkAssignStudents`)
+- [ ] Criar `src/schemas/monthly-subscription.schema.ts` (inclui validação `overagePrice = null` quando `hasLimit = false`)
 - [ ] Verificar função `getInvoiceTypeBadge` em `Financeiro.tsx` e adicionar case para `monthly_subscription`
 
 #### Fase 3: Internacionalização
-- [ ] **Decisão**: Criar `src/i18n/locales/pt/monthlySubscriptions.json` (separado de `subscription.json`)
+- [ ] **Decisão v1.10**: Criar `src/i18n/locales/pt/monthlySubscriptions.json` (nome final escolhido, separado de `subscription.json`)
 - [ ] Criar `src/i18n/locales/en/monthlySubscriptions.json`
 - [ ] Registrar namespace `monthlySubscriptions` em `src/i18n/index.ts`
 - [ ] **Bug**: Remover `notifications` do array `ns` em `i18n/index.ts` OU criar arquivos `notifications.json` faltantes
+- [ ] **Verificar**: Todos os exemplos de código usam `useTranslation('monthlySubscriptions')` (✅ verificado v1.10)
 
 #### Fase 4: Componentes
 - [ ] Criar `MonthlySubscriptionsManager`
@@ -824,9 +855,10 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 - [ ] Criar `StudentSubscriptionSelect`
 
 #### Fase 5: Atualizações em Código Existente
-- [ ] Atualizar `Servicos.tsx` (adicionar tab Mensalidades)
+- [ ] Atualizar `Servicos.tsx` (adicionar Tabs conforme seção 6.6.2 - **Tabs vão aqui, não em ClassServicesManager**)
+- [ ] **Manter** `ClassServicesManager.tsx` inalterado (apenas gerencia serviços por aula)
 - [ ] Atualizar `Financeiro.tsx` (badge de tipo, LEFT JOIN)
-- [ ] Atualizar `StudentDashboard.tsx` (seção "Meu Plano")
+- [ ] Atualizar `StudentDashboard.tsx` (seção "Meus Planos" com múltiplos professores conforme 5.6.3)
 - [ ] Atualizar `PerfilAluno.tsx` (badge/indicador de mensalidade)
 - [ ] Atualizar `automated-billing/index.ts` (novo fluxo de faturamento)
 
@@ -1465,7 +1497,7 @@ export function useSubscriptionStudents(subscriptionId: string | null) {
 export function useCreateMonthlySubscription() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const { t } = useTranslation('subscriptions');
+const { t } = useTranslation('monthlySubscriptions');
   
   return useMutation({
     mutationFn: async (formData: MonthlySubscriptionFormData) => {
@@ -1479,8 +1511,9 @@ export function useCreateMonthlySubscription() {
           name: formData.name.trim(),
           description: formData.description?.trim() || null,
           price: formData.price,
+          // NOTA v1.10: overagePrice só é válido se hasLimit = true E maxClasses > 0
           max_classes: formData.hasLimit ? formData.maxClasses : null,
-          overage_price: formData.hasLimit ? formData.overagePrice : null,
+          overage_price: formData.hasLimit && formData.maxClasses ? formData.overagePrice : null,
         })
         .select()
         .single();
@@ -1521,7 +1554,7 @@ export function useCreateMonthlySubscription() {
 // ============================================
 export function useUpdateMonthlySubscription() {
   const queryClient = useQueryClient();
-  const { t } = useTranslation('subscriptions');
+  const { t } = useTranslation('monthlySubscriptions');
   
   return useMutation({
     mutationFn: async ({ 
@@ -1535,8 +1568,9 @@ export function useUpdateMonthlySubscription() {
         name: formData.name?.trim(),
         description: formData.description?.trim() || null,
         price: formData.price,
+        // NOTA v1.10: overagePrice só é válido se hasLimit = true E maxClasses > 0
         max_classes: formData.hasLimit ? formData.maxClasses : null,
-        overage_price: formData.hasLimit ? formData.overagePrice : null,
+        overage_price: formData.hasLimit && formData.maxClasses ? formData.overagePrice : null,
       };
       
       const { data, error } = await supabase
@@ -1565,7 +1599,7 @@ export function useUpdateMonthlySubscription() {
 // ============================================
 export function useToggleMonthlySubscription() {
   const queryClient = useQueryClient();
-  const { t } = useTranslation('subscriptions');
+  const { t } = useTranslation('monthlySubscriptions');
   
   return useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
@@ -1599,7 +1633,7 @@ export function useToggleMonthlySubscription() {
 // ============================================
 export function useAssignStudentToSubscription() {
   const queryClient = useQueryClient();
-  const { t } = useTranslation('subscriptions');
+  const { t } = useTranslation('monthlySubscriptions');
   
   return useMutation({
     mutationFn: async ({ 
@@ -1655,6 +1689,7 @@ export function useAssignStudentToSubscription() {
 // ============================================
 export function useRemoveStudentFromSubscription() {
   const queryClient = useQueryClient();
+  const { t } = useTranslation('monthlySubscriptions');
   
   return useMutation({
     mutationFn: async ({ 
@@ -1674,6 +1709,128 @@ export function useRemoveStudentFromSubscription() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['subscription-students', variables.subscriptionId] });
       queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      toast.success(t('messages.studentRemovedSuccess'));
+    },
+    onError: (error) => {
+      console.error('Error removing student:', error);
+      toast.error(t('messages.saveError'));
+    },
+  });
+}
+
+// ============================================
+// 6.4.1 HOOK: useStudentSubscriptionAssignment
+// Gerencia atribuição de alunos a mensalidades (view/assign/remove)
+// ============================================
+
+/**
+ * Hook para listar alunos disponíveis para atribuição
+ * Retorna alunos que NÃO têm mensalidade ativa
+ */
+export function useAvailableStudentsForSubscription(subscriptionId: string | null) {
+  const { user } = useAuth();
+  
+  return useQuery({
+    queryKey: ['available-students-for-subscription', user?.id, subscriptionId],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      
+      // Buscar todos os alunos do professor
+      const { data: allStudents, error: studentsError } = await supabase
+        .from('teacher_student_relationships')
+        .select(`
+          id,
+          student_id,
+          student_name,
+          profiles!teacher_student_relationships_student_id_fkey(name, email)
+        `)
+        .eq('teacher_id', user.id);
+      
+      if (studentsError) throw studentsError;
+      
+      // Verificar quais já têm mensalidade ativa
+      const studentsWithStatus = await Promise.all(
+        (allStudents || []).map(async (student) => {
+          const { data: hasActive } = await supabase
+            .rpc('check_student_has_active_subscription', {
+              p_relationship_id: student.id,
+              p_exclude_subscription_id: subscriptionId
+            });
+          
+          return {
+            relationshipId: student.id,
+            studentId: student.student_id,
+            studentName: student.student_name || student.profiles?.name || 'Sem nome',
+            studentEmail: student.profiles?.email || '',
+            hasActiveSubscription: hasActive || false,
+          };
+        })
+      );
+      
+      return studentsWithStatus;
+    },
+    enabled: !!user?.id,
+  });
+}
+
+/**
+ * Hook para gerenciar atribuições em massa
+ * Útil para o modal de edição de mensalidade
+ */
+export function useBulkAssignStudents() {
+  const queryClient = useQueryClient();
+  const { t } = useTranslation('monthlySubscriptions');
+  
+  return useMutation({
+    mutationFn: async ({
+      subscriptionId,
+      toAdd,
+      toRemove,
+    }: {
+      subscriptionId: string;
+      toAdd: string[]; // relationship_ids a adicionar
+      toRemove: string[]; // assignment_ids a remover
+    }) => {
+      // Remover alunos
+      if (toRemove.length > 0) {
+        const { error: removeError } = await supabase
+          .from('student_monthly_subscriptions')
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .in('id', toRemove);
+        
+        if (removeError) throw removeError;
+      }
+      
+      // Adicionar novos alunos
+      if (toAdd.length > 0) {
+        const assignments = toAdd.map(relationshipId => ({
+          subscription_id: subscriptionId,
+          relationship_id: relationshipId,
+          starts_at: new Date().toISOString().split('T')[0],
+          is_active: true,
+        }));
+        
+        const { error: addError } = await supabase
+          .from('student_monthly_subscriptions')
+          .insert(assignments);
+        
+        if (addError) throw addError;
+      }
+      
+      return { added: toAdd.length, removed: toRemove.length };
+    },
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['subscription-students', variables.subscriptionId] });
+      queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['available-students-for-subscription'] });
+      
+      if (result.added > 0 || result.removed > 0) {
+        toast.success(t('messages.studentsUpdatedSuccess'));
+      }
+    },
+    onError: (error) => {
+      console.error('Error updating student assignments:', error);
+      toast.error(t('messages.saveError'));
     },
   });
 }
@@ -1761,7 +1918,18 @@ export const monthlySubscriptionSchema = z.object({
     message: 'Informe o valor por aula excedente quando o limite estiver ativado.',
     path: ['overagePrice'],
   }
-);
+).transform((data) => {
+  // TRANSFORMAÇÃO v1.10: Se hasLimit = false, garantir que overagePrice também é null
+  // Isso evita inconsistências onde overagePrice tem valor mas não há limite
+  if (!data.hasLimit) {
+    return {
+      ...data,
+      maxClasses: null,
+      overagePrice: null,
+    };
+  }
+  return data;
+});
 
 // Tipo inferido do schema
 export type MonthlySubscriptionFormValues = z.infer<typeof monthlySubscriptionSchema>;
@@ -1810,10 +1978,12 @@ O sistema atual possui:
 - **`src/pages/Servicos.tsx`**: Página wrapper simples que renderiza `ClassServicesManager`
 - **`src/components/ClassServicesManager.tsx`**: Componente principal que gerencia serviços por aula
 
-**Estratégia de implementação:**
-1. Modificar `Servicos.tsx` para adicionar Tabs (Serviços | Mensalidades)
-2. Manter `ClassServicesManager.tsx` inalterado (tab "Serviços")
-3. Criar `MonthlySubscriptionsManager.tsx` para nova tab "Mensalidades"
+**Estratégia de implementação (CLARIFICADO v1.10):**
+1. **Modificar `Servicos.tsx`** para adicionar Tabs (Serviços | Mensalidades)
+2. **Manter `ClassServicesManager.tsx` INALTERADO** - continua gerenciando apenas serviços por aula
+3. **Criar `MonthlySubscriptionsManager.tsx`** para nova tab "Mensalidades"
+
+**NOTA IMPORTANTE v1.10:** As Tabs são adicionadas em `Servicos.tsx` (a página), NÃO em `ClassServicesManager.tsx` (o componente). O `ClassServicesManager` permanece focado em sua responsabilidade única de gerenciar serviços por aula.
 
 #### 6.6.2 Alterações em Servicos.tsx
 
@@ -1834,10 +2004,10 @@ import { MonthlySubscriptionsManager } from '@/components/MonthlySubscriptionsMa
 <Tabs defaultValue="services">
   <TabsList className="mb-4">
     <TabsTrigger value="services">
-      {t('subscriptions:tabs.services')}
+      {t('monthlySubscriptions:tabs.services')}
     </TabsTrigger>
     <TabsTrigger value="subscriptions">
-      {t('subscriptions:tabs.subscriptions')}
+      {t('monthlySubscriptions:tabs.subscriptions')}
     </TabsTrigger>
   </TabsList>
   
@@ -2090,6 +2260,8 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
     "deactivateSuccess": "Mensalidade desativada com sucesso!",
     "activateSuccess": "Mensalidade ativada com sucesso!",
     "studentAlreadyHasSubscription": "Este aluno já possui outra mensalidade ativa.",
+    "studentRemovedSuccess": "Aluno removido da mensalidade com sucesso!",
+    "studentsUpdatedSuccess": "Alunos atualizados com sucesso!",
     "loadError": "Erro ao carregar mensalidades."
   },
   "info": {
@@ -2168,6 +2340,8 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
     "deactivateSuccess": "Subscription deactivated successfully!",
     "activateSuccess": "Subscription activated successfully!",
     "studentAlreadyHasSubscription": "This student already has another active subscription.",
+    "studentRemovedSuccess": "Student removed from subscription successfully!",
+    "studentsUpdatedSuccess": "Students updated successfully!",
     "loadError": "Error loading subscriptions."
   },
   "info": {
@@ -2281,7 +2455,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.6 - Atualizado com verificações, correções e consolidações
+-- Versão 1.10 - Sincronizado com documento principal
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -2777,6 +2951,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.7 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 85-96 (diretório src/schemas inexistente, invoice_type sem valor documentado, confirmações de constraints NOT NULL via banco, regras de cobrança para cenários específicos, comportamento de starts_at, múltiplos professores, cancelamento mid-month, verificação de getInvoiceTypeBadge, consistência de get_student_subscription_details, verificação de update_updated_at_column). Nova seção 5.6 "Regras de Cobrança Detalhadas" com 5 subseções cobrindo: mensalidade R$0 + excedentes, transição de starts_at, múltiplos professores, cancelamento no meio do mês, valor mínimo para boleto. Atualizado Apêndice A versão 1.5 com verificações pré-migração. Atualizado checklist 4.2 com itens de criação de diretório e testes de cenários específicos. Atualizada tabela 4.1 com status de itens corrigidos (✅) e novos gaps identificados. |
 | 1.8 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 97-108 (getInvoiceTypeBadge inexistente, ClassServicesManager não referenciado, conflito namespace i18n subscription/subscriptions, valores invoice_type incompletos, rollback script sem triggers, RLS policy duplicada, StudentDashboard sem múltiplos professores, DROP NOT NULL disperso, validação business_profile_id, placeholders de data, valor mínimo boleto indefinido). Corrigidos: rollback script completo com triggers (#101), RLS policy renomeada (#102), SQL consolidado no Apêndice A seção 0.2 (#104), datas no histórico (#106), MIN_BOLETO_VALUE=5.00 definido (#107), seção 6.6 atualizada com ClassServicesManager (#108). Atualizado Apêndice A para versão 1.6. Sumário atualizado para referenciar nova seção 6.6. |
 | 1.9 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 109-120 (InvoiceStatusBadge sem invoice_type, conflito namespace i18n confirmado, bug notifications em i18n/index.ts, src/types sem estrutura, Servicos.tsx wrapper simples, business_profile_id nullable, funções SQL inexistentes confirmadas, constraints NOT NULL confirmadas via banco, 'regular' não existe no banco, INNER JOIN confirmado em Financeiro.tsx, regeneração tipos não documentada). Corrigidos: removido 'regular' da documentação de invoice_type (#118), adicionada regeneração de tipos ao checklist de deploy (#120), decisão de namespace i18n tomada (usar `monthlySubscriptions.json` separado de `subscription.json`) (#110), documentado bug de namespace `notifications` (#111). Nova seção 8.0 "Nota sobre Namespaces" explicando conflito e decisão. Nova seção 6.3.1 "InvoiceStatusBadge.tsx" com implementação de prop invoiceType. Expandida seção 6.3 com alterações em Financeiro.tsx e StudentDashboard.tsx. Atualizado Apêndice A seção 0.3 removendo 'regular'. Atualizado checklist 4.2 Fase 3 com decisão de namespace e bug de notifications. Atualizada tabela 4.1 com novos itens de InvoiceStatusBadge, namespace i18n, e regeneração de tipos. |
+| 1.10 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 121-132 (namespace inconsistente nos exemplos de código, hook useStudentSubscriptionAssignment sem implementação documentada, clarificação Servicos.tsx vs ClassServicesManager, diagrama ASCII inconsistente, billing_day nullable sem fallback documentado, tipos TypeScript para novas tabelas, zero referências a monthly_subscription no código é PRÉ-REQUISITO, StudentDashboard sem "Meus Planos", namespace password não verificado, validação overagePrice quando hasLimit=false, datas inconsistentes no histórico, versão Apêndice A desincronizada). Corrigidos: todos os exemplos de código agora usam `useTranslation('monthlySubscriptions')` ao invés de `useTranslation('subscriptions')` (#121), adicionada implementação completa de `useStudentSubscriptionAssignment` na seção 6.4.1 (#122), clarificado que Tabs vão em `Servicos.tsx` e não em `ClassServicesManager.tsx` (#123), adicionada validação de `overagePrice = null` quando `hasLimit = false` no schema Zod (#130), sincronizada versão do Apêndice A para v1.10 (#132). Atualizada seção 6.4 com novo hook de atribuição. Atualizada seção 6.5 com validação adicional de overagePrice. Atualizado checklist 4.2 com novos itens de verificação. Atualizada tabela 4.1 com status de correções. |
 
 ---
 

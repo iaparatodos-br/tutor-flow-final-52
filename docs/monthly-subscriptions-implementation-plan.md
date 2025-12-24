@@ -760,6 +760,18 @@ WHERE is_template = false;
 | 130 | Validação `overagePrice` quando `hasLimit = false` | `overagePrice` deve ser `null` se não tem limite | ✅ CORRIGIDO v1.10: Adicionada validação no Zod schema (seção 6.5) e hooks (seção 6.4) |
 | 131 | Datas inconsistentes no histórico | v1.0-v1.2 com datas estimadas | Mantido: datas retroativas para consistência |
 | 132 | Versão Apêndice A desincronizada | Apêndice dizia "Versão 1.6" | ✅ CORRIGIDO v1.10: Sincronizado para v1.10 |
+| 133 | Mapeamento `invoice_type` incompleto em `Financeiro.tsx` | Código atual mapeia apenas 2 tipos, não inclui `monthly_subscription` | ✅ CORRIGIDO v1.11: Adicionado exemplo completo de `getInvoiceTypeBadge` na seção 6.3.2.1 |
+| 134 | `invoices.monthly_subscription_id` não existe | Confirmado via banco: coluna não existe em `invoices` | **Confirmado via banco**: Migration obrigatória do Apêndice A |
+| 135 | Constraints NOT NULL em `invoice_classes` | Confirmado via banco: `class_id` e `participant_id` são NOT NULL | **Confirmado via banco**: Executar `ALTER COLUMN ... DROP NOT NULL` |
+| 136 | Arquivos `monthlySubscriptions.json` não criados | Confirmado via código: arquivos PT/EN não existem | **Confirmado via código**: Criar arquivos conforme seção 8 |
+| 137 | Namespace `monthlySubscriptions` não registrado | Confirmado via código: `i18n/index.ts` não importa namespace | **Confirmado via código**: Adicionar imports e registrar namespace |
+| 138 | `InvoiceStatusBadge.tsx` sem prop `invoiceType` | Confirmado via código: componente não tem prop | **Confirmado via código**: Implementar conforme seção 6.3.1 |
+| 139 | Diretório `src/schemas` não existe | Confirmado via código: diretório ausente | **Confirmado via código**: Criar diretório antes de arquivos |
+| 140 | `src/types` sem `monthly-subscriptions.ts` | Confirmado via código: apenas `cookie-consent.d.ts` existe | **Confirmado via código**: Criar arquivo de tipos |
+| 141 | Zero componentes de mensalidade implementados | Nenhum `MonthlySubscription*` encontrado no código | **Confirmado via código**: Todos os componentes são PRÉ-REQUISITO |
+| 142 | `default_billing_day` nullable em `profiles` | Campo nullable, mas SQL já usa `COALESCE(..., 5)` | ✅ OK: Fallback para 5 já implementado nas funções SQL |
+| 143 | Datas no histórico de revisões | v1.0-v1.2 usam "2025-01-01" como data estimada | ✅ OK: Consistente com data de criação do documento |
+| 144 | Seção 6.1 usa nome antigo `subscriptions.json` | Estrutura de arquivos mostra `subscriptions.json` ao invés de `monthlySubscriptions.json` | ✅ CORRIGIDO v1.11: Atualizado para `monthlySubscriptions.json` |
 
 ---
 
@@ -818,6 +830,13 @@ Esta seção documenta o gap entre o estado atual do projeto e o que está plane
 | Validação `overagePrice` quando `hasLimit = false` | ✅ CORRIGIDO v1.10 | Adicionado `.transform()` no schema Zod e validação nos hooks |
 | Versão do Apêndice A | ✅ CORRIGIDO v1.10 | Sincronizado para v1.10 |
 | Mensagens i18n para remoção de alunos | ✅ CORRIGIDO v1.10 | Adicionadas `studentRemovedSuccess` e `studentsUpdatedSuccess` |
+| Mapeamento `invoice_type` em `Financeiro.tsx` | ⚠️ Incompleto | ✅ CORRIGIDO v1.11: Exemplo de `getInvoiceTypeBadge` na seção 6.3.2.1 |
+| Coluna `monthly_subscription_id` em `invoices` | ❌ Confirmado via banco | Migration obrigatória do Apêndice A |
+| Arquivos `monthlySubscriptions.json` | ❌ Confirmados não existem | Criar arquivos PT e EN conforme seção 8 |
+| Registro namespace em `i18n/index.ts` | ❌ Não registrado | Adicionar imports e namespace |
+| Zero componentes de mensalidade | ❌ Confirmado via código | PRÉ-REQUISITO: Criar todos os componentes |
+| Seção 6.1 usa `subscriptions.json` | ✅ CORRIGIDO v1.11 | Atualizado para `monthlySubscriptions.json` |
+| Exemplo `getInvoiceTypeBadge` completo | ✅ CORRIGIDO v1.11 | Nova seção 6.3.2.1 com função de mapeamento |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -842,8 +861,9 @@ Antes de iniciar o desenvolvimento, execute na ordem:
 - [ ] Verificar função `getInvoiceTypeBadge` em `Financeiro.tsx` e adicionar case para `monthly_subscription`
 
 #### Fase 3: Internacionalização
-- [ ] **Decisão v1.10**: Criar `src/i18n/locales/pt/monthlySubscriptions.json` (nome final escolhido, separado de `subscription.json`)
-- [ ] Criar `src/i18n/locales/en/monthlySubscriptions.json`
+- [ ] **Decisão v1.10**: Criar `src/i18n/locales/pt/monthlySubscriptions.json` (nome final escolhido, separado de `subscription.json`) - **Confirmado v1.11: Arquivo não existe**
+- [ ] Criar `src/i18n/locales/en/monthlySubscriptions.json` - **Confirmado v1.11: Arquivo não existe**
+- [ ] **Registrar namespace** em `src/i18n/index.ts` (adicionar imports e registrar em `resources` e `ns`) - **Confirmado v1.11: Namespace não registrado**
 - [ ] Registrar namespace `monthlySubscriptions` em `src/i18n/index.ts`
 - [ ] **Bug**: Remover `notifications` do array `ns` em `i18n/index.ts` OU criar arquivos `notifications.json` faltantes
 - [ ] **Verificar**: Todos os exemplos de código usam `useTranslation('monthlySubscriptions')` (✅ verificado v1.10)
@@ -1245,9 +1265,9 @@ src/
 └── i18n/
     └── locales/
         ├── pt/
-        │   └── subscriptions.json        # NOVO
+        │   └── monthlySubscriptions.json # NOVO (decisão v1.10)
         └── en/
-            └── subscriptions.json        # NOVO
+            └── monthlySubscriptions.json # NOVO (decisão v1.10)
 ```
 
 ### 6.2 Componentes
@@ -1372,6 +1392,7 @@ Alterações necessárias em `Financeiro.tsx`:
 
 1. **LEFT JOIN em queries**: Alterar `classes!inner` e `class_participants!inner` para LEFT JOIN
 2. **Badge de tipo**: Passar prop `invoiceType` para `InvoiceStatusBadge`
+3. **Mapeamento de `invoice_type`**: Adicionar função para mapear todos os tipos
 
 ```tsx
 // Exemplo de query atualizada (linhas ~276-283)
@@ -1392,6 +1413,75 @@ const { data: invoices } = await supabase
   invoiceType={invoice.invoice_type}  // NOVO
 />
 ```
+
+##### 6.3.2.1 Função getInvoiceTypeBadge (NOVO v1.11)
+
+O código atual em `Financeiro.tsx` mapeia apenas dois tipos de `invoice_type` (`automated` e `manual`). Para suportar mensalidades, é necessário criar uma função completa de mapeamento:
+
+```tsx
+// ============================================
+// FUNÇÃO: getInvoiceTypeBadge
+// Mapeia invoice_type para propriedades de badge visual
+// Inclui todos os tipos válidos: automated, manual, monthly_subscription
+// ============================================
+
+type InvoiceTypeBadgeProps = {
+  label: string;
+  variant?: 'default' | 'secondary' | 'destructive' | 'outline';
+  className?: string;
+};
+
+const getInvoiceTypeBadge = (invoiceType: string | null | undefined): InvoiceTypeBadgeProps | null => {
+  switch (invoiceType) {
+    case 'automated':
+      return { 
+        label: 'Automática', 
+        variant: 'secondary' 
+      };
+    case 'manual':
+      return { 
+        label: 'Manual', 
+        variant: 'outline' 
+      };
+    case 'monthly_subscription':
+      return { 
+        label: 'Mensalidade', 
+        className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' 
+      };
+    default:
+      // null, undefined ou valor desconhecido
+      return null;
+  }
+};
+
+// Exemplo de uso no componente
+const invoiceTypeBadge = getInvoiceTypeBadge(invoice.invoice_type);
+
+return (
+  <div className="flex items-center gap-2">
+    <InvoiceStatusBadge 
+      status={invoice.status} 
+      paymentOrigin={invoice.payment_origin}
+    />
+    {invoiceTypeBadge && (
+      <Badge 
+        variant={invoiceTypeBadge.variant} 
+        className={invoiceTypeBadge.className}
+      >
+        {invoiceTypeBadge.label}
+      </Badge>
+    )}
+  </div>
+);
+```
+
+**Valores de `invoice_type` no banco (confirmado v1.11):**
+- `'automated'` - Fatura gerada automaticamente pelo sistema
+- `'manual'` - Fatura criada manualmente pelo professor
+- `'monthly_subscription'` - Fatura de mensalidade fixa (NOVO)
+- `null` - Faturas antigas ou sem tipo definido
+
+**Nota:** O valor `'regular'` não existe no banco de dados (confirmado em v1.9) e foi removido da documentação.
 
 #### 6.3.3 StudentDashboard.tsx
 
@@ -2952,6 +3042,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.8 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 97-108 (getInvoiceTypeBadge inexistente, ClassServicesManager não referenciado, conflito namespace i18n subscription/subscriptions, valores invoice_type incompletos, rollback script sem triggers, RLS policy duplicada, StudentDashboard sem múltiplos professores, DROP NOT NULL disperso, validação business_profile_id, placeholders de data, valor mínimo boleto indefinido). Corrigidos: rollback script completo com triggers (#101), RLS policy renomeada (#102), SQL consolidado no Apêndice A seção 0.2 (#104), datas no histórico (#106), MIN_BOLETO_VALUE=5.00 definido (#107), seção 6.6 atualizada com ClassServicesManager (#108). Atualizado Apêndice A para versão 1.6. Sumário atualizado para referenciar nova seção 6.6. |
 | 1.9 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 109-120 (InvoiceStatusBadge sem invoice_type, conflito namespace i18n confirmado, bug notifications em i18n/index.ts, src/types sem estrutura, Servicos.tsx wrapper simples, business_profile_id nullable, funções SQL inexistentes confirmadas, constraints NOT NULL confirmadas via banco, 'regular' não existe no banco, INNER JOIN confirmado em Financeiro.tsx, regeneração tipos não documentada). Corrigidos: removido 'regular' da documentação de invoice_type (#118), adicionada regeneração de tipos ao checklist de deploy (#120), decisão de namespace i18n tomada (usar `monthlySubscriptions.json` separado de `subscription.json`) (#110), documentado bug de namespace `notifications` (#111). Nova seção 8.0 "Nota sobre Namespaces" explicando conflito e decisão. Nova seção 6.3.1 "InvoiceStatusBadge.tsx" com implementação de prop invoiceType. Expandida seção 6.3 com alterações em Financeiro.tsx e StudentDashboard.tsx. Atualizado Apêndice A seção 0.3 removendo 'regular'. Atualizado checklist 4.2 Fase 3 com decisão de namespace e bug de notifications. Atualizada tabela 4.1 com novos itens de InvoiceStatusBadge, namespace i18n, e regeneração de tipos. |
 | 1.10 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 121-132 (namespace inconsistente nos exemplos de código, hook useStudentSubscriptionAssignment sem implementação documentada, clarificação Servicos.tsx vs ClassServicesManager, diagrama ASCII inconsistente, billing_day nullable sem fallback documentado, tipos TypeScript para novas tabelas, zero referências a monthly_subscription no código é PRÉ-REQUISITO, StudentDashboard sem "Meus Planos", namespace password não verificado, validação overagePrice quando hasLimit=false, datas inconsistentes no histórico, versão Apêndice A desincronizada). Corrigidos: todos os exemplos de código agora usam `useTranslation('monthlySubscriptions')` ao invés de `useTranslation('subscriptions')` (#121), adicionada implementação completa de `useStudentSubscriptionAssignment` na seção 6.4.1 (#122), clarificado que Tabs vão em `Servicos.tsx` e não em `ClassServicesManager.tsx` (#123), adicionada validação de `overagePrice = null` quando `hasLimit = false` no schema Zod (#130), sincronizada versão do Apêndice A para v1.10 (#132). Atualizada seção 6.4 com novo hook de atribuição. Atualizada seção 6.5 com validação adicional de overagePrice. Atualizado checklist 4.2 com novos itens de verificação. Atualizada tabela 4.1 com status de correções. |
+| 1.11 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 133-144 (mapeamento invoice_type incompleto em Financeiro.tsx, confirmação invoices.monthly_subscription_id não existe, confirmação constraints NOT NULL em invoice_classes, arquivos monthlySubscriptions.json não criados, namespace monthlySubscriptions não registrado em i18n/index.ts, InvoiceStatusBadge sem prop invoiceType confirmado, diretório src/schemas não existe confirmado, src/types sem monthly-subscriptions.ts, zero componentes de mensalidade implementados, default_billing_day nullable com fallback OK, datas consistentes no histórico, seção 6.1 usa subscriptions.json antigo). Corrigidos: seção 6.1 atualizada para usar `monthlySubscriptions.json` (#144), adicionado exemplo completo de mapeamento `getInvoiceTypeBadge` na seção 6.3.2.1 (#133), marcados itens confirmados via banco/código com status apropriado, atualizada tabela 4.1 com novos gaps identificados e status de confirmações. Atualizado checklist 4.2 Fase 3 com itens de criação de arquivos i18n. Atualizada seção 6.3.2 com função de mapeamento de invoice_type. |
 
 ---
 

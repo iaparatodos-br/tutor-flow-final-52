@@ -18,12 +18,20 @@
    - 3.4 [Funções SQL](#34-funções-sql)
    - 3.5 [Índices e Constraints](#35-índices-e-constraints)
 4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
+   - 4.1 [Estado Atual vs. Planejado](#41-estado-atual-vs-planejado)
+   - 4.2 [Checklist de Pré-Implementação](#42-checklist-de-pré-implementação)
 5. [Casos de Uso Adicionais](#5-casos-de-uso-adicionais)
-   - 5.1 [Histórico de Mudanças na Mensalidade](#51-histórico-de-mudanças-na-mensalidade)
-   - 5.2 [Mensalidades com Data de Início Futura](#52-mensalidades-com-data-de-início-futura)
-   - 5.3 [Exclusão de Aulas Experimentais do Limite](#53-exclusão-de-aulas-experimentais-do-limite)
-   - 5.4 [Soft Delete de Mensalidades](#54-soft-delete-de-mensalidades)
+   - 5.1 [Interfaces TypeScript](#51-interfaces-typescript)
+   - 5.2 [Histórico de Mudanças na Mensalidade](#52-histórico-de-mudanças-na-mensalidade)
+   - 5.3 [Mensalidades com Data de Início Futura](#53-mensalidades-com-data-de-início-futura)
+   - 5.4 [Exclusão de Aulas Experimentais do Limite](#54-exclusão-de-aulas-experimentais-do-limite)
+   - 5.5 [Soft Delete de Mensalidades](#55-soft-delete-de-mensalidades)
 6. [Implementação Frontend](#6-implementação-frontend)
+   - 6.1 [Estrutura de Arquivos](#61-estrutura-de-arquivos)
+   - 6.2 [Componentes](#62-componentes)
+   - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
+   - 6.4 [Hook useMonthlySubscriptions](#64-hook-usemonthlysubscriptions)
+   - 6.5 [Zod Schema de Validação](#65-zod-schema-de-validação)
    - 6.1 [Estrutura de Arquivos](#61-estrutura-de-arquivos)
    - 6.2 [Componentes](#62-componentes)
    - 6.3 [Alterações em Componentes Existentes](#63-alterações-em-componentes-existentes)
@@ -662,19 +670,96 @@ WHERE is_template = false;
 | 51 | Componente de progresso no `PerfilAluno.tsx` | Exibir "X/Y aulas usadas" para alunos com limite | Adicionar barra de progresso ou indicador textual usando dados de `get_student_subscription_details` |
 | 52 | Retry de fatura de mensalidade falha | Como reprocessar faturas que falharam? | Logar erro detalhado. Permitir reprocessamento manual via botão em `Financeiro.tsx` (chamar `automated-billing` com flag `force`) |
 | 53 | Badge de tipo inconsistente em `Financeiro.tsx` | Faturas `monthly_subscription` exibem "Regular" ao invés de "Mensalidade" | Atualizar função `getInvoiceTypeBadge` para mapear `monthly_subscription` → badge "Mensalidade" com cor distinta (ex: `bg-purple-100 text-purple-800`) |
-| 54 | Query `invoice_classes` com INNER JOIN | Consulta em `Financeiro.tsx` usa INNER JOIN e falha para mensalidades puras | Alterar para `LEFT JOIN invoice_classes` em todas as queries que buscam detalhes de fatura |
+| 54 | Query `invoice_classes` com INNER JOIN | Consulta em `Financeiro.tsx` usa INNER JOIN e falha para mensalidades puras | **Consolidado com #44**: Alterar para `LEFT JOIN invoice_classes` em todas as queries |
 | 55 | Registro "base de mensalidade" em `invoice_classes` | Mensalidades puras não têm registros em `invoice_classes` | Criar registro `item_type = 'monthly_base'` com `class_id = NULL` e `participant_id = NULL` para auditoria |
 | 56 | Constraint NOT NULL em `invoice_classes.class_id` | Impede criar `item_type = 'monthly_base'` sem aula | Alterar tabela: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL; ALTER TABLE invoice_classes ALTER COLUMN participant_id DROP NOT NULL;` |
 | 57 | RPC `create_invoice_and_mark_classes_billed` incompatível | Função espera `class_id` e `participant_id` obrigatórios | Adaptar função para aceitar NULL quando `item_type = 'monthly_base'`. Criar versão v2 ou sobrecarga |
-| 58 | Campo `dependent_id` em `invoice_classes` | Código de faturamento usa `dependent_id` mas não existe na tabela atual | **Verificar**: campo já existe em `invoice_classes`. Se não, adicionar: `ALTER TABLE invoice_classes ADD COLUMN dependent_id UUID REFERENCES dependents(id);` |
+| 58 | Campo `dependent_id` em `invoice_classes` | Código de faturamento usa `dependent_id` mas não existe na tabela atual | **✅ RESOLVIDO**: Campo `dependent_id` já existe em `invoice_classes` conforme schema atual |
 | 59 | Regra de corte por data `starts_at` | Aulas realizadas antes de `starts_at` devem ser cobradas como? | Aulas anteriores a `starts_at` são cobradas por aula (fluxo tradicional). Mensalidade só cobre aulas a partir de `starts_at` |
 | 60 | RLS duplicada em `monthly_subscriptions` | Duas políticas similares no Apêndice A | Remover duplicata. Manter apenas uma política "Alunos podem ver suas mensalidades" em `monthly_subscriptions` |
+| 61 | Coluna `monthly_subscription_id` não existe em `invoices` | Documento referencia coluna que não existe no banco atual | Executar migration: `ALTER TABLE public.invoices ADD COLUMN monthly_subscription_id UUID REFERENCES public.monthly_subscriptions(id);` |
+| 62 | Badge de tipo incompleto em `Financeiro.tsx` | Falta tratamento específico para `monthly_subscription` e `automated` | Adicionar cases para todos os `invoice_type` no componente de badge |
+| 63 | Constraint `class_id NOT NULL` em `invoice_classes` | Banco atual tem constraint NOT NULL que impede registros de mensalidade | Migration necessária: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL;` |
+| 64 | Tabelas `monthly_subscriptions` e `student_monthly_subscriptions` não existem | Documento descreve tabelas que ainda não foram criadas no banco | **PRÉ-REQUISITO**: Executar SQL do Apêndice A antes de implementar qualquer código |
+| 65 | Arquivo `src/types/monthly-subscriptions.ts` não existe | Documento referencia interfaces TypeScript de arquivo inexistente | Criar arquivo com interfaces: `MonthlySubscription`, `StudentMonthlySubscription`, `MonthlySubscriptionFormData`, etc. |
+| 66 | Hook `useMonthlySubscriptions` não existe | Documento contém implementação mas arquivo não foi criado | Criar `src/hooks/useMonthlySubscriptions.ts` conforme seção 6.4 |
+| 67 | Schema Zod `monthlySubscriptionSchema` não existe | Documento contém schema mas arquivo não foi criado | Criar `src/schemas/monthly-subscription.schema.ts` conforme seção 6.5 |
+| 68 | Namespace i18n `subscriptions` não existe | Documento referencia traduções em namespace inexistente | Criar `src/i18n/locales/pt/subscriptions.json` e `src/i18n/locales/en/subscriptions.json`, registrar em `src/i18n/index.ts` |
+| 69 | Componente `MonthlySubscriptionsManager` não existe | Documento referencia componente inexistente | Criar `src/components/MonthlySubscriptionsManager.tsx` |
+| 70 | Query `invoice_classes` com INNER JOIN em `Financeiro.tsx` | **Consolidado com #44 e #54**: Mesma correção de LEFT JOIN | Alterar para LEFT JOIN conforme solução em #44 |
+| 71 | Dashboard aluno sem "Meu Plano" | Não há implementação de seção mostrando mensalidade do aluno | Adicionar card "Meu Plano" em `StudentDashboard.tsx` usando RPC `get_student_subscription_details` |
+| 72 | RPC `create_invoice_and_mark_classes_billed` incompatível com mensalidades | Função requer `class_id` e `participant_id`, incompatível com `item_type = 'monthly_base'` | **Consolidado com #57**: Criar função v2 ou adaptar para aceitar NULL |
+
+---
+
+## 4.1 Estado Atual vs. Planejado
+
+Esta seção documenta o gap entre o estado atual do projeto e o que está planejado neste documento.
+
+### Tabela Comparativa
+
+| Item | Status Atual | Ação Necessária |
+|------|--------------|-----------------|
+| Tabela `monthly_subscriptions` | ❌ Não existe | Executar migration do Apêndice A |
+| Tabela `student_monthly_subscriptions` | ❌ Não existe | Executar migration do Apêndice A |
+| Coluna `invoices.monthly_subscription_id` | ❌ Não existe | Executar migration do Apêndice A |
+| Constraint `invoice_classes.class_id NOT NULL` | ⚠️ Existe (impede mensalidades) | Executar: `ALTER TABLE invoice_classes ALTER COLUMN class_id DROP NOT NULL;` |
+| Constraint `invoice_classes.participant_id NOT NULL` | ⚠️ Existe (impede mensalidades) | Executar: `ALTER TABLE invoice_classes ALTER COLUMN participant_id DROP NOT NULL;` |
+| Coluna `invoice_classes.dependent_id` | ✅ Existe | Nenhuma |
+| Arquivo `src/types/monthly-subscriptions.ts` | ❌ Não existe | Criar arquivo |
+| Hook `src/hooks/useMonthlySubscriptions.ts` | ❌ Não existe | Criar arquivo |
+| Schema `src/schemas/monthly-subscription.schema.ts` | ❌ Não existe | Criar arquivo |
+| Namespace i18n `subscriptions` | ❌ Não existe | Criar arquivos PT/EN, registrar namespace |
+| Componente `MonthlySubscriptionsManager` | ❌ Não existe | Criar componente |
+| Componente `MonthlySubscriptionModal` | ❌ Não existe | Criar componente |
+| Badge "Mensalidade" em `Financeiro.tsx` | ❌ Não implementado | Adicionar case para `monthly_subscription` |
+| Seção "Meu Plano" em `StudentDashboard.tsx` | ❌ Não implementado | Adicionar card com RPC |
+| Query LEFT JOIN em `Financeiro.tsx` | ⚠️ Usa INNER JOIN | Alterar para LEFT JOIN |
+| RPC `create_invoice_and_mark_classes_billed` | ⚠️ Requer class_id/participant_id | Adaptar ou criar v2 |
+| Funções SQL do Apêndice A | ❌ Não existem | Executar migration |
+
+### 4.2 Checklist de Pré-Implementação
+
+Antes de iniciar o desenvolvimento, execute na ordem:
+
+#### Fase 1: Banco de Dados (Obrigatório Primeiro)
+- [ ] **Backup do banco** antes de qualquer alteração
+- [ ] Executar SQL de criação de tabelas (`monthly_subscriptions`, `student_monthly_subscriptions`)
+- [ ] Executar ALTER TABLE para `invoices` (adicionar `monthly_subscription_id`)
+- [ ] Executar ALTER TABLE para `invoice_classes` (permitir NULL em `class_id`, `participant_id`)
+- [ ] Criar funções SQL (`get_student_active_subscription`, `count_completed_classes_in_month`, etc.)
+- [ ] Configurar RLS policies
+- [ ] Criar triggers e índices
+- [ ] **Regenerar tipos TypeScript** (`npx supabase gen types typescript`)
+
+#### Fase 2: Arquivos TypeScript
+- [ ] Criar `src/types/monthly-subscriptions.ts`
+- [ ] Criar `src/hooks/useMonthlySubscriptions.ts`
+- [ ] Criar `src/schemas/monthly-subscription.schema.ts`
+
+#### Fase 3: Internacionalização
+- [ ] Criar `src/i18n/locales/pt/subscriptions.json`
+- [ ] Criar `src/i18n/locales/en/subscriptions.json`
+- [ ] Registrar namespace em `src/i18n/index.ts`
+
+#### Fase 4: Componentes
+- [ ] Criar `MonthlySubscriptionsManager`
+- [ ] Criar `MonthlySubscriptionCard`
+- [ ] Criar `MonthlySubscriptionModal`
+- [ ] Criar `StudentSubscriptionSelect`
+
+#### Fase 5: Atualizações em Código Existente
+- [ ] Atualizar `Servicos.tsx` (adicionar tab Mensalidades)
+- [ ] Atualizar `Financeiro.tsx` (badge de tipo, LEFT JOIN)
+- [ ] Atualizar `StudentDashboard.tsx` (seção "Meu Plano")
+- [ ] Atualizar `PerfilAluno.tsx` (badge/indicador de mensalidade)
+- [ ] Atualizar `automated-billing/index.ts` (novo fluxo de faturamento)
 
 ---
 
 ## 5. Casos de Uso Adicionais
 
-### 5.0 Interfaces TypeScript
+### 5.1 Interfaces TypeScript
 
 ```typescript
 // ============================================
@@ -769,7 +854,7 @@ export interface AssignedStudent {
 }
 ```
 
-### 5.1 Histórico de Mudanças na Mensalidade
+### 5.2 Histórico de Mudanças na Mensalidade
 
 Quando o professor edita uma mensalidade (valor, limite, etc.), as alterações entram em vigor **imediatamente**.
 
@@ -781,7 +866,7 @@ Quando o professor edita uma mensalidade (valor, limite, etc.), as alterações 
 **Frontend:**
 - Exibir aviso ao editar: "Alterações serão aplicadas a partir do próximo faturamento"
 
-### 5.2 Mensalidades com Data de Início Futura
+### 5.3 Mensalidades com Data de Início Futura
 
 O campo `starts_at` em `student_monthly_subscriptions` pode ser configurado para uma data futura.
 
@@ -809,7 +894,7 @@ END;
 $$ LANGUAGE plpgsql;
 ```
 
-### 5.3 Exclusão de Aulas Experimentais do Limite
+### 5.4 Exclusão de Aulas Experimentais do Limite
 
 Aulas marcadas como `is_experimental = true` **NÃO contam** para o limite de aulas (`max_classes`).
 
@@ -846,7 +931,7 @@ AS $$
 $$;
 ```
 
-### 5.4 Soft Delete de Mensalidades
+### 5.5 Soft Delete de Mensalidades
 
 Mensalidades **nunca são deletadas** do banco de dados. Apenas **desativadas**.
 
@@ -2244,6 +2329,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.2 | 2025-01-23 | Lovable AI | Adicionados: pontas soltas 31-40, interfaces TypeScript, query `get_student_subscription_details` para Dashboard do aluno, correção SQL `is_experimental = false` no Apêndice A, RLS adicional para alunos em `monthly_subscriptions` |
 | 1.3 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 41-52, corrigida numeração de seções (5.x → 6.x), implementação completa do hook `useMonthlySubscriptions` (seção 6.4), Zod schema de validação (seção 6.5), RLS para alunos em `monthly_subscriptions` no Apêndice A |
 | 1.4 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 53-60 (badge inconsistente, INNER JOIN, invoice_classes NULL, RPC v2, dependent_id, regra starts_at, RLS duplicada), correção SQL Apêndice A (removida RLS duplicada, adicionado comentário versão 1.4) |
+| 1.5 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 61-72 (coluna monthly_subscription_id, tabelas inexistentes, arquivos TypeScript faltantes, namespace i18n, componentes, RPC incompatível). Nova seção 4.1 "Estado Atual vs. Planejado" com tabela comparativa. Nova seção 4.2 "Checklist de Pré-Implementação" com fases ordenadas. Consolidação de duplicatas (#44/#54/#70, #57/#72). Marcação de #58 como resolvido. Correção de numeração (5.0 → 5.1). |
 
 ---
 

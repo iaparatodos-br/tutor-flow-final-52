@@ -868,6 +868,18 @@ WHERE is_template = false;
 | 238 | Badge inline só trata `'cancellation'` | Outros valores de `invoice_type` mostram "Regular" como fallback | ⚠️ Implementação incompleta |
 | 239 | Discrepância minLength: tradução=6, código=8 | `password.json` linha 19 diz "6 caracteres", código valida `length < 8` | ⚠️ **NOVO BUG v1.19** - Inconsistência de requisitos |
 | 240 | Documento v1.18 não menciona discrepância minLength | Bug só descoberto em v1.19 | ✅ Documentado nesta versão |
+| 241 | **QUARTA CONFIRMAÇÃO** bug `notifications` | Verificação v1.20: Linha 118 de `i18n/index.ts` ainda declara `'notifications'` | ❌ NÃO CORRIGIDO - 4ª confirmação |
+| 242 | **QUARTA CONFIRMAÇÃO** `password.json` não registrado | Verificação v1.20: Namespace não importado nem registrado em `i18n/index.ts` | ❌ NÃO CORRIGIDO - 4ª confirmação |
+| 243 | **QUARTA CONFIRMAÇÃO** `ForcePasswordChange.tsx` hardcoded | Verificação v1.20: Componente não usa `useTranslation`, 30+ strings em português | ❌ NÃO CORRIGIDO - 4ª confirmação |
+| 244 | Discrepância minLength persiste | Verificação v1.20: `password.json`="6", código=8 - não sincronizado | ⚠️ NÃO CORRIGIDO |
+| 245 | `process-cancellation` mensagem enganosa - 4ª confirmação | Linhas 396-402 prometem cobrança mas não criam fatura | ⚠️ **CRÍTICO** - 4ª confirmação |
+| 246 | **CONFIRMAÇÃO DEFINITIVA**: Traduções `notifications` em `settings.json` | `settings.json` PT/EN linhas 94-130 contêm seção `notifications` completa | ✅ Namespace falso confirmado |
+| 247 | **Inconsistência de namespaces**: 22 declarados vs 21 existentes | Array `ns` declara 22 namespaces, mas só 21 arquivos existem | ⚠️ Contagem errada |
+| 248 | Texto hardcoded em `Financeiro.tsx` | Linhas 573, 581, 714, 722: "Cancelamento"/"Regular" sem i18n | ❌ NÃO CORRIGIDO |
+| 249 | TRÊS INNER JOINs confirmados | `loadInvoiceDetails` linhas 276-284: `classes!inner`, `class_participants!inner`, `profiles!inner` | ✅ Já documentado v1.17 |
+| 250 | Zero referências a `monthly_subscription` no `src/` | Confirmado: Nenhum arquivo referencia novas tabelas | ✅ PRÉ-REQUISITO esperado |
+| 251 | Documento com 3300 linhas | Extensão dificulta navegabilidade | ⚠️ Considerar reorganização |
+| 252 | Histórico de Revisões excessivamente longo | Entradas v1.1-v1.19 ocupam muitas linhas | ⚠️ Considerar compactação |
 
 ---
 
@@ -918,10 +930,12 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | **Internacionalização** | | |
 | Arquivos `monthlySubscriptions.json` PT/EN | ❌ Não existem | Criar arquivos conforme seção 8 |
 | Namespace `monthlySubscriptions` em i18n | ❌ Não registrado | Adicionar imports e namespace |
-| Bug: `notifications` no array `ns` | ❌ NÃO CORRIGIDO v1.19 | Verificado 3x: ainda está na linha 118 → Remover do array `ns` |
-| Bug: `password.json` sem imports | ❌ NÃO CORRIGIDO v1.19 | Verificado 3x: namespace não registrado → Adicionar imports + registrar |
-| Bug: `ForcePasswordChange.tsx` hardcoded | ❌ NÃO CORRIGIDO v1.19 | Verificado: 30+ strings em português, não usa i18n |
-| **NOVO**: Discrepância minLength | ⚠️ **DESCOBERTO v1.19** | `password.json`="6 caracteres", código=8 → Sincronizar |
+| Bug: `notifications` no array `ns` | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: ainda está na linha 118 → Remover do array `ns` |
+| Bug: `password.json` sem imports | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: namespace não registrado → Adicionar imports + registrar |
+| Bug: `ForcePasswordChange.tsx` hardcoded | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: 30+ strings em português, não usa i18n |
+| Discrepância minLength | ⚠️ NÃO CORRIGIDO v1.20 | Verificado **2x**: `password.json`="6 caracteres", código=8 → Sincronizar |
+| **CONFIRMAÇÃO DEFINITIVA**: `notifications` é namespace falso | ✅ v1.20 | Traduções estão em `settings.json` linhas 94-130, não em arquivo separado |
+| **Contagem namespaces**: 22 declarados, 21 existem | ⚠️ v1.20 | Array `ns` tem 1 namespace a mais do que arquivos existentes |
 | Texto hardcoded em `Financeiro.tsx` | ❌ NÃO i18n | Linhas 581, 722: "Cancelamento"/"Regular" hardcoded |
 | Mapeamento badge incompleto | ⚠️ INCOMPLETO | Só `'cancellation'` tratado, outros mostram "Regular" |
 | Query com TRÊS INNER JOINs | ⚠️ Não documentado antes | `classes!inner`, `class_participants!inner`, `profiles!inner` |
@@ -994,14 +1008,38 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
      - [ ] `ForcePasswordChange.tsx` valida `length < 8` (linha 41)
      - [ ] **Recomendado**: Atualizar traduções para "8 caracteres" (mais seguro)
 
-#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.19)
+#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.20)
 
-| Bug | v1.17 | v1.18 | v1.19 | Status |
-|-----|-------|-------|-------|--------|
-| `notifications` no array `ns` | Identificado | Identificado | Confirmado | ❌ NÃO CORRIGIDO |
-| `password.json` não registrado | Identificado | Identificado | Confirmado | ❌ NÃO CORRIGIDO |
-| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | ❌ NÃO CORRIGIDO |
-| Discrepância minLength 6 vs 8 | - | - | **DESCOBERTO** | ⚠️ **NOVO BUG** |
+| Bug | v1.17 | v1.18 | v1.19 | v1.20 | Status |
+|-----|-------|-------|-------|-------|--------|
+| `notifications` no array `ns` | Identificado | Identificado | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
+| `password.json` não registrado | Identificado | Identificado | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
+| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
+| Discrepância minLength 6 vs 8 | - | - | Descoberto | **Confirmado** | ⚠️ NÃO CORRIGIDO |
+| Mensagem enganosa `process-cancellation` | - | - | - | **4ª confirmação** | ⚠️ **CRÍTICO** |
+
+---
+
+**CONFIRMAÇÃO DEFINITIVA v1.20: Namespace `notifications` é FALSO**
+
+Análise conclusiva:
+- `i18n/index.ts` linha 118: Array `ns` contém `'notifications'`
+- `settings.json` PT linhas 94-130: Seção `notifications` com traduções completas
+- `settings.json` EN linhas 94-130: Seção `notifications` com traduções completas
+- **NÃO EXISTE** arquivo `notifications.json` em nenhum idioma
+
+**CONCLUSÃO**: Namespace `'notifications'` é **FALSO** - traduções existem em `settings.json`, não em arquivo separado. Deve ser **REMOVIDO** do array `ns`.
+
+---
+
+**Análise de Contagem de Namespaces v1.20**
+
+- Array `ns` em `i18n/index.ts` declara **22 namespaces**
+- Arquivos existentes: **21** (common, navigation, dashboard, students, classes, materials, financial, settings, auth, subscription, expenses, cancellation, archive, billing, services, plans, reports, amnesty, availability, legal, history)
+- **Namespace falso**: `notifications` (traduções estão em `settings.json`)
+- **Namespace não registrado**: `password` (arquivo existe mas não importado)
+
+**Recomendação**: Remover `'notifications'` do array `ns` e adicionar imports de `password.json`.
 
 **Detalhes da Discrepância minLength (NOVO v1.19)**:
 
@@ -2767,7 +2805,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.19 - Sincronizado com documento principal v1.19
+-- Versão 1.20 - Sincronizado com documento principal v1.20
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -3294,6 +3332,25 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.17 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 205-216 (bug `notifications` reclassificado - traduções em `settings.json`, `password.json` confirmado usado por `ForcePasswordChange.tsx`, **TRÊS INNER JOINs** em query detalhes com `profiles!inner`, texto hardcoded "Cancelamento"/"Regular" em `Financeiro.tsx`, mapeamento badge incompleto - só `'cancellation'` tratado, duplicatas na tabela 4.1.2 e checklist Fase 3, recomendação de reorganização de pontas soltas antigas). **RECLASSIFICAÇÃO**: Bug `notifications` não requer criar arquivos - traduções já existem em `settings.json` → apenas remover do array `ns`. **CONFIRMAÇÃO**: `password.json` usado por `ForcePasswordChange.tsx` (linhas 67, 93, 118) → deve ser registrado. **DESCOBERTA**: Query `loadInvoiceDetails` tem TRÊS `!inner` (não dois): `classes!inner`, `class_participants!inner`, `profiles!inner`. **CORREÇÕES**: Atualizada tabela 4.1.2 com reclassificação de `notifications` e novos gaps. Atualizado checklist Fase 3 com bugs consolidados e i18n incompleto em Financeiro.tsx. Sincronizado Apêndice A para v1.17. |
 | 1.18 | 2025-12-25 | Lovable AI | **CORREÇÃO CRÍTICA DE ERRO FACTUAL**: Pontas soltas #206 e #215 da v1.17 estavam **INCORRETAS**. Documento afirmou que `ForcePasswordChange.tsx` usa `useTranslation('password')` nas linhas 67, 93, 118 - **ISTO É FALSO**. Verificação de código mostra que o componente **NÃO USA i18n** - todo o texto é **HARDCODED em português** (30+ strings). Adicionados: pontas soltas 217-228 (erro crítico factual, texto hardcoded extenso em ForcePasswordChange.tsx, `password.json` é código morto, traduções válidas existentes, duas correções necessárias: registro + refatoração, confirmações via código linhas 67/93/118, reclassificação de #206 e #215, necessidade de refatoração completa, duplicata de "Fim do Documento"). **RECLASSIFICADO**: `password.json` existe com traduções válidas (46 linhas em PT/EN) mas é **IGNORADO** pelo código - são DUAS correções necessárias: 1) Registrar namespace em `i18n/index.ts`, 2) Refatorar `ForcePasswordChange.tsx` para usar `useTranslation('password')`. **CORREÇÕES**: Atualizados status de #206 e #215 para "❌ ERRO v1.18". Atualizado checklist Fase 3 com documentação completa do erro e ações corretivas. Removida duplicata de "Fim do Documento". Sincronizado Apêndice A para v1.18. |
 | 1.19 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 229-240 (confirmação tripla de bugs i18n persistentes, **NOVO BUG** discrepância minLength tradução vs código, confirmações de diretórios/arquivos inexistentes, status de correções pendentes). **DESCOBERTA CRÍTICA**: `password.json` tem "6 caracteres" (linha 19) mas `ForcePasswordChange.tsx` valida `length < 8` (linha 41) - **INCONSISTÊNCIA DE REQUISITOS** de segurança. **CONFIRMAÇÕES v1.19**: Bug `notifications` persiste (linha 118 de i18n/index.ts), `password.json` não importado nem registrado, `ForcePasswordChange.tsx` sem `useTranslation`. **CORREÇÕES**: Atualizada tabela 4.1.2 com 4 bugs de i18n (3 persistentes + 1 novo). Expandida Fase 0 do checklist com ações detalhadas para cada bug e nova tabela de "Verificações Recorrentes" (v1.17→v1.19). Documentadas opções de resolução para discrepância minLength (recomendado: atualizar traduções para 8). Sincronizado Apêndice A para v1.19. |
+| 1.20 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 241-252 (4ª confirmação de bugs i18n persistentes, confirmação definitiva de traduções `notifications` em `settings.json` linhas 94-130, análise de contagem de namespaces 22 vs 21, texto hardcoded em Financeiro.tsx reconfirmado, mensagem enganosa em `process-cancellation` 4ª confirmação, documento extenso com 3300 linhas, histórico de revisões longo). **CONFIRMAÇÃO DEFINITIVA v1.20**: Namespace `notifications` é **FALSO** - traduções existem em `settings.json` linhas 94-130, **NÃO** em arquivo separado. Deve ser **REMOVIDO** do array `ns`. **ANÁLISE DE CONTAGEM**: Array `ns` declara 22 namespaces mas apenas 21 existem como arquivos (`notifications` é falso, `password` não registrado). **ATUALIZAÇÃO TABELA v1.17→v1.20**: Expandida tabela de verificações recorrentes com coluna v1.20 e 5ª linha para mensagem enganosa. **RECOMENDAÇÃO DE REORGANIZAÇÃO**: Considerar mover pontas soltas 1-200 para apêndice histórico e compactar entradas do histórico de revisões v1.1-v1.15. Sincronizado Apêndice A para v1.20. |
+
+---
+
+### Recomendação de Reorganização do Documento (proposta v1.20)
+
+O documento atingiu **3300+ linhas**, dificultando navegabilidade e manutenção. Proposta:
+
+1. **Mover pontas soltas 1-200 para "Apêndice C: Histórico de Pontas Soltas"**
+   - Manter apenas pontas soltas ativas (201+) na seção 4
+   - Reduzir ~400 linhas da seção principal
+
+2. **Compactar entradas do Histórico de Revisões v1.1-v1.15**
+   - Criar resumo agrupado por tema
+   - Manter detalhes completos apenas para v1.16+
+
+3. **Criar índice de navegação rápida**
+   - Links diretos para seções mais acessadas
+   - Tabela de status de pré-requisitos
 
 ---
 

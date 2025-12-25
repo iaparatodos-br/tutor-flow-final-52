@@ -856,6 +856,18 @@ WHERE is_template = false;
 | 226 | Reclassificar ponta solta #215 | Afirmação original INCORRETA - deve marcar como ERRO | ✅ CORRIGIDO v1.18: Status alterado |
 | 227 | `ForcePasswordChange.tsx` precisa de refatoração completa | Componente funcional mas sem i18n - 30+ strings hardcoded | ⚠️ Ação futura: Refatorar para usar `password.json` |
 | 228 | Duplicata "Fim do Documento" | Linhas 3235 e 3238 ambas têm "Fim do Documento" | ✅ CORRIGIDO v1.18: Duplicata removida |
+| 229 | Bug `notifications` AINDA no array `ns` | Verificação v1.19: `i18n/index.ts` linha 118 ainda declara `'notifications'` | ❌ NÃO CORRIGIDO - Terceira confirmação |
+| 230 | Bug `password.json` AINDA não registrado | Verificação v1.19: Namespace não importado nem registrado em `i18n/index.ts` | ❌ NÃO CORRIGIDO - Terceira confirmação |
+| 231 | `ForcePasswordChange.tsx` confirmado sem i18n | Verificação v1.19: Componente não usa `useTranslation` | ✅ Correto conforme documentado v1.18 |
+| 232 | **NOVO BUG**: Discrepância minLength tradução vs código | `password.json` diz "6 caracteres" mas `ForcePasswordChange.tsx` valida 8 caracteres | ⚠️ **INCONSISTÊNCIA CRÍTICA** |
+| 233 | Diretório `src/schemas` não existe | Verificação v1.19: Listagem confirma diretório inexistente | ✅ Já documentado - PRÉ-REQUISITO |
+| 234 | `src/types` só tem `cookie-consent.d.ts` | Verificação v1.19: Apenas um arquivo no diretório | ✅ Já documentado - PRÉ-REQUISITO |
+| 235 | Mensagem enganosa linhas 396-402 | `process-cancellation` promete cobrança mas não cria fatura | ⚠️ **CRÍTICO** - Já documentado v1.16 |
+| 236 | 3 INNER JOINs em `Financeiro.tsx` | Linhas 276-284: `classes!inner`, `class_participants!inner`, `profiles!inner` | ✅ Já documentado v1.17 |
+| 237 | Texto hardcoded "Cancelamento"/"Regular" | Linhas 581, 722 em `Financeiro.tsx` | ✅ Já documentado v1.17 |
+| 238 | Badge inline só trata `'cancellation'` | Outros valores de `invoice_type` mostram "Regular" como fallback | ⚠️ Implementação incompleta |
+| 239 | Discrepância minLength: tradução=6, código=8 | `password.json` linha 19 diz "6 caracteres", código valida `length < 8` | ⚠️ **NOVO BUG v1.19** - Inconsistência de requisitos |
+| 240 | Documento v1.18 não menciona discrepância minLength | Bug só descoberto em v1.19 | ✅ Documentado nesta versão |
 
 ---
 
@@ -906,8 +918,10 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | **Internacionalização** | | |
 | Arquivos `monthlySubscriptions.json` PT/EN | ❌ Não existem | Criar arquivos conforme seção 8 |
 | Namespace `monthlySubscriptions` em i18n | ❌ Não registrado | Adicionar imports e namespace |
-| Bug: `notifications` no array `ns` | ⚠️ RECLASSIFICADO v1.17 | Traduções em `settings.json` → Remover do array `ns` |
-| Bug: `password.json` sem imports | ❌ NÃO CORRIGIDO | Usado por `ForcePasswordChange.tsx` → Adicionar imports |
+| Bug: `notifications` no array `ns` | ❌ NÃO CORRIGIDO v1.19 | Verificado 3x: ainda está na linha 118 → Remover do array `ns` |
+| Bug: `password.json` sem imports | ❌ NÃO CORRIGIDO v1.19 | Verificado 3x: namespace não registrado → Adicionar imports + registrar |
+| Bug: `ForcePasswordChange.tsx` hardcoded | ❌ NÃO CORRIGIDO v1.19 | Verificado: 30+ strings em português, não usa i18n |
+| **NOVO**: Discrepância minLength | ⚠️ **DESCOBERTO v1.19** | `password.json`="6 caracteres", código=8 → Sincronizar |
 | Texto hardcoded em `Financeiro.tsx` | ❌ NÃO i18n | Linhas 581, 722: "Cancelamento"/"Regular" hardcoded |
 | Mapeamento badge incompleto | ⚠️ INCOMPLETO | Só `'cancellation'` tratado, outros mostram "Regular" |
 | Query com TRÊS INNER JOINs | ⚠️ Não documentado antes | `classes!inner`, `class_participants!inner`, `profiles!inner` |
@@ -968,8 +982,40 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
    - **Opção C - Remover funcionalidade**: Deletar lógica de `shouldCharge` e código relacionado a `'cancellation'`
 
 2. **Bugs de i18n** (não bloqueantes mas devem ser corrigidos):
-   - [ ] **CORRIGIR**: Bug de namespace `notifications` em `i18n/index.ts` (remover do array `ns` ou criar arquivos)
-   - [ ] **CORRIGIR**: `password.json` órfão (adicionar imports em `i18n/index.ts`)
+   - [ ] **CORRIGIR**: Bug de namespace `notifications` em `i18n/index.ts` (remover do array `ns` - traduções estão em `settings.json`)
+   - [ ] **CORRIGIR**: `password.json` órfão - DUAS ações necessárias:
+     - [ ] Adicionar imports de `password.json` PT/EN em `i18n/index.ts`
+     - [ ] Registrar namespace `password` no objeto `resources`
+   - [ ] **CORRIGIR**: `ForcePasswordChange.tsx` não usa i18n:
+     - [ ] Refatorar componente para usar `useTranslation('password')`
+     - [ ] Substituir 30+ strings hardcoded por traduções de `password.json`
+   - [ ] **CORRIGIR**: Discrepância minLength (NOVO v1.19):
+     - [ ] `password.json` diz "6 caracteres" (linha 19 PT/EN)
+     - [ ] `ForcePasswordChange.tsx` valida `length < 8` (linha 41)
+     - [ ] **Recomendado**: Atualizar traduções para "8 caracteres" (mais seguro)
+
+#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.19)
+
+| Bug | v1.17 | v1.18 | v1.19 | Status |
+|-----|-------|-------|-------|--------|
+| `notifications` no array `ns` | Identificado | Identificado | Confirmado | ❌ NÃO CORRIGIDO |
+| `password.json` não registrado | Identificado | Identificado | Confirmado | ❌ NÃO CORRIGIDO |
+| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | ❌ NÃO CORRIGIDO |
+| Discrepância minLength 6 vs 8 | - | - | **DESCOBERTO** | ⚠️ **NOVO BUG** |
+
+**Detalhes da Discrepância minLength (NOVO v1.19)**:
+
+O arquivo `password.json` contém traduções para validação de senha com 6 caracteres:
+- **PT linha 19**: `"minLength": "A senha deve ter pelo menos 6 caracteres"`
+- **EN linha 19**: `"minLength": "Password must be at least 6 characters"`
+
+Porém, `ForcePasswordChange.tsx` valida com 8 caracteres:
+- **Linha 41**: `if (newPassword.length < 8)`
+- **Linha 53**: mensagem hardcoded menciona "8 caracteres"
+
+**Ações necessárias**:
+- **Opção A (NÃO RECOMENDADA)**: Alterar código para 6 caracteres - menos seguro
+- **Opção B (RECOMENDADA)**: Atualizar traduções em `password.json` para "8 caracteres"
 
 #### Fase 1: Banco de Dados (Obrigatório Primeiro)
 - [ ] **Backup do banco** antes de qualquer alteração
@@ -2721,7 +2767,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.18 - Sincronizado com documento principal v1.18
+-- Versão 1.19 - Sincronizado com documento principal v1.19
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -3247,6 +3293,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.16 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 193-204 (`InvoiceStatusBadge` prop inexistente, `Financeiro.tsx` badge inline, bugs i18n NÃO CORRIGIDOS, **MENSAGEM ENGANOSA** em `process-cancellation`, tabela 4.1 com histórico misturado, decisão `getInvoiceTypeBadge` pendente). **DESCOBERTA CRÍTICA**: `process-cancellation` retorna mensagem "cobrança será incluída na próxima fatura" mas **NUNCA CRIA FATURA** - promessa falsa ao usuário. **CORREÇÕES**: Nova seção 4.1.1 "Correções Já Aplicadas" para separar histórico de gaps atuais. Tabela 4.1.2 limpa e reorganizada por categoria (Banco, TypeScript, i18n, Componentes, Features Incompletas). Status de bugs i18n atualizado para "❌ NÃO CORRIGIDO". Fase 0 expandida com documentação completa da mensagem enganosa e 3 opções de resolução. Sincronizado Apêndice A para v1.16. |
 | 1.17 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 205-216 (bug `notifications` reclassificado - traduções em `settings.json`, `password.json` confirmado usado por `ForcePasswordChange.tsx`, **TRÊS INNER JOINs** em query detalhes com `profiles!inner`, texto hardcoded "Cancelamento"/"Regular" em `Financeiro.tsx`, mapeamento badge incompleto - só `'cancellation'` tratado, duplicatas na tabela 4.1.2 e checklist Fase 3, recomendação de reorganização de pontas soltas antigas). **RECLASSIFICAÇÃO**: Bug `notifications` não requer criar arquivos - traduções já existem em `settings.json` → apenas remover do array `ns`. **CONFIRMAÇÃO**: `password.json` usado por `ForcePasswordChange.tsx` (linhas 67, 93, 118) → deve ser registrado. **DESCOBERTA**: Query `loadInvoiceDetails` tem TRÊS `!inner` (não dois): `classes!inner`, `class_participants!inner`, `profiles!inner`. **CORREÇÕES**: Atualizada tabela 4.1.2 com reclassificação de `notifications` e novos gaps. Atualizado checklist Fase 3 com bugs consolidados e i18n incompleto em Financeiro.tsx. Sincronizado Apêndice A para v1.17. |
 | 1.18 | 2025-12-25 | Lovable AI | **CORREÇÃO CRÍTICA DE ERRO FACTUAL**: Pontas soltas #206 e #215 da v1.17 estavam **INCORRETAS**. Documento afirmou que `ForcePasswordChange.tsx` usa `useTranslation('password')` nas linhas 67, 93, 118 - **ISTO É FALSO**. Verificação de código mostra que o componente **NÃO USA i18n** - todo o texto é **HARDCODED em português** (30+ strings). Adicionados: pontas soltas 217-228 (erro crítico factual, texto hardcoded extenso em ForcePasswordChange.tsx, `password.json` é código morto, traduções válidas existentes, duas correções necessárias: registro + refatoração, confirmações via código linhas 67/93/118, reclassificação de #206 e #215, necessidade de refatoração completa, duplicata de "Fim do Documento"). **RECLASSIFICADO**: `password.json` existe com traduções válidas (46 linhas em PT/EN) mas é **IGNORADO** pelo código - são DUAS correções necessárias: 1) Registrar namespace em `i18n/index.ts`, 2) Refatorar `ForcePasswordChange.tsx` para usar `useTranslation('password')`. **CORREÇÕES**: Atualizados status de #206 e #215 para "❌ ERRO v1.18". Atualizado checklist Fase 3 com documentação completa do erro e ações corretivas. Removida duplicata de "Fim do Documento". Sincronizado Apêndice A para v1.18. |
+| 1.19 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 229-240 (confirmação tripla de bugs i18n persistentes, **NOVO BUG** discrepância minLength tradução vs código, confirmações de diretórios/arquivos inexistentes, status de correções pendentes). **DESCOBERTA CRÍTICA**: `password.json` tem "6 caracteres" (linha 19) mas `ForcePasswordChange.tsx` valida `length < 8` (linha 41) - **INCONSISTÊNCIA DE REQUISITOS** de segurança. **CONFIRMAÇÕES v1.19**: Bug `notifications` persiste (linha 118 de i18n/index.ts), `password.json` não importado nem registrado, `ForcePasswordChange.tsx` sem `useTranslation`. **CORREÇÕES**: Atualizada tabela 4.1.2 com 4 bugs de i18n (3 persistentes + 1 novo). Expandida Fase 0 do checklist com ações detalhadas para cada bug e nova tabela de "Verificações Recorrentes" (v1.17→v1.19). Documentadas opções de resolução para discrepância minLength (recomendado: atualizar traduções para 8). Sincronizado Apêndice A para v1.19. |
 
 ---
 

@@ -833,7 +833,7 @@ WHERE is_template = false;
 | 203 | JOIN com `monthly_subscriptions` | Query exemplo faz join com tabela inexistente | ✅ Já documentado (#167) - PRÉ-REQUISITO |
 | 204 | Versão Apêndice A sincronizada | Verificado Apêndice A em v1.15 | ✅ ATUALIZADO v1.16: Sincronizado para v1.16 |
 | 205 | Bug `notifications` reclassificado | Traduções de notificações estão DENTRO de `settings.json`, não arquivo separado | ⚠️ RECLASSIFICADO v1.17: Remover `'notifications'` do array `ns` (não é namespace real) |
-| 206 | `password.json` usado por `ForcePasswordChange.tsx` | Arquivos existem em PT/EN, `ForcePasswordChange.tsx` usa o namespace | ⚠️ Bug real: Adicionar imports em `i18n/index.ts` |
+| 206 | `password.json` afirmado como usado | Documento v1.17 afirmou que `ForcePasswordChange.tsx` usa `useTranslation('password')` | ❌ **ERRO v1.18**: Verificação de código mostra que **NÃO HÁ i18n** no componente - texto é **HARDCODED** em português |
 | 207 | Query tem **TRÊS** INNER JOINs | `loadInvoiceDetails` tem `classes!inner`, `class_participants!inner` E `profiles!inner` (linha 282) | ✅ Documentado v1.17: Terceiro JOIN não estava documentado |
 | 208 | Texto hardcoded em português | `Financeiro.tsx` linhas 581, 722: "Cancelamento"/"Regular" são strings hardcoded | ⚠️ i18n incompleto: Usar traduções do namespace `financial` |
 | 209 | Mapeamento de badge incompleto | `invoice_type` só mapeia `'cancellation'`. `'automated'`, `'manual'`, `'monthly_subscription'` mostram "Regular" | ⚠️ Implementação incompleta: Adicionar cases para todos os tipos |
@@ -842,8 +842,20 @@ WHERE is_template = false;
 | 212 | `AmnestyButton.tsx` depende de faturas inexistentes | Confirmado: busca `invoice_type = 'cancellation'` que nunca são criadas | ✅ Já documentado (#183, #199) |
 | 213 | Checklist 4.2 Fase 3 com duplicatas | Itens de criação de arquivos i18n aparecem múltiplas vezes | ⚠️ CORRIGIDO v1.17: Consolidar duplicatas |
 | 214 | Apêndice A versão desincronizada | Apêndice A diz v1.16, documento é v1.17 | ✅ CORRIGIDO v1.17: Sincronizado |
-| 215 | `ForcePasswordChange.tsx` confirma uso de `password.json` | Linhas 67, 93, 118 usam `useTranslation('password')` | ✅ Confirma que `password.json` DEVE ser registrado |
+| 215 | `ForcePasswordChange.tsx` usa `useTranslation('password')` | Documento v1.17 afirmou que linhas 67, 93, 118 usam i18n | ❌ **ERRO v1.18**: Linhas **NÃO CONTÊM** `useTranslation` - componente usa texto hardcoded em português |
 | 216 | Recomendação: reorganizar pontas soltas | Tabela 4 muito longa (200+ itens), considerar mover 1-168 para apêndice | ⚠️ Recomendação: Melhorar navegabilidade |
+| 217 | **ERRO CRÍTICO FACTUAL** - #206 e #215 incorretos | Documento v1.17 afirmou que `ForcePasswordChange.tsx` usa i18n | ❌ **CORREÇÃO v1.18**: Componente **NÃO USA** `useTranslation` - todo o texto é hardcoded em português |
+| 218 | `ForcePasswordChange.tsx` texto hardcoded extenso | Linhas 43-44, 52-53, 60-62, 122-123, 155-163, 169+: todas strings em português | ⚠️ i18n não implementado: `password.json` existe mas é **código morto** |
+| 219 | `password.json` existe mas é ignorado | Arquivos existem em PT/EN com 46 linhas de traduções válidas | ⚠️ Código morto: Arquivos existem mas não são utilizados |
+| 220 | `password.json` contém traduções válidas | Campos: `title`, `description`, `fields`, `validation`, `buttons`, `messages`, `notice`, `terms` | ✅ Traduções prontas para uso quando componente for refatorado |
+| 221 | Duas correções necessárias para `password.json` | 1) Registrar em `i18n/index.ts` 2) Refatorar `ForcePasswordChange.tsx` para usar i18n | ⚠️ **DUPLA AÇÃO**: Registro + Refatoração |
+| 222 | Confirmação via código: linha 67 de ForcePasswordChange.tsx | Não contém `useTranslation` - contém lógica de validação de senha | ✅ Verificado v1.18 |
+| 223 | Confirmação via código: linha 93 de ForcePasswordChange.tsx | Não contém `useTranslation` - contém lógica de atualização de perfil | ✅ Verificado v1.18 |
+| 224 | Confirmação via código: linha 118 de ForcePasswordChange.tsx | Não contém `useTranslation` - contém redirecionamento | ✅ Verificado v1.18 |
+| 225 | Reclassificar ponta solta #206 | Afirmação original INCORRETA - deve marcar como ERRO | ✅ CORRIGIDO v1.18: Status alterado |
+| 226 | Reclassificar ponta solta #215 | Afirmação original INCORRETA - deve marcar como ERRO | ✅ CORRIGIDO v1.18: Status alterado |
+| 227 | `ForcePasswordChange.tsx` precisa de refatoração completa | Componente funcional mas sem i18n - 30+ strings hardcoded | ⚠️ Ação futura: Refatorar para usar `password.json` |
+| 228 | Duplicata "Fim do Documento" | Linhas 3235 e 3238 ambas têm "Fim do Documento" | ✅ CORRIGIDO v1.18: Duplicata removida |
 
 ---
 
@@ -982,7 +994,12 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
 - [ ] Criar `src/i18n/locales/en/monthlySubscriptions.json` (conforme seção 8)
 - [ ] Registrar namespace `monthlySubscriptions` em `src/i18n/index.ts` (imports + `resources` + `ns`)
 - [ ] **Bug RECLASSIFICADO v1.17**: Remover `'notifications'` do array `ns` em `i18n/index.ts` (traduções estão em `settings.json`)
-- [ ] **Bug**: Adicionar imports de `password.json` em `i18n/index.ts` (usado por `ForcePasswordChange.tsx`)
+- [ ] **CORRIGIDO v1.18 - ERRO de documentação em #206 e #215**: `ForcePasswordChange.tsx` **NÃO USA** `useTranslation`:
+  - Arquivo `password.json` existe em PT/EN com traduções válidas (46 linhas)
+  - Componente usa texto **HARDCODED** em português
+  - **Ação 1**: Adicionar imports de `password.json` em `i18n/index.ts`
+  - **Ação 2**: Refatorar `ForcePasswordChange.tsx` para usar `useTranslation('password')`
+  - **Nota**: Documento v1.17 afirmou incorretamente que o arquivo já usava i18n
 - [ ] **i18n incompleto**: Substituir texto hardcoded "Cancelamento"/"Regular" em `Financeiro.tsx` por traduções
 
 #### Fase 4: Componentes
@@ -2704,7 +2721,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 -- ============================================
 -- SCRIPT COMPLETO DE MIGRAÇÃO
 -- Tutor Flow - Mensalidade Fixa
--- Versão 1.17 - Sincronizado com documento principal v1.17
+-- Versão 1.18 - Sincronizado com documento principal v1.18
 -- ============================================
 
 -- 0. VERIFICAÇÕES PRÉ-MIGRAÇÃO
@@ -3229,10 +3246,8 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.15 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 181-192 (`create-invoice` **SUPORTA** `'cancellation'`, `process-cancellation` não invoca `create-invoice`, `AmnestyButton` busca faturas inexistentes, versão Apêndice A OK, `InvoiceWithStudent` já tem `invoice_type`, tabela 4.1 com duplicatas, checklist Fase 0 incompleto, `notifications` já documentado, `password.json` já documentado, histórico v1.14 OK, `getInvoiceTypeBadge` sem case `'cancellation'`, contradição documento vs código). **RECLASSIFICAÇÃO CRÍTICA**: `invoice_type = 'cancellation'` **NÃO É BUG** - é uma **feature incompleta**. O backend (`create-invoice`) suporta o valor, mas `process-cancellation` não invoca a criação de faturas quando `shouldCharge=true`. **CORREÇÕES**: Atualizada Fase 0 do checklist com contexto completo sobre o suporte de backend. Adicionado case `'cancellation'` no exemplo `getInvoiceTypeBadge` (seção 6.3.2.1). Atualizada seção 0.3 do Apêndice A com documentação de componentes que suportam `'cancellation'`. Expandida tabela 4.1 com status de feature incompleta. Sincronizado Apêndice A para v1.15. |
 | 1.16 | 2025-12-24 | Lovable AI | Adicionados: pontas soltas 193-204 (`InvoiceStatusBadge` prop inexistente, `Financeiro.tsx` badge inline, bugs i18n NÃO CORRIGIDOS, **MENSAGEM ENGANOSA** em `process-cancellation`, tabela 4.1 com histórico misturado, decisão `getInvoiceTypeBadge` pendente). **DESCOBERTA CRÍTICA**: `process-cancellation` retorna mensagem "cobrança será incluída na próxima fatura" mas **NUNCA CRIA FATURA** - promessa falsa ao usuário. **CORREÇÕES**: Nova seção 4.1.1 "Correções Já Aplicadas" para separar histórico de gaps atuais. Tabela 4.1.2 limpa e reorganizada por categoria (Banco, TypeScript, i18n, Componentes, Features Incompletas). Status de bugs i18n atualizado para "❌ NÃO CORRIGIDO". Fase 0 expandida com documentação completa da mensagem enganosa e 3 opções de resolução. Sincronizado Apêndice A para v1.16. |
 | 1.17 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 205-216 (bug `notifications` reclassificado - traduções em `settings.json`, `password.json` confirmado usado por `ForcePasswordChange.tsx`, **TRÊS INNER JOINs** em query detalhes com `profiles!inner`, texto hardcoded "Cancelamento"/"Regular" em `Financeiro.tsx`, mapeamento badge incompleto - só `'cancellation'` tratado, duplicatas na tabela 4.1.2 e checklist Fase 3, recomendação de reorganização de pontas soltas antigas). **RECLASSIFICAÇÃO**: Bug `notifications` não requer criar arquivos - traduções já existem em `settings.json` → apenas remover do array `ns`. **CONFIRMAÇÃO**: `password.json` usado por `ForcePasswordChange.tsx` (linhas 67, 93, 118) → deve ser registrado. **DESCOBERTA**: Query `loadInvoiceDetails` tem TRÊS `!inner` (não dois): `classes!inner`, `class_participants!inner`, `profiles!inner`. **CORREÇÕES**: Atualizada tabela 4.1.2 com reclassificação de `notifications` e novos gaps. Atualizado checklist Fase 3 com bugs consolidados e i18n incompleto em Financeiro.tsx. Sincronizado Apêndice A para v1.17. |
+| 1.18 | 2025-12-25 | Lovable AI | **CORREÇÃO CRÍTICA DE ERRO FACTUAL**: Pontas soltas #206 e #215 da v1.17 estavam **INCORRETAS**. Documento afirmou que `ForcePasswordChange.tsx` usa `useTranslation('password')` nas linhas 67, 93, 118 - **ISTO É FALSO**. Verificação de código mostra que o componente **NÃO USA i18n** - todo o texto é **HARDCODED em português** (30+ strings). Adicionados: pontas soltas 217-228 (erro crítico factual, texto hardcoded extenso em ForcePasswordChange.tsx, `password.json` é código morto, traduções válidas existentes, duas correções necessárias: registro + refatoração, confirmações via código linhas 67/93/118, reclassificação de #206 e #215, necessidade de refatoração completa, duplicata de "Fim do Documento"). **RECLASSIFICADO**: `password.json` existe com traduções válidas (46 linhas em PT/EN) mas é **IGNORADO** pelo código - são DUAS correções necessárias: 1) Registrar namespace em `i18n/index.ts`, 2) Refatorar `ForcePasswordChange.tsx` para usar `useTranslation('password')`. **CORREÇÕES**: Atualizados status de #206 e #215 para "❌ ERRO v1.18". Atualizado checklist Fase 3 com documentação completa do erro e ações corretivas. Removida duplicata de "Fim do Documento". Sincronizado Apêndice A para v1.18. |
 
----
-
-**Fim do Documento**
 ---
 
 **Fim do Documento**

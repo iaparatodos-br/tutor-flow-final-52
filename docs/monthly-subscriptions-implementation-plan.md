@@ -880,6 +880,18 @@ WHERE is_template = false;
 | 250 | Zero referências a `monthly_subscription` no `src/` | Confirmado: Nenhum arquivo referencia novas tabelas | ✅ PRÉ-REQUISITO esperado |
 | 251 | Documento com 3300 linhas | Extensão dificulta navegabilidade | ⚠️ Considerar reorganização |
 | 252 | Histórico de Revisões excessivamente longo | Entradas v1.1-v1.19 ocupam muitas linhas | ⚠️ Considerar compactação |
+| 253 | **QUINTA CONFIRMAÇÃO** bug `notifications` | Verificação v1.21: Linha 118 de `i18n/index.ts` ainda declara `'notifications'` | ❌ NÃO CORRIGIDO - 5ª confirmação |
+| 254 | **QUINTA CONFIRMAÇÃO** `password.json` não registrado | Verificação v1.21: Namespace não importado nem registrado em `i18n/index.ts` | ❌ NÃO CORRIGIDO - 5ª confirmação |
+| 255 | **QUINTA CONFIRMAÇÃO** `ForcePasswordChange.tsx` hardcoded | Verificação v1.21: Componente não usa `useTranslation`, 30+ strings em português | ❌ NÃO CORRIGIDO - 5ª confirmação |
+| 256 | Discrepância minLength - 2ª confirmação | Verificação v1.21: `password.json`="6", código=8 - não sincronizado | ⚠️ NÃO CORRIGIDO - 2ª confirmação |
+| 257 | **CONFIRMAÇÃO VIA SQL**: `monthly_subscription_id` não existe | Query `invoices` confirma coluna não existe | ✅ PRÉ-REQUISITO esperado |
+| 258 | **CONFIRMAÇÃO VIA SQL**: Constraints NOT NULL persistem | `class_id` e `participant_id` ainda NOT NULL em `invoice_classes` | ✅ Já documentado - PRÉ-REQUISITO |
+| 259 | **CONFIRMAÇÃO VIA SQL**: Apenas `manual`(7) e `automated`(2) em `invoice_type` | Zero registros com `'cancellation'` | ✅ Já documentado |
+| 260 | `process-cancellation` mensagem enganosa - 5ª confirmação | Linhas 396-402 prometem cobrança mas não criam fatura | ⚠️ **CRÍTICO** - 5ª confirmação |
+| 261 | **NOVO**: Texto hardcoded "Aulas particulares" | `Financeiro.tsx` linhas 573, 714: fallback hardcoded em português | ❌ NÃO i18n |
+| 262 | **NOVO**: Código duplicado de badge viola DRY | `Financeiro.tsx` linhas 580-582 e 720-722 duplicam lógica idêntica | ⚠️ Refatorar para `getInvoiceTypeBadge()` |
+| 263 | Recomendação de reorganização não implementada | Proposta v1.20 ainda pendente | ⚠️ PENDENTE |
+| 264 | Histórico de revisões continua crescendo | Entradas v1.1-v1.20 = 21 versões detalhadas | ⚠️ Considerar compactação |
 
 ---
 
@@ -1010,13 +1022,15 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
 
 #### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.20)
 
-| Bug | v1.17 | v1.18 | v1.19 | v1.20 | Status |
-|-----|-------|-------|-------|-------|--------|
-| `notifications` no array `ns` | Identificado | Identificado | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
-| `password.json` não registrado | Identificado | Identificado | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
-| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | **4ª confirmação** | ❌ NÃO CORRIGIDO |
-| Discrepância minLength 6 vs 8 | - | - | Descoberto | **Confirmado** | ⚠️ NÃO CORRIGIDO |
-| Mensagem enganosa `process-cancellation` | - | - | - | **4ª confirmação** | ⚠️ **CRÍTICO** |
+| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | Status |
+|-----|-------|-------|-------|-------|-------|--------|
+| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
+| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
+| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
+| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | **2ª confirmação** | ⚠️ NÃO CORRIGIDO |
+| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | **5ª confirmação** | ⚠️ **CRÍTICO** |
+| Texto hardcoded "Aulas particulares" | - | - | - | - | **NOVO** | ❌ NÃO i18n |
+| Código duplicado badge (DRY) | - | - | - | - | **NOVO** | ⚠️ Refatorar |
 
 ---
 
@@ -3333,12 +3347,13 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.18 | 2025-12-25 | Lovable AI | **CORREÇÃO CRÍTICA DE ERRO FACTUAL**: Pontas soltas #206 e #215 da v1.17 estavam **INCORRETAS**. Documento afirmou que `ForcePasswordChange.tsx` usa `useTranslation('password')` nas linhas 67, 93, 118 - **ISTO É FALSO**. Verificação de código mostra que o componente **NÃO USA i18n** - todo o texto é **HARDCODED em português** (30+ strings). Adicionados: pontas soltas 217-228 (erro crítico factual, texto hardcoded extenso em ForcePasswordChange.tsx, `password.json` é código morto, traduções válidas existentes, duas correções necessárias: registro + refatoração, confirmações via código linhas 67/93/118, reclassificação de #206 e #215, necessidade de refatoração completa, duplicata de "Fim do Documento"). **RECLASSIFICADO**: `password.json` existe com traduções válidas (46 linhas em PT/EN) mas é **IGNORADO** pelo código - são DUAS correções necessárias: 1) Registrar namespace em `i18n/index.ts`, 2) Refatorar `ForcePasswordChange.tsx` para usar `useTranslation('password')`. **CORREÇÕES**: Atualizados status de #206 e #215 para "❌ ERRO v1.18". Atualizado checklist Fase 3 com documentação completa do erro e ações corretivas. Removida duplicata de "Fim do Documento". Sincronizado Apêndice A para v1.18. |
 | 1.19 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 229-240 (confirmação tripla de bugs i18n persistentes, **NOVO BUG** discrepância minLength tradução vs código, confirmações de diretórios/arquivos inexistentes, status de correções pendentes). **DESCOBERTA CRÍTICA**: `password.json` tem "6 caracteres" (linha 19) mas `ForcePasswordChange.tsx` valida `length < 8` (linha 41) - **INCONSISTÊNCIA DE REQUISITOS** de segurança. **CONFIRMAÇÕES v1.19**: Bug `notifications` persiste (linha 118 de i18n/index.ts), `password.json` não importado nem registrado, `ForcePasswordChange.tsx` sem `useTranslation`. **CORREÇÕES**: Atualizada tabela 4.1.2 com 4 bugs de i18n (3 persistentes + 1 novo). Expandida Fase 0 do checklist com ações detalhadas para cada bug e nova tabela de "Verificações Recorrentes" (v1.17→v1.19). Documentadas opções de resolução para discrepância minLength (recomendado: atualizar traduções para 8). Sincronizado Apêndice A para v1.19. |
 | 1.20 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 241-252 (4ª confirmação de bugs i18n persistentes, confirmação definitiva de traduções `notifications` em `settings.json` linhas 94-130, análise de contagem de namespaces 22 vs 21, texto hardcoded em Financeiro.tsx reconfirmado, mensagem enganosa em `process-cancellation` 4ª confirmação, documento extenso com 3300 linhas, histórico de revisões longo). **CONFIRMAÇÃO DEFINITIVA v1.20**: Namespace `notifications` é **FALSO** - traduções existem em `settings.json` linhas 94-130, **NÃO** em arquivo separado. Deve ser **REMOVIDO** do array `ns`. **ANÁLISE DE CONTAGEM**: Array `ns` declara 22 namespaces mas apenas 21 existem como arquivos (`notifications` é falso, `password` não registrado). **ATUALIZAÇÃO TABELA v1.17→v1.20**: Expandida tabela de verificações recorrentes com coluna v1.20 e 5ª linha para mensagem enganosa. **RECOMENDAÇÃO DE REORGANIZAÇÃO**: Considerar mover pontas soltas 1-200 para apêndice histórico e compactar entradas do histórico de revisões v1.1-v1.15. Sincronizado Apêndice A para v1.20. |
+| 1.21 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 253-264 (5ª confirmação de bugs i18n persistentes, confirmações via SQL de pré-requisitos de banco, **NOVO** texto hardcoded "Aulas particulares" linhas 573/714, **NOVO** código duplicado de badge linhas 580-582/720-722 viola DRY, status de recomendação de reorganização pendente). **CONFIRMAÇÕES VIA BANCO v1.21**: `monthly_subscription_id` não existe em `invoices`, constraints NOT NULL persistem em `invoice_classes`, apenas `manual`(7) e `automated`(2) em `invoice_type`. **DESCOBERTAS v1.21**: Texto hardcoded "Aulas particulares" não documentado anteriormente (linhas 573, 714 de Financeiro.tsx), código duplicado de badge deve ser refatorado para função `getInvoiceTypeBadge()`. **ATUALIZAÇÃO TABELA v1.17→v1.21**: Expandida tabela de verificações recorrentes com coluna v1.21 e 2 novas linhas (texto hardcoded, violação DRY). Sincronizado Apêndice A para v1.21. |
 
 ---
 
-### Recomendação de Reorganização do Documento (proposta v1.20)
+### Recomendação de Reorganização do Documento (proposta v1.20, pendente v1.21)
 
-O documento atingiu **3300+ linhas**, dificultando navegabilidade e manutenção. Proposta:
+O documento atingiu **3400+ linhas**, dificultando navegabilidade e manutenção. Proposta:
 
 1. **Mover pontas soltas 1-200 para "Apêndice C: Histórico de Pontas Soltas"**
    - Manter apenas pontas soltas ativas (201+) na seção 4
@@ -3352,6 +3367,29 @@ O documento atingiu **3300+ linhas**, dificultando navegabilidade e manutenção
    - Links diretos para seções mais acessadas
    - Tabela de status de pré-requisitos
 
+**Status v1.21**: Proposta **NÃO IMPLEMENTADA** - documento continua crescendo.
+
+---
+
+### Descobertas Novas v1.21
+
+#### Texto Hardcoded "Aulas particulares" (NOVO)
+
+`Financeiro.tsx` contém fallback hardcoded em português:
+- **Linha 573**: `"Aulas particulares"` como descrição fallback
+- **Linha 714**: `"Aulas particulares"` como descrição fallback (duplicado)
+
+**Ação necessária**: Substituir por tradução do namespace `financial`.
+
+#### Violação DRY - Código Duplicado de Badge (NOVO)
+
+`Financeiro.tsx` duplica lógica de badge em dois lugares:
+- **Linhas 580-582**: Badge inline para invoice_type
+- **Linhas 720-722**: Badge inline idêntico (cópia exata)
+
+**Ação necessária**: Refatorar para função `getInvoiceTypeBadge()` conforme documentado na seção 6.3.2.1.
+
 ---
 
 **Fim do Documento**
+<!-- Versão do Apêndice A sincronizada: v1.21 -->

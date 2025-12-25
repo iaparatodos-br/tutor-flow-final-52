@@ -1015,22 +1015,49 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
    - [ ] **CORRIGIR**: `ForcePasswordChange.tsx` não usa i18n:
      - [ ] Refatorar componente para usar `useTranslation('password')`
      - [ ] Substituir 30+ strings hardcoded por traduções de `password.json`
-   - [ ] **CORRIGIR**: Discrepância minLength (NOVO v1.19):
-     - [ ] `password.json` diz "6 caracteres" (linha 19 PT/EN)
-     - [ ] `ForcePasswordChange.tsx` valida `length < 8` (linha 41)
-     - [ ] **Recomendado**: Atualizar traduções para "8 caracteres" (mais seguro)
+    - [ ] **CORRIGIR**: Discrepância minLength (NOVO v1.19):
+      - [ ] `password.json` diz "6 caracteres" (linha 19 PT/EN)
+      - [ ] `ForcePasswordChange.tsx` valida `length < 8` (linha 41)
+      - [ ] **Recomendado**: Atualizar traduções para "8 caracteres" (mais seguro)
+    - [ ] **CORRIGIR**: Discrepância complexity (NOVO v1.22):
+      - [ ] `password.json` diz "letras e números" (linha 20 PT/EN)
+      - [ ] `ForcePasswordChange.tsx` valida maiúscula + minúscula + número (linhas 42-44)
+      - [ ] **Recomendado**: Atualizar traduções para "maiúscula, minúscula e número"
 
-#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.20)
+#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.22)
 
-| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | Status |
-|-----|-------|-------|-------|-------|-------|--------|
-| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
-| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
-| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | **5ª confirmação** | ❌ NÃO CORRIGIDO |
-| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | **2ª confirmação** | ⚠️ NÃO CORRIGIDO |
-| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | **5ª confirmação** | ⚠️ **CRÍTICO** |
-| Texto hardcoded "Aulas particulares" | - | - | - | - | **NOVO** | ❌ NÃO i18n |
-| Código duplicado badge (DRY) | - | - | - | - | **NOVO** | ⚠️ Refatorar |
+| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | v1.22 | Status |
+|-----|-------|-------|-------|-------|-------|-------|--------|
+| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | **6ª confirmação** | ❌ NÃO CORRIGIDO |
+| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | **6ª confirmação** | ❌ NÃO CORRIGIDO |
+| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | 5ª confirmação | **6ª confirmação** | ❌ NÃO CORRIGIDO |
+| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | 2ª confirmação | **3ª confirmação** | ⚠️ NÃO CORRIGIDO |
+| **Discrepância complexity** | - | - | - | - | - | **NOVO v1.22** | ⚠️ **NOVA DESCOBERTA** |
+| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | 5ª confirmação | **6ª confirmação** | ⚠️ **CRÍTICO** |
+| Texto hardcoded "Aulas particulares" | - | - | - | - | NOVO | **2ª confirmação** | ❌ NÃO i18n |
+| Código duplicado badge (DRY) | - | - | - | - | NOVO | **2ª confirmação** | ⚠️ Refatorar |
+
+---
+
+**⚠️ OBSERVAÇÃO CRÍTICA v1.22: PADRÃO DE NÃO-CORREÇÃO**
+
+A tabela de verificações recorrentes mostra que:
+- **8 bugs rastreados** desde v1.17
+- **ZERO correções implementadas** em 6 versões (v1.17→v1.22)
+- Bugs estão sendo **DOCUMENTADOS** mas **NÃO CORRIGIDOS**
+
+**Recomendação URGENTE**: Antes de continuar verificando pontas soltas, implementar correções:
+
+| # | Correção | Arquivo | Ação |
+|---|----------|---------|------|
+| 1 | Remover namespace falso | `i18n/index.ts` | Remover `'notifications'` do array `ns` |
+| 2 | Registrar password.json | `i18n/index.ts` | Adicionar imports e registrar namespace `password` |
+| 3 | Atualizar minLength | `password.json` PT/EN | Alterar "6 caracteres" → "8 caracteres" |
+| 4 | Atualizar complexity | `password.json` PT/EN | Alterar "letras e números" → "maiúscula, minúscula e número" |
+| 5 | Refatorar ForcePasswordChange | `ForcePasswordChange.tsx` | Usar `useTranslation('password')` |
+| 6 | Corrigir mensagem | `process-cancellation/index.ts` | Mensagem honesta ou implementar cobrança |
+| 7 | i18n texto hardcoded | `Financeiro.tsx` | Traduzir "Aulas particulares" |
+| 8 | Refatorar badge | `Financeiro.tsx` | Extrair para `getInvoiceTypeBadge()` |
 
 ---
 
@@ -1068,6 +1095,32 @@ Porém, `ForcePasswordChange.tsx` valida com 8 caracteres:
 **Ações necessárias**:
 - **Opção A (NÃO RECOMENDADA)**: Alterar código para 6 caracteres - menos seguro
 - **Opção B (RECOMENDADA)**: Atualizar traduções em `password.json` para "8 caracteres"
+
+---
+
+**⚠️ DESCOBERTA v1.22: SEGUNDA DISCREPÂNCIA EM `password.json` - complexity**
+
+Além da discrepância de `minLength`, há outra inconsistência crítica:
+
+| Campo | `password.json` (tradução) | `ForcePasswordChange.tsx` (código) |
+|-------|----------------------------|-------------------------------------|
+| `minLength` | "6 caracteres" | Valida `length < 8` |
+| `complexity` | "letras e números" | Exige maiúscula + minúscula + número |
+
+**Evidência no código** (`ForcePasswordChange.tsx` linhas 42-44):
+```typescript
+const hasUpperCase = /[A-Z]/.test(newPassword);
+const hasLowerCase = /[a-z]/.test(newPassword);
+const hasNumber = /[0-9]/.test(newPassword);
+```
+
+**Traduções desatualizadas** (`password.json` linha 20):
+- **PT**: `"complexity": "A senha deve conter letras e números"`
+- **EN**: `"complexity": "Password must contain letters and numbers"`
+
+**Ações necessárias para `password.json` PT/EN**:
+1. **Linha 19**: Alterar "6 caracteres" → "8 caracteres"
+2. **Linha 20**: Alterar "letras e números" → "letra maiúscula, letra minúscula e número"
 
 #### Fase 1: Banco de Dados (Obrigatório Primeiro)
 - [ ] **Backup do banco** antes de qualquer alteração
@@ -3348,6 +3401,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.19 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 229-240 (confirmação tripla de bugs i18n persistentes, **NOVO BUG** discrepância minLength tradução vs código, confirmações de diretórios/arquivos inexistentes, status de correções pendentes). **DESCOBERTA CRÍTICA**: `password.json` tem "6 caracteres" (linha 19) mas `ForcePasswordChange.tsx` valida `length < 8` (linha 41) - **INCONSISTÊNCIA DE REQUISITOS** de segurança. **CONFIRMAÇÕES v1.19**: Bug `notifications` persiste (linha 118 de i18n/index.ts), `password.json` não importado nem registrado, `ForcePasswordChange.tsx` sem `useTranslation`. **CORREÇÕES**: Atualizada tabela 4.1.2 com 4 bugs de i18n (3 persistentes + 1 novo). Expandida Fase 0 do checklist com ações detalhadas para cada bug e nova tabela de "Verificações Recorrentes" (v1.17→v1.19). Documentadas opções de resolução para discrepância minLength (recomendado: atualizar traduções para 8). Sincronizado Apêndice A para v1.19. |
 | 1.20 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 241-252 (4ª confirmação de bugs i18n persistentes, confirmação definitiva de traduções `notifications` em `settings.json` linhas 94-130, análise de contagem de namespaces 22 vs 21, texto hardcoded em Financeiro.tsx reconfirmado, mensagem enganosa em `process-cancellation` 4ª confirmação, documento extenso com 3300 linhas, histórico de revisões longo). **CONFIRMAÇÃO DEFINITIVA v1.20**: Namespace `notifications` é **FALSO** - traduções existem em `settings.json` linhas 94-130, **NÃO** em arquivo separado. Deve ser **REMOVIDO** do array `ns`. **ANÁLISE DE CONTAGEM**: Array `ns` declara 22 namespaces mas apenas 21 existem como arquivos (`notifications` é falso, `password` não registrado). **ATUALIZAÇÃO TABELA v1.17→v1.20**: Expandida tabela de verificações recorrentes com coluna v1.20 e 5ª linha para mensagem enganosa. **RECOMENDAÇÃO DE REORGANIZAÇÃO**: Considerar mover pontas soltas 1-200 para apêndice histórico e compactar entradas do histórico de revisões v1.1-v1.15. Sincronizado Apêndice A para v1.20. |
 | 1.21 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 253-264 (5ª confirmação de bugs i18n persistentes, confirmações via SQL de pré-requisitos de banco, **NOVO** texto hardcoded "Aulas particulares" linhas 573/714, **NOVO** código duplicado de badge linhas 580-582/720-722 viola DRY, status de recomendação de reorganização pendente). **CONFIRMAÇÕES VIA BANCO v1.21**: `monthly_subscription_id` não existe em `invoices`, constraints NOT NULL persistem em `invoice_classes`, apenas `manual`(7) e `automated`(2) em `invoice_type`. **DESCOBERTAS v1.21**: Texto hardcoded "Aulas particulares" não documentado anteriormente (linhas 573, 714 de Financeiro.tsx), código duplicado de badge deve ser refatorado para função `getInvoiceTypeBadge()`. **ATUALIZAÇÃO TABELA v1.17→v1.21**: Expandida tabela de verificações recorrentes com coluna v1.21 e 2 novas linhas (texto hardcoded, violação DRY). Sincronizado Apêndice A para v1.21. |
+| 1.22 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 265-276 (6ª confirmação de bugs i18n persistentes, **NOVA** discrepância tradução `complexity` - `password.json` diz "letras e números" mas código exige maiúscula+minúscula+número, confirmações via SQL, status de reorganização pendente). **DESCOBERTA CRÍTICA v1.22**: `password.json` tem **DUAS** discrepâncias em relação ao código: `minLength` (6 vs 8) E `complexity` (texto simples vs. requisitos complexos). **OBSERVAÇÃO CRÍTICA v1.22**: 8 bugs rastreados desde v1.17, **ZERO corrigidos** em 6 versões - padrão de não-correção documentado com tabela de ações recomendadas. **CONTAGEM v1.22**: 22 arquivos em `locales/pt`, 22 namespaces no array `ns` (1 falso + 1 não registrado). Expandida tabela de verificações recorrentes para v1.22 com 8 linhas e coluna adicional. Sincronizado Apêndice A para v1.22. |
 
 ---
 
@@ -3391,5 +3445,24 @@ O documento atingiu **3400+ linhas**, dificultando navegabilidade e manutenção
 
 ---
 
+### Pontas Soltas 265-276 (v1.22)
+
+| # | Descrição | Status |
+|---|-----------|--------|
+| 265 | **SEXTA CONFIRMAÇÃO** bug `notifications` no array `ns` | ❌ NÃO CORRIGIDO - 6ª confirmação |
+| 266 | **SEXTA CONFIRMAÇÃO** `password.json` não registrado em `i18n/index.ts` | ❌ NÃO CORRIGIDO - 6ª confirmação |
+| 267 | **SEXTA CONFIRMAÇÃO** `ForcePasswordChange.tsx` usa texto hardcoded, não i18n | ❌ NÃO CORRIGIDO - 6ª confirmação |
+| 268 | Discrepância minLength: tradução=6, código=8 - 3ª confirmação | ⚠️ NÃO CORRIGIDO |
+| 269 | Mensagem enganosa `process-cancellation`: promete cobrança que nunca ocorre - 6ª confirmação | ⚠️ **CRÍTICO** - 6ª confirmação |
+| 270 | **NOVO BUG v1.22**: Discrepância tradução `complexity` - `password.json` diz "letras e números" mas código exige maiúscula+minúscula+número | ⚠️ **NOVA DESCOBERTA** |
+| 271 | Confirmação: 22 arquivos JSON em `locales/pt`, inclui `password.json` | ✅ Arquivo existe |
+| 272 | **SQL v1.22**: Constraints NOT NULL persistem em `invoice_classes` (`class_id`, `participant_id`) | ✅ Confirmado via query |
+| 273 | **SQL v1.22**: Apenas `'manual'`(7) e `'automated'`(2) encontrados em `invoice_type` | ✅ Confirmado |
+| 274 | Documento com 3400+ linhas | ⚠️ Reorganização AINDA pendente |
+| 275 | Histórico de revisões com 22 entradas detalhadas (v1.0-v1.21) | ⚠️ Compactação pendente |
+| 276 | Tabela de verificações rastreia 8 bugs, **ZERO corrigidos** em 6 versões | ❌ **PADRÃO DE NÃO-CORREÇÃO** |
+
+---
+
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.21 -->
+<!-- Versão do Apêndice A sincronizada: v1.22 -->

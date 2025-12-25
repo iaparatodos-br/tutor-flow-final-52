@@ -395,11 +395,11 @@ serve(async (req) => {
       dependent_name: dependentName,
       message: isStudentLeavingGroupClass
         ? (shouldCharge 
-          ? `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula. A cobrança será incluída na próxima fatura.` 
-          : `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula sem cobrança`)
+          ? `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula. Taxa de cancelamento será aplicada.` 
+          : `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula sem cobrança.`)
         : (shouldCharge 
-          ? 'Aula cancelada. A cobrança será incluída na próxima fatura mensal.' 
-          : 'Aula cancelada sem cobrança')
+          ? 'Aula cancelada. Taxa de cancelamento será aplicada.' 
+          : 'Aula cancelada sem cobrança.')
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

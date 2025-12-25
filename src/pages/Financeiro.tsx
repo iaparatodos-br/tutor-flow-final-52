@@ -22,6 +22,17 @@ import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useTranslation } from "react-i18next";
+
+// Helper function to get invoice type badge - DRY principle
+const getInvoiceTypeBadge = (invoiceType: string | undefined, t: (key: string) => string) => {
+  const isCancellation = invoiceType === 'cancellation';
+  return (
+    <Badge variant={isCancellation ? 'destructive' : 'default'}>
+      {isCancellation ? t('financial:invoiceTypes.cancellation') : t('financial:invoiceTypes.regular')}
+    </Badge>
+  );
+};
 interface InvoiceWithStudent {
   id: string;
   amount: number;
@@ -52,6 +63,7 @@ interface ExpenseSummary {
   count: number;
 }
 export default function Financeiro() {
+  const { t } = useTranslation('financial');
   const {
     profile,
     isProfessor,
@@ -570,16 +582,14 @@ export default function Financeiro() {
                             </TableCell>
                             <TableCell>
                               <div>
-                                <p>{invoice.description || "Aulas particulares"}</p>
+                                <p>{invoice.description || t('defaultDescription')}</p>
                                 {invoice.original_amount && invoice.original_amount !== invoice.amount && <p className="text-xs text-muted-foreground">
-                                    Valor original: {formatCurrency(Number(invoice.original_amount))}
+                                    {t('originalAmount', { amount: formatCurrency(Number(invoice.original_amount)) })}
                                   </p>}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant={invoice.invoice_type === 'cancellation' ? 'destructive' : 'default'}>
-                                {invoice.invoice_type === 'cancellation' ? 'Cancelamento' : 'Regular'}
-                              </Badge>
+                              {getInvoiceTypeBadge(invoice.invoice_type, t)}
                             </TableCell>
                             <TableCell className="font-bold">
                               {formatCurrency(Number(invoice.amount))}
@@ -711,16 +721,14 @@ export default function Financeiro() {
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p>{invoice.description || "Aulas particulares"}</p>
+                            <p>{invoice.description || t('defaultDescription')}</p>
                             {invoice.original_amount && invoice.original_amount !== invoice.amount && <p className="text-xs text-muted-foreground">
-                                Valor original: {formatCurrency(Number(invoice.original_amount))}
+                                {t('originalAmount', { amount: formatCurrency(Number(invoice.original_amount)) })}
                               </p>}
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={invoice.invoice_type === 'cancellation' ? 'destructive' : 'default'}>
-                            {invoice.invoice_type === 'cancellation' ? 'Cancelamento' : 'Regular'}
-                          </Badge>
+                          {getInvoiceTypeBadge(invoice.invoice_type, t)}
                         </TableCell>
                         <TableCell className="font-bold">
                           {formatCurrency(Number(invoice.amount))}

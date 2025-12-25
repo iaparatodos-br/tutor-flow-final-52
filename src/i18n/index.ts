@@ -24,6 +24,7 @@ import ptAmnesty from './locales/pt/amnesty.json';
 import ptAvailability from './locales/pt/availability.json';
 import ptLegal from './locales/pt/legal.json';
 import ptHistory from './locales/pt/history.json';
+import ptPassword from './locales/pt/password.json';
 
 import enCommon from './locales/en/common.json';
 import enNavigation from './locales/en/navigation.json';
@@ -46,6 +47,7 @@ import enAmnesty from './locales/en/amnesty.json';
 import enAvailability from './locales/en/availability.json';
 import enLegal from './locales/en/legal.json';
 import enHistory from './locales/en/history.json';
+import enPassword from './locales/en/password.json';
 
 const resources = {
   pt: {
@@ -70,6 +72,7 @@ const resources = {
     availability: ptAvailability,
     legal: ptLegal,
     history: ptHistory,
+    password: ptPassword,
   },
   en: {
     common: enCommon,
@@ -93,6 +96,7 @@ const resources = {
     availability: enAvailability,
     legal: enLegal,
     history: enHistory,
+    password: enPassword,
   },
 };
 
@@ -115,7 +119,7 @@ i18n
       escapeValue: false,
     },
 
-    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive', 'billing', 'services', 'plans', 'reports', 'amnesty', 'availability', 'legal', 'history'],
+    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'cancellation', 'archive', 'billing', 'services', 'plans', 'reports', 'amnesty', 'availability', 'legal', 'history', 'password'],
     defaultNS: 'common',
 
     // Handler para keys faltando

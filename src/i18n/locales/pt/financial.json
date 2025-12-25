@@ -30,6 +30,13 @@
   "dueDate": "Vencimento",
   "regularType": "Regular",
   "cancellationType": "Cancelamento",
+  "defaultDescription": "Aulas particulares",
+  "invoiceTypes": {
+    "regular": "Regular",
+    "cancellation": "Cancelamento",
+    "automated": "Automática",
+    "manual": "Manual"
+  },
   "originalAmount": "Valor original: {amount}",
   "groups": {
     "students": "Alunos",

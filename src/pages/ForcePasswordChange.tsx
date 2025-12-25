@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 export default function ForcePasswordChange() {
+  const { t } = useTranslation('password');
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -40,8 +42,8 @@ export default function ForcePasswordChange() {
     
     if (newPassword.length < 8) {
       toast({
-        title: "Erro",
-        description: "A nova senha deve ter pelo menos 8 caracteres",
+        title: t('messages.error'),
+        description: t('validation.minLength'),
         variant: "destructive",
       });
       return;
@@ -49,8 +51,8 @@ export default function ForcePasswordChange() {
 
     if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
       toast({
-        title: "Erro", 
-        description: "A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número",
+        title: t('messages.error'), 
+        description: t('validation.complexity'),
         variant: "destructive",
       });
       return;
@@ -58,8 +60,8 @@ export default function ForcePasswordChange() {
 
     if (newPassword !== confirmPassword) {
       toast({
-        title: "Erro", 
-        description: "As senhas não coincidem",
+        title: t('messages.error'), 
+        description: t('validation.match'),
         variant: "destructive",
       });
       return;
@@ -118,10 +120,8 @@ export default function ForcePasswordChange() {
       }
 
       toast({
-        title: "Sucesso",
-        description: isInvitedUser 
-          ? "Senha criada com sucesso! Redirecionando..."
-          : "Senha alterada com sucesso! Redirecionando...",
+        title: t('messages.success'),
+        description: t('messages.successDescription'),
       });
 
       console.log('ForcePasswordChange: Senha atualizada, redirecionando...', {
@@ -139,8 +139,8 @@ export default function ForcePasswordChange() {
     } catch (error: any) {
       console.error("Error changing password:", error);
       toast({
-        title: "Erro",
-        description: error.message || "Erro ao alterar senha",
+        title: t('messages.error'),
+        description: error.message || t('messages.errorDescription'),
         variant: "destructive",
       });
     } finally {
@@ -153,24 +153,21 @@ export default function ForcePasswordChange() {
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-2 text-center">
           <CardTitle className="text-2xl font-bold">
-            {isInvitedUser ? "Criar Sua Senha" : "Alterar Senha Obrigatória"}
+            {isInvitedUser ? t('title.invited') : t('title.change')}
           </CardTitle>
           <CardDescription>
-            {isInvitedUser 
-              ? "Bem-vindo! Para acessar o sistema, é necessário criar sua senha."
-              : "Por segurança, é necessário criar uma nova senha na primeira vez que você acessa o sistema."
-            }
+            {isInvitedUser ? t('description.invited') : t('description.change')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handlePasswordChange} className="space-y-4">
             {!isInvitedUser && (
               <div className="space-y-2">
-                <Label htmlFor="current-password">Senha Atual</Label>
+                <Label htmlFor="current-password">{t('fields.currentPassword')}</Label>
                 <Input
                   id="current-password"
                   type="password"
-                  placeholder="Digite sua senha atual"
+                  placeholder={t('fields.currentPasswordPlaceholder')}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
@@ -179,11 +176,11 @@ export default function ForcePasswordChange() {
             )}
             
             <div className="space-y-2">
-              <Label htmlFor="new-password">Nova Senha</Label>
+              <Label htmlFor="new-password">{t('fields.newPassword')}</Label>
               <Input
                 id="new-password"
                 type="password"
-                placeholder="Mínimo 8 caracteres com maiúscula, minúscula e número"
+                placeholder={t('fields.newPasswordPlaceholder')}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
@@ -192,11 +189,11 @@ export default function ForcePasswordChange() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirmar Nova Senha</Label>
+              <Label htmlFor="confirm-password">{t('fields.confirmPassword')}</Label>
               <Input
                 id="confirm-password"
                 type="password"
-                placeholder="Digite novamente sua nova senha"
+                placeholder={t('fields.confirmPasswordPlaceholder')}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -216,25 +213,29 @@ export default function ForcePasswordChange() {
                   htmlFor="terms-acceptance" 
                   className="text-sm leading-tight cursor-pointer"
                 >
-                  Li e concordo com os{' '}
-                  <a 
-                    href="/legal" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-medium"
-                  >
-                    Termos de Uso
-                  </a>
-                  {' '}e{' '}
-                  <a 
-                    href="/legal" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-medium"
-                  >
-                    Política de Privacidade
-                  </a>
-                  {' '}da plataforma
+                  {t('terms.acceptance', {
+                    termsLink: `<a href="/legal" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline font-medium">${t('terms.termsOfService')}</a>`,
+                    privacyLink: `<a href="/legal" target="_blank" rel="noopener noreferrer" class="text-primary hover:underline font-medium">${t('terms.privacyPolicy')}</a>`
+                  }).split(/(<a[^>]*>.*?<\/a>)/g).map((part, index) => {
+                    if (part.startsWith('<a')) {
+                      const hrefMatch = part.match(/href="([^"]*)"/);
+                      const textMatch = part.match(/>([^<]*)</);
+                      if (hrefMatch && textMatch) {
+                        return (
+                          <a
+                            key={index}
+                            href={hrefMatch[1]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline font-medium"
+                          >
+                            {textMatch[1]}
+                          </a>
+                        );
+                      }
+                    }
+                    return part;
+                  })}
                 </Label>
               </div>
             )}
@@ -251,18 +252,15 @@ export default function ForcePasswordChange() {
               }
             >
               {isLoading ? 
-                (isInvitedUser ? "Criando..." : "Alterando...") : 
-                (isInvitedUser ? "Criar Senha" : "Alterar Senha")
+                (isInvitedUser ? t('buttons.creating') : t('buttons.changing')) : 
+                (isInvitedUser ? t('buttons.create') : t('buttons.change'))
               }
             </Button>
           </form>
 
           <div className="mt-4 p-3 bg-muted rounded-md">
             <p className="text-sm text-muted-foreground">
-              <strong>Importante:</strong> {isInvitedUser 
-                ? "É necessário criar sua senha para acessar o sistema. Você será redirecionado após criar sua senha com sucesso."
-                : "Esta alteração é obrigatória e não pode ser ignorada. Você será redirecionado para o sistema após alterar sua senha com sucesso."
-              }
+              <strong>{t('notice.title')}:</strong> {t('notice.description')}
             </p>
           </div>
         </CardContent>

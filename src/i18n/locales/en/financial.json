@@ -30,6 +30,13 @@
   "dueDate": "Due Date",
   "regularType": "Regular",
   "cancellationType": "Cancellation",
+  "defaultDescription": "Private lessons",
+  "invoiceTypes": {
+    "regular": "Regular",
+    "cancellation": "Cancellation",
+    "automated": "Automated",
+    "manual": "Manual"
+  },
   "originalAmount": "Original amount: {amount}",
   "groups": {
     "students": "Students",

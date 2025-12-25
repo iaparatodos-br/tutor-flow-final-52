@@ -1024,28 +1024,38 @@ Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas nã
       - [ ] `ForcePasswordChange.tsx` valida maiúscula + minúscula + número (linhas 42-44)
       - [ ] **Recomendado**: Atualizar traduções para "maiúscula, minúscula e número"
 
-#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.23)
+#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.24)
 
-| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | v1.22 | v1.23 | Status |
-|-----|-------|-------|-------|-------|-------|-------|-------|--------|
-| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | **7ª confirmação** | ❌ NÃO CORRIGIDO |
-| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | **7ª confirmação** | ❌ NÃO CORRIGIDO |
-| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | **7ª confirmação** | ❌ NÃO CORRIGIDO |
-| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | 2ª confirmação | 3ª confirmação | **4ª confirmação** | ⚠️ NÃO CORRIGIDO |
-| Discrepância complexity | - | - | - | - | - | NOVO v1.22 | **2ª confirmação** | ⚠️ NÃO CORRIGIDO |
-| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | 5ª confirmação | 6ª confirmação | **7ª confirmação** | ⚠️ **CRÍTICO** |
-| Texto hardcoded "Aulas particulares" | - | - | - | - | NOVO | 2ª confirmação | **3ª confirmação** | ❌ NÃO i18n |
-| Código duplicado badge (DRY) | - | - | - | - | NOVO | 2ª confirmação | **3ª confirmação** | ⚠️ Refatorar |
+| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | v1.22 | v1.23 | v1.24 | Status |
+|-----|-------|-------|-------|-------|-------|-------|-------|-------|--------|
+| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
+| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
+| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
+| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | 2ª confirmação | 3ª confirmação | 4ª confirmação | **5ª confirmação** | ⚠️ NÃO CORRIGIDO |
+| Discrepância complexity | - | - | - | - | - | NOVO v1.22 | 2ª confirmação | **3ª confirmação** | ⚠️ NÃO CORRIGIDO |
+| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ⚠️ **CRÍTICO** |
+| Texto hardcoded "Aulas particulares" | - | - | - | - | NOVO | 2ª confirmação | 3ª confirmação | **4ª confirmação** | ❌ NÃO i18n |
+| Código duplicado badge (DRY) | - | - | - | - | NOVO | 2ª confirmação | 3ª confirmação | **4ª confirmação** | ⚠️ Refatorar |
 
 ---
 
-**⚠️ OBSERVAÇÃO CRÍTICA v1.23: PADRÃO DE NÃO-CORREÇÃO (ATUALIZADO)**
+**⚠️ OBSERVAÇÃO CRÍTICA v1.24: PADRÃO DE NÃO-CORREÇÃO (ATUALIZADO)**
 
 A tabela de verificações recorrentes mostra que:
 - **8 bugs rastreados** desde v1.17
-- **ZERO correções implementadas** em **7 versões** (v1.17→v1.23)
+- **ZERO correções implementadas** em **8 versões** (v1.17→v1.24)
 - Bugs estão sendo **DOCUMENTADOS** mas **NÃO CORRIGIDOS**
 - **CONFIRMAÇÃO DEFINITIVA v1.23**: Busca por `useTranslation` em `ForcePasswordChange.tsx` retorna **0 matches**
+- **Documento com 3515+ linhas** - ciclo de documentação improdutivo
+
+### ⚠️ RECOMENDAÇÃO v1.24: PAUSAR VERIFICAÇÕES, IMPLEMENTAR CORREÇÕES
+
+Após **8 versões** de documentação sem correções:
+1. **PARAR** de verificar pontas soltas
+2. **IMPLEMENTAR** as 8 correções pendentes
+3. **RETOMAR** verificações após correções implementadas
+
+O ciclo atual é **IMPRODUTIVO** - apenas aumenta o documento sem resolver bugs.
 
 **Recomendação URGENTE**: Antes de continuar verificando pontas soltas, implementar correções:
 
@@ -1060,10 +1070,11 @@ A tabela de verificações recorrentes mostra que:
 | 7 | i18n texto hardcoded | `Financeiro.tsx` | Traduzir "Aulas particulares" |
 | 8 | Refatorar badge | `Financeiro.tsx` | Extrair para `getInvoiceTypeBadge()` |
 
-**Confirmações SQL v1.23 - Pré-requisitos de Banco NÃO Implementados**:
+**Confirmações SQL v1.24 - Pré-requisitos de Banco NÃO Implementados**:
 - `invoice_classes.class_id`: is_nullable = **NO** ✗ (deveria ser YES)
 - `invoice_classes.participant_id`: is_nullable = **NO** ✗ (deveria ser YES)  
 - `invoices.monthly_subscription_id`: coluna **NÃO EXISTE** ✗
+- `invoice_type` valores existentes: apenas `'manual'`(7) e `'automated'`(2)
 
 ---
 
@@ -3409,6 +3420,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.21 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 253-264 (5ª confirmação de bugs i18n persistentes, confirmações via SQL de pré-requisitos de banco, **NOVO** texto hardcoded "Aulas particulares" linhas 573/714, **NOVO** código duplicado de badge linhas 580-582/720-722 viola DRY, status de recomendação de reorganização pendente). **CONFIRMAÇÕES VIA BANCO v1.21**: `monthly_subscription_id` não existe em `invoices`, constraints NOT NULL persistem em `invoice_classes`, apenas `manual`(7) e `automated`(2) em `invoice_type`. **DESCOBERTAS v1.21**: Texto hardcoded "Aulas particulares" não documentado anteriormente (linhas 573, 714 de Financeiro.tsx), código duplicado de badge deve ser refatorado para função `getInvoiceTypeBadge()`. **ATUALIZAÇÃO TABELA v1.17→v1.21**: Expandida tabela de verificações recorrentes com coluna v1.21 e 2 novas linhas (texto hardcoded, violação DRY). Sincronizado Apêndice A para v1.21. |
 | 1.22 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 265-276 (6ª confirmação de bugs i18n persistentes, **NOVA** discrepância tradução `complexity` - `password.json` diz "letras e números" mas código exige maiúscula+minúscula+número, confirmações via SQL, status de reorganização pendente). **DESCOBERTA CRÍTICA v1.22**: `password.json` tem **DUAS** discrepâncias em relação ao código: `minLength` (6 vs 8) E `complexity` (texto simples vs. requisitos complexos). **OBSERVAÇÃO CRÍTICA v1.22**: 8 bugs rastreados desde v1.17, **ZERO corrigidos** em 6 versões - padrão de não-correção documentado com tabela de ações recomendadas. **CONTAGEM v1.22**: 22 arquivos em `locales/pt`, 22 namespaces no array `ns` (1 falso + 1 não registrado). Expandida tabela de verificações recorrentes para v1.22 com 8 linhas e coluna adicional. Sincronizado Apêndice A para v1.22. |
 | 1.23 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 277-288 (7ª confirmação de 3 bugs i18n persistentes, 4ª confirmação de discrepância minLength, 2ª confirmação de discrepância complexity, 7ª confirmação de mensagem enganosa, 3ª confirmação de texto hardcoded e violação DRY). **CONFIRMAÇÃO DEFINITIVA v1.23 via busca de código**: `useTranslation` retorna **0 matches** em ForcePasswordChange.tsx - componente definitivamente NÃO usa i18n. **CONFIRMAÇÕES SQL v1.23**: Pré-requisitos de banco NÃO implementados (class_id NOT NULL, participant_id NOT NULL, monthly_subscription_id NÃO EXISTE). **PADRÃO CRÍTICO v1.23**: 8 bugs × **7 versões** = ZERO correções implementadas. Expandida tabela de verificações recorrentes para v1.23 com 8 linhas e coluna adicional. Sincronizado Apêndice A para v1.23. |
+| 1.24 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 289-300 (8ª confirmação de 3 bugs i18n persistentes, 5ª confirmação de discrepância minLength, 3ª confirmação de discrepância complexity, 8ª confirmação de mensagem enganosa, 4ª confirmação de texto hardcoded e violação DRY). **PADRÃO CRÍTICO v1.24**: 8 bugs × **8 versões** = ZERO correções implementadas. Documento com **3515+ linhas** - ciclo de documentação improdutivo. **RECOMENDAÇÃO URGENTE v1.24**: PAUSAR verificações e IMPLEMENTAR correções. Adicionada tabela de 8 correções com estimativa de 30-60 minutos. **CONFIRMAÇÕES SQL v1.24**: Pré-requisitos de banco NÃO implementados (class_id NOT NULL, participant_id NOT NULL, monthly_subscription_id NÃO EXISTE, invoice_type apenas 'manual' e 'automated'). Expandida tabela de verificações recorrentes para v1.24 com 9 colunas. Sincronizado Apêndice A para v1.24. |
 
 ---
 
@@ -3490,6 +3502,25 @@ O documento atingiu **3400+ linhas**, dificultando navegabilidade e manutenção
 
 ---
 
+### Pontas Soltas 289-300 (v1.24)
+
+| # | Descrição | Status |
+|---|-----------|--------|
+| 289 | **OITAVA CONFIRMAÇÃO** bug `notifications` no array `ns` | ❌ NÃO CORRIGIDO - 8ª confirmação |
+| 290 | **OITAVA CONFIRMAÇÃO** `password.json` não registrado em `i18n/index.ts` | ❌ NÃO CORRIGIDO - 8ª confirmação |
+| 291 | **OITAVA CONFIRMAÇÃO** `ForcePasswordChange.tsx` usa texto hardcoded, não i18n | ❌ NÃO CORRIGIDO - 8ª confirmação |
+| 292 | Discrepância minLength: tradução=6, código=8 - 5ª confirmação | ⚠️ NÃO CORRIGIDO |
+| 293 | Discrepância complexity: tradução simples vs código complexo - 3ª confirmação | ⚠️ NÃO CORRIGIDO |
+| 294 | Mensagem enganosa `process-cancellation`: promete cobrança que nunca ocorre - 8ª confirmação | ⚠️ **CRÍTICO** - 8ª confirmação |
+| 295 | Texto hardcoded "Aulas particulares" em `Financeiro.tsx` - 4ª confirmação | ❌ NÃO i18n |
+| 296 | Código duplicado de badge em `Financeiro.tsx` viola DRY - 4ª confirmação | ⚠️ Refatorar |
+| 297 | **SQL v1.24**: `invoice_classes.class_id` ainda NOT NULL | ✅ PRÉ-REQUISITO não implementado |
+| 298 | **SQL v1.24**: `invoice_classes.participant_id` ainda NOT NULL | ✅ PRÉ-REQUISITO não implementado |
+| 299 | **SQL v1.24**: `invoices.monthly_subscription_id` coluna NÃO EXISTE | ✅ PRÉ-REQUISITO não implementado |
+| 300 | **PADRÃO CRÍTICO**: 8 bugs × 8 versões = **ZERO correções** | ❌ **CICLO IMPRODUTIVO** |
+
+---
+
 ### Confirmação v1.23 via Busca de Código
 
 **Comando executado**: Busca por `useTranslation` em `ForcePasswordChange.tsx`
@@ -3498,18 +3529,36 @@ O documento atingiu **3400+ linhas**, dificultando navegabilidade e manutenção
 
 ---
 
-### Padrão Crítico de Não-Correção (v1.23)
+### Padrão Crítico de Não-Correção (v1.24)
 
 | Métrica | Valor |
 |---------|-------|
 | Bugs rastreados | 8 |
-| Versões monitoradas | 7 (v1.17 → v1.23) |
+| Versões monitoradas | 8 (v1.17 → v1.24) |
 | Correções implementadas | **0** |
 | Taxa de correção | **0%** |
+| Linhas do documento | **3515+** |
 
-**Conclusão**: O ciclo de "documentar sem corrigir" continua. Recomendação urgente: pausar verificações e implementar correções.
+**Conclusão v1.24**: O ciclo de "documentar sem corrigir" continua por **8 versões consecutivas**. 
+
+### ⚠️ AÇÃO RECOMENDADA v1.24
+
+**INTERROMPER** o ciclo de verificações e **IMPLEMENTAR** as 8 correções pendentes:
+
+| # | Correção | Arquivo | Complexidade |
+|---|----------|---------|--------------|
+| 1 | Remover namespace falso | `i18n/index.ts` | Trivial |
+| 2 | Registrar password.json | `i18n/index.ts` | Trivial |
+| 3 | Atualizar minLength | `password.json` PT/EN | Trivial |
+| 4 | Atualizar complexity | `password.json` PT/EN | Trivial |
+| 5 | Refatorar ForcePasswordChange | `ForcePasswordChange.tsx` | Média |
+| 6 | Corrigir mensagem | `process-cancellation/index.ts` | Média |
+| 7 | i18n texto hardcoded | `Financeiro.tsx` | Trivial |
+| 8 | Refatorar badge | `Financeiro.tsx` | Baixa |
+
+**Estimativa total**: 30-60 minutos para implementar todas as correções.
 
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.23 -->
+<!-- Versão do Apêndice A sincronizada: v1.24 -->

@@ -20,6 +20,7 @@
 4. [Pontas Soltas e Soluções](#4-pontas-soltas-e-soluções)
    - 4.1 [Estado Atual vs. Planejado](#41-estado-atual-vs-planejado)
    - 4.2 [Checklist de Pré-Implementação](#42-checklist-de-pré-implementação)
+   - 4.3 [Resumo de Pré-Requisitos para Implementação](#43-resumo-de-pré-requisitos-para-implementação)
 5. [Casos de Uso Adicionais](#5-casos-de-uso-adicionais)
    - 5.1 [Interfaces TypeScript](#51-interfaces-typescript)
    - 5.2 [Histórico de Mudanças na Mensalidade](#52-histórico-de-mudanças-na-mensalidade)
@@ -958,117 +959,41 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | `StudentSubscriptionSelect` | ❌ Não existe | Criar componente |
 | **Atualizações em Código Existente** | | |
 | `InvoiceStatusBadge.tsx` prop `invoiceType` | ❌ Não existe | Implementar conforme seção 6.3.1 |
-| Função `getInvoiceTypeBadge` | ❌ Não existe | Criar conforme seção 6.3.2.1 |
+| Função `getInvoiceTypeBadge` | ✅ Criada v1.25 | Adicionar case `monthly_subscription` |
 | Query INNER JOIN em `Financeiro.tsx` | ⚠️ Usa `!inner` | Alterar para LEFT JOIN |
-| `Financeiro.tsx` badge inline vs função | ⚠️ Usa inline | DECISÃO: Refatorar ou aceitar inline |
+| `Financeiro.tsx` badge inline vs função | ✅ Refatorado v1.25 | Extraída para `getInvoiceTypeBadge()` |
 | `StudentDashboard` seção "Meus Planos" | ❌ Não existe | Criar com suporte a múltiplos professores |
 | `automated-billing` verifica mensalidade | ❌ Não implementado | Adicionar verificação |
 | **Features Incompletas** | | |
 | `process-cancellation` não cria faturas | ⚠️ Incompleto | DECISÃO: Completar ou remover código |
-| **MENSAGEM ENGANOSA** em cancelamentos | ⚠️ **CRÍTICO** | Ver detalhes na Fase 0 abaixo |
+| Mensagem enganosa em cancelamentos | ✅ **CORRIGIDO v1.25** | Mensagem agora é honesta |
 | `AmnestyButton` busca faturas inexistentes | ⚠️ Código inútil | Depende de completar fluxo |
+| **Gaps para Implementação v1.26** | | |
+| `getInvoiceTypeBadge` sem case `monthly_subscription` | ⚠️ Gap | Adicionar case no switch |
+| Interface `InvoiceWithStudent` incompleta | ⚠️ Gap | Adicionar `monthly_subscription_id` |
+| Namespace `monthlySubscriptions` inexistente | ❌ Não existe | Criar arquivos e registrar em i18n |
+| RPC `create_invoice_and_mark_classes_billed` incompatível | ⚠️ Gap | Adaptar para `item_type='monthly_base'` |
 
 ### 4.2 Checklist de Pré-Implementação
 
 Antes de iniciar o desenvolvimento, execute na ordem:
 
-#### Fase 0: Correções de Bugs e Features Incompletas (ANTES de tudo)
+#### ✅ Fase 0: Correções de Bugs e Features Incompletas - CONCLUÍDA v1.25
 
-**RECLASSIFICADO v1.15**: O uso de `invoice_type === 'cancellation'` **NÃO É BUG** - é uma feature incompleta:
+**Status**: Todos os 8 bugs rastreados desde v1.17 foram **CORRIGIDOS** em v1.25:
 
-| Componente | Status | Descrição |
-|------------|--------|-----------|
-| `create-invoice/index.ts` | ✅ SUPORTA | Aceita `invoice_type='cancellation'`, cria `item_type='cancellation_charge'` (linhas 322-330) |
-| `Financeiro.tsx` | ✅ SUPORTA | Renderiza badge "Cancelamento" (linhas 580-582, 721-723) |
-| `AmnestyButton.tsx` | ✅ SUPORTA | Busca faturas com este tipo para atualizar (linha 55) |
-| `process-cancellation/index.ts` | ❌ INCOMPLETO | **NÃO invoca** `create-invoice` quando `shouldCharge=true` |
-| Banco de dados | ⚠️ 0 REGISTROS | Nenhuma fatura com `invoice_type='cancellation'` existe |
+| # | Correção | Arquivo | Status |
+|---|----------|---------|--------|
+| 1 | Remover namespace falso `notifications` | `i18n/index.ts` | ✅ **CORRIGIDO** |
+| 2 | Registrar `password.json` | `i18n/index.ts` | ✅ **CORRIGIDO** |
+| 3 | Atualizar `minLength` | `password.json` PT/EN | ✅ **CORRIGIDO** |
+| 4 | Atualizar `complexity` | `password.json` PT/EN | ✅ **CORRIGIDO** |
+| 5 | Refatorar `ForcePasswordChange.tsx` | `ForcePasswordChange.tsx` | ✅ **CORRIGIDO** |
+| 6 | Corrigir mensagem enganosa | `process-cancellation/index.ts` | ✅ **CORRIGIDO** |
+| 7 | i18n texto hardcoded | `Financeiro.tsx` | ✅ **CORRIGIDO** |
+| 8 | Refatorar badge para `getInvoiceTypeBadge()` | `Financeiro.tsx` | ✅ **CORRIGIDO** |
 
-**Resultado**: O backend está pronto para cobranças de cancelamento, mas o fluxo nunca é ativado.
-
----
-
-**⚠️ DESCOBERTA CRÍTICA v1.16: MENSAGEM ENGANOSA AO USUÁRIO**
-
-O `process-cancellation/index.ts` retorna uma mensagem quando `shouldCharge=true`:
-
-> *"Aula cancelada com cobrança. A cobrança será incluída na próxima fatura mensal."*
-
-Porém, **NENHUMA fatura é criada**. O fluxo apenas retorna a mensagem, mas não invoca `create-invoice`. 
-
-**Isso é uma promessa falsa ao usuário** - o sistema afirma que vai cobrar, mas nunca cobra.
-
----
-
-**Ações recomendadas (em ordem de prioridade):**
-
-1. **DECISÃO URGENTE**: Escolher uma das opções:
-   - **Opção A - Completar o fluxo**: Modificar `process-cancellation` para invocar `create-invoice` com `type: 'cancellation'`
-   - **Opção B - Corrigir a mensagem**: Alterar texto para ser honesto (ex: "Cancelamento processado. Cobrança registrada para revisão manual.")
-   - **Opção C - Remover funcionalidade**: Deletar lógica de `shouldCharge` e código relacionado a `'cancellation'`
-
-2. **Bugs de i18n** (não bloqueantes mas devem ser corrigidos):
-   - [ ] **CORRIGIR**: Bug de namespace `notifications` em `i18n/index.ts` (remover do array `ns` - traduções estão em `settings.json`)
-   - [ ] **CORRIGIR**: `password.json` órfão - DUAS ações necessárias:
-     - [ ] Adicionar imports de `password.json` PT/EN em `i18n/index.ts`
-     - [ ] Registrar namespace `password` no objeto `resources`
-   - [ ] **CORRIGIR**: `ForcePasswordChange.tsx` não usa i18n:
-     - [ ] Refatorar componente para usar `useTranslation('password')`
-     - [ ] Substituir 30+ strings hardcoded por traduções de `password.json`
-    - [ ] **CORRIGIR**: Discrepância minLength (NOVO v1.19):
-      - [ ] `password.json` diz "6 caracteres" (linha 19 PT/EN)
-      - [ ] `ForcePasswordChange.tsx` valida `length < 8` (linha 41)
-      - [ ] **Recomendado**: Atualizar traduções para "8 caracteres" (mais seguro)
-    - [ ] **CORRIGIR**: Discrepância complexity (NOVO v1.22):
-      - [ ] `password.json` diz "letras e números" (linha 20 PT/EN)
-      - [ ] `ForcePasswordChange.tsx` valida maiúscula + minúscula + número (linhas 42-44)
-      - [ ] **Recomendado**: Atualizar traduções para "maiúscula, minúscula e número"
-
-#### Verificações Recorrentes de Bugs de i18n (v1.17 → v1.24)
-
-| Bug | v1.17 | v1.18 | v1.19 | v1.20 | v1.21 | v1.22 | v1.23 | v1.24 | Status |
-|-----|-------|-------|-------|-------|-------|-------|-------|-------|--------|
-| `notifications` no array `ns` | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
-| `password.json` não registrado | Identificado | Identificado | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
-| `ForcePasswordChange.tsx` hardcoded | Erro factual | Corrigido | Confirmado | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ❌ NÃO CORRIGIDO |
-| Discrepância minLength 6 vs 8 | - | - | Descoberto | Confirmado | 2ª confirmação | 3ª confirmação | 4ª confirmação | **5ª confirmação** | ⚠️ NÃO CORRIGIDO |
-| Discrepância complexity | - | - | - | - | - | NOVO v1.22 | 2ª confirmação | **3ª confirmação** | ⚠️ NÃO CORRIGIDO |
-| Mensagem enganosa `process-cancellation` | - | - | - | 4ª confirmação | 5ª confirmação | 6ª confirmação | 7ª confirmação | **8ª confirmação** | ⚠️ **CRÍTICO** |
-| Texto hardcoded "Aulas particulares" | - | - | - | - | NOVO | 2ª confirmação | 3ª confirmação | **4ª confirmação** | ❌ NÃO i18n |
-| Código duplicado badge (DRY) | - | - | - | - | NOVO | 2ª confirmação | 3ª confirmação | **4ª confirmação** | ⚠️ Refatorar |
-
----
-
-**⚠️ OBSERVAÇÃO CRÍTICA v1.24: PADRÃO DE NÃO-CORREÇÃO (ATUALIZADO)**
-
-A tabela de verificações recorrentes mostra que:
-- **8 bugs rastreados** desde v1.17
-- **ZERO correções implementadas** em **8 versões** (v1.17→v1.24)
-- Bugs estão sendo **DOCUMENTADOS** mas **NÃO CORRIGIDOS**
-- **CONFIRMAÇÃO DEFINITIVA v1.23**: Busca por `useTranslation` em `ForcePasswordChange.tsx` retorna **0 matches**
-- **Documento com 3515+ linhas** - ciclo de documentação improdutivo
-
-### ⚠️ RECOMENDAÇÃO v1.24: PAUSAR VERIFICAÇÕES, IMPLEMENTAR CORREÇÕES
-
-Após **8 versões** de documentação sem correções:
-1. **PARAR** de verificar pontas soltas
-2. **IMPLEMENTAR** as 8 correções pendentes
-3. **RETOMAR** verificações após correções implementadas
-
-O ciclo atual é **IMPRODUTIVO** - apenas aumenta o documento sem resolver bugs.
-
-**Recomendação URGENTE**: Antes de continuar verificando pontas soltas, implementar correções:
-
-| # | Correção | Arquivo | Ação |
-|---|----------|---------|------|
-| 1 | Remover namespace falso | `i18n/index.ts` | Remover `'notifications'` do array `ns` |
-| 2 | Registrar password.json | `i18n/index.ts` | Adicionar imports e registrar namespace `password` |
-| 3 | Atualizar minLength | `password.json` PT/EN | Alterar "6 caracteres" → "8 caracteres" |
-| 4 | Atualizar complexity | `password.json` PT/EN | Alterar "letras e números" → "maiúscula, minúscula e número" |
-| 5 | Refatorar ForcePasswordChange | `ForcePasswordChange.tsx` | Usar `useTranslation('password')` - **0 matches atual** |
-| 6 | Corrigir mensagem | `process-cancellation/index.ts` | Mensagem honesta ou implementar cobrança |
-| 7 | i18n texto hardcoded | `Financeiro.tsx` | Traduzir "Aulas particulares" |
-| 8 | Refatorar badge | `Financeiro.tsx` | Extrair para `getInvoiceTypeBadge()` |
+**Conclusão**: Ciclo de verificações recorrentes encerrado. Ver Tabela de Verificações Recorrentes v1.17→v1.25 no final do documento.
 
 **Confirmações SQL v1.24 - Pré-requisitos de Banco NÃO Implementados**:
 - `invoice_classes.class_id`: is_nullable = **NO** ✗ (deveria ser YES)
@@ -1191,6 +1116,86 @@ const hasNumber = /[0-9]/.test(newPassword);
 - [ ] Testar cenário: cancelamento de mensalidade antes/depois do `billing_day`
 - [ ] Verificar numeração sequencial de todas as seções do documento
 - [ ] Testar queries de `Financeiro.tsx` com mensalidades puras (sem aulas)
+
+---
+
+### 4.3 Resumo de Pré-Requisitos para Implementação
+
+Esta seção consolida todos os pré-requisitos necessários para implementar a funcionalidade de mensalidades fixas.
+
+#### 4.3.1 Banco de Dados (CRÍTICO - Executar Primeiro)
+
+Executar SQL do Apêndice A na seguinte ordem:
+
+| # | Item | Status | SQL |
+|---|------|--------|-----|
+| 1 | Tabela `monthly_subscriptions` | ❌ Não existe | `CREATE TABLE public.monthly_subscriptions ...` |
+| 2 | Tabela `student_monthly_subscriptions` | ❌ Não existe | `CREATE TABLE public.student_monthly_subscriptions ...` |
+| 3 | Coluna `invoices.monthly_subscription_id` | ❌ Não existe | `ALTER TABLE public.invoices ADD COLUMN ...` |
+| 4 | `invoice_classes.class_id` nullable | ⚠️ NOT NULL | `ALTER COLUMN class_id DROP NOT NULL` |
+| 5 | `invoice_classes.participant_id` nullable | ⚠️ NOT NULL | `ALTER COLUMN participant_id DROP NOT NULL` |
+| 6 | Função `get_student_active_subscription` | ❌ Não existe | Ver seção 3.4 |
+| 7 | Função `count_completed_classes_in_month` | ❌ Não existe | Ver seção 3.4 |
+| 8 | Função `get_subscription_students_count` | ❌ Não existe | Ver seção 3.4 |
+| 9 | RLS policies | ❌ Não existe | Ver seção 3.1 e 3.2 |
+| 10 | Triggers `updated_at` | ❌ Não existe | Ver seção 3.1 e 3.2 |
+| 11 | Índices de performance | ❌ Não existe | Ver seção 3.5 |
+
+**Após migration**: Regenerar tipos TypeScript:
+```bash
+npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/types.ts
+```
+
+#### 4.3.2 Arquivos a Criar
+
+| # | Arquivo | Descrição | Seção Referência |
+|---|---------|-----------|------------------|
+| 1 | `src/types/monthly-subscriptions.ts` | Interfaces TypeScript | 5.1 |
+| 2 | `src/schemas/monthly-subscription.schema.ts` | Schema Zod validação | 6.5 |
+| 3 | `src/hooks/useMonthlySubscriptions.ts` | Hook principal | 6.4 |
+| 4 | `src/hooks/useStudentSubscriptionAssignment.ts` | Hooks de atribuição | 6.4.1 |
+| 5 | `src/i18n/locales/pt/monthlySubscriptions.json` | Traduções PT | 8.1 |
+| 6 | `src/i18n/locales/en/monthlySubscriptions.json` | Traduções EN | 8.2 |
+| 7 | `src/components/MonthlySubscriptionsManager.tsx` | Componente principal | 6.2.1 |
+| 8 | `src/components/MonthlySubscriptionCard.tsx` | Card de mensalidade | 6.2.2 |
+| 9 | `src/components/MonthlySubscriptionModal.tsx` | Modal criar/editar | 6.2.3 |
+| 10 | `src/components/StudentSubscriptionSelect.tsx` | Seletor de alunos | 6.2.4 |
+
+**Nota**: Diretório `src/schemas` não existe atualmente - criar junto com o primeiro arquivo.
+
+#### 4.3.3 Arquivos a Modificar
+
+| # | Arquivo | Modificação | Seção Referência |
+|---|---------|-------------|------------------|
+| 1 | `src/i18n/index.ts` | Registrar namespace `monthlySubscriptions` | 8.0 |
+| 2 | `src/pages/Servicos.tsx` | Adicionar Tabs (Serviços / Mensalidades) | 6.6.2 |
+| 3 | `src/pages/Financeiro.tsx` | LEFT JOIN + case `monthly_subscription` no badge | 6.3.2 |
+| 4 | `src/pages/StudentDashboard.tsx` | Seção "Meus Planos" com múltiplos professores | 6.3.3 |
+| 5 | `src/pages/PerfilAluno.tsx` | Badge de mensalidade ativa | 6.3 |
+| 6 | `supabase/functions/automated-billing/index.ts` | Verificar mensalidade antes de processar | 7.1 |
+
+#### 4.3.4 Gaps Identificados para Implementação (v1.26)
+
+Pontas soltas 315-330 identificadas na análise completa:
+
+| # | Categoria | Gap | Ação Necessária |
+|---|-----------|-----|-----------------|
+| 315 | Documento | Seção 4.2 checklist desatualizado após v1.25 | ✅ Atualizado v1.26 |
+| 316 | Documento | Tabela de "Ações recomendadas" obsoleta | ✅ Removida v1.26 |
+| 317 | Documento | Seção "Recomendação URGENTE" v1.24 obsoleta | ✅ Removida v1.26 |
+| 318 | Backend | `automated-billing` não verifica `get_student_active_subscription` | Implementar na Fase 5 |
+| 319 | Backend | `create-invoice` fluxo `monthly_subscription` não documentado | Documentar no Apêndice |
+| 320 | Frontend | `getInvoiceTypeBadge` sem case `monthly_subscription` | Adicionar case |
+| 321 | Frontend | `Financeiro.tsx` usa `INNER JOIN` (linhas 276-284) | Alterar para LEFT JOIN |
+| 322 | i18n | Namespace `monthlySubscriptions` não existe | Criar arquivos + registrar |
+| 323 | Tipos | Interface `InvoiceWithStudent` sem `monthly_subscription_id` | Adicionar campo |
+| 324 | RPC | `create_invoice_and_mark_classes_billed` incompatível com `item_type='monthly_base'` | Adaptar função |
+| 325 | Feature | `invoice_type='cancellation'` feature incompleta (não bug) | Decisão: completar ou não |
+| 326 | Documento | Tabela 4.1.2 com histórico misto v1.17-v1.24 | ✅ Limpa v1.26 |
+| 327 | Documento | Histórico de revisões com 25+ entradas | Considerar compactação |
+| 328 | DB | `invoice_classes.class_id` NOT NULL (pré-requisito) | Migration Apêndice A |
+| 329 | DB | `invoices.monthly_subscription_id` não existe | Migration Apêndice A |
+| 330 | DB | Tabelas `monthly_subscriptions` não existem | Migration Apêndice A |
 
 ---
 
@@ -3422,6 +3427,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.23 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 277-288 (7ª confirmação de 3 bugs i18n persistentes, 4ª confirmação de discrepância minLength, 2ª confirmação de discrepância complexity, 7ª confirmação de mensagem enganosa, 3ª confirmação de texto hardcoded e violação DRY). **CONFIRMAÇÃO DEFINITIVA v1.23 via busca de código**: `useTranslation` retorna **0 matches** em ForcePasswordChange.tsx - componente definitivamente NÃO usa i18n. **CONFIRMAÇÕES SQL v1.23**: Pré-requisitos de banco NÃO implementados (class_id NOT NULL, participant_id NOT NULL, monthly_subscription_id NÃO EXISTE). **PADRÃO CRÍTICO v1.23**: 8 bugs × **7 versões** = ZERO correções implementadas. Expandida tabela de verificações recorrentes para v1.23 com 8 linhas e coluna adicional. Sincronizado Apêndice A para v1.23. |
 | 1.24 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 289-300 (8ª confirmação de 3 bugs i18n persistentes, 5ª confirmação de discrepância minLength, 3ª confirmação de discrepância complexity, 8ª confirmação de mensagem enganosa, 4ª confirmação de texto hardcoded e violação DRY). **PADRÃO CRÍTICO v1.24**: 8 bugs × **8 versões** = ZERO correções implementadas. Documento com **3515+ linhas** - ciclo de documentação improdutivo. **RECOMENDAÇÃO URGENTE v1.24**: PAUSAR verificações e IMPLEMENTAR correções. Adicionada tabela de 8 correções com estimativa de 30-60 minutos. **CONFIRMAÇÕES SQL v1.24**: Pré-requisitos de banco NÃO implementados (class_id NOT NULL, participant_id NOT NULL, monthly_subscription_id NÃO EXISTE, invoice_type apenas 'manual' e 'automated'). Expandida tabela de verificações recorrentes para v1.24 com 9 colunas. Sincronizado Apêndice A para v1.24. |
 | 1.25 | 2025-12-25 | Lovable AI | **🎉 CORREÇÕES IMPLEMENTADAS - CICLO INTERROMPIDO**: Todos os 8 bugs de i18n e código foram **CORRIGIDOS** em uma única sessão. **TAXA DE CORREÇÃO: 100% (8/8)**. Correções: 1) Removido namespace falso `notifications` de `i18n/index.ts`; 2) Registrado `password.json` com imports e namespace; 3) Atualizado `minLength` de "6" para "8 caracteres" em `password.json` PT/EN; 4) Atualizado `complexity` de "letras e números" para "maiúscula, minúscula e número" em `password.json` PT/EN; 5) Refatorado `ForcePasswordChange.tsx` para usar `useTranslation('password')` - 9 usos de `t()`; 6) Corrigida mensagem enganosa em `process-cancellation/index.ts` - removida promessa falsa de cobrança; 7) Traduzido texto hardcoded "Aulas particulares" em `Financeiro.tsx` usando `t('defaultDescription')`; 8) Refatorado badge duplicado em `Financeiro.tsx` para função `getInvoiceTypeBadge()`. Adicionadas pontas soltas 301-310 documentando correções e pendências restantes. Atualizada tabela de verificações recorrentes para v1.25 com **TODOS os bugs marcados como CORRIGIDO**. Sincronizado Apêndice A para v1.25. |
+| 1.26 | 2025-12-26 | Lovable AI | **ANÁLISE COMPLETA PÓS-CORREÇÕES**: Confirmadas 8 correções v1.25. Nova seção **4.3 "Resumo de Pré-Requisitos para Implementação"** consolidando: 11 itens de banco de dados (tabelas, colunas, funções, RLS, triggers, índices), 10 arquivos a criar (tipos, schemas, hooks, i18n, componentes), 6 arquivos a modificar (i18n/index.ts, Servicos.tsx, Financeiro.tsx, StudentDashboard.tsx, PerfilAluno.tsx, automated-billing). Adicionadas **16 pontas soltas (315-330)**: gaps de documento (315-317, 326-327), backend (318-319), frontend (320-321), i18n (322), tipos (323), RPC (324), feature incompleta (325), pré-requisitos DB (328-330). Atualizado sumário com nova seção 4.3. Limpa tabela 4.1.2 removendo itens corrigidos v1.25 e adicionando gaps para implementação. Atualizado checklist 4.2 marcando **Fase 0 como CONCLUÍDA** com tabela de 8 correções. Removidas seções obsoletas (Ações recomendadas, Verificações v1.17-v1.24, Recomendação URGENTE v1.24). Documento preparado para implementação de mensalidades fixas. Sincronizado Apêndice A para v1.26. |
 
 ---
 
@@ -3567,4 +3573,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.25 -->
+<!-- Versão do Apêndice A sincronizada: v1.26 -->

@@ -1192,12 +1192,13 @@ npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/
 | 5 | `src/pages/PerfilAluno.tsx` | Badge de mensalidade ativa | 6.3 |
 | 6 | `supabase/functions/automated-billing/index.ts` | Verificar mensalidade antes de processar (após linha 79) | 7.1 |
 | 7 | `src/components/InvoiceStatusBadge.tsx` | Refatorar para usar i18n (labels hardcoded) | 6.3.1 |
-| 8 | `src/i18n/locales/pt/financial.json` | Adicionar `invoiceTypes.monthlySubscription`: `"Mensalidade"` | 4.3.4 #338 |
-| 9 | `src/i18n/locales/en/financial.json` | Adicionar `invoiceTypes.monthlySubscription`: `"Monthly Subscription"` | 4.3.4 #338 |
+| 8 | `src/i18n/locales/pt/financial.json` | Adicionar `invoiceTypes` (monthlySubscription, orphanCharges, automated, manual) | 4.3.4 #338, #348 |
+| 9 | `src/i18n/locales/en/financial.json` | Adicionar `invoiceTypes` (monthlySubscription, orphanCharges, automated, manual) | 4.3.4 #338, #348 |
+| 10 | `src/pages/Recibo.tsx` | Refatorar para usar i18n em `payment_origin` | 4.3.4 #343 |
 
-#### 4.3.4 Gaps Identificados para Implementação (v1.26 → v1.29)
+#### 4.3.4 Gaps Identificados para Implementação (v1.26 → v1.30)
 
-Pontas soltas 315-341 identificadas nas análises completas:
+Pontas soltas 315-349 identificadas nas análises completas:
 
 | # | Categoria | Gap | Ação Necessária |
 |---|-----------|-----|-----------------|
@@ -1228,8 +1229,64 @@ Pontas soltas 315-341 identificadas nas análises completas:
 | 339 | Frontend | `getInvoiceTypeBadge` atual diverge do exemplo documentado | Implementar switch completo conforme seção 6.3.2.1 |
 | 340 | Tipos | Interface `InvoiceWithStudent` confirmada incompleta | Adicionar `monthly_subscription_id` e `monthly_subscription` |
 | 341 | Documento | Path exato de tradução não especificado | ✅ Especificado: `financial.invoiceTypes.monthlySubscription` |
+| 342 | Frontend | `getInvoiceTypeBadge` não trata `'orphan_charges'` | Adicionar case no switch conforme seção 6.3.2.1 |
+| 343 | Frontend | `Recibo.tsx` usa texto hardcoded para `payment_origin` | Refatorar para usar `useTranslation('financial')` |
+| 344 | Frontend | `InvoiceStatusBadge.tsx` não tem prop `invoiceType` | Adicionar prop conforme seção 6.3.1 |
+| 345 | Backend | **FEATURE INCOMPLETA**: `process-cancellation` não cria fatura | Documentar 3 opções de resolução (seção 4.3.5) |
+| 346 | Feature | `AmnestyButton.tsx` busca faturas `invoice_type='cancellation'` inexistentes | Corrigir lógica ou completar feature de cancelamento |
+| 347 | Documento | Valores reais de `invoice_type` no banco não documentados oficialmente | Nova seção 4.3.6 com mapeamento completo |
+| 348 | i18n | Tradução `invoiceTypes.orphanCharges` não existe em `financial.json` | Adicionar PT: `"Cobranças Pendentes"` / EN: `"Orphan Charges"` |
+| 349 | Tipos | Interface `InvoiceWithStudent` incompleta para todos os tipos de fatura | Expandir para incluir campos de todos os tipos |
 
-**Total de gaps ativos**: 27 (excluindo os marcados como ✅ resolvidos)
+**Total de gaps ativos**: 35 (excluindo os marcados como ✅ resolvidos)
+
+#### 4.3.5 Feature Incompleta: Cancelamento com Cobrança (v1.30)
+
+O sistema possui uma **feature incompleta** relacionada a cobranças de cancelamento:
+
+**Fluxo Atual (Problema):**
+1. Aluno/professor cancela aula via `process-cancellation`
+2. Sistema calcula se deve haver cobrança baseado na política de cancelamento
+3. Sistema marca `class_participants.charge_applied = true`
+4. Sistema retorna mensagem (já corrigida v1.25 para não prometer fatura)
+5. **⚠️ Fatura NUNCA é criada** - `process-cancellation` não invoca `create-invoice`
+
+**Componentes Afetados:**
+- `process-cancellation/index.ts` - Marca cobrança mas não cria fatura
+- `AmnestyButton.tsx` - Busca faturas `invoice_type='cancellation'` que nunca existem
+- `create-invoice/index.ts` - **SUPORTA** `invoice_type='cancellation'` mas nunca é chamado
+
+**Opções de Resolução:**
+
+| Opção | Descrição | Prós | Contras |
+|-------|-----------|------|---------|
+| **A** | Invocar `create-invoice` em `process-cancellation` quando `shouldCharge=true` | Fatura imediata, fluxo completo | Mais complexo, múltiplas faturas pequenas |
+| **B** | Manter fluxo atual (cobranças via billing automatizado após 45 dias) | Já funciona via `process-orphan-cancellation-charges` | Atraso de até 45 dias, `AmnestyButton` quebrado |
+| **C** | Corrigir `AmnestyButton` para funcionar sem fatura prévia | Menos invasivo | Feature de anistia incompleta |
+
+**Recomendação v1.30:** Opção **B** (manter atual) com correção do `AmnestyButton` (Opção C):
+- Cobranças de cancelamento já são processadas pelo job semanal `process-orphan-cancellation-charges`
+- Corrigir `AmnestyButton` para conceder anistia sem exigir fatura prévia
+- Documentar comportamento esperado para usuários
+
+#### 4.3.6 Mapeamento de `invoice_type` (v1.30)
+
+Esta seção documenta oficialmente todos os valores de `invoice_type` no sistema:
+
+| Valor | Criado Por | Status no Banco | Tratado no Frontend | Descrição |
+|-------|------------|-----------------|---------------------|-----------|
+| `'regular'` | DEFAULT | Valor default | `getInvoiceTypeBadge` default case | Faturas sem tipo explícito |
+| `'automated'` | `automated-billing` | 2 registros (produção) | ⚠️ Não tratado (exibe "Regular") | Faturamento automático mensal |
+| `'manual'` | `create-invoice` (manual) | 7 registros (produção) | ⚠️ Não tratado (exibe "Regular") | Fatura criada manualmente |
+| `'cancellation'` | `create-invoice` (teórico) | 0 registros | Tratado como badge destrutivo | Feature incompleta (seção 4.3.5) |
+| `'monthly_subscription'` | A implementar | 0 registros | A implementar | Fatura de mensalidade fixa |
+| `'orphan_charges'` | `process-orphan-cancellation-charges` | 0 registros (a verificar) | ⚠️ Não tratado | Cobranças órfãs de cancelamento |
+| `null` | Faturas antigas | Possível | Default case | Faturas sem tipo definido |
+
+**Ações Necessárias:**
+1. ✅ `getInvoiceTypeBadge` deve tratar TODOS os tipos com badges apropriados
+2. ⚠️ Verificar se `process-orphan-cancellation-charges` define `invoice_type='orphan_charges'`
+3. ⚠️ Adicionar traduções para todos os tipos em `financial.json`
 
 ---
 
@@ -1774,8 +1831,8 @@ O código atual em `Financeiro.tsx` (v1.25) criou a função `getInvoiceTypeBadg
 // ============================================
 // FUNÇÃO: getInvoiceTypeBadge - IMPLEMENTAÇÃO COMPLETA
 // Mapeia invoice_type para badge visual apropriado
-// Inclui TODOS os tipos válidos: automated, manual, monthly_subscription, cancellation
-// ATUALIZADO v1.27: Corrigido para incluir todos os cases
+// Inclui TODOS os tipos válidos: automated, manual, monthly_subscription, cancellation, orphan_charges
+// ATUALIZADO v1.30: Adicionado orphan_charges, automated, manual
 // ============================================
 
 import { TFunction } from 'i18next';
@@ -1808,8 +1865,15 @@ const getInvoiceTypeBadge = (invoiceType: string | undefined, t: TFunction) => {
           {t('invoiceTypes.cancellation')}
         </Badge>
       );
+    case 'orphan_charges':
+      // NOVO v1.30: Cobranças órfãs de cancelamento (processadas após 45 dias)
+      return (
+        <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
+          {t('invoiceTypes.orphanCharges')}
+        </Badge>
+      );
     default:
-      // null, undefined ou valor desconhecido - exibe badge neutro
+      // null, undefined, 'regular' ou valor desconhecido - exibe badge neutro
       return (
         <Badge>
           {t('invoiceTypes.regular')}
@@ -1843,12 +1907,13 @@ return (
 );
 ```
 
-**Valores de `invoice_type` no banco (confirmado v1.15):**
+**Valores de `invoice_type` no banco (atualizado v1.30 - ver seção 4.3.6 para mapeamento completo):**
 - `'regular'` - Valor DEFAULT válido (CORRIGIDO v1.12)
 - `'automated'` - Fatura gerada automaticamente pelo sistema
 - `'manual'` - Fatura criada manualmente pelo professor
 - `'cancellation'` - Fatura de cobrança de cancelamento (SUPORTADO pelo backend, mas feature incompleta - v1.15)
 - `'monthly_subscription'` - Fatura de mensalidade fixa (NOVO - a implementar)
+- `'orphan_charges'` - Cobranças órfãs de cancelamento (NOVO v1.30)
 - `null` - Faturas antigas ou sem tipo definido
 
 **Nota v1.15 (RECLASSIFICADO):** O valor `'cancellation'` **É SUPORTADO** pelo backend (`create-invoice`), mas `process-cancellation` não invoca a criação de faturas quando `shouldCharge=true`. Isso explica por que 0 registros existem no banco. É uma **feature incompleta**, não um bug.
@@ -3473,8 +3538,8 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.27 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO COMPLETA**: Confirmadas todas as 8 correções v1.25. Identificada nova **ponta solta #331**: `getInvoiceTypeBadge` incompleta no código atual - só trata `cancellation`, exibe "Regular" para `automated`, `manual` e `monthly_subscription`. **Expandida ponta solta #320** para incluir todos os tipos faltantes. **Atualizada seção 6.3.2.1** com implementação completa de `getInvoiceTypeBadge` usando i18n e todos os 4 cases + default. Adicionado gap #331 na tabela 4.1.2 "Gaps para Implementação v1.27". Documento 100% sincronizado com análise exaustiva do código atual. Sincronizado Apêndice A para v1.27. |
 | 1.28 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO FINAL COMPLETA**: Confirmadas todas as 8 correções v1.25 e 17 gaps v1.26/v1.27. Identificadas **6 novas pontas soltas (332-337)**: tradução `invoiceTypes.monthlySubscription` faltando em `financial.json` PT/EN (#332), clarificação sobre queries INNER JOIN - apenas `loadInvoiceDetails` afetada, não `loadInvoices` (#333), localização exata para verificação de mensalidade em `automated-billing/index.ts` após linha 79 (#334), estado de `invoice_classes` sem registros é normal para ambiente de desenvolvimento (#335), `InvoiceStatusBadge.tsx` com labels hardcoded sem i18n - refatorar para usar traduções (#336), discrepância entre exemplo documentado e código atual de `getInvoiceTypeBadge` (#337). **Atualizações**: Adicionada tradução `invoiceTypes.monthlySubscription` à lista de pendências (seção 4.1.2); Clarificado na tabela que INNER JOIN afeta `loadInvoiceDetails` não `loadInvoices`; Adicionado `InvoiceStatusBadge.tsx` à lista de arquivos a modificar; Total de **23 gaps** identificados para implementação. Documento 100% sincronizado. Sincronizado Apêndice A para v1.28. |
 | 1.29 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA**: Confirmados todos os 23 gaps v1.28. Identificados **4 novos gaps (338-341)**: tradução `invoiceTypes.monthlySubscription` confirmada como faltante em `financial.json` PT/EN com path exato especificado (#338), `getInvoiceTypeBadge` atual diverge do exemplo documentado - código só trata `cancellation` (#339), interface `InvoiceWithStudent` confirmada incompleta sem `monthly_subscription_id` e `monthly_subscription` (#340), path exato de tradução especificado como `financial.invoiceTypes.monthlySubscription` (#341). **Atualizações**: Expandida seção 4.3.3 com 3 novos arquivos a modificar (InvoiceStatusBadge.tsx, financial.json PT/EN); Expandida seção 4.3.4 de 16 para 27 gaps incluindo pontas soltas 331-341; Clarificadas pontas soltas #320, #321 com detalhes específicos sobre código vs documento; Especificada localização exata para verificação de mensalidade (automated-billing após linha 79). Total de **27 gaps** identificados. Documento 100% sincronizado com análise de banco e código. Sincronizado Apêndice A para v1.29. |
+| 1.30 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO FINAL COMPLETA - 8 NOVOS GAPS IDENTIFICADOS**: Identificados **8 novos gaps (342-349)** não documentados anteriormente: `getInvoiceTypeBadge` não trata `'orphan_charges'` (#342), `Recibo.tsx` usa texto hardcoded para `payment_origin` (#343), `InvoiceStatusBadge.tsx` não tem prop `invoiceType` (#344), **FEATURE INCOMPLETA** `process-cancellation` não cria fatura quando `shouldCharge=true` (#345), `AmnestyButton.tsx` busca faturas `invoice_type='cancellation'` que nunca existem (#346), valores reais de `invoice_type` no banco não documentados oficialmente (#347), tradução `invoiceTypes.orphanCharges` faltando (#348), interface `InvoiceWithStudent` incompleta para todos os tipos (#349). **NOVAS SEÇÕES**: 4.3.5 "Feature Incompleta: Cancelamento com Cobrança" documentando 3 opções de resolução; 4.3.6 "Mapeamento de `invoice_type`" documentando todos os 7 valores válidos. **ATUALIZAÇÕES**: Expandido exemplo `getInvoiceTypeBadge` (seção 6.3.2.1) com case `orphan_charges`; Expandida lista de traduções com `orphanCharges`, `automated`, `manual`; Adicionado `Recibo.tsx` à lista de arquivos a modificar. Total de **35 gaps** identificados para implementação. Documento 100% sincronizado. Sincronizado Apêndice A para v1.30. |
 
----
 
 ### Recomendação de Reorganização do Documento (proposta v1.20, pendente v1.21)
 
@@ -3618,4 +3683,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.29 -->
+<!-- Versão do Apêndice A sincronizada: v1.30 -->

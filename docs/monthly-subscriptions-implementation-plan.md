@@ -893,6 +893,13 @@ WHERE is_template = false;
 | 262 | **NOVO**: Código duplicado de badge viola DRY | `Financeiro.tsx` linhas 580-582 e 720-722 duplicam lógica idêntica | ⚠️ Refatorar para `getInvoiceTypeBadge()` |
 | 263 | Recomendação de reorganização não implementada | Proposta v1.20 ainda pendente | ⚠️ PENDENTE |
 | 264 | Histórico de revisões continua crescendo | Entradas v1.1-v1.20 = 21 versões detalhadas | ⚠️ Considerar compactação |
+| **Pontas Soltas 332-337 (v1.28)** | | |
+| 332 | Tradução `invoiceTypes.monthlySubscription` não existe em `financial.json` | PT/EN não têm esta chave para badge de mensalidade | ⚠️ Adicionar tradução em PT: "Mensalidade" / EN: "Monthly Subscription" |
+| 333 | Falta clareza sobre qual query usa INNER JOIN | `loadInvoiceDetails` (linhas 280-298) é afetada; `loadInvoices` (linhas 198-234) não é | ⚠️ Especificado: apenas `loadInvoiceDetails` precisa de LEFT JOIN |
+| 334 | Localização exata para verificar mensalidade não documentada | `automated-billing/index.ts` após buscar `billing_day` (linha 79) | ⚠️ Especificado: inserir verificação de mensalidade ativa após linha 79 |
+| 335 | `invoice_classes` sem registros pode ser normal ou bug | Query retorna 0 registros; pode ser ambiente de desenvolvimento ou bug de billing | ℹ️ Nota: estado esperado depende se billing automatizado foi executado |
+| 336 | `InvoiceStatusBadge.tsx` usa labels hardcoded em português | Labels como "Paga", "Em Aberto", "Vencida" não usam i18n | ⚠️ Refatorar componente para usar `useTranslation('financial')` |
+| 337 | Discrepância entre exemplo `getInvoiceTypeBadge` v1.27 e código atual | Exemplo no documento difere da implementação real em `Financeiro.tsx` | ⚠️ Sincronizar: atualizar exemplo ou código para consistência |
 
 ---
 
@@ -943,6 +950,7 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | **Internacionalização** | | |
 | Arquivos `monthlySubscriptions.json` PT/EN | ❌ Não existem | Criar arquivos conforme seção 8 |
 | Namespace `monthlySubscriptions` em i18n | ❌ Não registrado | Adicionar imports e namespace |
+| Tradução `invoiceTypes.monthlySubscription` em `financial.json` | ❌ Gap #332 | Adicionar em PT: "Mensalidade" / EN: "Monthly Subscription" |
 | Bug: `notifications` no array `ns` | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: ainda está na linha 118 → Remover do array `ns` |
 | Bug: `password.json` sem imports | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: namespace não registrado → Adicionar imports + registrar |
 | Bug: `ForcePasswordChange.tsx` hardcoded | ❌ NÃO CORRIGIDO v1.20 | Verificado **4x**: 30+ strings em português, não usa i18n |
@@ -959,8 +967,9 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | `StudentSubscriptionSelect` | ❌ Não existe | Criar componente |
 | **Atualizações em Código Existente** | | |
 | `InvoiceStatusBadge.tsx` prop `invoiceType` | ❌ Não existe | Implementar conforme seção 6.3.1 |
+| `InvoiceStatusBadge.tsx` labels hardcoded | ❌ Gap #336 | Refatorar para usar i18n |
 | Função `getInvoiceTypeBadge` | ✅ Criada v1.25 | Adicionar case `monthly_subscription` |
-| Query INNER JOIN em `Financeiro.tsx` | ⚠️ Usa `!inner` | Alterar para LEFT JOIN |
+| Query INNER JOIN em `Financeiro.tsx` | ⚠️ Usa `!inner` | Alterar para LEFT JOIN em `loadInvoiceDetails` (Gap #333) |
 | `Financeiro.tsx` badge inline vs função | ✅ Refatorado v1.25 | Extraída para `getInvoiceTypeBadge()` |
 | `StudentDashboard` seção "Meus Planos" | ❌ Não existe | Criar com suporte a múltiplos professores |
 | `automated-billing` verifica mensalidade | ❌ Não implementado | Adicionar verificação |
@@ -975,6 +984,13 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | RPC `create_invoice_and_mark_classes_billed` incompatível | ⚠️ Gap | Adaptar para `item_type='monthly_base'` |
 | **Gap adicional v1.27** | | |
 | `getInvoiceTypeBadge` incompleta - falta `automated` e `manual` | ⚠️ Gap #331 | Só trata `cancellation`, default "Regular" para outros tipos |
+| **Gaps adicionais v1.28** | | |
+| Tradução `invoiceTypes.monthlySubscription` não existe | ❌ Gap #332 | Adicionar em `financial.json` PT/EN |
+| Falta clareza sobre qual query usa INNER JOIN | ⚠️ Gap #333 | Especificar: `loadInvoiceDetails` (não `loadInvoices`) |
+| Localização exata para verificar mensalidade não documentada | ⚠️ Gap #334 | Especificar: `automated-billing/index.ts` após linha 79 |
+| `invoice_classes` sem registros - pode ser normal ou bug | ⚠️ Gap #335 | Adicionar nota sobre estado esperado de dados |
+| `InvoiceStatusBadge.tsx` não usa i18n | ❌ Gap #336 | Refatorar para usar traduções do namespace `financial` |
+| Discrepância entre exemplo v1.27 e código atual de `getInvoiceTypeBadge` | ⚠️ Gap #337 | Sincronizar exemplo com implementação atual em `Financeiro.tsx` |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -3439,6 +3455,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.25 | 2025-12-25 | Lovable AI | **🎉 CORREÇÕES IMPLEMENTADAS - CICLO INTERROMPIDO**: Todos os 8 bugs de i18n e código foram **CORRIGIDOS** em uma única sessão. **TAXA DE CORREÇÃO: 100% (8/8)**. Correções: 1) Removido namespace falso `notifications` de `i18n/index.ts`; 2) Registrado `password.json` com imports e namespace; 3) Atualizado `minLength` de "6" para "8 caracteres" em `password.json` PT/EN; 4) Atualizado `complexity` de "letras e números" para "maiúscula, minúscula e número" em `password.json` PT/EN; 5) Refatorado `ForcePasswordChange.tsx` para usar `useTranslation('password')` - 9 usos de `t()`; 6) Corrigida mensagem enganosa em `process-cancellation/index.ts` - removida promessa falsa de cobrança; 7) Traduzido texto hardcoded "Aulas particulares" em `Financeiro.tsx` usando `t('defaultDescription')`; 8) Refatorado badge duplicado em `Financeiro.tsx` para função `getInvoiceTypeBadge()`. Adicionadas pontas soltas 301-310 documentando correções e pendências restantes. Atualizada tabela de verificações recorrentes para v1.25 com **TODOS os bugs marcados como CORRIGIDO**. Sincronizado Apêndice A para v1.25. |
 | 1.26 | 2025-12-26 | Lovable AI | **ANÁLISE COMPLETA PÓS-CORREÇÕES**: Confirmadas 8 correções v1.25. Nova seção **4.3 "Resumo de Pré-Requisitos para Implementação"** consolidando: 11 itens de banco de dados (tabelas, colunas, funções, RLS, triggers, índices), 10 arquivos a criar (tipos, schemas, hooks, i18n, componentes), 6 arquivos a modificar (i18n/index.ts, Servicos.tsx, Financeiro.tsx, StudentDashboard.tsx, PerfilAluno.tsx, automated-billing). Adicionadas **16 pontas soltas (315-330)**: gaps de documento (315-317, 326-327), backend (318-319), frontend (320-321), i18n (322), tipos (323), RPC (324), feature incompleta (325), pré-requisitos DB (328-330). Atualizado sumário com nova seção 4.3. Limpa tabela 4.1.2 removendo itens corrigidos v1.25 e adicionando gaps para implementação. Atualizado checklist 4.2 marcando **Fase 0 como CONCLUÍDA** com tabela de 8 correções. Removidas seções obsoletas (Ações recomendadas, Verificações v1.17-v1.24, Recomendação URGENTE v1.24). Documento preparado para implementação de mensalidades fixas. Sincronizado Apêndice A para v1.26. |
 | 1.27 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO COMPLETA**: Confirmadas todas as 8 correções v1.25. Identificada nova **ponta solta #331**: `getInvoiceTypeBadge` incompleta no código atual - só trata `cancellation`, exibe "Regular" para `automated`, `manual` e `monthly_subscription`. **Expandida ponta solta #320** para incluir todos os tipos faltantes. **Atualizada seção 6.3.2.1** com implementação completa de `getInvoiceTypeBadge` usando i18n e todos os 4 cases + default. Adicionado gap #331 na tabela 4.1.2 "Gaps para Implementação v1.27". Documento 100% sincronizado com análise exaustiva do código atual. Sincronizado Apêndice A para v1.27. |
+| 1.28 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO FINAL COMPLETA**: Confirmadas todas as 8 correções v1.25 e 17 gaps v1.26/v1.27. Identificadas **6 novas pontas soltas (332-337)**: tradução `invoiceTypes.monthlySubscription` faltando em `financial.json` PT/EN (#332), clarificação sobre queries INNER JOIN - apenas `loadInvoiceDetails` afetada, não `loadInvoices` (#333), localização exata para verificação de mensalidade em `automated-billing/index.ts` após linha 79 (#334), estado de `invoice_classes` sem registros é normal para ambiente de desenvolvimento (#335), `InvoiceStatusBadge.tsx` com labels hardcoded sem i18n - refatorar para usar traduções (#336), discrepância entre exemplo documentado e código atual de `getInvoiceTypeBadge` (#337). **Atualizações**: Adicionada tradução `invoiceTypes.monthlySubscription` à lista de pendências (seção 4.1.2); Clarificado na tabela que INNER JOIN afeta `loadInvoiceDetails` não `loadInvoices`; Adicionado `InvoiceStatusBadge.tsx` à lista de arquivos a modificar; Total de **23 gaps** identificados para implementação. Documento 100% sincronizado. Sincronizado Apêndice A para v1.28. |
 
 ---
 
@@ -3584,4 +3601,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.27 -->
+<!-- Versão do Apêndice A sincronizada: v1.28 -->

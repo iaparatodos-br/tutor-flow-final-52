@@ -969,10 +969,12 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | Mensagem enganosa em cancelamentos | ✅ **CORRIGIDO v1.25** | Mensagem agora é honesta |
 | `AmnestyButton` busca faturas inexistentes | ⚠️ Código inútil | Depende de completar fluxo |
 | **Gaps para Implementação v1.26** | | |
-| `getInvoiceTypeBadge` sem case `monthly_subscription` | ⚠️ Gap | Adicionar case no switch |
+| `getInvoiceTypeBadge` sem cases `monthly_subscription`, `automated`, `manual` | ⚠️ Gap #320 | Adicionar todos os cases no switch (não só `cancellation`) |
 | Interface `InvoiceWithStudent` incompleta | ⚠️ Gap | Adicionar `monthly_subscription_id` |
 | Namespace `monthlySubscriptions` inexistente | ❌ Não existe | Criar arquivos e registrar em i18n |
 | RPC `create_invoice_and_mark_classes_billed` incompatível | ⚠️ Gap | Adaptar para `item_type='monthly_base'` |
+| **Gap adicional v1.27** | | |
+| `getInvoiceTypeBadge` incompleta - falta `automated` e `manual` | ⚠️ Gap #331 | Só trata `cancellation`, default "Regular" para outros tipos |
 
 ### 4.2 Checklist de Pré-Implementação
 
@@ -1732,53 +1734,61 @@ const { data: invoices } = await supabase
 />
 ```
 
-##### 6.3.2.1 Função getInvoiceTypeBadge (NOVO v1.11)
+##### 6.3.2.1 Função getInvoiceTypeBadge (NOVO v1.11, ATUALIZADO v1.27)
 
-O código atual em `Financeiro.tsx` mapeia apenas dois tipos de `invoice_type` (`automated` e `manual`). Para suportar mensalidades, é necessário criar uma função completa de mapeamento:
+O código atual em `Financeiro.tsx` (v1.25) criou a função `getInvoiceTypeBadge`, porém ela está **incompleta** - apenas trata `cancellation` como caso especial, exibindo "Regular" para todos os outros tipos (`automated`, `manual`, `monthly_subscription`). Esta seção documenta a implementação **COMPLETA** necessária:
 
 ```tsx
 // ============================================
-// FUNÇÃO: getInvoiceTypeBadge
-// Mapeia invoice_type para propriedades de badge visual
-// Inclui todos os tipos válidos: automated, manual, monthly_subscription
+// FUNÇÃO: getInvoiceTypeBadge - IMPLEMENTAÇÃO COMPLETA
+// Mapeia invoice_type para badge visual apropriado
+// Inclui TODOS os tipos válidos: automated, manual, monthly_subscription, cancellation
+// ATUALIZADO v1.27: Corrigido para incluir todos os cases
 // ============================================
 
-type InvoiceTypeBadgeProps = {
-  label: string;
-  variant?: 'default' | 'secondary' | 'destructive' | 'outline';
-  className?: string;
-};
+import { TFunction } from 'i18next';
 
-const getInvoiceTypeBadge = (invoiceType: string | null | undefined): InvoiceTypeBadgeProps | null => {
+const getInvoiceTypeBadge = (invoiceType: string | undefined, t: TFunction) => {
   switch (invoiceType) {
-    case 'automated':
-      return { 
-        label: 'Automática', 
-        variant: 'secondary' 
-      };
-    case 'manual':
-      return { 
-        label: 'Manual', 
-        variant: 'outline' 
-      };
     case 'monthly_subscription':
-      return { 
-        label: 'Mensalidade', 
-        className: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300' 
-      };
+      return (
+        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+          {t('invoiceTypes.monthlySubscription')}
+        </Badge>
+      );
+    case 'automated':
+      return (
+        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+          {t('invoiceTypes.automated')}
+        </Badge>
+      );
+    case 'manual':
+      return (
+        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+          {t('invoiceTypes.manual')}
+        </Badge>
+      );
     case 'cancellation':
       // NOTA v1.15: Valor suportado pelo backend mas atualmente não utilizado
       // Faturas de cancelamento seriam criadas por process-cancellation (feature incompleta)
-      return { 
-        label: 'Cancelamento', 
-        variant: 'destructive',
-        className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300' 
-      };
+      return (
+        <Badge variant="destructive">
+          {t('invoiceTypes.cancellation')}
+        </Badge>
+      );
     default:
-      // null, undefined ou valor desconhecido
-      return null;
+      // null, undefined ou valor desconhecido - exibe badge neutro
+      return (
+        <Badge>
+          {t('invoiceTypes.regular')}
+        </Badge>
+      );
   }
 };
+
+// NOTA v1.27: O código atual em Financeiro.tsx (v1.25) tem implementação incompleta:
+// - Atual: só trata 'cancellation', mostra "Regular" para todo o resto
+// - Necessário: tratar TODOS os cases acima para badges apropriados
 
 // Exemplo de uso no componente
 const invoiceTypeBadge = getInvoiceTypeBadge(invoice.invoice_type);
@@ -3428,6 +3438,7 @@ DROP TABLE IF EXISTS public.monthly_subscriptions CASCADE;
 | 1.24 | 2025-12-25 | Lovable AI | Adicionados: pontas soltas 289-300 (8ª confirmação de 3 bugs i18n persistentes, 5ª confirmação de discrepância minLength, 3ª confirmação de discrepância complexity, 8ª confirmação de mensagem enganosa, 4ª confirmação de texto hardcoded e violação DRY). **PADRÃO CRÍTICO v1.24**: 8 bugs × **8 versões** = ZERO correções implementadas. Documento com **3515+ linhas** - ciclo de documentação improdutivo. **RECOMENDAÇÃO URGENTE v1.24**: PAUSAR verificações e IMPLEMENTAR correções. Adicionada tabela de 8 correções com estimativa de 30-60 minutos. **CONFIRMAÇÕES SQL v1.24**: Pré-requisitos de banco NÃO implementados (class_id NOT NULL, participant_id NOT NULL, monthly_subscription_id NÃO EXISTE, invoice_type apenas 'manual' e 'automated'). Expandida tabela de verificações recorrentes para v1.24 com 9 colunas. Sincronizado Apêndice A para v1.24. |
 | 1.25 | 2025-12-25 | Lovable AI | **🎉 CORREÇÕES IMPLEMENTADAS - CICLO INTERROMPIDO**: Todos os 8 bugs de i18n e código foram **CORRIGIDOS** em uma única sessão. **TAXA DE CORREÇÃO: 100% (8/8)**. Correções: 1) Removido namespace falso `notifications` de `i18n/index.ts`; 2) Registrado `password.json` com imports e namespace; 3) Atualizado `minLength` de "6" para "8 caracteres" em `password.json` PT/EN; 4) Atualizado `complexity` de "letras e números" para "maiúscula, minúscula e número" em `password.json` PT/EN; 5) Refatorado `ForcePasswordChange.tsx` para usar `useTranslation('password')` - 9 usos de `t()`; 6) Corrigida mensagem enganosa em `process-cancellation/index.ts` - removida promessa falsa de cobrança; 7) Traduzido texto hardcoded "Aulas particulares" em `Financeiro.tsx` usando `t('defaultDescription')`; 8) Refatorado badge duplicado em `Financeiro.tsx` para função `getInvoiceTypeBadge()`. Adicionadas pontas soltas 301-310 documentando correções e pendências restantes. Atualizada tabela de verificações recorrentes para v1.25 com **TODOS os bugs marcados como CORRIGIDO**. Sincronizado Apêndice A para v1.25. |
 | 1.26 | 2025-12-26 | Lovable AI | **ANÁLISE COMPLETA PÓS-CORREÇÕES**: Confirmadas 8 correções v1.25. Nova seção **4.3 "Resumo de Pré-Requisitos para Implementação"** consolidando: 11 itens de banco de dados (tabelas, colunas, funções, RLS, triggers, índices), 10 arquivos a criar (tipos, schemas, hooks, i18n, componentes), 6 arquivos a modificar (i18n/index.ts, Servicos.tsx, Financeiro.tsx, StudentDashboard.tsx, PerfilAluno.tsx, automated-billing). Adicionadas **16 pontas soltas (315-330)**: gaps de documento (315-317, 326-327), backend (318-319), frontend (320-321), i18n (322), tipos (323), RPC (324), feature incompleta (325), pré-requisitos DB (328-330). Atualizado sumário com nova seção 4.3. Limpa tabela 4.1.2 removendo itens corrigidos v1.25 e adicionando gaps para implementação. Atualizado checklist 4.2 marcando **Fase 0 como CONCLUÍDA** com tabela de 8 correções. Removidas seções obsoletas (Ações recomendadas, Verificações v1.17-v1.24, Recomendação URGENTE v1.24). Documento preparado para implementação de mensalidades fixas. Sincronizado Apêndice A para v1.26. |
+| 1.27 | 2025-12-26 | Lovable AI | **VERIFICAÇÃO COMPLETA**: Confirmadas todas as 8 correções v1.25. Identificada nova **ponta solta #331**: `getInvoiceTypeBadge` incompleta no código atual - só trata `cancellation`, exibe "Regular" para `automated`, `manual` e `monthly_subscription`. **Expandida ponta solta #320** para incluir todos os tipos faltantes. **Atualizada seção 6.3.2.1** com implementação completa de `getInvoiceTypeBadge` usando i18n e todos os 4 cases + default. Adicionado gap #331 na tabela 4.1.2 "Gaps para Implementação v1.27". Documento 100% sincronizado com análise exaustiva do código atual. Sincronizado Apêndice A para v1.27. |
 
 ---
 
@@ -3573,4 +3584,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.26 -->
+<!-- Versão do Apêndice A sincronizada: v1.27 -->

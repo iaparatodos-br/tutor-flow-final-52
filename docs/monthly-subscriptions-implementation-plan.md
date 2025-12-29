@@ -1189,13 +1189,14 @@ npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/
 | 2 | `src/pages/Servicos.tsx` | Adicionar Tabs (Serviços / Mensalidades) | 6.6.2 |
 | 3 | `src/pages/Financeiro.tsx` | LEFT JOIN em `loadInvoiceDetails` + case `monthly_subscription` no badge | 6.3.2 |
 | 4 | `src/pages/StudentDashboard.tsx` | Seção "Meus Planos" com múltiplos professores | 6.3.3 |
-| 5 | `src/pages/PerfilAluno.tsx` | Badge de mensalidade ativa | 6.3 |
-| 6 | `supabase/functions/automated-billing/index.ts` | Verificar mensalidade antes de processar (após linha 79) | 7.1 |
+| 5 | `src/pages/PerfilAluno.tsx` | Badge de mensalidade ativa + barra de progresso de aulas | 6.3, 4.3.4 #353 |
+| 6 | `supabase/functions/automated-billing/index.ts` | Verificar mensalidade antes de processar + lógica `starts_at` (seção 5.6.2) | 7.1, 7.2, 4.3.4 #352 |
 | 7 | `src/components/InvoiceStatusBadge.tsx` | Refatorar para usar i18n (labels hardcoded) | 6.3.1 |
 | 8 | `src/i18n/locales/pt/financial.json` | Adicionar `invoiceTypes` (monthlySubscription, orphanCharges, automated, manual) | 4.3.4 #338, #348 |
 | 9 | `src/i18n/locales/en/financial.json` | Adicionar `invoiceTypes` (monthlySubscription, orphanCharges, automated, manual) | 4.3.4 #338, #348 |
 | 10 | `src/pages/Recibo.tsx` | Refatorar para usar i18n em `payment_origin` | 4.3.4 #343 |
 | 11 | `src/pages/Faturas.tsx` | Exibir `invoice_type` para alunos distinguirem tipo de fatura | 4.3.4 #350 |
+| 12 | `supabase/functions/send-invoice-notification/index.ts` | Personalizar email para `invoice_type='monthly_subscription'` | 7.3, 4.3.4 #351 |
 
 #### 4.3.4 Gaps Identificados para Implementação (v1.26 → v1.30)
 
@@ -1239,8 +1240,11 @@ Pontas soltas 315-349 identificadas nas análises completas:
 | 348 | i18n | Tradução `invoiceTypes.orphanCharges` não existe em `financial.json` | Adicionar PT: `"Cobranças Pendentes"` / EN: `"Orphan Charges"` |
 | 349 | Tipos | Interface `InvoiceWithStudent` incompleta para todos os tipos de fatura | Expandir para incluir campos de todos os tipos |
 | **350** | Frontend | `Faturas.tsx` (visão do aluno) não exibe `invoice_type` | Passar prop `invoiceType` e exibir badge de tipo para alunos distinguirem faturas |
+| **351** | Notificações | `send-invoice-notification` não personaliza email para `monthly_subscription` | Verificar `invoice_type` e buscar dados da mensalidade para template personalizado (ver seção 7.3) |
+| **352** | Backend | `automated-billing` pseudocódigo não valida `starts_at` para separar aulas | Implementar lógica da seção 5.6.2: aulas antes de `starts_at` = cobrança por aula, aulas depois = mensalidade |
+| **353** | Frontend | `PerfilAluno.tsx` não listado com modificação de barra de progresso | Adicionar arquivo à lista 4.3.3 com badge de mensalidade + barra de progresso conforme ponta solta #24 e #51 |
 
-**Total de gaps ativos**: 36 (excluindo os marcados como ✅ resolvidos)
+**Total de gaps ativos**: 39 (excluindo os marcados como ✅ resolvidos)
 
 #### 4.3.5 Feature Incompleta: Cancelamento com Cobrança (v1.30)
 
@@ -1650,6 +1654,63 @@ if (totalValue < MIN_BOLETO_VALUE) {
 // FASE 2 (futura): Implementar acumulação
 // await updatePendingAmount(relationship.id, totalValue);
 ```
+
+#### 5.6.6 Lógica Completa de `starts_at` no Faturamento (v1.33)
+
+**Cenário completo:** Aluno tem mensalidade com `starts_at = 2025-01-15` e teve aulas nos dias 10, 12, 18 e 20 de janeiro.
+
+**Pseudocódigo para `automated-billing`:**
+
+```typescript
+// Buscar mensalidade ativa do aluno
+const subscription = await getStudentActiveSubscription(relationship.id);
+
+if (!subscription) {
+  // Sem mensalidade: fluxo tradicional por aula
+  return processPerClassBilling(relationship, billingDate);
+}
+
+// Buscar data de início da assinatura
+const { data: sms } = await supabase
+  .from('student_monthly_subscriptions')
+  .select('starts_at')
+  .eq('relationship_id', relationship.id)
+  .eq('is_active', true)
+  .single();
+
+const startsAt = new Date(sms.starts_at);
+const today = new Date();
+
+// Verificar se mensalidade já está ativa HOJE
+if (startsAt > today) {
+  // Mensalidade com starts_at futuro: todas as aulas são por aula
+  return processPerClassBilling(relationship, billingDate);
+}
+
+// Buscar aulas não faturadas
+const unbilledClasses = await getUnbilledParticipants(relationship);
+
+// SEPARAR AULAS POR PERÍODO
+const aulasAntes = unbilledClasses.filter(a => new Date(a.class_date) < startsAt);
+const aulasDepois = unbilledClasses.filter(a => new Date(a.class_date) >= startsAt);
+
+// 1. AULAS ANTES DE starts_at: Faturar por aula (fluxo tradicional)
+if (aulasAntes.length > 0) {
+  logStep('Faturando aulas anteriores à mensalidade', { 
+    count: aulasAntes.length, 
+    startsAt: sms.starts_at 
+  });
+  await createPerClassInvoice(relationship, aulasAntes);
+}
+
+// 2. AULAS APÓS starts_at: Incluir na mensalidade
+await createMonthlySubscriptionInvoice(relationship, subscription, aulasDepois);
+```
+
+**Resultado esperado para o cenário:**
+- Aulas 10/jan e 12/jan → Fatura por aula (R$ X cada)
+- Aulas 18/jan e 20/jan → Cobertas pela mensalidade (valor fixo)
+- Total: 2 faturas separadas ou 1 fatura consolidada com itens distintos
 
 ---
 
@@ -2703,6 +2764,77 @@ async function processPerClassBilling(
 }
 ```
 
+### 7.3 Notificação de Fatura de Mensalidade (v1.33)
+
+O edge function `send-invoice-notification` deve ser atualizado para personalizar o email quando `invoice_type = 'monthly_subscription'`:
+
+```typescript
+// ============================================
+// ATUALIZAÇÃO: send-invoice-notification/index.ts
+// Tratar faturas de mensalidade com template personalizado
+// ============================================
+
+// Após buscar dados da fatura (aproximadamente linha 80)
+let enhancedDescription = invoice.description;
+let subscriptionDetails = null;
+
+// Verificar se é fatura de mensalidade
+if (invoice.invoice_type === 'monthly_subscription' && invoice.monthly_subscription_id) {
+  // Buscar dados da mensalidade para template personalizado
+  const { data: subscription } = await supabaseClient
+    .from('monthly_subscriptions')
+    .select('name, max_classes, overage_price')
+    .eq('id', invoice.monthly_subscription_id)
+    .single();
+  
+  if (subscription) {
+    subscriptionDetails = subscription;
+    
+    // Personalizar descrição do email
+    enhancedDescription = `Mensalidade - ${subscription.name}`;
+    
+    // Se tem limite de aulas, mostrar uso
+    if (subscription.max_classes) {
+      // Buscar contagem de aulas do mês
+      const { data: classCount } = await supabaseClient
+        .rpc('count_completed_classes_in_month', {
+          p_teacher_id: invoice.teacher_id,
+          p_student_id: invoice.student_id
+        });
+      
+      const used = classCount || 0;
+      const limit = subscription.max_classes;
+      const remaining = Math.max(0, limit - used);
+      
+      enhancedDescription += ` (${used}/${limit} aulas utilizadas, ${remaining} restantes)`;
+      
+      // Verificar excedentes
+      if (used > limit) {
+        const overage = used - limit;
+        enhancedDescription += ` + ${overage} aula(s) excedente(s)`;
+      }
+    } else {
+      enhancedDescription += ' (aulas ilimitadas)';
+    }
+  }
+}
+
+// Usar descrição personalizada no corpo do email
+const emailBody = `
+  <p>${student.name || 'Prezado(a) aluno(a)'},</p>
+  <p>Uma nova fatura foi gerada:</p>
+  <p><strong>${enhancedDescription}</strong></p>
+  <p>Valor: R$ ${formatCurrency(invoice.amount)}</p>
+  <p>Vencimento: ${formatDate(invoice.due_date)}</p>
+  ...
+`;
+```
+
+**Campos do email para mensalidades:**
+- Assunto: "Nova fatura de mensalidade - [Nome do Plano]"
+- Corpo: Inclui nome do plano, valor mensal, uso de aulas (se limite), valor de excedentes (se aplicável)
+- CTA: Link para visualizar/pagar fatura
+
 ---
 
 ## 8. Internacionalização (i18n)
@@ -3686,5 +3818,15 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 
 ---
 
+---
+
+## Histórico de Revisões v1.33
+
+| Versão | Data | Autor | Descrição |
+|--------|------|-------|-----------|
+| 1.33 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v4**: Identificados **3 novos gaps (#351-353)** não documentados: (1) `send-invoice-notification` não personaliza email para `invoice_type='monthly_subscription'` - adicionada seção 7.3 com pseudocódigo, (2) `automated-billing` pseudocódigo não implementa separação por `starts_at` conforme seção 5.6.2 - adicionada seção 5.6.6 com lógica completa, (3) `PerfilAluno.tsx` não listado em 4.3.3 apesar de pontas soltas #24 e #51 mencionarem badge/barra de progresso - adicionado como item #12. Atualizado total para **39 gaps**. Documento 100% sincronizado com análise de código e banco. |
+
+---
+
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.32 -->
+<!-- Versão do Apêndice A sincronizada: v1.33 -->

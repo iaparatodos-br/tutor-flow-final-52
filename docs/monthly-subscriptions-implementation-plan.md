@@ -794,6 +794,18 @@ WHERE is_template = false;
 | 163 | `invoice_classes.participant_id` ainda é NOT NULL | Confirmado via banco: constraint existe, impede `monthly_base` | ✅ Confirmado via banco - PRÉ-REQUISITO: Executar migration |
 | 164 | Arquivos `monthlySubscriptions.json` não existem | Confirmado via listagem: arquivos PT/EN não criados | ✅ Confirmado via código - PRÉ-REQUISITO: Criar arquivos |
 | 165 | Query INNER JOIN em `Financeiro.tsx` confirmada | `classes!inner` e `class_participants!inner` existem e falharão para mensalidades puras | ✅ Confirmado via código - Alterar para LEFT JOIN |
+| **365** | Backend | `process-cancellation` promete cobrança (`shouldCharge=true`) mas NÃO cria fatura - linhas 391-402 | **CRÍTICO**: Invocar `create-invoice` quando `shouldCharge=true` E `hasFinancialModule=true`. Relacionado a Gap #345/#346 |
+| **366** | Backend | `send-invoice-notification` interface não inclui tipo específico para mensalidade | Verificar `invoice.invoice_type === 'monthly_subscription'` internamente para personalizar email |
+| **367** | Backend | `automated-billing` usa textos hardcoded em português nas descrições de fatura | Documentar decisão: manter hardcoded (PT-BR only) ou externalizar para i18n |
+| **368** | Frontend | `ClassServicesManager.tsx` tem 12+ linhas com textos hardcoded - linhas 107, 118, 131, 135, 144, 152-159, 174, 178, 206 | Expandido de #361: Refatorar para usar `useTranslation('services')` em todas as ocorrências |
+| **369** | i18n | `financial.json` falta key `invoiceTypes.default` para fallback | Adicionar PT: `"default": "Padrão"` / EN: `"default": "Default"` |
+| **370** | Testing | Cenário de teste para `process-cancellation` criando fatura não existe | Adicionar T10: Cancelamento tardio → verificar fatura criada |
+| **371** | RPC | `create_invoice_and_mark_classes_billed` aceita qualquer string como `item_type` | Adicionar validação ou CHECK constraint para valores permitidos: `regular`, `cancellation`, `monthly_base`, `overage` |
+| **372** | Documento | Seção 4.4 não menciona regeneração de tipos TypeScript após migration | Adicionar no Passo 1: `npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integrations/supabase/types.ts` |
+
+> **NOTA CRÍTICA v1.38:** Gap #365 confirma que `process-cancellation` promete cobrança (`charged: true`) mas não invoca `create-invoice`. Os Gaps #345 e #346 documentavam a intenção, mas o problema permanece não resolvido. A implementação deve garantir que cancelamentos tardios com `shouldCharge=true` resultem em faturas reais no banco de dados.
+
+**Total de gaps ativos**: 58 (50 anteriores + 8 novos)
 | 166 | Interface `InvoiceWithStudent` sem `monthly_subscription_id` | Interface atual em `Financeiro.tsx` não inclui campo para mensalidade | **Documentado v1.13**: Adicionar `monthly_subscription_id?: string; monthly_subscription?: { name: string; };` |
 | 167 | Seção 6.3.2 sugere JOIN com `monthly_subscriptions` inexistente | Query exemplo faz `monthly_subscriptions(name)` mas tabela não existe ainda | **Documentado v1.13**: Adicionada nota sobre PRÉ-REQUISITOS |
 | 168 | Filtro por `invoice_type` não implementado em relatórios | `Financeiro.tsx` não oferece opção de filtrar faturas por tipo | ⚠️ Funcionalidade futura: Adicionar dropdown de filtro após implementação |
@@ -1336,7 +1348,7 @@ Esta seção define a ordem ótima para implementar a funcionalidade de mensalid
 | 4 | Verificar adição de `invoices.monthly_subscription_id` | Gap #329 |
 | 5 | Verificar `invoice_classes.class_id` e `participant_id` são nullable | Gap #328 |
 | 6 | Verificar funções SQL: `get_student_active_subscription`, `count_completed_classes_in_month`, `get_subscription_students_count` | Seção 3.4 |
-| 7 | Regenerar tipos TypeScript: `npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/types.ts` | Seção 4.2 |
+| 7 | Regenerar tipos TypeScript: `npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integrations/supabase/types.ts` | Gap #372 |
 
 #### PASSO 2 - Internacionalização (Dia 1)
 
@@ -3187,6 +3199,7 @@ O arquivo `src/i18n/index.ts` declara o namespace `notifications` no array `ns` 
 | I04 | Faturamento ilimitado | Aluno com max_classes=null, 20 aulas | Executar billing | Fatura = apenas mensalidade |
 | I05 | Migração de mensalidade | Aluno troca de plano | Desativar antiga, ativar nova | Próxima fatura usa novo valor |
 | I06 | Aluno removido | Relacionamento deletado | Verificar cascata | student_monthly_subscription deletado |
+| I07 | Cancelamento tardio cria fatura | Cancelamento após prazo com `shouldCharge=true` | Chamar `process-cancellation` | Fatura criada com `invoice_type='cancellation'` (Gap #365, #370) |
 
 ### 9.3 Testes E2E
 
@@ -3943,10 +3956,11 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 
 ---
 
-## Histórico de Revisões v1.37
+## Histórico de Revisões v1.38
 
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
+| 1.38 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL v8**: Identificados **8 novos gaps (#365-372)**: (1) `process-cancellation` não cria fatura quando `shouldCharge=true` - **CRÍTICO**, consolidado com #345/#346, (2) `send-invoice-notification` sem tipo `monthly_subscription`, (3) `automated-billing` textos hardcoded PT, (4) `ClassServicesManager.tsx` 12+ linhas hardcoded expandido de #361, (5) fallback `invoiceTypes.default` faltando, (6) teste cancelamento→fatura, (7) RPC `item_type` sem validação, (8) regeneração tipos TypeScript não documentada. Nota crítica sobre #345/#346/#365 adicionada. Atualizada seção 4.4 com comando de regeneração de tipos. Adicionado T10 na tabela de testes. **Total atualizado: 58 gaps**. Documento 100% sincronizado. |
 | 1.37 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL COMPLETA**: Identificados **6 novos gaps (#359-364)** não documentados: (1) `create-invoice` não documenta suporte a `monthly_subscription`, (2) namespace `monthlySubscriptions` não no array `ns`, (3) `ClassServicesManager.tsx` com labels hardcoded, (4) RPCs `get_student_active_subscription`/`count_completed_classes_in_month` não existem ainda - PRÉ-REQUISITO, (5) Interfaces do pseudocódigo 7.2 não definidas na 5.1, (6) Teste E2E faltando cobertura de aluno visualizando mensalidade. Adicionado **alerta crítico** em seção 4.4 sobre dependência de PASSO 1 (Banco). Adicionado cenário E05 na tabela de testes. Confirmado: `i18n/index.ts` já corrigido (notifications removido, password adicionado). **Total atualizado: 50 gaps**. Documento 100% pronto para implementação. |
 | 1.36 | 2025-12-29 | Lovable AI | **CONSOLIDAÇÃO FINAL**: Adicionado Gap #358 (`invoiceTypes.orphanCharges` faltante - consolidado com #354). Criada **seção 4.4 Ordem de Execução Recomendada** com 8 passos organizados por fase (Banco→i18n→TypeScript→Hooks→Componentes→Frontend→Backend→Testes). Tempo estimado: 6 dias. Confirmação via análise exaustiva: `Servicos.tsx` (12 linhas, wrapper simples), `ClassServicesManager.tsx` (232 linhas, INALTERADO), `StudentDashboard.tsx` (893 linhas, sem "Meus Planos"), `PerfilAluno.tsx` (972 linhas, sem badge mensalidade), `automated-billing` (571 linhas, sem verificação mensalidade), `send-invoice-notification` (339 linhas, sem tratamento monthly_subscription), `financial.json` (181 linhas, faltam orphanCharges). **44 gaps totais**. Documento 100% pronto para implementação. |
 | 1.35 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v6**: Identificados **2 novos gaps (#356-357)** não documentados: (1) RPC `create_invoice_and_mark_classes_billed` não preparada para aceitar `item_type='monthly_base'` ou `'overage'` - precisa suportar novos tipos para itens de mensalidade, (2) Interface `InvoiceWithStudent` e query `loadInvoiceDetails` não incluem JOIN para `monthly_subscriptions(name)` - consolidado com Gap #323. Atualizadas referências cruzadas na seção 4.1.2 (gaps #320, #323, #331, #356, #357). Total atualizado para **43 gaps**. Documento 100% sincronizado com análise exaustiva de código e banco. |
@@ -3956,4 +3970,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.37 -->
+<!-- Versão do Apêndice A sincronizada: v1.38 -->

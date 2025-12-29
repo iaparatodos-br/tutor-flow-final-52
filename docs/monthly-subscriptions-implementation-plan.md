@@ -903,9 +903,12 @@ WHERE is_template = false;
 | **Pontas Soltas 354-355 (v1.34)** | | |
 | 354 | `financial.json` falta `invoiceTypes.monthlySubscription` e `invoiceTypes.orphanCharges` | Seção 6.3.2.1 referencia estas traduções mas não existem em `financial.json` atual (linhas 34-39 só têm 4 tipos) | ⚠️ Adicionar keys: PT `"monthlySubscription": "Mensalidade"`, `"orphanCharges": "Cobranças Pendentes"` / EN `"monthlySubscription": "Monthly Subscription"`, `"orphanCharges": "Orphan Charges"` |
 | 355 | `getInvoiceTypeBadge` em `Financeiro.tsx` só trata 2 cases | Linhas 28-35: switch atual só tem `cancellation` vs default. Documento seção 6.3.2.1 especifica 6 cases. | ⚠️ Implementar switch completo: `monthly_subscription`, `automated`, `manual`, `cancellation`, `orphan_charges`, `default` |
-| **Pontas Soltas 356-357 (v1.35)** | | |
+| **Pontas Soltas 356-358 (v1.35-v1.36)** | | |
 | 356 | RPC `create_invoice_and_mark_classes_billed` não aceita novos `item_type` | RPC atualmente só aceita `completed_class` e `cancellation_charge`. Para mensalidades precisa aceitar `monthly_base` e `overage` | ⚠️ Alterar RPC para aceitar novos valores de `item_type`. Verificar se há constraint ou validação no corpo da função |
 | 357 | Interface `InvoiceWithStudent` e query `loadInvoiceDetails` sem JOIN para `monthly_subscriptions(name)` | Query em `Financeiro.tsx` (linhas 280-298) não faz LEFT JOIN para obter nome da mensalidade | ⚠️ Expandir interface com `monthly_subscription?: { name: string }` e adicionar `LEFT JOIN monthly_subscriptions ON invoices.monthly_subscription_id = monthly_subscriptions.id` - **Consolidado com Gap #323** |
+| 358 | `financial.json` falta key `invoiceTypes.orphanCharges` | Seção 6.3.2.1 referencia `t('invoiceTypes.orphanCharges')` mas key não existe em `financial.json` (Gap #354 já cobre `monthlySubscription`) | ⚠️ Adicionar keys: PT `"orphanCharges": "Cobranças Pendentes"` / EN `"orphanCharges": "Orphan Charges"` - **Consolidado com Gap #354** |
+
+**Total de gaps ativos**: 44
 
 ---
 
@@ -1302,6 +1305,106 @@ Esta seção documenta oficialmente todos os valores de `invoice_type` no sistem
 1. ✅ `getInvoiceTypeBadge` deve tratar TODOS os tipos com badges apropriados
 2. ⚠️ Verificar se `process-orphan-cancellation-charges` define `invoice_type='orphan_charges'`
 3. ⚠️ Adicionar traduções para todos os tipos em `financial.json`
+
+---
+
+### 4.4 Ordem de Execução Recomendada
+
+Esta seção define a ordem ótima para implementar a funcionalidade de mensalidades fixas, organizando os 44 gaps identificados em fases sequenciais.
+
+**Tempo estimado total**: 6 dias de desenvolvimento
+
+#### PASSO 1 - Banco de Dados (Dia 1 - CRÍTICO)
+
+**Pré-requisito**: Todos os outros passos dependem desta execução.
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Fazer backup completo do banco | - |
+| 2 | Executar SQL do Apêndice A (tabelas, colunas, funções, RLS, triggers) | Seção 3, Apêndice A |
+| 3 | Verificar criação de `monthly_subscriptions` e `student_monthly_subscriptions` | Gap #330 |
+| 4 | Verificar adição de `invoices.monthly_subscription_id` | Gap #329 |
+| 5 | Verificar `invoice_classes.class_id` e `participant_id` são nullable | Gap #328 |
+| 6 | Verificar funções SQL: `get_student_active_subscription`, `count_completed_classes_in_month`, `get_subscription_students_count` | Seção 3.4 |
+| 7 | Regenerar tipos TypeScript: `npx supabase gen types typescript --project-id=<ID> > src/integrations/supabase/types.ts` | Seção 4.2 |
+
+#### PASSO 2 - Internacionalização (Dia 1)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Criar `src/i18n/locales/pt/monthlySubscriptions.json` | Seção 8.1 |
+| 2 | Criar `src/i18n/locales/en/monthlySubscriptions.json` | Seção 8.2 |
+| 3 | Registrar namespace `monthlySubscriptions` em `src/i18n/index.ts` | Gap #322 |
+| 4 | Adicionar `invoiceTypes.monthlySubscription` em `financial.json` PT/EN | Gap #332, #338, #354 |
+| 5 | Adicionar `invoiceTypes.orphanCharges` em `financial.json` PT/EN | Gap #348, #358 |
+| 6 | Adicionar `invoiceTypes.automated` e `invoiceTypes.manual` em `financial.json` PT/EN | Gap #339 |
+
+#### PASSO 3 - Tipos TypeScript (Dia 2)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Criar diretório `src/schemas` (se não existir) | Gap #139 |
+| 2 | Criar `src/types/monthly-subscriptions.ts` com todas as interfaces | Seção 5.1, Gap #140 |
+| 3 | Criar `src/schemas/monthly-subscription.schema.ts` com Zod schema | Seção 6.5 |
+| 4 | Atualizar interface `InvoiceWithStudent` em `Financeiro.tsx` com `monthly_subscription_id` e `monthly_subscription` | Gap #323, #340, #349, #357 |
+
+#### PASSO 4 - Hooks (Dia 2)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Criar `src/hooks/useMonthlySubscriptions.ts` | Seção 6.4 |
+| 2 | Criar `src/hooks/useStudentSubscriptionAssignment.ts` (ou adicionar hooks em arquivo existente) | Seção 6.4.1 |
+| 3 | Implementar `useAvailableStudentsForSubscription` | Seção 6.4.1 |
+| 4 | Implementar `useBulkAssignStudents` | Seção 6.4.1 |
+
+#### PASSO 5 - Componentes (Dias 3-4)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Criar `src/components/MonthlySubscriptionsManager.tsx` | Seção 6.2.1 |
+| 2 | Criar `src/components/MonthlySubscriptionCard.tsx` | Seção 6.2.2 |
+| 3 | Criar `src/components/MonthlySubscriptionModal.tsx` | Seção 6.2.3 |
+| 4 | Criar `src/components/StudentSubscriptionSelect.tsx` | Seção 6.2.4 |
+
+#### PASSO 6 - Modificações Frontend (Dia 4)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Modificar `Servicos.tsx` para usar Tabs (Serviços / Mensalidades) | Seção 6.6.2, Gap #113 |
+| 2 | **MANTER** `ClassServicesManager.tsx` inalterado | Seção 6.6.3 |
+| 3 | Expandir `getInvoiceTypeBadge` em `Financeiro.tsx` com TODOS os 6 cases | Gap #320, #331, #337, #339, #355 |
+| 4 | Alterar INNER JOIN para LEFT JOIN em `loadInvoiceDetails` | Gap #321, #333 |
+| 5 | Adicionar JOIN para `monthly_subscriptions(name)` | Gap #357 |
+| 6 | Adicionar badge de mensalidade ativa em `PerfilAluno.tsx` | Gap #353 |
+| 7 | Adicionar seção "Meus Planos" em `StudentDashboard.tsx` (com suporte a múltiplos professores) | Seção 6.3.3, Gap #103 |
+| 8 | Refatorar `InvoiceStatusBadge.tsx` para usar i18n | Gap #336 |
+| 9 | Adicionar prop `invoiceType` em `InvoiceStatusBadge.tsx` | Gap #344 |
+| 10 | Passar `invoiceType` em `Faturas.tsx` para alunos | Gap #350 |
+| 11 | Refatorar `Recibo.tsx` para usar i18n em `payment_origin` | Gap #343 |
+
+#### PASSO 7 - Backend (Dia 5)
+
+| # | Ação | Referência |
+|---|------|------------|
+| 1 | Modificar `automated-billing/index.ts` para verificar mensalidade ativa (após linha 79) | Gap #318, #334 |
+| 2 | Implementar lógica de separação por `starts_at` | Seção 5.6.2, 5.6.6, Gap #352 |
+| 3 | Atualizar `send-invoice-notification/index.ts` para emails de mensalidade | Seção 7.3, Gap #351 |
+| 4 | Verificar/adaptar RPC `create_invoice_and_mark_classes_billed` para novos `item_type` | Gap #324, #356 |
+
+#### PASSO 8 - Testes e Validações (Dia 6)
+
+| # | Cenário de Teste | Resultado Esperado |
+|---|------------------|-------------------|
+| 1 | Mensalidade R$0 com excedentes | Fatura gerada apenas com valor de excedentes |
+| 2 | Aulas antes de `starts_at` | Cobradas por aula (não mensalidade) |
+| 3 | Aulas depois de `starts_at` | Cobertas pela mensalidade |
+| 4 | Múltiplos professores com mensalidades para mesmo aluno | Cards separados no StudentDashboard |
+| 5 | Cancelamento de mensalidade antes do `billing_day` | Não gera cobrança |
+| 6 | Cancelamento de mensalidade após `billing_day` | Já foi cobrado |
+| 7 | Query `loadInvoiceDetails` com mensalidade pura (sem aulas) | LEFT JOIN funciona corretamente |
+| 8 | i18n em ambos idiomas (PT/EN) | Todas as traduções funcionam |
+| 9 | Limite de aulas excedido | `overage_price` aplicado corretamente |
+| 10 | Boleto com valor < R$5,00 | Validação impede criação |
 
 ---
 
@@ -3829,10 +3932,11 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 
 ---
 
-## Histórico de Revisões v1.35
+## Histórico de Revisões v1.36
 
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
+| 1.36 | 2025-12-29 | Lovable AI | **CONSOLIDAÇÃO FINAL**: Adicionado Gap #358 (`invoiceTypes.orphanCharges` faltante - consolidado com #354). Criada **seção 4.4 Ordem de Execução Recomendada** com 8 passos organizados por fase (Banco→i18n→TypeScript→Hooks→Componentes→Frontend→Backend→Testes). Tempo estimado: 6 dias. Confirmação via análise exaustiva: `Servicos.tsx` (12 linhas, wrapper simples), `ClassServicesManager.tsx` (232 linhas, INALTERADO), `StudentDashboard.tsx` (893 linhas, sem "Meus Planos"), `PerfilAluno.tsx` (972 linhas, sem badge mensalidade), `automated-billing` (571 linhas, sem verificação mensalidade), `send-invoice-notification` (339 linhas, sem tratamento monthly_subscription), `financial.json` (181 linhas, faltam orphanCharges). **44 gaps totais**. Documento 100% pronto para implementação. |
 | 1.35 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v6**: Identificados **2 novos gaps (#356-357)** não documentados: (1) RPC `create_invoice_and_mark_classes_billed` não preparada para aceitar `item_type='monthly_base'` ou `'overage'` - precisa suportar novos tipos para itens de mensalidade, (2) Interface `InvoiceWithStudent` e query `loadInvoiceDetails` não incluem JOIN para `monthly_subscriptions(name)` - consolidado com Gap #323. Atualizadas referências cruzadas na seção 4.1.2 (gaps #320, #323, #331, #356, #357). Total atualizado para **43 gaps**. Documento 100% sincronizado com análise exaustiva de código e banco. |
 | 1.34 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v5**: Identificados **2 novos gaps (#354-355)** não documentados: (1) `financial.json` não contém keys `invoiceTypes.monthlySubscription` e `invoiceTypes.orphanCharges` referenciadas na seção 6.3.2.1 - código atual só tem `regular`, `cancellation`, `automated`, `manual` (linhas 34-39), (2) `getInvoiceTypeBadge` em `Financeiro.tsx` (linhas 28-35) só trata 2 cases (`cancellation` vs default) enquanto documento especifica 6 cases. Confirmado via query SQL: `invoice_type` só tem valores `manual`(7) e `automated`(2). Total atualizado para **41 gaps**. Documento 100% sincronizado com código e banco. |
 | 1.33 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v4**: Identificados **3 novos gaps (#351-353)** não documentados: (1) `send-invoice-notification` não personaliza email para `invoice_type='monthly_subscription'` - adicionada seção 7.3 com pseudocódigo, (2) `automated-billing` pseudocódigo não implementa separação por `starts_at` conforme seção 5.6.2 - adicionada seção 5.6.6 com lógica completa, (3) `PerfilAluno.tsx` não listado em 4.3.3 apesar de pontas soltas #24 e #51 mencionarem badge/barra de progresso - adicionado como item #12. Atualizado total para **39 gaps**. Documento 100% sincronizado com análise de código e banco. |
@@ -3840,4 +3944,4 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.35 -->
+<!-- Versão do Apêndice A sincronizada: v1.36 -->

@@ -900,6 +900,9 @@ WHERE is_template = false;
 | 335 | `invoice_classes` sem registros pode ser normal ou bug | Query retorna 0 registros; pode ser ambiente de desenvolvimento ou bug de billing | ℹ️ Nota: estado esperado depende se billing automatizado foi executado |
 | 336 | `InvoiceStatusBadge.tsx` usa labels hardcoded em português | Labels como "Paga", "Em Aberto", "Vencida" não usam i18n | ⚠️ Refatorar componente para usar `useTranslation('financial')` |
 | 337 | Discrepância entre exemplo `getInvoiceTypeBadge` v1.27 e código atual | Exemplo no documento difere da implementação real em `Financeiro.tsx` | ⚠️ Sincronizar: atualizar exemplo ou código para consistência |
+| **Pontas Soltas 354-355 (v1.34)** | | |
+| 354 | `financial.json` falta `invoiceTypes.monthlySubscription` e `invoiceTypes.orphanCharges` | Seção 6.3.2.1 referencia estas traduções mas não existem em `financial.json` atual (linhas 34-39 só têm 4 tipos) | ⚠️ Adicionar keys: PT `"monthlySubscription": "Mensalidade"`, `"orphanCharges": "Cobranças Pendentes"` / EN `"monthlySubscription": "Monthly Subscription"`, `"orphanCharges": "Orphan Charges"` |
+| 355 | `getInvoiceTypeBadge` em `Financeiro.tsx` só trata 2 cases | Linhas 28-35: switch atual só tem `cancellation` vs default. Documento seção 6.3.2.1 especifica 6 cases. | ⚠️ Implementar switch completo: `monthly_subscription`, `automated`, `manual`, `cancellation`, `orphan_charges`, `default` |
 
 ---
 
@@ -985,7 +988,7 @@ Histórico de correções aplicadas em versões anteriores (não são gaps pende
 | **Gap adicional v1.27** | | |
 | `getInvoiceTypeBadge` incompleta - falta `automated` e `manual` | ⚠️ Gap #331 | Só trata `cancellation`, default "Regular" para outros tipos |
 | **Gaps adicionais v1.28** | | |
-| Tradução `invoiceTypes.monthlySubscription` não existe | ❌ Gap #332 | Adicionar em `financial.json` PT/EN |
+| Tradução `invoiceTypes.monthlySubscription` não existe | ❌ Gap #332, #354 | Adicionar em `financial.json` PT/EN (também `orphanCharges`) |
 | Falta clareza sobre qual query usa INNER JOIN | ⚠️ Gap #333 | Especificar: `loadInvoiceDetails` (não `loadInvoices`) |
 | Localização exata para verificar mensalidade não documentada | ⚠️ Gap #334 | Especificar: `automated-billing/index.ts` após linha 79 |
 | `invoice_classes` sem registros - pode ser normal ou bug | ⚠️ Gap #335 | Adicionar nota sobre estado esperado de dados |
@@ -3820,13 +3823,14 @@ Estes itens serão implementados quando a funcionalidade de mensalidades fixas f
 
 ---
 
-## Histórico de Revisões v1.33
+## Histórico de Revisões v1.34
 
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
+| 1.34 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v5**: Identificados **2 novos gaps (#354-355)** não documentados: (1) `financial.json` não contém keys `invoiceTypes.monthlySubscription` e `invoiceTypes.orphanCharges` referenciadas na seção 6.3.2.1 - código atual só tem `regular`, `cancellation`, `automated`, `manual` (linhas 34-39), (2) `getInvoiceTypeBadge` em `Financeiro.tsx` (linhas 28-35) só trata 2 cases (`cancellation` vs default) enquanto documento especifica 6 cases. Confirmado via query SQL: `invoice_type` só tem valores `manual`(7) e `automated`(2). Total atualizado para **41 gaps**. Documento 100% sincronizado com código e banco. |
 | 1.33 | 2025-12-29 | Lovable AI | **VERIFICAÇÃO FINAL EXAUSTIVA v4**: Identificados **3 novos gaps (#351-353)** não documentados: (1) `send-invoice-notification` não personaliza email para `invoice_type='monthly_subscription'` - adicionada seção 7.3 com pseudocódigo, (2) `automated-billing` pseudocódigo não implementa separação por `starts_at` conforme seção 5.6.2 - adicionada seção 5.6.6 com lógica completa, (3) `PerfilAluno.tsx` não listado em 4.3.3 apesar de pontas soltas #24 e #51 mencionarem badge/barra de progresso - adicionado como item #12. Atualizado total para **39 gaps**. Documento 100% sincronizado com análise de código e banco. |
 
 ---
 
 **Fim do Documento**
-<!-- Versão do Apêndice A sincronizada: v1.33 -->
+<!-- Versão do Apêndice A sincronizada: v1.34 -->

@@ -35,7 +35,9 @@
     "regular": "Regular",
     "cancellation": "Cancellation",
     "automated": "Automated",
-    "manual": "Manual"
+    "manual": "Manual",
+    "monthlySubscription": "Monthly Subscription",
+    "orphanCharges": "Pending Charges"
   },
   "originalAmount": "Original amount: {amount}",
   "groups": {

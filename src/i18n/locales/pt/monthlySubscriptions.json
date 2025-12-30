@@ -1,0 +1,100 @@
+{
+  "title": "Mensalidades",
+  "new": "Nova Mensalidade",
+  "edit": "Editar Mensalidade",
+  "tabs": {
+    "services": "Serviços",
+    "subscriptions": "Mensalidades"
+  },
+  "fields": {
+    "name": "Nome do Plano",
+    "namePlaceholder": "Ex: Plano Básico, Plano Premium",
+    "description": "Descrição",
+    "descriptionPlaceholder": "Descreva os benefícios do plano",
+    "price": "Valor Mensal",
+    "pricePlaceholder": "0,00",
+    "hasLimit": "Limitar quantidade de aulas",
+    "maxClasses": "Máximo de Aulas",
+    "maxClassesPlaceholder": "Número máximo de aulas por mês",
+    "overagePrice": "Valor por Aula Excedente",
+    "overagePricePlaceholder": "Valor cobrado por aula além do limite",
+    "students": "Alunos Vinculados",
+    "startsAt": "Data de Início",
+    "isActive": "Ativo"
+  },
+  "list": {
+    "noSubscriptions": "Nenhuma mensalidade cadastrada",
+    "noSubscriptionsDescription": "Crie sua primeira mensalidade para começar a oferecer planos fixos aos seus alunos.",
+    "studentsCount": "{count} aluno(s) vinculado(s)",
+    "noStudents": "Nenhum aluno vinculado",
+    "unlimited": "Aulas ilimitadas",
+    "classesLimit": "Até {count} aulas/mês",
+    "overage": "+R$ {price} por aula excedente",
+    "noOverage": "Sem cobrança de excedente",
+    "perMonth": "/mês",
+    "active": "Ativo",
+    "inactive": "Inativo",
+    "classesUsed": "{used}/{limit} aulas utilizadas",
+    "classesUsedUnlimited": "{used} aulas utilizadas"
+  },
+  "validation": {
+    "nameRequired": "Nome do plano é obrigatório",
+    "validPrice": "Informe um valor válido",
+    "validMaxClasses": "Informe um número válido de aulas",
+    "validOveragePrice": "Informe um valor válido para aula excedente"
+  },
+  "actions": {
+    "cancel": "Cancelar",
+    "create": "Criar Mensalidade",
+    "update": "Salvar Alterações",
+    "saving": "Salvando...",
+    "deactivate": "Desativar",
+    "activate": "Ativar",
+    "edit": "Editar",
+    "viewStudents": "Ver Alunos",
+    "assignStudent": "Vincular Aluno",
+    "removeStudent": "Remover Aluno"
+  },
+  "messages": {
+    "createSuccess": "Mensalidade criada com sucesso!",
+    "updateSuccess": "Mensalidade atualizada com sucesso!",
+    "saveError": "Erro ao salvar mensalidade",
+    "deactivateSuccess": "Mensalidade desativada com sucesso!",
+    "activateSuccess": "Mensalidade ativada com sucesso!",
+    "studentAssigned": "Aluno vinculado à mensalidade!",
+    "studentRemoved": "Aluno removido da mensalidade!",
+    "studentAlreadyHasSubscription": "Este aluno já possui uma mensalidade ativa com você",
+    "loadError": "Erro ao carregar mensalidades"
+  },
+  "info": {
+    "familyBilling": "A mensalidade cobre o responsável e todos os seus dependentes automaticamente.",
+    "ignoreCancellations": "Aulas canceladas não são descontadas do limite mensal.",
+    "billingDay": "A cobrança é gerada no dia de faturamento configurado para cada aluno.",
+    "overageExplanation": "Aulas além do limite serão cobradas pelo valor excedente configurado.",
+    "experimentalNotCounted": "Aulas experimentais não são contabilizadas no limite mensal.",
+    "softDelete": "Mensalidades não podem ser excluídas, apenas desativadas."
+  },
+  "confirm": {
+    "deactivate": "Desativar Mensalidade",
+    "deactivateDescription": "Ao desativar, os alunos vinculados serão automaticamente removidos deste plano. Esta ação não pode ser desfeita.",
+    "removeStudent": "Remover Aluno",
+    "removeStudentDescription": "O aluno será removido desta mensalidade. Aulas futuras serão cobradas individualmente."
+  },
+  "studentView": {
+    "title": "Meus Planos",
+    "noSubscription": "Você não possui mensalidade ativa no momento",
+    "currentPlan": "Plano Atual",
+    "teacher": "Professor",
+    "classesRemaining": "{remaining} aulas restantes este mês",
+    "unlimitedClasses": "Aulas ilimitadas",
+    "nextBilling": "Próxima cobrança",
+    "since": "Desde"
+  },
+  "assign": {
+    "title": "Vincular Aluno à Mensalidade",
+    "selectStudent": "Selecione um aluno",
+    "noAvailableStudents": "Todos os alunos já possuem mensalidade ativa",
+    "startsAt": "Data de início",
+    "startsAtHelp": "A partir desta data, as aulas serão contabilizadas na mensalidade"
+  }
+}

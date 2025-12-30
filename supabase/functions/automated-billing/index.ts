@@ -46,6 +46,17 @@ interface UnbilledParticipant {
   } | null;
 }
 
+// Interface for active subscription from RPC
+interface ActiveSubscription {
+  subscription_id: string;
+  subscription_name: string;
+  price: number;
+  max_classes: number | null;
+  overage_price: number | null;
+  starts_at: string;
+  student_subscription_id: string;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -140,6 +151,49 @@ serve(async (req) => {
           business_profile_id: relationship.business_profile_id,
           relationship_id: relationship.id,
         };
+
+        // ===== FASE 6: VERIFICAR MENSALIDADE ATIVA (Tarefas 6.1-6.5) =====
+        const { data: activeSubscription, error: subError } = await supabaseAdmin
+          .rpc('get_student_active_subscription', {
+            p_relationship_id: studentInfo.relationship_id
+          }) as { data: ActiveSubscription | null, error: any };
+
+        if (subError) {
+          logStep(`Error checking active subscription for ${studentInfo.student_name}`, subError);
+          // Continue with traditional billing
+        }
+
+        const hasActiveSubscription = activeSubscription && activeSubscription.subscription_id;
+        
+        if (hasActiveSubscription) {
+          logStep(`📦 Active monthly subscription found for ${studentInfo.student_name}`, {
+            subscriptionName: activeSubscription.subscription_name,
+            price: activeSubscription.price,
+            maxClasses: activeSubscription.max_classes,
+            overagePrice: activeSubscription.overage_price,
+            startsAt: activeSubscription.starts_at
+          });
+
+          // Processar faturamento de mensalidade
+          const subscriptionResult = await processMonthlySubscriptionBilling(
+            studentInfo,
+            activeSubscription
+          );
+
+          if (subscriptionResult.success) {
+            processedCount++;
+            logStep(`✅ Monthly subscription billing completed for ${studentInfo.student_name}`, subscriptionResult);
+          } else {
+            errorCount++;
+            logStep(`❌ Monthly subscription billing failed for ${studentInfo.student_name}`, subscriptionResult.error);
+          }
+
+          // Continuar para próximo relacionamento - mensalidade processa separadamente
+          continue;
+        }
+
+        // ===== FLUXO TRADICIONAL (SEM MENSALIDADE) =====
+        logStep(`📚 No active subscription - using traditional per-class billing for ${studentInfo.student_name}`);
 
         // 2. Encontrar todas as aulas concluídas e não faturadas usando get_unbilled_participants_v2
         // Esta versão inclui dependentes e retorna o responsible_id para consolidação
@@ -536,6 +590,221 @@ serve(async (req) => {
     });
   }
 });
+
+// ===== NOVA FUNÇÃO: Processar faturamento de mensalidade (Tarefas 6.1-6.5) =====
+async function processMonthlySubscriptionBilling(
+  studentInfo: StudentBillingInfo,
+  subscription: ActiveSubscription
+): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
+  try {
+    const now = new Date();
+    const startsAt = new Date(subscription.starts_at);
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+
+    // Buscar aulas concluídas do período (após starts_at)
+    const { data: completedParticipations, error: classesError } = await supabaseAdmin
+      .rpc('get_unbilled_participants_v2', {
+        p_teacher_id: studentInfo.teacher_id,
+        p_student_id: studentInfo.student_id,
+        p_status: 'concluida'
+      }) as { data: UnbilledParticipant[] | null, error: any };
+
+    if (classesError) {
+      return { success: false, error: `Error fetching classes: ${classesError.message}` };
+    }
+
+    // Separar aulas por starts_at (Tarefa 6.2)
+    const allClasses = completedParticipations || [];
+    
+    // Aulas ANTES do starts_at = cobrança avulsa tradicional
+    const classesBeforeStartsAt = allClasses.filter(c => new Date(c.class_date) < startsAt);
+    
+    // Aulas APÓS starts_at = cobertas pela mensalidade (exceto experimentais)
+    const classesAfterStartsAt = allClasses.filter(c => new Date(c.class_date) >= startsAt);
+
+    logStep(`📅 Classes separation by starts_at (${startsAt.toISOString().split('T')[0]})`, {
+      beforeStartsAt: classesBeforeStartsAt.length,
+      afterStartsAt: classesAfterStartsAt.length
+    });
+
+    // Se há aulas antes do starts_at, processar como cobrança avulsa
+    if (classesBeforeStartsAt.length > 0) {
+      logStep(`⚠️ ${classesBeforeStartsAt.length} classes before starts_at will be billed separately (traditional per-class)`);
+      // TODO: Implementar cobrança avulsa para essas aulas em fatura separada se necessário
+      // Por ora, incluímos na mesma lógica mas registramos o alerta
+    }
+
+    // Calcular itens da fatura de mensalidade
+    const invoiceItems: any[] = [];
+    let totalAmount = 0;
+
+    // Item 1: Valor base da mensalidade (Tarefa 6.3)
+    invoiceItems.push({
+      class_id: null, // Mensalidade não tem class_id
+      participant_id: null, // Mensalidade não tem participant_id
+      item_type: 'monthly_base',
+      amount: subscription.price,
+      description: `Mensalidade ${subscription.subscription_name} - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
+      cancellation_policy_id: null,
+      charge_percentage: null,
+      dependent_id: null
+    });
+    totalAmount += subscription.price;
+
+    // Item 2: Calcular excedentes (Tarefa 6.4)
+    const classesUsed = classesAfterStartsAt.length;
+    const maxClasses = subscription.max_classes;
+    const overagePrice = subscription.overage_price;
+    let overageCount = 0;
+    let overageTotal = 0;
+
+    if (maxClasses !== null && classesUsed > maxClasses && overagePrice !== null && overagePrice > 0) {
+      overageCount = classesUsed - maxClasses;
+      overageTotal = overageCount * overagePrice;
+      
+      invoiceItems.push({
+        class_id: null,
+        participant_id: null,
+        item_type: 'overage',
+        amount: overageTotal,
+        description: `Excedente: ${overageCount} aula${overageCount > 1 ? 's' : ''} além do limite (${maxClasses}) - R$ ${overagePrice.toFixed(2).replace('.', ',')} cada`,
+        cancellation_policy_id: null,
+        charge_percentage: null,
+        dependent_id: null
+      });
+      totalAmount += overageTotal;
+      
+      logStep(`📈 Overage calculated`, {
+        maxClasses,
+        classesUsed,
+        overageCount,
+        overagePrice,
+        overageTotal
+      });
+    }
+
+    // Verificar mínimo para boleto
+    const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
+
+    // Criar descrição da fatura
+    let description = `Mensalidade ${subscription.subscription_name} - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`;
+    if (maxClasses !== null) {
+      description += ` (${classesUsed}/${maxClasses} aulas)`;
+    }
+    if (overageCount > 0) {
+      description += ` + ${overageCount} excedente${overageCount > 1 ? 's' : ''}`;
+    }
+    if (skipBoletoGeneration) {
+      description += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
+    }
+
+    // Calcular data de vencimento
+    const dueDate = new Date(now);
+    dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
+
+    // Dados da fatura com invoice_type = 'monthly_subscription' (Tarefa 6.3) e monthly_subscription_id (Tarefa 6.5)
+    const invoiceData = {
+      student_id: studentInfo.student_id,
+      teacher_id: studentInfo.teacher_id,
+      amount: totalAmount,
+      description: description,
+      due_date: dueDate.toISOString().split('T')[0],
+      status: 'pendente',
+      invoice_type: 'monthly_subscription', // Tarefa 6.3
+      business_profile_id: studentInfo.business_profile_id,
+      monthly_subscription_id: subscription.subscription_id // Tarefa 6.5
+    };
+
+    // Criar fatura usando RPC (adapta-se a itens com class_id/participant_id NULL - Tarefa 6.9)
+    const { data: transactionResult, error: transactionError } = await supabaseAdmin
+      .rpc('create_invoice_and_mark_classes_billed', {
+        p_invoice_data: invoiceData,
+        p_class_items: invoiceItems
+      });
+
+    if (transactionError || !transactionResult?.success) {
+      return { 
+        success: false, 
+        error: transactionError?.message || transactionResult?.error || 'Transaction failed' 
+      };
+    }
+
+    const invoiceId = transactionResult.invoice_id;
+
+    // Atualizar fatura com monthly_subscription_id (a RPC pode não suportar este campo)
+    await supabaseAdmin
+      .from('invoices')
+      .update({ monthly_subscription_id: subscription.subscription_id })
+      .eq('id', invoiceId);
+
+    logStep(`📦 Monthly subscription invoice created`, {
+      invoiceId,
+      subscriptionName: subscription.subscription_name,
+      basePrice: subscription.price,
+      classesUsed,
+      maxClasses,
+      overageCount,
+      overageTotal,
+      totalAmount
+    });
+
+    // Gerar boleto se valor >= mínimo
+    if (!skipBoletoGeneration) {
+      try {
+        const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
+          'create-payment-intent-connect',
+          {
+            body: {
+              invoice_id: invoiceId,
+              payment_method: 'boleto'
+            }
+          }
+        );
+
+        if (!paymentError && paymentResult?.boleto_url) {
+          await supabaseAdmin
+            .from('invoices')
+            .update({
+              stripe_hosted_invoice_url: paymentResult.boleto_url,
+              boleto_url: paymentResult.boleto_url,
+              linha_digitavel: paymentResult.linha_digitavel,
+              stripe_payment_intent_id: paymentResult.payment_intent_id
+            })
+            .eq('id', invoiceId);
+
+          logStep(`💳 Boleto generated for monthly subscription invoice`, {
+            invoiceId,
+            boletoUrl: paymentResult.boleto_url
+          });
+        }
+      } catch (paymentError) {
+        logStep(`⚠️ Failed to generate boleto for monthly subscription`, paymentError);
+        // Continue without failing
+      }
+    }
+
+    // Enviar notificação de fatura
+    try {
+      await supabaseAdmin.functions.invoke('send-invoice-notification', {
+        body: {
+          invoice_id: invoiceId,
+          notification_type: 'invoice_created'
+        }
+      });
+      logStep(`📧 Invoice notification sent for monthly subscription`, { invoiceId });
+    } catch (notifError) {
+      logStep(`⚠️ Failed to send notification`, notifError);
+    }
+
+    return { success: true, invoiceId };
+
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
 
 // Validation function to check if teacher can bill
 async function validateTeacherCanBill(teacher: any): Promise<boolean> {

@@ -12,6 +12,14 @@ interface InvoiceNotificationPayload {
   notification_type: 'invoice_created' | 'invoice_payment_reminder' | 'invoice_paid' | 'invoice_overdue';
 }
 
+// Interface for monthly subscription details
+interface MonthlySubscriptionDetails {
+  name: string;
+  price: number;
+  max_classes: number | null;
+  overage_price: number | null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -27,7 +35,7 @@ serve(async (req) => {
     const payload: InvoiceNotificationPayload = await req.json();
     console.log("💰 Processing invoice notification:", payload);
 
-    // 1. Buscar dados da fatura
+    // 1. Buscar dados da fatura (incluindo invoice_type e monthly_subscription_id)
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
       .select(`
@@ -41,7 +49,9 @@ serve(async (req) => {
         stripe_hosted_invoice_url,
         boleto_url,
         pix_qr_code,
-        pix_copy_paste
+        pix_copy_paste,
+        invoice_type,
+        monthly_subscription_id
       `)
       .eq("id", payload.invoice_id)
       .single();
@@ -104,10 +114,10 @@ serve(async (req) => {
     const recipientEmail = relationship?.student_guardian_email || student.email;
     const recipientName = relationship?.student_guardian_name || student.name;
 
-    // 5. NEW: Buscar itens da fatura para identificar dependentes
+    // 5. Buscar itens da fatura para identificar dependentes e detalhes
     const { data: invoiceItems } = await supabase
       .from("invoice_classes")
-      .select("description, amount, participant_id")
+      .select("description, amount, item_type, participant_id")
       .eq("invoice_id", payload.invoice_id);
 
     // Extrair nomes de dependentes das descrições (formato: [NomeDependente] Descrição)
@@ -127,8 +137,59 @@ serve(async (req) => {
     console.log("📚 Invoice items analysis:", {
       itemCount: invoiceItems?.length || 0,
       dependentNames,
-      hasDependents
+      hasDependents,
+      invoiceType: invoice.invoice_type
     });
+
+    // ===== FASE 6: LÓGICA ESPECIAL PARA MENSALIDADES (Tarefas 6.6-6.8) =====
+    const isMonthlySubscription = invoice.invoice_type === 'monthly_subscription';
+    let subscriptionDetails: MonthlySubscriptionDetails | null = null;
+    let monthlySubscriptionInfo = {
+      name: '',
+      classesUsed: 0,
+      maxClasses: null as number | null,
+      overageCount: 0,
+      overageTotal: 0
+    };
+
+    if (isMonthlySubscription && invoice.monthly_subscription_id) {
+      // Buscar detalhes da mensalidade (Tarefa 6.7)
+      const { data: subscription, error: subError } = await supabase
+        .from("monthly_subscriptions")
+        .select("name, price, max_classes, overage_price")
+        .eq("id", invoice.monthly_subscription_id)
+        .single();
+
+      if (!subError && subscription) {
+        subscriptionDetails = subscription;
+        monthlySubscriptionInfo.name = subscription.name;
+        monthlySubscriptionInfo.maxClasses = subscription.max_classes;
+
+        console.log("📦 Monthly subscription details:", subscriptionDetails);
+
+        // Extrair informações de excedentes dos itens (Tarefa 6.8)
+        if (invoiceItems) {
+          const overageItem = invoiceItems.find(item => item.item_type === 'overage');
+          if (overageItem) {
+            // Parse overage count from description (ex: "Excedente: 2 aulas além do limite (4)")
+            const overageMatch = overageItem.description?.match(/Excedente:\s*(\d+)\s*aula/);
+            if (overageMatch) {
+              monthlySubscriptionInfo.overageCount = parseInt(overageMatch[1], 10);
+              monthlySubscriptionInfo.overageTotal = overageItem.amount;
+            }
+          }
+
+          // Count classes from description if available
+          const baseItem = invoiceItems.find(item => item.item_type === 'monthly_base');
+          if (baseItem) {
+            const classesMatch = invoice.description?.match(/\((\d+)\/(\d+)\s*aulas\)/);
+            if (classesMatch) {
+              monthlySubscriptionInfo.classesUsed = parseInt(classesMatch[1], 10);
+            }
+          }
+        }
+      }
+    }
 
     // 6. Formatar valores
     const formattedAmount = new Intl.NumberFormat('pt-BR', {
@@ -151,56 +212,81 @@ serve(async (req) => {
     let mainMessage = "";
     let ctaButton = "";
 
-    // Adicionar sufixo de dependentes no subject se aplicável
-    const dependentSuffix = hasDependents ? ` (${dependentNames.join(', ')})` : '';
+    // Construir sufixo para subject
+    let subjectSuffix = '';
+    if (isMonthlySubscription && subscriptionDetails) {
+      subjectSuffix = ` - ${subscriptionDetails.name}`;
+    } else if (hasDependents) {
+      subjectSuffix = ` (${dependentNames.join(', ')})`;
+    }
 
     switch (payload.notification_type) {
       case 'invoice_created':
-        subject = `💵 Nova fatura de ${teacher.name}${dependentSuffix}`;
-        headerColor = "#2563eb";
-        icon = "💵";
-        title = "Nova Fatura Disponível";
-        mainMessage = hasDependents
-          ? `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong> referente às aulas de <strong>${dependentNames.join(', ')}</strong>.`
-          : `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong>.`;
+        if (isMonthlySubscription && subscriptionDetails) {
+          subject = `📦 Mensalidade ${subscriptionDetails.name} - ${teacher.name}`;
+          headerColor = "#7c3aed"; // Purple for subscriptions
+          icon = "📦";
+          title = "Fatura de Mensalidade";
+          mainMessage = `Sua fatura de mensalidade <strong>${subscriptionDetails.name}</strong> do professor <strong>${teacher.name}</strong> foi gerada.`;
+        } else {
+          subject = `💵 Nova fatura de ${teacher.name}${subjectSuffix}`;
+          headerColor = "#2563eb";
+          icon = "💵";
+          title = "Nova Fatura Disponível";
+          mainMessage = hasDependents
+            ? `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong> referente às aulas de <strong>${dependentNames.join(', ')}</strong>.`
+            : `Uma nova fatura foi gerada pelo professor <strong>${teacher.name}</strong>.`;
+        }
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Ver Fatura</a>`;
         break;
 
       case 'invoice_payment_reminder':
-        subject = `⏰ Lembrete: Fatura vence em breve${dependentSuffix}`;
+        subject = `⏰ Lembrete: Fatura vence em breve${subjectSuffix}`;
         headerColor = "#f59e0b";
         icon = "⏰";
         title = "Lembrete de Pagamento";
-        mainMessage = hasDependents
-          ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> vence em breve.`
-          : `Sua fatura com o professor <strong>${teacher.name}</strong> vence em breve.`;
+        if (isMonthlySubscription && subscriptionDetails) {
+          mainMessage = `Sua fatura de mensalidade <strong>${subscriptionDetails.name}</strong> com o professor <strong>${teacher.name}</strong> vence em breve.`;
+        } else {
+          mainMessage = hasDependents
+            ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> vence em breve.`
+            : `Sua fatura com o professor <strong>${teacher.name}</strong> vence em breve.`;
+        }
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Pagar Agora</a>`;
         break;
 
       case 'invoice_paid':
-        subject = `✅ Pagamento confirmado${dependentSuffix}`;
+        subject = `✅ Pagamento confirmado${subjectSuffix}`;
         headerColor = "#10b981";
         icon = "✅";
         title = "Pagamento Confirmado!";
-        mainMessage = hasDependents
-          ? `Seu pagamento referente às aulas de <strong>${dependentNames.join(', ')}</strong> para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`
-          : `Seu pagamento para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`;
+        if (isMonthlySubscription && subscriptionDetails) {
+          mainMessage = `Seu pagamento da mensalidade <strong>${subscriptionDetails.name}</strong> para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`;
+        } else {
+          mainMessage = hasDependents
+            ? `Seu pagamento referente às aulas de <strong>${dependentNames.join(', ')}</strong> para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`
+            : `Seu pagamento para o professor <strong>${teacher.name}</strong> foi confirmado com sucesso.`;
+        }
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Ver Comprovante</a>`;
         break;
 
       case 'invoice_overdue':
-        subject = `⚠️ Fatura vencida - Ação necessária${dependentSuffix}`;
+        subject = `⚠️ Fatura vencida - Ação necessária${subjectSuffix}`;
         headerColor = "#ef4444";
         icon = "⚠️";
         title = "Fatura Vencida";
-        mainMessage = hasDependents
-          ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`
-          : `Sua fatura com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`;
+        if (isMonthlySubscription && subscriptionDetails) {
+          mainMessage = `Sua fatura de mensalidade <strong>${subscriptionDetails.name}</strong> com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`;
+        } else {
+          mainMessage = hasDependents
+            ? `Sua fatura referente às aulas de <strong>${dependentNames.join(', ')}</strong> com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`
+            : `Sua fatura com o professor <strong>${teacher.name}</strong> está vencida. Por favor, regularize o pagamento o quanto antes.`;
+        }
         ctaButton = `<a href="${Deno.env.get("SITE_URL")}/faturas" class="button">Pagar Agora</a>`;
         break;
     }
 
-    // 7. Construir seção de métodos de pagamento
+    // 8. Construir seção de métodos de pagamento
     let paymentMethods = '';
     if (invoice.stripe_hosted_invoice_url) {
       paymentMethods += `
@@ -222,7 +308,38 @@ serve(async (req) => {
       `;
     }
 
-    // 8. Construir email
+    // ===== SEÇÃO ESPECIAL PARA MENSALIDADES (Tarefa 6.8) =====
+    let subscriptionSection = '';
+    if (isMonthlySubscription && subscriptionDetails) {
+      const formattedBasePrice = new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(Number(subscriptionDetails.price));
+
+      subscriptionSection = `
+        <div class="subscription-box">
+          <h3 style="margin-top: 0; color: #7c3aed;">📦 Detalhes do Plano</h3>
+          <p><strong>Plano:</strong> ${subscriptionDetails.name}</p>
+          <p><strong>Valor mensal:</strong> ${formattedBasePrice}</p>
+          ${subscriptionDetails.max_classes !== null ? `
+            <p><strong>Limite de aulas:</strong> ${subscriptionDetails.max_classes} aulas/mês</p>
+            ${monthlySubscriptionInfo.classesUsed > 0 ? `
+              <p><strong>Aulas utilizadas:</strong> ${monthlySubscriptionInfo.classesUsed} aulas</p>
+            ` : ''}
+          ` : `
+            <p><strong>Aulas:</strong> Ilimitadas</p>
+          `}
+          ${monthlySubscriptionInfo.overageCount > 0 ? `
+            <div class="overage-alert">
+              <p style="margin: 0;"><strong>⚠️ Excedente:</strong> ${monthlySubscriptionInfo.overageCount} aula${monthlySubscriptionInfo.overageCount > 1 ? 's' : ''} além do limite</p>
+              <p style="margin: 5px 0 0 0;"><strong>Valor adicional:</strong> ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(monthlySubscriptionInfo.overageTotal)}</p>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // 9. Construir email
     const emailHtml = `
       <!DOCTYPE html>
       <html>
@@ -234,11 +351,14 @@ serve(async (req) => {
             .header { background: ${headerColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
             .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
             .info-box { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${headerColor}; }
+            .subscription-box { background: #f5f3ff; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #7c3aed; }
+            .overage-alert { background: #fef3c7; padding: 12px; border-radius: 6px; margin-top: 10px; border: 1px solid #f59e0b; }
             .button { display: inline-block; background: ${headerColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 10px 0; }
             .payment-link { display: inline-block; background: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 6px; margin: 5px 0; }
             .pix-code { background: #f3f4f6; padding: 15px; border-radius: 6px; font-family: monospace; word-break: break-all; margin: 10px 0; border: 2px dashed #d1d5db; }
             .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 20px; }
             .dependent-badge { background: #ede9fe; color: #7c3aed; padding: 8px 16px; border-radius: 8px; display: inline-block; margin-bottom: 15px; }
+            .subscription-badge { background: #7c3aed; color: white; padding: 8px 16px; border-radius: 8px; display: inline-block; margin-bottom: 15px; }
           </style>
         </head>
         <body>
@@ -249,7 +369,11 @@ serve(async (req) => {
             <div class="content">
               <p>Olá <strong>${recipientName}</strong>,</p>
               
-              ${hasDependents ? `
+              ${isMonthlySubscription && subscriptionDetails ? `
+                <div class="subscription-badge">
+                  📦 Mensalidade: <strong>${subscriptionDetails.name}</strong>
+                </div>
+              ` : hasDependents ? `
                 <div class="dependent-badge">
                   📌 Fatura referente a: <strong>${dependentNames.join(', ')}</strong>
                 </div>
@@ -257,13 +381,15 @@ serve(async (req) => {
               
               <p>${mainMessage}</p>
               
+              ${subscriptionSection}
+              
               <div class="info-box">
                 <h3 style="margin-top: 0;">📋 Detalhes da Fatura</h3>
-                <p><strong>Valor:</strong> ${formattedAmount}</p>
+                <p><strong>Valor total:</strong> ${formattedAmount}</p>
                 <p><strong>Vencimento:</strong> ${formattedDueDate}</p>
                 <p><strong>Descrição:</strong> ${invoice.description || 'Aulas realizadas'}</p>
                 <p><strong>Professor:</strong> ${teacher.name}</p>
-                ${hasDependents ? `<p><strong>Alunos:</strong> ${dependentNames.join(', ')} <span style="color: #7c3aed;">(dependentes)</span></p>` : ''}
+                ${hasDependents && !isMonthlySubscription ? `<p><strong>Alunos:</strong> ${dependentNames.join(', ')} <span style="color: #7c3aed;">(dependentes)</span></p>` : ''}
                 <p><strong>Status:</strong> ${invoice.status}</p>
               </div>
               
@@ -291,7 +417,7 @@ serve(async (req) => {
       </html>
     `;
 
-    // 9. Enviar email
+    // 10. Enviar email
     const emailResult = await sendEmail({
       to: recipientEmail,
       subject: subject,
@@ -305,7 +431,7 @@ serve(async (req) => {
 
     console.log("✅ Email sent successfully:", emailResult.messageId);
 
-    // 10. Registrar notificação
+    // 11. Registrar notificação
     const { error: notificationError } = await supabase
       .from("class_notifications")
       .insert({

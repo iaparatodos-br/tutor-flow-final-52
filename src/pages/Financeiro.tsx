@@ -47,6 +47,10 @@ interface InvoiceWithStudent {
   pix_qr_code?: string;
   pix_copy_paste?: string;
   stripe_payment_intent_id?: string;
+  monthly_subscription_id?: string;
+  monthly_subscription?: {
+    name: string;
+  };
   student: {
     name: string;
     email: string;

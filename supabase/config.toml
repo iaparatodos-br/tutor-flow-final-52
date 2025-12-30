@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.check-pending-boletos]
 verify_jwt = false
+
+[functions.validate-monthly-subscriptions]
+verify_jwt = true

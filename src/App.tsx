@@ -39,6 +39,7 @@ import PainelNegocios from "./pages/PainelNegocios";
 import Seguranca from "./pages/Seguranca";
 import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
+import DevValidation from "./pages/DevValidation";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
 const queryClient = new QueryClient();
@@ -154,6 +155,8 @@ const AppWithProviders = () => {
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/seguranca" element={<Seguranca />} />
             <Route path="/portal-do-aluno" element={<StudentDashboard />} />
+            {/* DEV ONLY: Validation page */}
+            {import.meta.env.DEV && <Route path="/dev/validation" element={<DevValidation />} />}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -2,7 +2,7 @@
 
 > **Baseado em:** `docs/monthly-subscriptions-implementation-plan.md` v1.38  
 > **Data:** 2025-01-30  
-> **Total:** 7 Fases | 28 Grupos | 111 Tarefas  
+> **Total:** 7 Fases | 31 Grupos | 116 Tarefas  
 > **Tempo Estimado:** 6-8 dias
 
 ---
@@ -140,6 +140,12 @@ Este documento organiza a implementação do sistema de mensalidades em tarefas 
 |---|--------|--------|------------|------------|
 | 1.24 | [ ] | Executar comando: `npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integrations/supabase/types.ts` | Gap #372 | 🔴 Crítica |
 
+### Grupo 1F: Validações de RPC
+
+| # | Status | Tarefa | Ref. Plano | Prioridade |
+|---|--------|--------|------------|------------|
+| 1.25 | [ ] | Adicionar validação na RPC `create_invoice_and_mark_classes_billed` para `item_type` aceitar: `regular`, `cancellation`, `monthly_base`, `overage` | Gap #371 | 🟡 Média |
+
 ### ✅ Checkpoint Fase 1
 
 ```sql
@@ -183,6 +189,7 @@ SELECT monthly_subscription_id FROM invoices LIMIT 1;
 | 2.6 | [ ] | Adicionar `invoiceTypes.manual` em `financial.json` (PT/EN) | Gap #339 | 🟠 Alta |
 | 2.7 | [ ] | Adicionar `invoiceTypes.orphanCharges` em `financial.json` (PT/EN) | Gap #348, #358 | 🟠 Alta |
 | 2.8 | [ ] | Adicionar `invoiceTypes.regular` (fallback/default) em `financial.json` (PT/EN) | Gap #369 | 🟠 Alta |
+| 2.9 | [ ] | Adicionar `invoiceTypes.cancellation` em `financial.json` (PT: "Taxa de Cancelamento" / EN: "Cancellation Fee") | Gap #339 | 🟠 Alta |
 
 ### ✅ Checkpoint Fase 2
 
@@ -350,6 +357,12 @@ console.log(createMutation.isPending); // false
 |---|--------|--------|------------|------------|
 | 5.21 | [ ] | Refatorar texto hardcoded de `payment_origin` para usar i18n | Gap #343 | 🟡 Média |
 
+### Grupo 5I: Refatoração de i18n em ClassServicesManager
+
+| # | Status | Tarefa | Ref. Plano | Prioridade |
+|---|--------|--------|------------|------------|
+| 5.22 | [ ] | Refatorar `src/components/ClassServicesManager.tsx` para usar `useTranslation('services')` nas 12+ linhas com textos hardcoded (linhas 107, 118, 131, 135, 144, 152-159, 174, 178, 206) | Gap #361, #368 | 🟡 Média |
+
 ### ✅ Checkpoint Fase 5
 
 ```
@@ -389,6 +402,13 @@ Testes manuais:
 | # | Status | Tarefa | Ref. Plano | Prioridade |
 |---|--------|--------|------------|------------|
 | 6.9 | [ ] | Adaptar função `create_invoice_and_mark_classes_billed` para aceitar `item_type='monthly_base'` com `class_id=NULL` e `participant_id=NULL` | Gap #324, #371 | 🟠 Alta |
+
+### Grupo 6D: Correção de Fluxo de Cancelamento (CRÍTICO)
+
+| # | Status | Tarefa | Ref. Plano | Prioridade |
+|---|--------|--------|------------|------------|
+| 6.10 | [ ] | Modificar `process-cancellation/index.ts` para invocar `create-invoice` quando `shouldCharge=true` AND `hasFinancialModule=true` (linhas ~391-402) | Gap #365, #345, #346 | 🔴 Crítica |
+| 6.11 | [ ] | Documentar decisão sobre textos hardcoded em PT-BR no `automated-billing`: manter ou externalizar para i18n backend | Gap #367 | 🟡 Média |
 
 ### ✅ Checkpoint Fase 6
 
@@ -471,23 +491,23 @@ Total: 27 cenários de teste
 
 | Fase | Grupos | Tarefas | Tempo Estimado |
 |------|--------|---------|----------------|
-| 1. Banco de Dados | 5 | 24 | 1 dia |
-| 2. Internacionalização | 2 | 8 | 0.5 dia |
+| 1. Banco de Dados | 6 | 25 | 1 dia |
+| 2. Internacionalização | 2 | 9 | 0.5 dia |
 | 3. Tipos TypeScript | 4 | 12 | 0.5 dia |
 | 4. Hooks React | 2 | 10 | 0.5 dia |
-| 5. Componentes Frontend | 8 | 21 | 2 dias |
-| 6. Backend Edge Functions | 3 | 9 | 1 dia |
+| 5. Componentes Frontend | 9 | 22 | 2 dias |
+| 6. Backend Edge Functions | 4 | 11 | 1 dia |
 | 7. Testes e Validações | 4 | 27 | 1 dia |
-| **TOTAL** | **28** | **111** | **6-8 dias** |
+| **TOTAL** | **31** | **116** | **6-8 dias** |
 
 ### Distribuição por Prioridade
 
 | Prioridade | Quantidade | Percentual |
 |------------|------------|------------|
-| 🔴 Crítica | 31 | 28% |
-| 🟠 Alta | 67 | 60% |
-| 🟡 Média | 10 | 9% |
-| 🟢 Baixa | 3 | 3% |
+| 🔴 Crítica | 32 | 28% |
+| 🟠 Alta | 68 | 59% |
+| 🟡 Média | 13 | 11% |
+| 🟢 Baixa | 3 | 2% |
 
 ### Arquivos a Serem Criados
 
@@ -532,7 +552,8 @@ src/
 
 supabase/functions/
 ├── automated-billing/index.ts            (lógica mensalidade)
-└── send-invoice-notification/index.ts    (template email)
+├── send-invoice-notification/index.ts    (template email)
+└── process-cancellation/index.ts         (criar fatura quando shouldCharge=true)
 ```
 
 ---

@@ -96,8 +96,9 @@ serve(async (req) => {
       }
     }
 
-    // NEW: Buscar nome do dependente se está cancelando para um dependente
+    // NEW: Buscar dados do dependente se está cancelando para um dependente
     let dependentName: string | null = null;
+    let dependentData: { name: string; responsible_id: string } | null = null;
     if (dependent_id) {
       const { data: dependent } = await supabaseClient
         .from('dependents')
@@ -106,6 +107,7 @@ serve(async (req) => {
         .single();
       
       if (dependent) {
+        dependentData = dependent;
         dependentName = dependent.name;
         console.log(`📌 Cancelamento para dependente: ${dependentName}`);
         
@@ -113,6 +115,21 @@ serve(async (req) => {
         if (cancelled_by_type === 'student' && dependent.responsible_id !== cancelled_by) {
           throw new Error('Você não tem permissão para cancelar aulas deste dependente');
         }
+      }
+    }
+    
+    // Buscar preço do serviço para cálculo da multa
+    let servicePrice = 0;
+    if (classData.service_id) {
+      const { data: service } = await supabaseClient
+        .from('class_services')
+        .select('price')
+        .eq('id', classData.service_id)
+        .maybeSingle();
+      
+      if (service) {
+        servicePrice = Number(service.price);
+        console.log('Service price found:', servicePrice);
       }
     }
     
@@ -349,7 +366,7 @@ serve(async (req) => {
       console.log(`Full class ${class_id} cancelled for ${studentsToNotify.length} students`);
     }
 
-    // Check if teacher has financial module access (only if charging)
+    // Check if teacher has financial module access and create invoice (only if charging)
     if (shouldCharge) {
       const { data: hasFinancialModule, error: featureError } = await supabaseClient
         .rpc('teacher_has_financial_module', { teacher_id: classData.teacher_id });
@@ -385,6 +402,69 @@ serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,
         });
+      }
+
+      // ===== CRIAR FATURA IMEDIATAMENTE =====
+      console.log('Creating immediate cancellation invoice...');
+      
+      // Determinar quem será cobrado (responsável se for dependente)
+      let billingStudentId = cancelled_by;
+      if (dependent_id && dependentData) {
+        billingStudentId = dependentData.responsible_id;
+      }
+      
+      // Calcular valor da multa
+      const chargeAmount = servicePrice > 0 
+        ? servicePrice * (chargePercentage / 100)
+        : 0;
+      
+      console.log('Cancellation charge calculation:', {
+        servicePrice,
+        chargePercentage,
+        chargeAmount,
+        billingStudentId,
+        dependent_id
+      });
+      
+      if (chargeAmount >= 5) { // Mínimo para boleto: R$ 5,00
+        try {
+          const classDateFormatted = new Date(classData.class_date).toLocaleDateString('pt-BR');
+          const invoicePayload = {
+            student_id: billingStudentId,
+            dependent_id: dependent_id || undefined,
+            amount: chargeAmount,
+            original_amount: servicePrice,
+            description: `Taxa de cancelamento${dependentName ? ` [${dependentName}]` : ''} - Aula ${classDateFormatted}`,
+            invoice_type: 'cancellation',
+            class_ids: [class_id],
+            cancellation_policy_id: policy?.id
+          };
+          
+          console.log('Invoice payload:', JSON.stringify(invoicePayload));
+          
+          // Invocar create-invoice (server-to-server com service role key)
+          const { data: invoiceResult, error: invoiceError } = await supabaseClient
+            .functions.invoke('create-invoice', {
+              body: invoicePayload,
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+              }
+            });
+          
+          if (invoiceError) {
+            console.error('Error creating cancellation invoice:', invoiceError);
+            // Não falhar o cancelamento, apenas logar
+          } else if (invoiceResult?.success) {
+            console.log('Cancellation invoice created successfully:', invoiceResult.invoice?.id);
+          } else {
+            console.warn('Invoice creation returned unsuccessful:', invoiceResult);
+          }
+        } catch (invoiceCreationError) {
+          console.error('Exception creating cancellation invoice:', invoiceCreationError);
+          // Não falhar o cancelamento
+        }
+      } else {
+        console.log('Charge amount below minimum for boleto, skipping invoice creation', { chargeAmount, minimum: 5 });
       }
     }
 

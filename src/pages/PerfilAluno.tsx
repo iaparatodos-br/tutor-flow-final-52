@@ -36,8 +36,11 @@ import {
   ChevronDown,
   ChevronRight,
   UserPlus,
-  Cake
+  Cake,
+  Package,
+  Infinity
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 interface StudentProfile {
   id: string;
@@ -117,6 +120,14 @@ export default function PerfilAluno() {
   const [loading, setLoading] = useState(true);
   const [selectedClassForReport, setSelectedClassForReport] = useState<string | null>(null);
   
+  // Mensalidade ativa do aluno
+  const [activeSubscription, setActiveSubscription] = useState<{
+    id: string;
+    name: string;
+    max_classes: number | null;
+    classes_used: number;
+  } | null>(null);
+  
   // Dependent states
   const [studentDependents, setStudentDependents] = useState<Dependent[]>([]);
   const [dependentStats, setDependentStats] = useState<Record<string, DependentStats>>({});
@@ -137,8 +148,51 @@ export default function PerfilAluno() {
     if (profile?.id && id) {
       loadStudentData();
       loadDependents();
+      loadActiveSubscription();
     }
   }, [profile, id]);
+
+  const loadActiveSubscription = async () => {
+    if (!profile?.id || !id) return;
+    try {
+      const { data: rel } = await supabase
+        .from('teacher_student_relationships')
+        .select('id')
+        .eq('teacher_id', profile.id)
+        .eq('student_id', id)
+        .single();
+      
+      if (!rel) return;
+
+      const { data: sub } = await supabase
+        .from('student_monthly_subscriptions')
+        .select('id, starts_at, monthly_subscriptions(name, max_classes)')
+        .eq('relationship_id', rel.id)
+        .eq('is_active', true)
+        .is('ends_at', null)
+        .maybeSingle();
+
+      if (sub?.monthly_subscriptions) {
+        const { count } = await supabase
+          .from('class_participants')
+          .select('id, classes!inner(teacher_id, is_experimental)', { count: 'exact', head: true })
+          .eq('student_id', id)
+          .eq('classes.teacher_id', profile.id)
+          .eq('classes.is_experimental', false)
+          .gte('classes.class_date', sub.starts_at)
+          .in('status', ['concluida', 'confirmada', 'pendente']);
+
+        setActiveSubscription({
+          id: sub.id,
+          name: sub.monthly_subscriptions.name,
+          max_classes: sub.monthly_subscriptions.max_classes,
+          classes_used: count || 0
+        });
+      }
+    } catch (e) {
+      console.error('Error loading subscription:', e);
+    }
+  };
 
   const loadStudentData = async () => {
     if (!profile?.id || !id) return;
@@ -502,7 +556,15 @@ export default function PerfilAluno() {
                 <User className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold">{student.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-3xl font-bold">{student.name}</h1>
+                  {activeSubscription && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <Package className="h-3 w-3" />
+                      {activeSubscription.name}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-muted-foreground">Perfil completo do aluno</p>
               </div>
             </div>

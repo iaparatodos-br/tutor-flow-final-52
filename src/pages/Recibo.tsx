@@ -9,6 +9,7 @@ import { ptBR } from 'date-fns/locale';
 import { ArrowLeft, Printer, FileText } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
+import { useTranslation } from 'react-i18next';
 import './recibo.css';
 
 interface Invoice {
@@ -66,12 +67,26 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
 export default function Recibo() {
   const { invoiceId } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation('financial');
 
   const { data: invoice, isLoading, error } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: () => fetchInvoiceDetails(invoiceId!),
     enabled: !!invoiceId,
   });
+
+  const getPaymentOriginLabel = (origin: string | null) => {
+    switch (origin) {
+      case 'manual':
+        return t('paymentOrigins.manual');
+      case 'stripe':
+        return t('paymentOrigins.stripe');
+      case 'automatic':
+        return t('paymentOrigins.automatic');
+      default:
+        return t('paymentOrigins.unspecified');
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -239,12 +254,9 @@ export default function Recibo() {
               <h3 className="font-semibold text-lg mb-3">Informações de Pagamento:</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Forma de Pagamento:</span>
+                  <span className="text-muted-foreground">{t('receipt.paymentMethod')}:</span>
                   <span className="font-medium">
-                    {invoice.payment_origin === 'manual' ? 'Pagamento Manual' : 
-                     invoice.payment_origin === 'stripe' ? 'Stripe' : 
-                     invoice.payment_origin === 'automatic' ? 'Cobrança Automática' : 
-                     'Não especificado'}
+                    {getPaymentOriginLabel(invoice.payment_origin)}
                   </span>
                 </div>
                 {(invoice.status === 'paid' || invoice.status === 'paga') && (

@@ -25,12 +25,13 @@ interface Invoice {
   manual_payment_notes: string | null;
   payment_intent_cancelled_at: string | null;
   payment_intent_cancelled_by: string | null;
+  invoice_type: string | null;
 }
 
 const fetchStudentInvoices = async (teacherId: string) => {
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id, payment_origin, manual_payment_notes, payment_intent_cancelled_at, payment_intent_cancelled_by')
+    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id, payment_origin, manual_payment_notes, payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type')
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false });
 
@@ -159,7 +160,11 @@ export default function Faturas() {
                       </TableCell>
                       <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                       <TableCell>
-                        <InvoiceStatusBadge status={invoice.status} paymentOrigin={invoice.payment_origin} />
+                        <InvoiceStatusBadge 
+                          status={invoice.status} 
+                          paymentOrigin={invoice.payment_origin}
+                          invoiceType={invoice.invoice_type || undefined}
+                        />
                       </TableCell>
                       <TableCell className="text-right">
                         {/* Faturas pendentes/vencidas: Botão "Pagar Agora" */}

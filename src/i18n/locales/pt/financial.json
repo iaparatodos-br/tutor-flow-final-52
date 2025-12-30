@@ -93,6 +93,15 @@
     "manual": "Manual",
     "system": "Sistema"
   },
+  "paymentOrigins": {
+    "manual": "Pagamento Manual",
+    "stripe": "Stripe",
+    "automatic": "Cobrança Automática",
+    "unspecified": "Não especificado"
+  },
+  "receipt": {
+    "paymentMethod": "Forma de Pagamento"
+  },
   "markAsPaid": {
     "title": "Confirmar Pagamento Manual",
     "description": "Ao confirmar, esta fatura será marcada como paga e o Payment Intent do Stripe será cancelado (se aplicável). Esta ação é irreversível.",

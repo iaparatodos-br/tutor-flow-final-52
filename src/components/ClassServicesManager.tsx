@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Edit, Star, Clock, DollarSign } from "lucide-react";
 import { ServiceModal } from "./ServiceModal";
+import { useTranslation } from "react-i18next";
 
 interface ClassService {
   id: string;
@@ -22,6 +23,7 @@ interface ClassService {
 export function ClassServicesManager() {
   const { profile } = useProfile();
   const { toast } = useToast();
+  const { t } = useTranslation('services');
   
   const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +106,7 @@ export function ClassServicesManager() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8">Carregando...</div>;
+    return <div className="flex items-center justify-center p-8">{t('common:loading')}</div>;
   }
 
   const filteredServices = showInactive 
@@ -115,9 +117,9 @@ export function ClassServicesManager() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Serviços e Preços</h2>
+          <h2 className="text-2xl font-bold tracking-tight">{t('title')}</h2>
           <p className="text-muted-foreground">
-            Gerencie os diferentes tipos de aula e seus valores
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -128,11 +130,11 @@ export function ClassServicesManager() {
               onChange={(e) => setShowInactive(e.target.checked)}
               className="rounded border-gray-300"
             />
-            Mostrar inativos
+            {t('showInactive')}
           </label>
           <Button onClick={handleCreateService}>
             <Plus className="mr-2 h-4 w-4" />
-            Novo Serviço
+            {t('new')}
           </Button>
         </div>
       </div>
@@ -141,7 +143,7 @@ export function ClassServicesManager() {
         <Card>
           <CardContent className="p-8 text-center">
             <p className="text-muted-foreground">
-              Nenhum serviço ativo encontrado. Ative um serviço existente ou crie um novo.
+              {t('noActiveServices')}
             </p>
           </CardContent>
         </Card>
@@ -149,13 +151,13 @@ export function ClassServicesManager() {
         <Card>
           <CardContent className="p-8 text-center">
             <DollarSign className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Nenhum serviço cadastrado</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('noServices')}</h3>
             <p className="text-muted-foreground mb-4">
-              Crie seu primeiro serviço para definir preços das suas aulas
+              {t('noServicesDescription')}
             </p>
             <Button onClick={handleCreateService}>
               <Plus className="mr-2 h-4 w-4" />
-              Criar Primeiro Serviço
+              {t('createFirst')}
             </Button>
           </CardContent>
         </Card>
@@ -171,11 +173,11 @@ export function ClassServicesManager() {
                       {service.is_default && (
                         <Badge variant="secondary" className="text-xs">
                           <Star className="mr-1 h-3 w-3" />
-                          Padrão
+                          {t('default')}
                         </Badge>
                       )}
                       <Badge variant={service.is_active ? "default" : "secondary"}>
-                        {service.is_active ? "Ativo" : "Inativo"}
+                        {service.is_active ? t('active') : t('inactive')}
                       </Badge>
                     </div>
                     
@@ -203,7 +205,7 @@ export function ClassServicesManager() {
                       size="sm"
                       onClick={() => handleToggleActive(service.id, service.is_active)}
                     >
-                      {service.is_active ? "Desativar" : "Ativar"}
+                      {service.is_active ? t('deactivate') : t('activate')}
                     </Button>
                     <Button
                       variant="outline"

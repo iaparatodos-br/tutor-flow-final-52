@@ -739,40 +739,40 @@ export type Database = {
           amount: number
           cancellation_policy_id: string | null
           charge_percentage: number | null
-          class_id: string
+          class_id: string | null
           created_at: string
           dependent_id: string | null
           description: string | null
           id: string
           invoice_id: string
           item_type: string
-          participant_id: string
+          participant_id: string | null
         }
         Insert: {
           amount: number
           cancellation_policy_id?: string | null
           charge_percentage?: number | null
-          class_id: string
+          class_id?: string | null
           created_at?: string
           dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id: string
           item_type: string
-          participant_id: string
+          participant_id?: string | null
         }
         Update: {
           amount?: number
           cancellation_policy_id?: string | null
           charge_percentage?: number | null
-          class_id?: string
+          class_id?: string | null
           created_at?: string
           dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id?: string
           item_type?: string
-          participant_id?: string
+          participant_id?: string | null
         }
         Relationships: [
           {
@@ -842,6 +842,7 @@ export type Database = {
           invoice_type: string | null
           linha_digitavel: string | null
           manual_payment_notes: string | null
+          monthly_subscription_id: string | null
           original_amount: number | null
           payment_account_used_id: string | null
           payment_due_date: string | null
@@ -876,6 +877,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           manual_payment_notes?: string | null
+          monthly_subscription_id?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
@@ -910,6 +912,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           manual_payment_notes?: string | null
+          monthly_subscription_id?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
@@ -935,6 +938,13 @@ export type Database = {
             columns: ["business_profile_id"]
             isOneToOne: false
             referencedRelation: "business_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_monthly_subscription_id_fkey"
+            columns: ["monthly_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "monthly_subscriptions"
             referencedColumns: ["id"]
           },
           {
@@ -1147,6 +1157,53 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "material_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_subscriptions: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          max_classes: number | null
+          name: string
+          overage_price: number | null
+          price: number
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_classes?: number | null
+          name: string
+          overage_price?: number | null
+          price?: number
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_classes?: number | null
+          name?: string
+          overage_price?: number | null
+          price?: number
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_subscriptions_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1587,6 +1644,54 @@ export type Database = {
           },
         ]
       }
+      student_monthly_subscriptions: {
+        Row: {
+          created_at: string
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          relationship_id: string
+          starts_at: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          relationship_id: string
+          starts_at?: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          relationship_id?: string
+          starts_at?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_monthly_subscriptions_relationship_id_fkey"
+            columns: ["relationship_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_student_relationships"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_monthly_subscriptions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "monthly_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_overage_charges: {
         Row: {
           amount_cents: number
@@ -1957,6 +2062,10 @@ export type Database = {
         Args: { p_class_template_id: string; p_student_id: string }
         Returns: boolean
       }
+      check_student_has_active_subscription: {
+        Args: { p_exclude_subscription_id?: string; p_relationship_id: string }
+        Returns: boolean
+      }
       cleanup_expired_pending_profiles: { Args: never; Returns: number }
       cleanup_old_login_attempts: { Args: never; Returns: undefined }
       cleanup_orphaned_stripe_events: { Args: never; Returns: number }
@@ -1967,6 +2076,15 @@ export type Database = {
           p_success?: boolean
         }
         Returns: boolean
+      }
+      count_completed_classes_in_month: {
+        Args: {
+          p_month: number
+          p_student_id: string
+          p_teacher_id: string
+          p_year: number
+        }
+        Returns: number
       }
       count_teacher_students_and_dependents: {
         Args: { p_teacher_id: string }
@@ -2059,6 +2177,32 @@ export type Database = {
           classmate_id: string
         }[]
       }
+      get_student_active_subscription: {
+        Args: { p_relationship_id: string }
+        Returns: {
+          max_classes: number
+          overage_price: number
+          price: number
+          starts_at: string
+          student_subscription_id: string
+          subscription_id: string
+          subscription_name: string
+        }[]
+      }
+      get_student_subscription_details: {
+        Args: { p_student_id: string }
+        Returns: {
+          classes_used: number
+          max_classes: number
+          overage_price: number
+          price: number
+          relationship_id: string
+          starts_at: string
+          subscription_name: string
+          teacher_id: string
+          teacher_name: string
+        }[]
+      }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {
@@ -2068,6 +2212,38 @@ export type Database = {
           teacher_email: string
           teacher_id: string
           teacher_name: string
+        }[]
+      }
+      get_subscription_assigned_students: {
+        Args: { p_subscription_id: string }
+        Returns: {
+          classes_used: number
+          ends_at: string
+          is_active: boolean
+          relationship_id: string
+          starts_at: string
+          student_email: string
+          student_id: string
+          student_name: string
+          student_subscription_id: string
+        }[]
+      }
+      get_subscription_students_count: {
+        Args: { p_subscription_id: string }
+        Returns: number
+      }
+      get_subscriptions_with_students: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          is_active: boolean
+          max_classes: number
+          name: string
+          overage_price: number
+          price: number
+          students_count: number
         }[]
       }
       get_teacher_dependents: {

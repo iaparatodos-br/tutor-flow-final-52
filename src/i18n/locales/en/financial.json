@@ -93,6 +93,15 @@
     "manual": "Manual",
     "system": "System"
   },
+  "paymentOrigins": {
+    "manual": "Manual Payment",
+    "stripe": "Stripe",
+    "automatic": "Automatic Billing",
+    "unspecified": "Not specified"
+  },
+  "receipt": {
+    "paymentMethod": "Payment Method"
+  },
   "markAsPaid": {
     "title": "Confirm Manual Payment",
     "description": "By confirming, this invoice will be marked as paid and the Stripe Payment Intent will be cancelled (if applicable). This action is irreversible.",

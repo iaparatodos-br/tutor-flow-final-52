@@ -7,8 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Download, FileText, Clock, AlertCircle, Calendar, BookOpen, User, Mail, GraduationCap, Baby } from "lucide-react";
+import { Download, FileText, Clock, AlertCircle, Calendar, BookOpen, User, Mail, GraduationCap, Baby, Package, Infinity } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -61,6 +63,16 @@ interface DependentData {
   sharedMaterials: SharedMaterial[];
 }
 
+interface ActiveSubscription {
+  id: string;
+  subscription_name: string;
+  teacher_name: string;
+  price: number;
+  max_classes: number | null;
+  classes_used: number;
+  starts_at: string;
+}
+
 export default function StudentDashboard() {
   const { profile, isAluno } = useProfile();
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
@@ -80,6 +92,9 @@ export default function StudentDashboard() {
   const [dependents, setDependents] = useState<Dependent[]>([]);
   const [dependentData, setDependentData] = useState<Record<string, DependentData>>({});
   const [activeTab, setActiveTab] = useState<string>("self");
+  
+  // Mensalidades ativas
+  const [activeSubscription, setActiveSubscription] = useState<ActiveSubscription | null>(null);
 
   console.log('StudentDashboard: Component render', {
     profile: profile?.id,
@@ -163,6 +178,9 @@ export default function StudentDashboard() {
       
       // Load dependents for this teacher
       await loadDependents();
+      
+      // Load active subscription for this teacher
+      await loadActiveSubscription();
     } catch (error) {
       console.error('Erro ao carregar dados do professor:', error);
       toast({
@@ -218,6 +236,92 @@ export default function StudentDashboard() {
       }
     } catch (error) {
       console.error('Erro ao carregar dependentes:', error);
+    }
+  };
+
+  const loadActiveSubscription = async () => {
+    if (!selectedTeacherId || !profile?.id) return;
+
+    try {
+      // Find the relationship with this teacher
+      const { data: relationship, error: relError } = await supabase
+        .from('teacher_student_relationships')
+        .select('id')
+        .eq('student_id', profile.id)
+        .eq('teacher_id', selectedTeacherId)
+        .single();
+
+      if (relError || !relationship) {
+        console.log('No relationship found for subscription check');
+        return;
+      }
+
+      // Check for active subscription
+      const { data: subscription, error: subError } = await supabase
+        .from('student_monthly_subscriptions')
+        .select(`
+          id,
+          starts_at,
+          subscription_id,
+          monthly_subscriptions (
+            id,
+            name,
+            price,
+            max_classes,
+            teacher_id
+          )
+        `)
+        .eq('relationship_id', relationship.id)
+        .eq('is_active', true)
+        .is('ends_at', null)
+        .maybeSingle();
+
+      if (subError) {
+        console.error('Error loading subscription:', subError);
+        return;
+      }
+
+      if (subscription && subscription.monthly_subscriptions) {
+        const sub = subscription.monthly_subscriptions;
+        
+        // Get teacher name
+        const { data: teacher } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', selectedTeacherId)
+          .single();
+
+        // Count classes used this month (simplified - would need proper billing cycle logic)
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+
+        const { count: classesUsed } = await supabase
+          .from('class_participants')
+          .select(`
+            id,
+            classes!inner (teacher_id, class_date, is_experimental)
+          `, { count: 'exact', head: true })
+          .eq('student_id', profile.id)
+          .eq('classes.teacher_id', selectedTeacherId)
+          .eq('classes.is_experimental', false)
+          .gte('classes.class_date', subscription.starts_at)
+          .in('status', ['concluida', 'confirmada', 'pendente']);
+
+        setActiveSubscription({
+          id: subscription.id,
+          subscription_name: sub.name,
+          teacher_name: teacher?.name || 'Professor',
+          price: sub.price,
+          max_classes: sub.max_classes,
+          classes_used: classesUsed || 0,
+          starts_at: subscription.starts_at
+        });
+      } else {
+        setActiveSubscription(null);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar mensalidade:', error);
     }
   };
 
@@ -798,6 +902,75 @@ export default function StudentDashboard() {
     </Card>
   );
 
+  // Renderiza o card de mensalidade ativa
+  const renderActiveSubscriptionCard = () => {
+    if (!activeSubscription) return null;
+
+    const formatCurrency = (value: number) => {
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(value);
+    };
+
+    const progressValue = activeSubscription.max_classes 
+      ? Math.min((activeSubscription.classes_used / activeSubscription.max_classes) * 100, 100)
+      : 0;
+
+    return (
+      <Card className="shadow-card border-primary/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-primary" />
+            {t('monthlySubscriptions:studentView.title')}
+          </CardTitle>
+          <CardDescription>
+            {t('monthlySubscriptions:studentView.currentPlan')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h4 className="font-semibold text-lg">{activeSubscription.subscription_name}</h4>
+              <p className="text-sm text-muted-foreground">
+                {t('monthlySubscriptions:studentView.teacher')}: {activeSubscription.teacher_name}
+              </p>
+            </div>
+            <Badge variant="default" className="text-lg px-3 py-1">
+              {formatCurrency(activeSubscription.price)}
+              <span className="text-xs font-normal ml-1">/mês</span>
+            </Badge>
+          </div>
+
+          {activeSubscription.max_classes ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  {t('monthlySubscriptions:studentView.classesRemaining', { 
+                    remaining: Math.max(0, activeSubscription.max_classes - activeSubscription.classes_used)
+                  })}
+                </span>
+                <span className="font-medium">
+                  {activeSubscription.classes_used}/{activeSubscription.max_classes}
+                </span>
+              </div>
+              <Progress value={progressValue} className="h-2" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Infinity className="h-4 w-4" />
+              {t('monthlySubscriptions:studentView.unlimitedClasses')}
+            </div>
+          )}
+
+          <div className="pt-2 border-t text-xs text-muted-foreground">
+            {t('monthlySubscriptions:studentView.since')} {format(new Date(activeSubscription.starts_at), "dd/MM/yyyy")}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   // Renderiza o conteúdo de uma tab (seja do usuário ou de um dependente)
   const renderTabContent = (
     statsData: StudentStats, 
@@ -815,6 +988,9 @@ export default function StudentDashboard() {
           </span>
         </div>
       )}
+      
+      {/* Card de mensalidade ativa (apenas para o próprio usuário) */}
+      {!isDependent && renderActiveSubscriptionCard()}
       
       {renderStatsCards(statsData)}
       

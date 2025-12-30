@@ -26,12 +26,20 @@ import { useTranslation } from "react-i18next";
 
 // Helper function to get invoice type badge - DRY principle
 const getInvoiceTypeBadge = (invoiceType: string | undefined, t: (key: string) => string) => {
-  const isCancellation = invoiceType === 'cancellation';
-  return (
-    <Badge variant={isCancellation ? 'destructive' : 'default'}>
-      {isCancellation ? t('financial:invoiceTypes.cancellation') : t('financial:invoiceTypes.regular')}
-    </Badge>
-  );
+  switch (invoiceType) {
+    case 'monthly_subscription':
+      return <Badge variant="default">{t('financial:invoiceTypes.monthlySubscription')}</Badge>;
+    case 'automated':
+      return <Badge variant="secondary">{t('financial:invoiceTypes.automated')}</Badge>;
+    case 'manual':
+      return <Badge variant="outline">{t('financial:invoiceTypes.manual')}</Badge>;
+    case 'cancellation':
+      return <Badge variant="destructive">{t('financial:invoiceTypes.cancellation')}</Badge>;
+    case 'orphan_charges':
+      return <Badge className="bg-warning text-warning-foreground">{t('financial:invoiceTypes.orphanCharges')}</Badge>;
+    default:
+      return <Badge variant="outline">{t('financial:invoiceTypes.regular')}</Badge>;
+  }
 };
 interface InvoiceWithStudent {
   id: string;
@@ -289,13 +297,13 @@ export default function Financeiro() {
           amount,
           description,
           charge_percentage,
-          classes!inner (
+          classes (
             id,
             class_date,
             duration_minutes
           ),
-          class_participants!inner (
-            profiles!inner (name)
+          class_participants (
+            profiles (name)
           )
         `)
         .eq('invoice_id', invoice.id)

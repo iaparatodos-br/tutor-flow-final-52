@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.validate-monthly-subscriptions]
 verify_jwt = true
+
+[functions.dev-seed-test-data]
+verify_jwt = true

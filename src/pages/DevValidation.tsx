@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 import { 
   CheckCircle2, 
   XCircle, 
@@ -19,7 +21,12 @@ import {
   FileText,
   Users,
   CreditCard,
-  ShieldCheck
+  ShieldCheck,
+  Beaker,
+  Trash2,
+  UserPlus,
+  CalendarPlus,
+  Receipt
 } from "lucide-react";
 
 interface ValidationResult {
@@ -36,12 +43,24 @@ interface TestLog {
   message: string;
 }
 
+interface AvailableData {
+  subscriptions: Array<{ id: string; name: string; is_active: boolean }>;
+  relationships: Array<{ id: string; student_id: string; student_name: string; profiles: { name: string; email: string } }>;
+}
+
 const DevValidation = () => {
   const { t } = useTranslation();
   const { profile } = useAuth();
   const [isRunning, setIsRunning] = useState(false);
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
   const [logs, setLogs] = useState<TestLog[]>([]);
+  
+  // E2E Test States
+  const [isE2ERunning, setIsE2ERunning] = useState(false);
+  const [availableData, setAvailableData] = useState<AvailableData | null>(null);
+  const [selectedSubscription, setSelectedSubscription] = useState<string>('');
+  const [selectedRelationship, setSelectedRelationship] = useState<string>('');
+  const [e2eProgress, setE2EProgress] = useState<string[]>([]);
 
   const addLog = (type: TestLog['type'], message: string) => {
     const timestamp = new Date().toLocaleTimeString('pt-BR');
@@ -58,6 +77,10 @@ const DevValidation = () => {
       }
       return [...prev, result];
     });
+  };
+
+  const addE2EProgress = (message: string) => {
+    setE2EProgress(prev => [...prev, `[${new Date().toLocaleTimeString('pt-BR')}] ${message}`]);
   };
 
   // ========== VALIDAÇÃO V01: Integridade de Mensalidades ==========
@@ -388,6 +411,239 @@ const DevValidation = () => {
     }
   };
 
+  // ========== E2E TEST FUNCTIONS ==========
+  
+  const loadAvailableData = async () => {
+    try {
+      addE2EProgress('Carregando dados disponíveis...');
+      const { data, error } = await supabase.functions.invoke('dev-seed-test-data', {
+        body: { action: 'get_available_data' }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success && data?.data) {
+        setAvailableData(data.data);
+        addE2EProgress(`✅ Encontrados ${data.data.subscriptions?.length || 0} mensalidades e ${data.data.relationships?.length || 0} alunos`);
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro ao carregar dados: ${err}`);
+      toast.error('Erro ao carregar dados disponíveis');
+    }
+  };
+
+  const createTestSubscription = async () => {
+    setIsE2ERunning(true);
+    addE2EProgress('🚀 Criando mensalidade de teste...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('dev-seed-test-data', {
+        body: { action: 'create_subscription' }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        addE2EProgress(`✅ ${data.message}`);
+        addE2EProgress(`   ID: ${data.data?.subscription_id}`);
+        toast.success(data.message);
+        await loadAvailableData();
+      } else {
+        addE2EProgress(`❌ ${data?.message || 'Erro desconhecido'}`);
+        toast.error(data?.message || 'Erro ao criar mensalidade');
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro: ${err}`);
+      toast.error('Erro ao criar mensalidade de teste');
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
+  const assignTestStudent = async () => {
+    if (!selectedSubscription || !selectedRelationship) {
+      toast.error('Selecione uma mensalidade e um aluno');
+      return;
+    }
+    
+    setIsE2ERunning(true);
+    addE2EProgress('👤 Vinculando aluno...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('dev-seed-test-data', {
+        body: { 
+          action: 'assign_student',
+          subscription_id: selectedSubscription,
+          relationship_id: selectedRelationship
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        addE2EProgress(`✅ ${data.message}`);
+        toast.success(data.message);
+      } else {
+        addE2EProgress(`❌ ${data?.message || 'Erro desconhecido'}`);
+        toast.error(data?.message || 'Erro ao vincular aluno');
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro: ${err}`);
+      toast.error('Erro ao vincular aluno');
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
+  const createTestClasses = async () => {
+    if (!selectedRelationship) {
+      toast.error('Selecione um aluno');
+      return;
+    }
+    
+    // Buscar student_id do relationship
+    const relationship = availableData?.relationships?.find(r => r.id === selectedRelationship);
+    if (!relationship) {
+      toast.error('Relacionamento não encontrado');
+      return;
+    }
+    
+    setIsE2ERunning(true);
+    addE2EProgress('📚 Criando aulas de teste...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('dev-seed-test-data', {
+        body: { 
+          action: 'create_test_classes',
+          student_id: relationship.student_id,
+          count: 5
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        addE2EProgress(`✅ ${data.message}`);
+        toast.success(data.message);
+      } else {
+        addE2EProgress(`❌ ${data?.message || 'Erro desconhecido'}`);
+        toast.error(data?.message || 'Erro ao criar aulas');
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro: ${err}`);
+      toast.error('Erro ao criar aulas de teste');
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
+  const triggerBilling = async () => {
+    setIsE2ERunning(true);
+    addE2EProgress('💳 Disparando faturamento automatizado...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('automated-billing');
+      
+      if (error) throw error;
+      
+      addE2EProgress(`✅ Faturamento executado`);
+      addE2EProgress(`   Resultado: ${JSON.stringify(data).slice(0, 200)}...`);
+      toast.success('Faturamento executado');
+    } catch (err) {
+      addE2EProgress(`❌ Erro no faturamento: ${err}`);
+      toast.error('Erro ao executar faturamento');
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
+  const checkGeneratedInvoices = async () => {
+    addE2EProgress('🧾 Verificando faturas geradas...');
+    
+    try {
+      const { data: invoices, error } = await supabase
+        .from('invoices')
+        .select('id, amount, invoice_type, status, created_at')
+        .eq('invoice_type', 'monthly_subscription')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      if (error) throw error;
+      
+      if (invoices && invoices.length > 0) {
+        addE2EProgress(`✅ ${invoices.length} faturas de mensalidade encontradas:`);
+        invoices.forEach((inv, i) => {
+          addE2EProgress(`   ${i + 1}. R$ ${inv.amount} - ${inv.status}`);
+        });
+      } else {
+        addE2EProgress('⚠️ Nenhuma fatura de mensalidade encontrada');
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro: ${err}`);
+    }
+  };
+
+  const cleanupTestData = async () => {
+    setIsE2ERunning(true);
+    addE2EProgress('🧹 Limpando dados de teste...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('dev-seed-test-data', {
+        body: { action: 'cleanup' }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.success) {
+        addE2EProgress(`✅ ${data.message}`);
+        toast.success(data.message);
+        await loadAvailableData();
+      } else {
+        addE2EProgress(`❌ ${data?.message || 'Erro desconhecido'}`);
+      }
+    } catch (err) {
+      addE2EProgress(`❌ Erro: ${err}`);
+      toast.error('Erro ao limpar dados');
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
+  const runFullE2ETest = async () => {
+    setIsE2ERunning(true);
+    setE2EProgress([]);
+    addE2EProgress('🚀 INICIANDO TESTE E2E COMPLETO');
+    addE2EProgress('='.repeat(40));
+    
+    try {
+      // Step 1: Create subscription
+      addE2EProgress('');
+      addE2EProgress('📋 PASSO 1: Criar Mensalidade');
+      await createTestSubscription();
+      await new Promise(r => setTimeout(r, 1000));
+      
+      // Step 2: Load data and auto-select
+      await loadAvailableData();
+      await new Promise(r => setTimeout(r, 500));
+      
+      addE2EProgress('');
+      addE2EProgress('✅ TESTE E2E PARCIAL CONCLUÍDO');
+      addE2EProgress('');
+      addE2EProgress('⚠️ Para completar o teste:');
+      addE2EProgress('   1. Selecione a mensalidade criada');
+      addE2EProgress('   2. Selecione um aluno');
+      addE2EProgress('   3. Clique em "Vincular Aluno"');
+      addE2EProgress('   4. Clique em "Criar Aulas"');
+      addE2EProgress('   5. Clique em "Executar Faturamento"');
+      addE2EProgress('   6. Clique em "Verificar Faturas"');
+      
+    } catch (err) {
+      addE2EProgress(`❌ Erro no teste E2E: ${err}`);
+    } finally {
+      setIsE2ERunning(false);
+    }
+  };
+
   const getStatusIcon = (status: ValidationResult['status']) => {
     switch (status) {
       case 'success': return <CheckCircle2 className="h-5 w-5 text-green-500" />;
@@ -575,6 +831,185 @@ const DevValidation = () => {
                 ))}
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Seção de Testes E2E */}
+        <Card className="border-2 border-dashed border-primary/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Beaker className="h-5 w-5" />
+              Testes E2E - Fluxo Completo de Mensalidades
+            </CardTitle>
+            <CardDescription>
+              Crie dados de teste e valide o fluxo completo: criação → atribuição → faturamento
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Botão para teste completo */}
+            <div className="flex gap-3">
+              <Button 
+                onClick={runFullE2ETest}
+                disabled={isE2ERunning}
+                className="flex-1"
+                size="lg"
+              >
+                {isE2ERunning ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                Executar Teste E2E Completo
+              </Button>
+              
+              <Button 
+                onClick={loadAvailableData}
+                variant="outline"
+                disabled={isE2ERunning}
+              >
+                <Database className="h-4 w-4 mr-2" />
+                Carregar Dados
+              </Button>
+            </div>
+
+            <Separator />
+
+            {/* Ações Individuais */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Coluna 1: Criação */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-sm text-muted-foreground">1. Criar Dados de Teste</h4>
+                
+                <Button 
+                  onClick={createTestSubscription}
+                  disabled={isE2ERunning}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Criar Mensalidade de Teste
+                </Button>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Selecionar Mensalidade:</label>
+                  <Select value={selectedSubscription} onValueChange={setSelectedSubscription}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha uma mensalidade..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableData?.subscriptions?.map(sub => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.name} {sub.is_active ? '✅' : '❌'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm text-muted-foreground">Selecionar Aluno:</label>
+                  <Select value={selectedRelationship} onValueChange={setSelectedRelationship}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Escolha um aluno..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableData?.relationships?.map(rel => (
+                        <SelectItem key={rel.id} value={rel.id}>
+                          {rel.student_name || rel.profiles?.name} ({rel.profiles?.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Button 
+                  onClick={assignTestStudent}
+                  disabled={isE2ERunning || !selectedSubscription || !selectedRelationship}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Vincular Aluno
+                </Button>
+              </div>
+
+              {/* Coluna 2: Execução e Verificação */}
+              <div className="space-y-3">
+                <h4 className="font-medium text-sm text-muted-foreground">2. Executar e Verificar</h4>
+                
+                <Button 
+                  onClick={createTestClasses}
+                  disabled={isE2ERunning || !selectedRelationship}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <CalendarPlus className="h-4 w-4 mr-2" />
+                  Criar 5 Aulas de Teste
+                </Button>
+
+                <Button 
+                  onClick={triggerBilling}
+                  disabled={isE2ERunning}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Executar Faturamento
+                </Button>
+
+                <Button 
+                  onClick={checkGeneratedInvoices}
+                  disabled={isE2ERunning}
+                  variant="outline"
+                  className="w-full justify-start"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Verificar Faturas Geradas
+                </Button>
+
+                <Separator className="my-2" />
+
+                <Button 
+                  onClick={cleanupTestData}
+                  disabled={isE2ERunning}
+                  variant="destructive"
+                  className="w-full justify-start"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpar Dados de Teste
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Log do E2E */}
+            <div>
+              <h4 className="font-medium text-sm text-muted-foreground mb-2">
+                Log de Execução E2E ({e2eProgress.length} entradas)
+              </h4>
+              <ScrollArea className="h-[200px] w-full rounded border p-3 bg-muted/30">
+                {e2eProgress.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Execute um teste para ver o progresso aqui.
+                  </p>
+                ) : (
+                  <div className="space-y-1 font-mono text-xs">
+                    {e2eProgress.map((line, i) => (
+                      <div key={i} className={
+                        line.includes('✅') ? 'text-green-600' :
+                        line.includes('❌') ? 'text-red-600' :
+                        line.includes('⚠️') ? 'text-yellow-600' :
+                        line.includes('🚀') || line.includes('===') ? 'text-primary font-bold' :
+                        'text-muted-foreground'
+                      }>
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       </div>

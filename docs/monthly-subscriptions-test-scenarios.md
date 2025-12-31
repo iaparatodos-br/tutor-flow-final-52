@@ -368,3 +368,108 @@ Este documento contém cenários de teste passo-a-passo para validação manual 
 - [ ] QA Aprovado
 - [ ] Dev Aprovado
 - [ ] PM Aprovado
+
+---
+
+## Teste Rápido via SQL Editor
+
+Para testes rápidos diretamente no Supabase SQL Editor:
+
+### 1. Verificar dados existentes
+
+```sql
+-- Listar professores
+SELECT id, name, email FROM profiles WHERE role = 'professor' LIMIT 5;
+
+-- Listar relacionamentos professor-aluno
+SELECT 
+  tsr.id as relationship_id,
+  tsr.teacher_id,
+  tsr.student_id,
+  COALESCE(tsr.student_name, p.name) as student_name
+FROM teacher_student_relationships tsr
+JOIN profiles p ON tsr.student_id = p.id
+LIMIT 10;
+```
+
+### 2. Criar mensalidade de teste
+
+```sql
+INSERT INTO monthly_subscriptions (
+  teacher_id, name, description, price, max_classes, overage_price, is_active
+) VALUES (
+  '{TEACHER_ID}',
+  'Plano Teste E2E',
+  'Plano para testes de integração',
+  200.00,
+  4,
+  50.00,
+  true
+) RETURNING id;
+```
+
+### 3. Atribuir aluno
+
+```sql
+INSERT INTO student_monthly_subscriptions (
+  subscription_id, relationship_id, starts_at, is_active
+) VALUES (
+  '{SUBSCRIPTION_ID}',
+  '{RELATIONSHIP_ID}',
+  CURRENT_DATE,
+  true
+);
+```
+
+### 4. Verificar dados criados
+
+```sql
+-- Ver mensalidades
+SELECT * FROM monthly_subscriptions ORDER BY created_at DESC LIMIT 5;
+
+-- Ver atribuições
+SELECT 
+  sms.id,
+  ms.name,
+  tsr.student_id,
+  sms.starts_at,
+  sms.is_active
+FROM student_monthly_subscriptions sms
+JOIN monthly_subscriptions ms ON sms.subscription_id = ms.id
+JOIN teacher_student_relationships tsr ON sms.relationship_id = tsr.id
+ORDER BY sms.created_at DESC
+LIMIT 10;
+```
+
+### 5. Limpeza após testes
+
+```sql
+-- Desativar mensalidades de teste
+UPDATE monthly_subscriptions 
+SET is_active = false 
+WHERE name LIKE 'Plano Teste%';
+```
+
+---
+
+## Página de Validação DEV
+
+Acesse `/dev/validation` no ambiente de desenvolvimento para:
+
+1. **Validações de Integridade (V01-V08)**: Verificam estrutura do banco
+2. **Testes E2E**: Criam dados e validam fluxo completo
+3. **Logs em tempo real**: Acompanhe execução passo-a-passo
+
+### Fluxo recomendado na página:
+
+```
+1. Clicar "Carregar Dados" para ver mensalidades/alunos
+2. Clicar "Criar Mensalidade de Teste"
+3. Selecionar a mensalidade criada
+4. Selecionar um aluno
+5. Clicar "Vincular Aluno"
+6. Clicar "Criar 5 Aulas de Teste"
+7. Clicar "Executar Faturamento"
+8. Clicar "Verificar Faturas Geradas"
+9. Ao final, clicar "Limpar Dados de Teste"
+```

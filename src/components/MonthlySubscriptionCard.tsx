@@ -5,6 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Edit, 
   Users, 
+  UserPlus,
   Infinity, 
   DollarSign,
   ToggleLeft,
@@ -108,16 +109,23 @@ export function MonthlySubscriptionCard({
 
           {/* Right side - Actions */}
           <div className="flex items-center gap-2">
-            {subscription.students_count > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onViewStudents(subscription)}
-              >
-                <Users className="h-4 w-4 mr-1" />
-                {t('actions.viewStudents')}
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewStudents(subscription)}
+            >
+              {subscription.students_count > 0 ? (
+                <>
+                  <Users className="h-4 w-4 mr-1" />
+                  {t('actions.viewStudents')}
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  {t('actions.assignStudent')}
+                </>
+              )}
+            </Button>
             <Button
               variant="outline"
               size="sm"

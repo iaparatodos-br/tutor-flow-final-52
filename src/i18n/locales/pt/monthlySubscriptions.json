@@ -25,17 +25,17 @@
   "list": {
     "noSubscriptions": "Nenhuma mensalidade cadastrada",
     "noSubscriptionsDescription": "Crie sua primeira mensalidade para começar a oferecer planos fixos aos seus alunos.",
-    "studentsCount": "{count} aluno(s) vinculado(s)",
+    "studentsCount": "{{count}} aluno(s) vinculado(s)",
     "noStudents": "Nenhum aluno vinculado",
     "unlimited": "Aulas ilimitadas",
-    "classesLimit": "Até {count} aulas/mês",
-    "overage": "+R$ {price} por aula excedente",
+    "classesLimit": "Até {{count}} aulas/mês",
+    "overage": "+R$ {{price}} por aula excedente",
     "noOverage": "Sem cobrança de excedente",
     "perMonth": "/mês",
     "active": "Ativo",
     "inactive": "Inativo",
-    "classesUsed": "{used}/{limit} aulas utilizadas",
-    "classesUsedUnlimited": "{used} aulas utilizadas"
+    "classesUsed": "{{used}}/{{limit}} aulas utilizadas",
+    "classesUsedUnlimited": "{{used}} aulas utilizadas"
   },
   "validation": {
     "nameRequired": "Nome do plano é obrigatório",
@@ -89,7 +89,7 @@
     "noSubscription": "Você não possui mensalidade ativa no momento",
     "currentPlan": "Plano Atual",
     "teacher": "Professor",
-    "classesRemaining": "{remaining} aulas restantes este mês",
+    "classesRemaining": "{{remaining}} aulas restantes este mês",
     "unlimitedClasses": "Aulas ilimitadas",
     "nextBilling": "Próxima cobrança",
     "since": "Desde"

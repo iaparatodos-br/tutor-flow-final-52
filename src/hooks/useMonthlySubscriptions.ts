@@ -160,7 +160,7 @@ export function useCreateMonthlySubscription() {
     },
     onError: (error) => {
       console.error('Error creating subscription:', error);
-      toast.error(t('messages.createError'));
+      toast.error(t('messages.saveError'));
     },
   });
 }
@@ -292,7 +292,7 @@ export function useAssignStudentToSubscription() {
       queryClient.invalidateQueries({ queryKey: ['subscription-students'] });
       queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
       queryClient.invalidateQueries({ queryKey: ['available-students-for-subscription'] });
-      toast.success(t('messages.studentAssignedSuccess'));
+      toast.success(t('messages.studentAssigned'));
     },
     onError: (error) => {
       if (error.message === 'STUDENT_ALREADY_HAS_SUBSCRIPTION') {
@@ -335,7 +335,7 @@ export function useRemoveStudentFromSubscription() {
       queryClient.invalidateQueries({ queryKey: ['subscription-students'] });
       queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
       queryClient.invalidateQueries({ queryKey: ['available-students-for-subscription'] });
-      toast.success(t('messages.studentRemovedSuccess'));
+      toast.success(t('messages.studentRemoved'));
     },
     onError: (error) => {
       console.error('Error removing student:', error);

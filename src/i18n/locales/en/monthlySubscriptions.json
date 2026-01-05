@@ -25,17 +25,17 @@
   "list": {
     "noSubscriptions": "No subscriptions registered",
     "noSubscriptionsDescription": "Create your first subscription to start offering fixed plans to your students.",
-    "studentsCount": "{count} student(s) assigned",
+    "studentsCount": "{{count}} student(s) assigned",
     "noStudents": "No students assigned",
     "unlimited": "Unlimited classes",
-    "classesLimit": "Up to {count} classes/month",
-    "overage": "+$ {price} per extra class",
+    "classesLimit": "Up to {{count}} classes/month",
+    "overage": "+$ {{price}} per extra class",
     "noOverage": "No overage charge",
     "perMonth": "/month",
     "active": "Active",
     "inactive": "Inactive",
-    "classesUsed": "{used}/{limit} classes used",
-    "classesUsedUnlimited": "{used} classes used"
+    "classesUsed": "{{used}}/{{limit}} classes used",
+    "classesUsedUnlimited": "{{used}} classes used"
   },
   "validation": {
     "nameRequired": "Plan name is required",
@@ -89,7 +89,7 @@
     "noSubscription": "You don't have an active subscription at the moment",
     "currentPlan": "Current Plan",
     "teacher": "Teacher",
-    "classesRemaining": "{remaining} classes remaining this month",
+    "classesRemaining": "{{remaining}} classes remaining this month",
     "unlimitedClasses": "Unlimited classes",
     "nextBilling": "Next billing",
     "since": "Since"

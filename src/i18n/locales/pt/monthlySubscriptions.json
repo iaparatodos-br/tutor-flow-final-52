@@ -64,7 +64,11 @@
     "studentAssigned": "Aluno vinculado à mensalidade!",
     "studentRemoved": "Aluno removido da mensalidade!",
     "studentAlreadyHasSubscription": "Este aluno já possui uma mensalidade ativa com você",
-    "loadError": "Erro ao carregar mensalidades"
+    "loadError": "Erro ao carregar mensalidades",
+    "updateError": "Erro ao atualizar mensalidade",
+    "toggleError": "Erro ao alterar status da mensalidade",
+    "assignError": "Erro ao vincular aluno",
+    "removeError": "Erro ao remover aluno"
   },
   "info": {
     "familyBilling": "A mensalidade cobre o responsável e todos os seus dependentes automaticamente.",

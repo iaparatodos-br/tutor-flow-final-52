@@ -64,7 +64,11 @@
     "studentAssigned": "Student assigned to subscription!",
     "studentRemoved": "Student removed from subscription!",
     "studentAlreadyHasSubscription": "This student already has an active subscription with you",
-    "loadError": "Error loading subscriptions"
+    "loadError": "Error loading subscriptions",
+    "updateError": "Error updating subscription",
+    "toggleError": "Error changing subscription status",
+    "assignError": "Error assigning student",
+    "removeError": "Error removing student"
   },
   "info": {
     "familyBilling": "The subscription covers the guardian and all their dependents automatically.",

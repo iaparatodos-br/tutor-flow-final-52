@@ -153,15 +153,21 @@ serve(async (req) => {
         };
 
         // ===== FASE 6: VERIFICAR MENSALIDADE ATIVA (Tarefas 6.1-6.5) =====
-        const { data: activeSubscription, error: subError } = await supabaseAdmin
+        // IMPORTANTE: A RPC retorna um ARRAY (RETURNS TABLE), não um objeto único
+        const { data: activeSubscriptionData, error: subError } = await supabaseAdmin
           .rpc('get_student_active_subscription', {
             p_relationship_id: studentInfo.relationship_id
-          }) as { data: ActiveSubscription | null, error: any };
+          }) as { data: ActiveSubscription[] | null, error: any };
 
         if (subError) {
           logStep(`Error checking active subscription for ${studentInfo.student_name}`, subError);
           // Continue with traditional billing
         }
+
+        // Extrair primeiro elemento do array (se existir)
+        const activeSubscription = activeSubscriptionData && activeSubscriptionData.length > 0 
+          ? activeSubscriptionData[0] 
+          : null;
 
         const hasActiveSubscription = activeSubscription && activeSubscription.subscription_id;
         

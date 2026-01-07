@@ -2077,6 +2077,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      count_completed_classes_in_billing_cycle: {
+        Args: {
+          p_billing_day: number
+          p_reference_date?: string
+          p_student_id: string
+          p_teacher_id: string
+        }
+        Returns: number
+      }
       count_completed_classes_in_month: {
         Args: {
           p_month: number
@@ -2101,6 +2110,13 @@ export type Database = {
       generate_stripe_fingerprint: {
         Args: { event_data: Json }
         Returns: string
+      }
+      get_billing_cycle_dates: {
+        Args: { p_billing_day: number; p_reference_date?: string }
+        Returns: {
+          cycle_end: string
+          cycle_start: string
+        }[]
       }
       get_calendar_events: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }

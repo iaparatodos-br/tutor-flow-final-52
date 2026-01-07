@@ -598,6 +598,7 @@ serve(async (req) => {
 });
 
 // ===== HELPER: Calcular datas do ciclo de faturamento baseado em billing_day =====
+// IMPORTANTE: No dia de faturamento, queremos fechar o ciclo que ACABOU, não o ciclo que começa
 function getBillingCycleDates(billingDay: number, referenceDate: Date = new Date()): { cycleStart: Date; cycleEnd: Date } {
   const currentDay = referenceDate.getDate();
   const currentMonth = referenceDate.getMonth();
@@ -612,30 +613,36 @@ function getBillingCycleDates(billingDay: number, referenceDate: Date = new Date
   let cycleStart: Date;
   let cycleEnd: Date;
 
-  if (currentDay >= billingDay) {
-    // Ciclo começou este mês
+  // No dia de faturamento (currentDay == billingDay), queremos FECHAR o ciclo anterior
+  // Exemplo: billing_day=7, hoje=07/01/2026
+  // Ciclo a faturar: 07/12/2025 a 06/01/2026 (o ciclo que terminou ontem)
+  
+  if (currentDay > billingDay) {
+    // Estamos APÓS o billing_day deste mês, então o ciclo atual começou este mês
+    // Este caso NÃO deveria acontecer para faturamento automático (que roda no billing_day exato)
+    // Mas manteremos para casos de execução manual atrasada
     const adjustedStartDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
     cycleStart = new Date(currentYear, currentMonth, adjustedStartDay);
     
-    // Fim do ciclo é um dia antes do billing_day do próximo mês
     const nextMonth = currentMonth + 1;
     const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
     const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
     const adjustedEndDay = adjustDayForMonth(nextYear, normalizedNextMonth, billingDay);
     cycleEnd = new Date(nextYear, normalizedNextMonth, adjustedEndDay);
-    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes
+    cycleEnd.setDate(cycleEnd.getDate() - 1);
   } else {
-    // Ciclo começou no mês anterior
+    // currentDay <= billingDay: Fechar ciclo ANTERIOR (mês passado até ontem)
+    // Ciclo começou no mês anterior no billing_day
     const prevMonth = currentMonth - 1;
     const prevYear = prevMonth < 0 ? currentYear - 1 : currentYear;
     const normalizedPrevMonth = prevMonth < 0 ? 11 : prevMonth;
     const adjustedStartDay = adjustDayForMonth(prevYear, normalizedPrevMonth, billingDay);
     cycleStart = new Date(prevYear, normalizedPrevMonth, adjustedStartDay);
     
-    // Fim do ciclo é um dia antes do billing_day deste mês
+    // Fim do ciclo é um dia ANTES do billing_day deste mês
     const adjustedEndDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
     cycleEnd = new Date(currentYear, currentMonth, adjustedEndDay);
-    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes
+    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes (dia 6 se billing_day=7)
   }
 
   return { cycleStart, cycleEnd };

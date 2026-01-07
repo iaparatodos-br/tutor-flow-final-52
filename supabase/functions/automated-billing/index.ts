@@ -597,6 +597,50 @@ serve(async (req) => {
   }
 });
 
+// ===== HELPER: Calcular datas do ciclo de faturamento baseado em billing_day =====
+function getBillingCycleDates(billingDay: number, referenceDate: Date = new Date()): { cycleStart: Date; cycleEnd: Date } {
+  const currentDay = referenceDate.getDate();
+  const currentMonth = referenceDate.getMonth();
+  const currentYear = referenceDate.getFullYear();
+
+  // Helper para ajustar dia para meses com menos dias
+  const adjustDayForMonth = (year: number, month: number, targetDay: number): number => {
+    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+    return Math.min(targetDay, lastDayOfMonth);
+  };
+
+  let cycleStart: Date;
+  let cycleEnd: Date;
+
+  if (currentDay >= billingDay) {
+    // Ciclo começou este mês
+    const adjustedStartDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
+    cycleStart = new Date(currentYear, currentMonth, adjustedStartDay);
+    
+    // Fim do ciclo é um dia antes do billing_day do próximo mês
+    const nextMonth = currentMonth + 1;
+    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    const adjustedEndDay = adjustDayForMonth(nextYear, normalizedNextMonth, billingDay);
+    cycleEnd = new Date(nextYear, normalizedNextMonth, adjustedEndDay);
+    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes
+  } else {
+    // Ciclo começou no mês anterior
+    const prevMonth = currentMonth - 1;
+    const prevYear = prevMonth < 0 ? currentYear - 1 : currentYear;
+    const normalizedPrevMonth = prevMonth < 0 ? 11 : prevMonth;
+    const adjustedStartDay = adjustDayForMonth(prevYear, normalizedPrevMonth, billingDay);
+    cycleStart = new Date(prevYear, normalizedPrevMonth, adjustedStartDay);
+    
+    // Fim do ciclo é um dia antes do billing_day deste mês
+    const adjustedEndDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
+    cycleEnd = new Date(currentYear, currentMonth, adjustedEndDay);
+    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes
+  }
+
+  return { cycleStart, cycleEnd };
+}
+
 // ===== NOVA FUNÇÃO: Processar faturamento de mensalidade (Tarefas 6.1-6.5) =====
 async function processMonthlySubscriptionBilling(
   studentInfo: StudentBillingInfo,
@@ -607,7 +651,20 @@ async function processMonthlySubscriptionBilling(
     const startsAt = new Date(subscription.starts_at);
     const MINIMUM_BOLETO_AMOUNT = 5.00;
 
-    // Buscar aulas concluídas do período (após starts_at)
+    // ===== CALCULAR CICLO DE FATURAMENTO BASEADO EM BILLING_DAY =====
+    const { cycleStart, cycleEnd } = getBillingCycleDates(studentInfo.billing_day, now);
+    
+    // Formatar datas para exibição
+    const cycleStartStr = cycleStart.toLocaleDateString('pt-BR');
+    const cycleEndStr = cycleEnd.toLocaleDateString('pt-BR');
+    
+    logStep(`📅 Billing cycle calculated based on billing_day=${studentInfo.billing_day}`, {
+      cycleStart: cycleStart.toISOString().split('T')[0],
+      cycleEnd: cycleEnd.toISOString().split('T')[0],
+      startsAt: startsAt.toISOString().split('T')[0]
+    });
+
+    // Buscar aulas concluídas do período
     const { data: completedParticipations, error: classesError } = await supabaseAdmin
       .rpc('get_unbilled_participants_v2', {
         p_teacher_id: studentInfo.teacher_id,
@@ -619,25 +676,34 @@ async function processMonthlySubscriptionBilling(
       return { success: false, error: `Error fetching classes: ${classesError.message}` };
     }
 
-    // Separar aulas por starts_at (Tarefa 6.2)
     const allClasses = completedParticipations || [];
     
-    // Aulas ANTES do starts_at = cobrança avulsa tradicional
-    const classesBeforeStartsAt = allClasses.filter(c => new Date(c.class_date) < startsAt);
+    // ===== FILTRAR AULAS PELO CICLO DE FATURAMENTO =====
+    // Usar o maior entre cycleStart e startsAt para primeiro mês do aluno
+    const effectiveCycleStart = startsAt > cycleStart ? startsAt : cycleStart;
     
-    // Aulas APÓS starts_at = cobertas pela mensalidade (exceto experimentais)
-    const classesAfterStartsAt = allClasses.filter(c => new Date(c.class_date) >= startsAt);
-
-    logStep(`📅 Classes separation by starts_at (${startsAt.toISOString().split('T')[0]})`, {
-      beforeStartsAt: classesBeforeStartsAt.length,
-      afterStartsAt: classesAfterStartsAt.length
+    // Aulas DENTRO do ciclo de faturamento (após effectiveCycleStart e até cycleEnd)
+    const classesInBillingCycle = allClasses.filter(c => {
+      const classDate = new Date(c.class_date);
+      return classDate >= effectiveCycleStart && classDate <= cycleEnd;
+    });
+    
+    // Aulas FORA do ciclo (antes do effectiveCycleStart) = cobrança avulsa tradicional
+    const classesOutsideCycle = allClasses.filter(c => {
+      const classDate = new Date(c.class_date);
+      return classDate < effectiveCycleStart;
     });
 
-    // Se há aulas antes do starts_at, processar como cobrança avulsa
-    if (classesBeforeStartsAt.length > 0) {
-      logStep(`⚠️ ${classesBeforeStartsAt.length} classes before starts_at will be billed separately (traditional per-class)`);
-      // TODO: Implementar cobrança avulsa para essas aulas em fatura separada se necessário
-      // Por ora, incluímos na mesma lógica mas registramos o alerta
+    logStep(`📊 Classes filtered by billing cycle (${cycleStartStr} - ${cycleEndStr})`, {
+      effectiveCycleStart: effectiveCycleStart.toISOString().split('T')[0],
+      inCycle: classesInBillingCycle.length,
+      outsideCycle: classesOutsideCycle.length,
+      total: allClasses.length
+    });
+
+    // Se há aulas fora do ciclo, registrar alerta
+    if (classesOutsideCycle.length > 0) {
+      logStep(`⚠️ ${classesOutsideCycle.length} classes outside billing cycle will be billed separately (traditional per-class)`);
     }
 
     // Calcular itens da fatura de mensalidade
@@ -646,19 +712,19 @@ async function processMonthlySubscriptionBilling(
 
     // Item 1: Valor base da mensalidade (Tarefa 6.3)
     invoiceItems.push({
-      class_id: null, // Mensalidade não tem class_id
-      participant_id: null, // Mensalidade não tem participant_id
+      class_id: null,
+      participant_id: null,
       item_type: 'monthly_base',
       amount: subscription.price,
-      description: `Mensalidade ${subscription.subscription_name} - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`,
+      description: `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartStr} a ${cycleEndStr}`,
       cancellation_policy_id: null,
       charge_percentage: null,
       dependent_id: null
     });
     totalAmount += subscription.price;
 
-    // Item 2: Calcular excedentes (Tarefa 6.4)
-    const classesUsed = classesAfterStartsAt.length;
+    // Item 2: Calcular excedentes baseado em aulas NO CICLO (Tarefa 6.4)
+    const classesUsed = classesInBillingCycle.length;
     const maxClasses = subscription.max_classes;
     const overagePrice = subscription.overage_price;
     let overageCount = 0;
@@ -680,20 +746,21 @@ async function processMonthlySubscriptionBilling(
       });
       totalAmount += overageTotal;
       
-      logStep(`📈 Overage calculated`, {
+      logStep(`📈 Overage calculated for billing cycle`, {
         maxClasses,
         classesUsed,
         overageCount,
         overagePrice,
-        overageTotal
+        overageTotal,
+        cycle: `${cycleStartStr} - ${cycleEndStr}`
       });
     }
 
     // Verificar mínimo para boleto
     const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
 
-    // Criar descrição da fatura
-    let description = `Mensalidade ${subscription.subscription_name} - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`;
+    // Criar descrição da fatura com período do ciclo
+    let description = `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartStr} a ${cycleEndStr}`;
     if (maxClasses !== null) {
       description += ` (${classesUsed}/${maxClasses} aulas)`;
     }

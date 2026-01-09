@@ -2310,7 +2310,13 @@ export type Database = {
         }[]
       }
       get_unbilled_participants_v2: {
-        Args: { p_status?: string; p_student_id?: string; p_teacher_id: string }
+        Args: {
+          p_end_date?: string
+          p_start_date?: string
+          p_status?: string
+          p_student_id?: string
+          p_teacher_id: string
+        }
         Returns: {
           charge_applied: boolean
           class_date: string

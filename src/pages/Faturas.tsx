@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
+import { InvoiceTypeBadge } from '@/components/InvoiceTypeBadge';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -160,11 +161,13 @@ export default function Faturas() {
                       </TableCell>
                       <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                       <TableCell>
-                        <InvoiceStatusBadge 
-                          status={invoice.status} 
-                          paymentOrigin={invoice.payment_origin}
-                          invoiceType={invoice.invoice_type || undefined}
-                        />
+                        <div className="flex flex-col gap-1">
+                          <InvoiceTypeBadge invoiceType={invoice.invoice_type} />
+                          <InvoiceStatusBadge 
+                            status={invoice.status} 
+                            paymentOrigin={invoice.payment_origin}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         {/* Faturas pendentes/vencidas: Botão "Pagar Agora" */}

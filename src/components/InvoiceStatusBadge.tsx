@@ -1,15 +1,14 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { CheckCircle, Zap, Package, FileText, AlertTriangle } from 'lucide-react';
+import { CheckCircle, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface InvoiceStatusBadgeProps {
   status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
   paymentOrigin?: string | null;
-  invoiceType?: string | null;
 }
 
-export function InvoiceStatusBadge({ status, paymentOrigin, invoiceType }: InvoiceStatusBadgeProps) {
+export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadgeProps) {
   const { t } = useTranslation('financial');
 
   const statusMap = {
@@ -29,18 +28,16 @@ export function InvoiceStatusBadge({ status, paymentOrigin, invoiceType }: Invoi
   const isPaid = status === 'paid' || status === 'paga';
   const isManual = paymentOrigin === 'manual';
   const isAutomatic = paymentOrigin === 'automatic';
-  const isMonthlySubscription = invoiceType === 'monthly_subscription';
 
-  // Get invoice type icon
-  const getTypeIcon = () => {
-    if (isMonthlySubscription) return <Package className="h-3 w-3" />;
+  // Get payment origin icon for paid invoices
+  const getPaymentIcon = () => {
     if (isPaid && isManual) return <CheckCircle className="h-3 w-3" />;
     if (isPaid && isAutomatic) return <Zap className="h-3 w-3" />;
     return null;
   };
 
-  // Get invoice type suffix
-  const getTypeSuffix = () => {
+  // Get payment origin suffix for paid invoices
+  const getPaymentSuffix = () => {
     if (isPaid && isManual) return <span className="text-xs opacity-80">({t('paymentOrigin.manual')})</span>;
     if (isPaid && isAutomatic) return <span className="text-xs opacity-80">({t('paymentOrigin.automatic')})</span>;
     return null;
@@ -48,9 +45,9 @@ export function InvoiceStatusBadge({ status, paymentOrigin, invoiceType }: Invoi
 
   return (
     <Badge className={cn('text-white gap-1', className)}>
-      {getTypeIcon()}
+      {getPaymentIcon()}
       {label}
-      {getTypeSuffix()}
+      {getPaymentSuffix()}
     </Badge>
   );
 }

@@ -685,6 +685,14 @@ async function processMonthlySubscriptionBilling(
 
     const allClasses = completedParticipations || [];
     
+    // DEBUG: Log do retorno da RPC
+    logStep(`🔍 RPC returned classes`, {
+      count: allClasses.length,
+      teacher_id: studentInfo.teacher_id,
+      student_id: studentInfo.student_id,
+      firstClassDate: allClasses[0]?.class_date || 'none',
+      lastClassDate: allClasses[allClasses.length - 1]?.class_date || 'none'
+    });
     // ===== FILTRAR AULAS PELO CICLO DE FATURAMENTO =====
     // Usar o maior entre cycleStart e startsAt para primeiro mês do aluno
     const effectiveCycleStart = startsAt > cycleStart ? startsAt : cycleStart;

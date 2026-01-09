@@ -689,16 +689,24 @@ async function processMonthlySubscriptionBilling(
     // Usar o maior entre cycleStart e startsAt para primeiro mês do aluno
     const effectiveCycleStart = startsAt > cycleStart ? startsAt : cycleStart;
     
+    // Helper para normalizar data (remover horário para comparação correta)
+    const normalizeDate = (date: Date): number => {
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    };
+    
+    const effectiveStartNorm = normalizeDate(effectiveCycleStart);
+    const cycleEndNorm = normalizeDate(cycleEnd);
+    
     // Aulas DENTRO do ciclo de faturamento (após effectiveCycleStart e até cycleEnd)
     const classesInBillingCycle = allClasses.filter(c => {
-      const classDate = new Date(c.class_date);
-      return classDate >= effectiveCycleStart && classDate <= cycleEnd;
+      const classDateNorm = normalizeDate(new Date(c.class_date));
+      return classDateNorm >= effectiveStartNorm && classDateNorm <= cycleEndNorm;
     });
     
     // Aulas FORA do ciclo (antes do effectiveCycleStart) = cobrança avulsa tradicional
     const classesOutsideCycle = allClasses.filter(c => {
-      const classDate = new Date(c.class_date);
-      return classDate < effectiveCycleStart;
+      const classDateNorm = normalizeDate(new Date(c.class_date));
+      return classDateNorm < effectiveStartNorm;
     });
 
     logStep(`📊 Classes filtered by billing cycle (${cycleStartStr} - ${cycleEndStr})`, {

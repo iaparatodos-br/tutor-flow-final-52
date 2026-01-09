@@ -876,7 +876,128 @@ async function processMonthlySubscriptionBilling(
       logStep(`⚠️ Failed to send notification`, notifError);
     }
 
-    return { success: true, invoiceId };
+    // ===== PROCESSAR AULAS FORA DO CICLO (ANTES de starts_at) =====
+    // Estas aulas devem ser cobradas como faturamento tradicional (por aula)
+    let outsideCycleInvoiceId: string | null = null;
+    
+    if (classesOutsideCycle.length > 0) {
+      logStep(`📦 Processing ${classesOutsideCycle.length} classes outside billing cycle as traditional per-class billing`);
+      
+      // Calcular itens para fatura tradicional
+      const traditionalItems: any[] = [];
+      let traditionalTotal = 0;
+      
+      for (const classInfo of classesOutsideCycle) {
+        const servicePrice = classInfo.class_services?.price || 0;
+        if (servicePrice > 0) {
+          traditionalTotal += servicePrice;
+          traditionalItems.push({
+            class_id: classInfo.class_id,
+            participant_id: classInfo.participant_id,
+            item_type: 'completed_class',
+            amount: servicePrice,
+            description: `Aula avulsa (anterior à mensalidade) - ${classInfo.class_services?.name || 'Serviço'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
+            cancellation_policy_id: null,
+            charge_percentage: null,
+            dependent_id: classInfo.dependent_id || null
+          });
+        }
+      }
+      
+      // Criar fatura tradicional se houver valor
+      if (traditionalTotal > 0 && traditionalItems.length > 0) {
+        const skipTraditionalBoleto = traditionalTotal < MINIMUM_BOLETO_AMOUNT;
+        
+        let traditionalDescription = `Aulas avulsas anteriores à mensalidade - ${traditionalItems.length} aula${traditionalItems.length > 1 ? 's' : ''}`;
+        if (skipTraditionalBoleto) {
+          traditionalDescription += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
+        }
+        
+        const traditionalInvoiceData = {
+          student_id: studentInfo.student_id,
+          teacher_id: studentInfo.teacher_id,
+          amount: traditionalTotal,
+          description: traditionalDescription,
+          due_date: dueDate.toISOString().split('T')[0],
+          status: 'pendente',
+          invoice_type: 'automated', // Fatura tradicional
+          business_profile_id: studentInfo.business_profile_id,
+          monthly_subscription_id: null // Não vinculada à mensalidade
+        };
+        
+        const { data: traditionalResult, error: traditionalError } = await supabaseAdmin
+          .rpc('create_invoice_and_mark_classes_billed', {
+            p_invoice_data: traditionalInvoiceData,
+            p_class_items: traditionalItems
+          });
+        
+        if (traditionalError || !traditionalResult?.success) {
+          logStep(`⚠️ Failed to create traditional invoice for classes outside cycle`, {
+            error: traditionalError?.message || traditionalResult?.error
+          });
+        } else {
+          outsideCycleInvoiceId = traditionalResult.invoice_id;
+          logStep(`📦 Traditional invoice created for classes outside billing cycle`, {
+            invoiceId: outsideCycleInvoiceId,
+            classCount: traditionalItems.length,
+            totalAmount: traditionalTotal
+          });
+          
+          // Gerar boleto para fatura tradicional se valor >= mínimo
+          if (!skipTraditionalBoleto) {
+            try {
+              const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
+                'create-payment-intent-connect',
+                {
+                  body: {
+                    invoice_id: outsideCycleInvoiceId,
+                    payment_method: 'boleto'
+                  }
+                }
+              );
+
+              if (!paymentError && paymentResult?.boleto_url) {
+                await supabaseAdmin
+                  .from('invoices')
+                  .update({
+                    stripe_hosted_invoice_url: paymentResult.boleto_url,
+                    boleto_url: paymentResult.boleto_url,
+                    linha_digitavel: paymentResult.linha_digitavel,
+                    stripe_payment_intent_id: paymentResult.payment_intent_id
+                  })
+                  .eq('id', outsideCycleInvoiceId);
+
+                logStep(`💳 Boleto generated for traditional invoice (outside cycle)`, {
+                  invoiceId: outsideCycleInvoiceId,
+                  boletoUrl: paymentResult.boleto_url
+                });
+              }
+            } catch (paymentError) {
+              logStep(`⚠️ Failed to generate boleto for traditional invoice`, paymentError);
+            }
+          }
+          
+          // Enviar notificação para fatura tradicional
+          try {
+            await supabaseAdmin.functions.invoke('send-invoice-notification', {
+              body: {
+                invoice_id: outsideCycleInvoiceId,
+                notification_type: 'invoice_created'
+              }
+            });
+            logStep(`📧 Invoice notification sent for traditional invoice (outside cycle)`, { invoiceId: outsideCycleInvoiceId });
+          } catch (notifError) {
+            logStep(`⚠️ Failed to send notification for traditional invoice`, notifError);
+          }
+        }
+      }
+    }
+
+    return { 
+      success: true, 
+      invoiceId,
+      outsideCycleInvoiceId // Retornar também o ID da fatura de aulas fora do ciclo
+    };
 
   } catch (error) {
     return { 

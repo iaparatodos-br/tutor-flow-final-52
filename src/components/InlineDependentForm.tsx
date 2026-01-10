@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Baby, Calendar, Plus, Trash2, X } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Baby, Calendar, Plus, Trash2, X, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 export interface InlineDependent {
@@ -15,12 +16,18 @@ interface InlineDependentFormProps {
   dependents: InlineDependent[];
   onDependentsChange: (dependents: InlineDependent[]) => void;
   disabled?: boolean;
+  /** Maximum number of dependents allowed (undefined = unlimited) */
+  maxAllowed?: number;
+  /** Current plan slug to show appropriate messages */
+  currentPlanSlug?: string;
 }
 
 export function InlineDependentForm({
   dependents,
   onDependentsChange,
   disabled = false,
+  maxAllowed,
+  currentPlanSlug,
 }: InlineDependentFormProps) {
   const { t } = useTranslation('students');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -53,8 +60,22 @@ export function InlineDependentForm({
     }
   };
 
+  const isFreePlan = currentPlanSlug === 'free';
+  const hasReachedLimit = maxAllowed !== undefined && maxAllowed <= 0;
+  const canAddMore = maxAllowed === undefined || maxAllowed > 0;
+
   return (
     <div className="space-y-3">
+      {/* Plan limit warning for free plan */}
+      {hasReachedLimit && isFreePlan && (
+        <Alert className="border-destructive bg-destructive/10">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="text-destructive">
+            {t('registrationType.family.limitReached', 'Limite do plano gratuito atingido. Faça upgrade para adicionar mais dependentes.')}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between">
         <Label className="flex items-center gap-2">
           <Baby className="h-4 w-4 text-muted-foreground" />
@@ -64,6 +85,19 @@ export function InlineDependentForm({
               ({dependents.length})
             </span>
           )}
+          {/* Show remaining slots badge */}
+          {maxAllowed !== undefined && (
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              maxAllowed <= 0 
+                ? 'bg-destructive/10 text-destructive' 
+                : 'bg-primary/10 text-primary'
+            }`}>
+              {maxAllowed > 0 
+                ? t('registrationType.family.slotsRemaining', '{{count}} vaga(s)', { count: maxAllowed })
+                : t('registrationType.family.noSlots', 'Sem vagas')
+              }
+            </span>
+          )}
         </Label>
         {!showAddForm && (
           <Button
@@ -71,7 +105,7 @@ export function InlineDependentForm({
             variant="outline"
             size="sm"
             onClick={() => setShowAddForm(true)}
-            disabled={disabled}
+            disabled={disabled || !canAddMore}
           >
             <Plus className="h-4 w-4 mr-1" />
             {t('registrationType.family.addDependent', 'Adicionar')}
@@ -198,17 +232,22 @@ export function InlineDependentForm({
         <div className="p-4 rounded-md border border-dashed text-center">
           <Baby className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">
-            {t('registrationType.family.noDependentsYet', 'Nenhum dependente adicionado')}
+            {hasReachedLimit && isFreePlan
+              ? t('registrationType.family.cannotAddDueToLimit', 'Limite do plano atingido')
+              : t('registrationType.family.noDependentsYet', 'Nenhum dependente adicionado')
+            }
           </p>
-          <Button
-            type="button"
-            variant="link"
-            size="sm"
-            onClick={() => setShowAddForm(true)}
-            disabled={disabled}
-          >
-            {t('registrationType.family.addFirst', 'Adicionar primeiro dependente')}
-          </Button>
+          {canAddMore && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              onClick={() => setShowAddForm(true)}
+              disabled={disabled}
+            >
+              {t('registrationType.family.addFirst', 'Adicionar primeiro dependente')}
+            </Button>
+          )}
         </div>
       )}
     </div>

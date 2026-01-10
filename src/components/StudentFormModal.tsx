@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2, ArrowLeft } from "lucide-react";
+import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2, ArrowLeft, Users } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTranslation } from "react-i18next";
@@ -414,30 +414,67 @@ export function StudentFormModal({
                 )}
 
                 {/* Family Registration - Dependents Section First */}
-                {registrationType === 'family' && (
-                  <>
-                    <InlineDependentForm
-                      dependents={inlineDependents}
-                      onDependentsChange={setInlineDependents}
-                      disabled={isSubmitting}
-                    />
-                    {inlineDependents.length === 0 && (
-                      <p className="text-xs text-destructive">
-                        {t('registrationType.family.minOneDependentRequired', 'Adicione pelo menos um dependente')}
+                {registrationType === 'family' && (() => {
+                  // Calculate remaining slots for dependents
+                  // Total after submit = currentStudentCount + 1 (responsible) + dependents in form
+                  const isFreePlan = currentPlan?.slug === 'free';
+                  const planLimit = currentPlan?.student_limit ?? 3;
+                  // Slots remaining for new dependents (excluding the responsible who counts as 1)
+                  const usedSlots = currentStudentCount + 1 + inlineDependents.length;
+                  const remainingSlots = planLimit - usedSlots;
+                  
+                  return (
+                    <>
+                      {/* Show plan limit info for family registration */}
+                      {currentPlan && (
+                        <div className="flex items-center justify-between p-3 rounded-md bg-muted/50 border">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">
+                              {t('registrationType.family.planLimit', 'Limite do plano: {{limit}} alunos', { limit: planLimit })}
+                            </span>
+                          </div>
+                          <div className={`text-sm font-medium ${
+                            remainingSlots <= 0 ? 'text-destructive' : 'text-muted-foreground'
+                          }`}>
+                            {remainingSlots > 0 
+                              ? t('registrationType.family.availableSlots', '{{count}} vaga(s) disponível(is)', { count: remainingSlots })
+                              : t('registrationType.family.noSlotsAvailable', 'Sem vagas disponíveis')
+                            }
+                          </div>
+                        </div>
+                      )}
+                      
+                      <InlineDependentForm
+                        dependents={inlineDependents}
+                        onDependentsChange={setInlineDependents}
+                        disabled={isSubmitting}
+                        maxAllowed={isFreePlan ? Math.max(0, remainingSlots) : undefined}
+                        currentPlanSlug={currentPlan?.slug}
+                      />
+                      {inlineDependents.length === 0 && remainingSlots > 0 && (
+                        <p className="text-xs text-destructive">
+                          {t('registrationType.family.minOneDependentRequired', 'Adicione pelo menos um dependente')}
+                        </p>
+                      )}
+                      {inlineDependents.length === 0 && remainingSlots <= 0 && isFreePlan && (
+                        <p className="text-xs text-destructive">
+                          {t('registrationType.family.cannotAddFamilyLimitReached', 'Não é possível adicionar família. Limite do plano gratuito atingido.')}
+                        </p>
+                      )}
+                      <Separator />
+                      <div className="flex items-center gap-2 mb-3">
+                        <UserCheck className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">
+                          {t('registrationType.family.guardianInfo', 'Dados do Responsável')}
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        {t('registrationType.family.guardianInfoDescription', 'O responsável receberá acesso ao sistema e poderá acompanhar as aulas de todos os dependentes')}
                       </p>
-                    )}
-                    <Separator />
-                    <div className="flex items-center gap-2 mb-3">
-                      <UserCheck className="h-4 w-4 text-muted-foreground" />
-                      <Label className="text-sm font-medium">
-                        {t('registrationType.family.guardianInfo', 'Dados do Responsável')}
-                      </Label>
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      {t('registrationType.family.guardianInfoDescription', 'O responsável receberá acesso ao sistema e poderá acompanhar as aulas de todos os dependentes')}
-                    </p>
-                  </>
-                )}
+                    </>
+                  );
+                })()}
 
                 {/* Student/Guardian Information Section */}
                 <div className="space-y-4">

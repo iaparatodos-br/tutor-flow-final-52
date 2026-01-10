@@ -261,6 +261,9 @@ serve(async (req) => {
     let needsPayment = false;
     let extraStudents = 0;
 
+    // Calculate future count
+    const futureCount = (currentStudentCount ?? 0) + 1;
+
     if (subscription?.plan_id) {
       const { data: plan } = await supabaseAdmin
         .from('subscription_plans')
@@ -268,86 +271,143 @@ serve(async (req) => {
         .eq('id', subscription.plan_id)
         .single();
 
-      // Check if adding this student will exceed the limit (only for paid plans)
-      const futureCount = (currentStudentCount ?? 0) + 1;
-      if (plan && plan.slug !== 'free' && futureCount > plan.student_limit) {
-        needsPayment = true;
-        extraStudents = futureCount - plan.student_limit;
-        console.log('[BILLING] Student will exceed limit, payment required BEFORE adding', { 
-          currentCount: currentStudentCount, 
-          futureCount,
-          limit: plan.student_limit, 
-          extraStudents,
-          teacherId: body.teacher_id,
-          studentEmail: body.email
-        });
-
-        // PROCESS PAYMENT BEFORE CREATING RELATIONSHIP
-        try {
-          const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
-            'handle-student-overage',
-            {
-              body: {
-                extraStudents,
-                planLimit: plan.student_limit,
-                userId: body.teacher_id,
-              }
-            }
-          );
-
-          if (billingError) {
-            console.error('[BILLING ERROR - BLOCKING STUDENT CREATION]', {
-              teacherId: body.teacher_id,
-              studentEmail: body.email,
-              extraStudents,
-              error: billingError
-            });
-            
-            // CRITICAL: Payment failed - delete newly created student if necessary
-            if (isNewStudent) {
-              console.log('[ROLLBACK] Deleting newly created student due to payment failure');
-              await supabaseAdmin.auth.admin.deleteUser(studentId);
-            }
-            
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                error: `Não foi possível processar o pagamento adicional de R$ ${(extraStudents * 5).toFixed(2)} para adicionar este aluno. Verifique seu método de pagamento e tente novamente.`,
-                payment_failed: true
-              }),
-              { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-            );
-          }
-          
-          // Payment successful
-          billingResult = billingData;
-          console.log('[BILLING SUCCESS - PROCEEDING WITH STUDENT CREATION]', { 
-            teacherId: body.teacher_id, 
-            billingData 
-          });
-        } catch (err) {
-          console.error('[BILLING EXCEPTION - BLOCKING STUDENT CREATION]', {
-            teacherId: body.teacher_id,
-            studentEmail: body.email,
-            extraStudents,
-            error: (err as Error).message
+      // Check if adding this student will exceed the limit
+      if (plan && futureCount > plan.student_limit) {
+        if (plan.slug === 'free') {
+          // FREE PLAN: Block student creation completely
+          console.log('[PLAN LIMIT] Free plan limit reached, blocking student creation', {
+            currentCount: currentStudentCount,
+            futureCount,
+            limit: plan.student_limit,
+            teacherId: body.teacher_id
           });
           
-          // CRITICAL: Payment failed - delete newly created student if necessary
+          // Rollback: delete newly created student if necessary
           if (isNewStudent) {
-            console.log('[ROLLBACK] Deleting newly created student due to payment exception');
+            console.log('[ROLLBACK] Deleting newly created student due to free plan limit');
             await supabaseAdmin.auth.admin.deleteUser(studentId);
           }
           
           return new Response(
             JSON.stringify({ 
               success: false, 
-              error: `Erro ao processar pagamento adicional. O aluno não foi adicionado. Por favor, tente novamente.`,
-              payment_failed: true
+              error: `Limite de ${plan.student_limit} alunos atingido no plano gratuito. Faça upgrade para adicionar mais alunos.`,
+              plan_limit_reached: true,
+              current_count: currentStudentCount,
+              limit: plan.student_limit
             }),
             { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
           );
+        } else {
+          // PAID PLAN: Charge additional fee
+          needsPayment = true;
+          extraStudents = futureCount - plan.student_limit;
+          console.log('[BILLING] Student will exceed limit, payment required BEFORE adding', { 
+            currentCount: currentStudentCount, 
+            futureCount,
+            limit: plan.student_limit, 
+            extraStudents,
+            teacherId: body.teacher_id,
+            studentEmail: body.email
+          });
+
+          // PROCESS PAYMENT BEFORE CREATING RELATIONSHIP
+          try {
+            const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
+              'handle-student-overage',
+              {
+                body: {
+                  extraStudents,
+                  planLimit: plan.student_limit,
+                  userId: body.teacher_id,
+                }
+              }
+            );
+
+            if (billingError) {
+              console.error('[BILLING ERROR - BLOCKING STUDENT CREATION]', {
+                teacherId: body.teacher_id,
+                studentEmail: body.email,
+                extraStudents,
+                error: billingError
+              });
+              
+              // CRITICAL: Payment failed - delete newly created student if necessary
+              if (isNewStudent) {
+                console.log('[ROLLBACK] Deleting newly created student due to payment failure');
+                await supabaseAdmin.auth.admin.deleteUser(studentId);
+              }
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: `Não foi possível processar o pagamento adicional de R$ ${(extraStudents * 5).toFixed(2)} para adicionar este aluno. Verifique seu método de pagamento e tente novamente.`,
+                  payment_failed: true
+                }),
+                { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+              );
+            }
+            
+            // Payment successful
+            billingResult = billingData;
+            console.log('[BILLING SUCCESS - PROCEEDING WITH STUDENT CREATION]', { 
+              teacherId: body.teacher_id, 
+              billingData 
+            });
+          } catch (err) {
+            console.error('[BILLING EXCEPTION - BLOCKING STUDENT CREATION]', {
+              teacherId: body.teacher_id,
+              studentEmail: body.email,
+              extraStudents,
+              error: (err as Error).message
+            });
+            
+            // CRITICAL: Payment failed - delete newly created student if necessary
+            if (isNewStudent) {
+              console.log('[ROLLBACK] Deleting newly created student due to payment exception');
+              await supabaseAdmin.auth.admin.deleteUser(studentId);
+            }
+            
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: `Erro ao processar pagamento adicional. O aluno não foi adicionado. Por favor, tente novamente.`,
+                payment_failed: true
+              }),
+              { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
         }
+      }
+    } else {
+      // NO ACTIVE SUBSCRIPTION = Implicit free plan
+      // Apply default free plan limit (3 students)
+      const defaultFreeLimit = 3;
+      
+      if (futureCount > defaultFreeLimit) {
+        console.log('[PLAN LIMIT] No subscription, implicit free plan limit reached', {
+          currentCount: currentStudentCount,
+          futureCount,
+          limit: defaultFreeLimit,
+          teacherId: body.teacher_id
+        });
+        
+        // Rollback: delete newly created student if necessary
+        if (isNewStudent) {
+          console.log('[ROLLBACK] Deleting newly created student due to implicit free plan limit');
+          await supabaseAdmin.auth.admin.deleteUser(studentId);
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Limite de ${defaultFreeLimit} alunos atingido no plano gratuito. Faça upgrade para adicionar mais alunos.`,
+            plan_limit_reached: true,
+            current_count: currentStudentCount,
+            limit: defaultFreeLimit
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
       }
     }
 

@@ -109,27 +109,49 @@ serve(async (req) => {
       );
     }
 
-    // Get teacher's plan limit
+    // Get teacher's plan limit and slug
     const { data: subscription, error: subError } = await supabaseAdmin
       .from('user_subscriptions')
-      .select('plan_id, subscription_plans(student_limit)')
+      .select('plan_id, subscription_plans(student_limit, slug)')
       .eq('user_id', teacherId)
       .eq('status', 'active')
       .maybeSingle();
 
-    let studentLimit = 5; // Default free plan limit
+    let studentLimit = 3; // Default free plan limit
+    let planSlug = 'free';
+    
     if (subscription?.subscription_plans) {
-      studentLimit = (subscription.subscription_plans as any).student_limit || 5;
+      studentLimit = (subscription.subscription_plans as any).student_limit || 3;
+      planSlug = (subscription.subscription_plans as any).slug || 'free';
     }
 
     const currentTotal = counts?.[0]?.total_students || 0;
-    console.log(`Current total: ${currentTotal}, Limit: ${studentLimit}`);
+    const futureTotal = currentTotal + 1;
+    console.log(`Current total: ${currentTotal}, Future total: ${futureTotal}, Limit: ${studentLimit}, Plan: ${planSlug}`);
 
-    if (currentTotal >= studentLimit) {
+    // Check if adding this dependent exceeds the limit
+    if (futureTotal > studentLimit) {
+      if (planSlug === 'free' || !subscription) {
+        // FREE PLAN: Block dependent creation completely
+        console.log('[PLAN LIMIT] Free plan limit reached, blocking dependent creation');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Plan limit reached',
+            message: `Limite de ${studentLimit} alunos/dependentes atingido no plano gratuito. Faça upgrade para adicionar mais.`,
+            plan_limit_reached: true,
+            current: currentTotal,
+            limit: studentLimit
+          }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      // PAID PLANS: For now, still block - overage for dependents should be handled separately
+      // TODO: Implement overage billing for dependents similar to students
+      console.log('[PLAN LIMIT] Paid plan limit reached for dependent');
       return new Response(
         JSON.stringify({ 
           error: 'Plan limit reached',
-          message: `You have reached your plan limit of ${studentLimit} students/dependents. Please upgrade your plan.`,
+          message: `Você atingiu o limite de ${studentLimit} alunos/dependentes do seu plano.`,
           current: currentTotal,
           limit: studentLimit
         }),

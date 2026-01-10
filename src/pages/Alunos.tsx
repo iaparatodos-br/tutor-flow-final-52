@@ -21,6 +21,16 @@ import { useSubscription } from "@/contexts/SubscriptionContext";
 import { FeatureGate } from "@/components/FeatureGate";
 import { useTranslation } from "react-i18next";
 import { useDependents, Dependent } from "@/hooks/useDependents";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Student {
   id: string;
@@ -74,6 +84,11 @@ export default function Alunos() {
   const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
   const [editingDependent, setEditingDependent] = useState<Dependent | null>(null);
   const [selectedResponsibleId, setSelectedResponsibleId] = useState<string | null>(null);
+  
+  // Delete confirmation state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
+  const [deleting, setDeleting] = useState(false);
   
   // Use the dependents hook
   const { 
@@ -432,10 +447,27 @@ export default function Alunos() {
       });
     }
   };
-  const handleConfirmSmartDelete = async (student: Student) => {
-    const confirmMessage = `Tem certeza que deseja remover o aluno ${student.name}?\n\n` + `O aluno perderá acesso à sua área da plataforma.`;
-    if (!confirm(confirmMessage)) return;
-    await handleSmartDelete(student);
+  const handleConfirmSmartDelete = (student: Student) => {
+    setStudentToDelete(student);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!studentToDelete) return;
+    
+    setDeleting(true);
+    try {
+      await handleSmartDelete(studentToDelete);
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+      setStudentToDelete(null);
+    }
+  };
+
+  const getDependentsCountForDelete = () => {
+    if (!studentToDelete) return 0;
+    return getDependentsForStudent(studentToDelete.id).length;
   };
   const checkBusinessProfileOrWarn = (student: Student, action: string, callback: () => void) => {
     if (!student.business_profile_id) {
@@ -1032,6 +1064,44 @@ export default function Alunos() {
           }
         }}
       />
+
+      {/* Delete Student Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Confirmar Exclusão
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Tem certeza que deseja remover <strong>{studentToDelete?.name}</strong>?
+              </p>
+              {getDependentsCountForDelete() > 0 && (
+                <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <p className="text-destructive font-medium flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    {getDependentsCountForDelete()} dependente(s) também será(ão) removido(s)
+                  </p>
+                </div>
+              )}
+              <p className="text-muted-foreground mt-2">
+                O aluno perderá acesso à sua área da plataforma. Esta ação não pode ser desfeita.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleExecuteDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Removendo..." : "Remover"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   </Layout>;
 }

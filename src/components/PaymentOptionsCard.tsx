@@ -262,20 +262,69 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
             </h4>
             
             <div className="space-y-3">
+              {/* PIX - Destacado como recomendado (menor taxa) */}
+              <div className="p-3 border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="font-medium text-green-800 dark:text-green-200">PIX</span>
+                    <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs">
+                      Menor taxa - Recomendado
+                    </Badge>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => createPaymentIntent('pix')}
+                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'pix')}
+                  >
+                    {loading && activePaymentMethod === 'pix' ? (
+                      "Gerando..."
+                    ) : (
+                      <>
+                        <QrCode className="h-4 w-4 mr-2" />
+                        Pagar com PIX
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-green-700 dark:text-green-300 mt-2">
+                  Taxa de apenas 1,19% - Pagamento instantâneo
+                </p>
+                
+                {invoice.pix_qr_code && (
+                  <div className="mt-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-200 dark:border-green-700">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Código PIX:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "Código PIX")}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <code className="text-xs break-all block mt-1">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
+                  </div>
+                )}
+              </div>
+
               {/* Boleto Bancário */}
               <div className="p-3 border rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
                   <Receipt className="h-4 w-4" />
                   <span className="font-medium">Boleto Bancário</span>
+                  <span className="text-xs text-muted-foreground">(taxa R$ 3,49)</span>
                 </div>
                 
                 {/* Show existing boleto prominently */}
                 {invoice.boleto_url ? (
                   <div className="space-y-2">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm text-green-800 font-medium mb-2">✓ Boleto disponível</p>
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-2">✓ Boleto disponível</p>
                       <Button
-                        variant="default"
+                        variant="outline"
                         size="sm"
                         onClick={() => window.open(invoice.boleto_url!, '_blank')}
                         className="w-full"
@@ -302,51 +351,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     )}
                   </div>
                 ) : (
-                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <p className="text-sm text-gray-600">
-                      Boleto não disponível. Entre em contato com o professor se necessário.
+                  <div className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      Boleto não disponível. Use PIX para pagamento mais rápido e com menor taxa.
                     </p>
-                  </div>
-                )}
-              </div>
-
-              {/* PIX */}
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="h-4 w-4" />
-                    <span className="font-medium">PIX</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => createPaymentIntent('pix')}
-                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'pix')}
-                  >
-                    {loading && activePaymentMethod === 'pix' ? (
-                      "Gerando..."
-                    ) : (
-                      <>
-                        <QrCode className="h-4 w-4 mr-2" />
-                        Gerar PIX
-                      </>
-                    )}
-                  </Button>
-                </div>
-                
-                {invoice.pix_qr_code && (
-                  <div className="mt-2 p-2 bg-muted rounded text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Código PIX:</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "Código PIX")}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <code className="text-xs break-all">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
                   </div>
                 )}
               </div>

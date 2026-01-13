@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +48,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const [generatedBoleto, setGeneratedBoleto] = useState<{
     url: string;
     linha_digitavel?: string;
+  } | null>(null);
+  const [generatedPix, setGeneratedPix] = useState<{
+    qr_code: string;
+    copy_paste: string;
   } | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
 
@@ -122,13 +125,16 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           description: t('paymentOptions.redirectingCard'),
         });
       } else if (paymentMethod === 'pix' && data.pix_qr_code) {
+        // Store the generated PIX data so user can see and copy it
+        setGeneratedPix({
+          qr_code: data.pix_qr_code,
+          copy_paste: data.pix_copy_paste || data.pix_qr_code
+        });
         toast({
           title: t('paymentOptions.pixGenerated'),
           description: t('paymentOptions.pixGeneratedDescription'),
         });
-        if (onPaymentSuccess) {
-          setTimeout(() => onPaymentSuccess(), 1000);
-        }
+        // Don't close modal - let user see and copy the PIX code
       }
 
     } catch (error: any) {
@@ -205,8 +211,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const isBelowBoletoMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
 
   return (
-    <StripeAccountGuard requireChargesEnabled={true}>
-      <Card className="w-full">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -272,19 +277,25 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   {t('paymentOptions.pixDescription')}
                 </p>
                 
-                {invoice.pix_qr_code && (
+                {/* Show PIX code - either from invoice or newly generated */}
+                {(invoice.pix_qr_code || generatedPix) && (
                   <div className="mt-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-200 dark:border-green-700">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">{t('paymentOptions.pixCode')}</span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "PIX")}
+                        onClick={() => copyToClipboard(
+                          generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code!, 
+                          "PIX"
+                        )}
                       >
                         <Copy className="h-3 w-3" />
                       </Button>
                     </div>
-                    <code className="text-xs break-all block mt-1">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
+                    <code className="text-xs break-all block mt-1">
+                      {generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code}
+                    </code>
                   </div>
                 )}
               </div>
@@ -409,7 +420,6 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           )}
         </CardContent>
       )}
-      </Card>
-    </StripeAccountGuard>
+    </Card>
   );
 }

@@ -1,27 +1,28 @@
 import { useState } from "react";
+import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { QRCodeSVG } from "qrcode.react";
 import { 
   Receipt, 
   QrCode, 
   CreditCard, 
+  Download, 
+  Copy, 
   ExternalLink,
   Calendar,
   DollarSign,
-  Copy,
-  AlertTriangle,
-  Clock
+  RefreshCw,
+  AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useTranslation } from "react-i18next";
 
 interface Invoice {
   id: string;
@@ -43,17 +44,19 @@ interface PaymentOptionsCardProps {
 }
 
 export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptionsCardProps) {
-  const { t } = useTranslation('financial');
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [activePaymentMethod, setActivePaymentMethod] = useState<string | null>(null);
+  const [payerTaxId, setPayerTaxId] = useState("");
+  const [payerAddress, setPayerAddress] = useState({
+    street: "",
+    city: "",
+    state: "",
+    postal_code: ""
+  });
   const [generatedBoleto, setGeneratedBoleto] = useState<{
     url: string;
     linha_digitavel?: string;
-  } | null>(null);
-  const [generatedPix, setGeneratedPix] = useState<{
-    qr_code: string;
-    copy_paste: string;
   } | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
 
@@ -70,10 +73,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      'pendente': { label: t('status.pending'), variant: 'secondary' as const },
-      'paga': { label: t('status.paid'), variant: 'default' as const },
-      'vencida': { label: t('status.overdue'), variant: 'destructive' as const },
-      'falha_pagamento': { label: t('status.overdue'), variant: 'destructive' as const }
+      'pendente': { label: 'Pendente', variant: 'secondary' as const },
+      'paga': { label: 'Paga', variant: 'default' as const },
+      'vencida': { label: 'Vencida', variant: 'destructive' as const },
+      'falha_pagamento': { label: 'Falha no Pagamento', variant: 'destructive' as const }
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || statusMap['pendente'];
@@ -85,6 +88,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     setActivePaymentMethod(paymentMethod);
     
     try {
+      // Removed payer validation - now using profile data from backend
       const { data, error } = await supabase.functions.invoke('create-payment-intent-connect', {
         body: {
           invoice_id: invoice.id,
@@ -94,70 +98,57 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
       if (error) throw error;
 
-      // Validate API response for validation errors
-      if (data && data.success === false) {
-        throw new Error(data.error || t('paymentOptions.paymentError'));
-      }
-
       if (paymentMethod === 'boleto' && data.boleto_url) {
+        // Store boleto data
         setGeneratedBoleto({
           url: data.boleto_url,
           linha_digitavel: data.linha_digitavel
         });
         
+        // Try to open in new tab
         const newWindow = window.open(data.boleto_url, '_blank');
         
         if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
+          // Popup was blocked
           setPopupBlocked(true);
           toast({
-            title: t('paymentOptions.boletoGenerated'),
-            description: t('paymentOptions.boletoPopupBlocked'),
+            title: "Boleto gerado",
+            description: "Use o botão abaixo para abrir o boleto (popup bloqueado)",
             variant: "default",
           });
         } else {
           toast({
-            title: t('paymentOptions.boletoGenerated'),
-            description: t('paymentOptions.boletoOpenedNewTab'),
+            title: "Boleto gerado",
+            description: "O boleto foi aberto em uma nova aba",
           });
           setPopupBlocked(false);
         }
         
+        // Update local invoice data if linha_digitavel is returned
         if (data.linha_digitavel && onPaymentSuccess) {
           setTimeout(() => onPaymentSuccess(), 1000);
         }
       } else if (paymentMethod === 'card' && data.checkout_url) {
         window.open(data.checkout_url, '_blank');
         toast({
-          title: t('paymentOptions.redirecting'),
-          description: t('paymentOptions.redirectingCard'),
+          title: "Redirecionando",
+          description: "Você será redirecionado para o pagamento com cartão",
         });
       } else if (paymentMethod === 'pix' && data.pix_qr_code) {
-        // Store the generated PIX data so user can see and copy it
-        setGeneratedPix({
-          qr_code: data.pix_qr_code,
-          copy_paste: data.pix_copy_paste || data.pix_qr_code
-        });
         toast({
-          title: t('paymentOptions.pixGenerated'),
-          description: t('paymentOptions.pixGeneratedDescription'),
+          title: "PIX gerado",
+          description: "Use o QR code ou código PIX para pagar",
         });
-        // Don't close modal - let user see and copy the PIX code
+        if (onPaymentSuccess) {
+          setTimeout(() => onPaymentSuccess(), 1000);
+        }
       }
 
     } catch (error: any) {
       console.error('Error creating payment intent:', error);
-      
-      // Handle authorization errors with user-friendly messages
-      let userMessage = error.message || t('messages.loadError');
-      if (error.message?.includes('401') || error.message?.includes('não autenticado') || error.message?.includes('autenticado')) {
-        userMessage = t('paymentOptions.sessionExpired');
-      } else if (error.message?.includes('403') || error.message?.includes('permissão')) {
-        userMessage = t('paymentOptions.noPermission');
-      }
-      
       toast({
-        title: t('paymentOptions.paymentError'),
-        description: userMessage,
+        title: "Erro ao processar pagamento",
+        description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
     } finally {
@@ -178,55 +169,24 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
       if (error) throw error;
 
-      // Validate API response for errors
-      if (data && data.error) {
-        throw new Error(data.error);
-      }
-
-      // Handle expired payment codes (PIX/Boleto)
-      if (data.payment_expired) {
-        // Limpar estados locais para evitar dados stale
-        setGeneratedPix(null);
-        setGeneratedBoleto(null);
-        
-        toast({
-          title: t('paymentOptions.paymentExpired'),
-          description: t('paymentOptions.generateNewCode'),
-          variant: "default",
-        });
-        onPaymentSuccess?.(); // Refresh to clear UI
-        return;
-      }
-
-      const statusLabel = data.status === 'paga' ? t('paymentOptions.statusPaid') : t('paymentOptions.statusPending');
-
       if (data.updated) {
         toast({
-          title: t('paymentOptions.statusUpdated'),
-          description: t('paymentOptions.statusDescription', { status: statusLabel }),
+          title: "Status atualizado",
+          description: `Status da fatura: ${data.status === 'paga' ? 'Paga' : 'Pendente'}`,
         });
         onPaymentSuccess?.();
       } else {
         toast({
-          title: t('paymentOptions.statusVerified'),
-          description: t('paymentOptions.currentStatus', { status: statusLabel }),
+          title: "Status verificado",
+          description: `Status atual: ${data.status === 'paga' ? 'Paga' : 'Pendente'}`,
         });
       }
 
     } catch (error: any) {
       console.error('Error verifying payment status:', error);
-      
-      // Handle authorization errors with user-friendly messages
-      let userMessage = error.message || t('messages.loadError');
-      if (error.message?.includes('401') || error.message?.includes('não autenticado') || error.message?.includes('autenticado')) {
-        userMessage = t('paymentOptions.sessionExpired');
-      } else if (error.message?.includes('403') || error.message?.includes('permissão')) {
-        userMessage = t('paymentOptions.noPermission');
-      }
-      
       toast({
-        title: t('paymentOptions.verifyError'),
-        description: userMessage,
+        title: "Erro ao verificar status",
+        description: error.message || "Tente novamente mais tarde",
         variant: "destructive",
       });
     } finally {
@@ -238,13 +198,13 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     try {
       await navigator.clipboard.writeText(text);
       toast({
-        title: t('paymentOptions.copied'),
-        description: t('paymentOptions.copiedDescription', { label }),
+        title: "Copiado!",
+        description: `${label} copiado para a área de transferência`,
       });
     } catch (error) {
       toast({
-        title: t('paymentOptions.copyError'),
-        description: t('paymentOptions.copyErrorDescription'),
+        title: "Erro ao copiar",
+        description: "Não foi possível copiar o texto",
         variant: "destructive",
       });
     }
@@ -252,16 +212,16 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
   const isOverdue = new Date(invoice.due_date) < new Date();
   const isPaid = invoice.status === 'paga';
-  // Limite mínimo de R$ 5,00 se aplica APENAS ao boleto, não ao PIX ou Cartão
-  const isBelowBoletoMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
+  const isBelowMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
 
   return (
-    <Card className="w-full">
+    <StripeAccountGuard requireChargesEnabled={true}>
+      <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
-            <span>{t('paymentOptions.invoiceTitle', { description: invoice.description })}</span>
+            <span>Fatura - {invoice.description}</span>
           </div>
           {getStatusBadge(invoice.status)}
         </CardTitle>
@@ -274,7 +234,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <span className={isOverdue && !isPaid ? "text-red-600 font-medium" : ""}>
-              {t('paymentOptions.dueDate', { date: formatDate(invoice.due_date) })}
+              Venc: {formatDate(invoice.due_date)}
             </span>
           </div>
         </div>
@@ -284,181 +244,132 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
         <CardContent className="space-y-4">
           <Separator />
           
+          {isBelowMinimum && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                O valor desta fatura ({formatCurrency(invoice.amount)}) está abaixo do 
+                mínimo de R$ {MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} para geração de boleto. 
+                Entre em contato com o professor.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <div>
             <h4 className="font-medium mb-3 flex items-center gap-2">
               <CreditCard className="h-4 w-4" />
-              {t('paymentOptions.title')}
+              Opções de Pagamento
             </h4>
             
             <div className="space-y-3">
-              {/* PIX - Destacado como recomendado (menor taxa) - SEM limite mínimo */}
-              <div className="p-3 border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <span className="font-medium text-green-800 dark:text-green-200">PIX</span>
-                    <Badge variant="secondary" className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs">
-                      {t('paymentOptions.pixBadge')}
-                    </Badge>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="bg-green-600 hover:bg-green-700"
-                    onClick={() => createPaymentIntent('pix')}
-                    disabled={loading && activePaymentMethod === 'pix'}
-                  >
-                    {loading && activePaymentMethod === 'pix' ? (
-                      t('paymentOptions.generating')
-                    ) : (
-                      <>
-                        <QrCode className="h-4 w-4 mr-2" />
-                        {t('paymentOptions.payWithPix')}
-                      </>
-                    )}
-                  </Button>
+              {/* Boleto Bancário */}
+              <div className="p-3 border rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Receipt className="h-4 w-4" />
+                  <span className="font-medium">Boleto Bancário</span>
                 </div>
-                <p className="text-xs text-green-700 dark:text-green-300 mt-2">
-                  {t('paymentOptions.pixDescription')}
-                </p>
                 
-                {/* Show PIX code - either from invoice or newly generated */}
-                {(invoice.pix_qr_code || generatedPix) && (
-                  <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded border border-green-200 dark:border-green-700">
-                    {/* QR Code Visual - if available */}
-                    {(generatedPix?.qr_code || invoice.pix_qr_code) && (
-                      <div className="flex justify-center mb-3">
-                        <div className="bg-white p-2 rounded">
-                          <QRCodeSVG 
-                            value={generatedPix?.qr_code || invoice.pix_qr_code!}
-                            size={144}
-                            level="M"
-                            bgColor="#ffffff"
-                            fgColor="#000000"
-                          />
-                        </div>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">{t('paymentOptions.pixCode')}</span>
+                {/* Show existing boleto prominently */}
+                {invoice.boleto_url ? (
+                  <div className="space-y-2">
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <p className="text-sm text-green-800 font-medium mb-2">✓ Boleto disponível</p>
                       <Button
-                        variant="ghost"
+                        variant="default"
                         size="sm"
-                        onClick={() => copyToClipboard(
-                          generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code!, 
-                          "PIX"
-                        )}
+                        onClick={() => window.open(invoice.boleto_url!, '_blank')}
+                        className="w-full"
                       >
-                        <Copy className="h-3 w-3 mr-1" />
-                        <span className="text-xs">{t('paymentOptions.copy')}</span>
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Baixar Boleto PDF
                       </Button>
                     </div>
-                    <code className="text-xs break-all block mt-1 p-2 bg-muted rounded">
-                      {generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code}
-                    </code>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {t('paymentOptions.pixExpiration')}
+                    
+                    {invoice.linha_digitavel && (
+                      <div className="p-2 bg-muted rounded text-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">Linha digitável:</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(invoice.linha_digitavel!, "Linha digitável")}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <code className="text-xs break-all font-mono">{invoice.linha_digitavel}</code>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-sm text-gray-600">
+                      Boleto não disponível. Entre em contato com o professor se necessário.
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Boleto Bancário - COM limite mínimo de R$ 5,00 */}
+              {/* PIX */}
               <div className="p-3 border rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <Receipt className="h-4 w-4" />
-                  <span className="font-medium">{t('paymentOptions.boleto')}</span>
-                  <span className="text-xs text-muted-foreground">{t('paymentOptions.boletoFeeNote')}</span>
-                </div>
-                
-                {/* Alerta de valor mínimo - APENAS para boleto */}
-                {isBelowBoletoMinimum && (
-                  <Alert variant="default" className="mb-2 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
-                      {t('paymentOptions.boletoMinimumWarning')}
-                    </AlertDescription>
-                  </Alert>
-                )}
-                
-              {/* Show existing boleto or newly generated boleto */}
-                {(invoice.boleto_url || generatedBoleto) && !isBelowBoletoMinimum ? (
-                  <div className="space-y-2">
-                    <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-2">{t('paymentOptions.boletoAvailable')}</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => window.open(generatedBoleto?.url || invoice.boleto_url!, '_blank')}
-                        className="w-full"
-                      >
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        {t('paymentOptions.downloadBoleto')}
-                      </Button>
-                    </div>
-                    
-                    {(generatedBoleto?.linha_digitavel || invoice.linha_digitavel) && (
-                      <div className="p-2 bg-muted rounded text-sm">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs text-muted-foreground">{t('paymentOptions.digitableLine')}</span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => copyToClipboard(
-                              generatedBoleto?.linha_digitavel || invoice.linha_digitavel!, 
-                              t('paymentOptions.digitableLine')
-                            )}
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        <code className="text-xs break-all font-mono">
-                          {generatedBoleto?.linha_digitavel || invoice.linha_digitavel}
-                        </code>
-                      </div>
-                    )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="h-4 w-4" />
+                    <span className="font-medium">PIX</span>
                   </div>
-                ) : !isBelowBoletoMinimum ? (
                   <Button
-                    variant="outline"
                     size="sm"
-                    onClick={() => createPaymentIntent('boleto')}
-                    disabled={loading && activePaymentMethod === 'boleto'}
-                    className="w-full"
+                    variant="outline"
+                    onClick={() => createPaymentIntent('pix')}
+                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'pix')}
                   >
-                    {loading && activePaymentMethod === 'boleto' ? (
-                      t('paymentOptions.generating')
+                    {loading && activePaymentMethod === 'pix' ? (
+                      "Gerando..."
                     ) : (
                       <>
-                        <Receipt className="h-4 w-4 mr-2" />
-                        {t('paymentOptions.generateBoleto')}
+                        <QrCode className="h-4 w-4 mr-2" />
+                        Gerar PIX
                       </>
                     )}
                   </Button>
-                ) : null}
+                </div>
+                
+                {invoice.pix_qr_code && (
+                  <div className="mt-2 p-2 bg-muted rounded text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Código PIX:</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "Código PIX")}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <code className="text-xs break-all">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
+                  </div>
+                )}
               </div>
 
-              {/* Cartão de Crédito - SEM limite mínimo */}
+              {/* Cartão de Crédito */}
               <div className="p-3 border rounded-lg">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CreditCard className="h-4 w-4" />
-                    <span className="font-medium">{t('paymentOptions.creditCard')}</span>
+                    <span className="font-medium">Cartão de Crédito</span>
                   </div>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => createPaymentIntent('card')}
-                    disabled={loading && activePaymentMethod === 'card'}
+                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'card')}
                   >
                     {loading && activePaymentMethod === 'card' ? (
-                      t('paymentOptions.processing')
+                      "Processando..."
                     ) : (
                       <>
                         <ExternalLink className="h-4 w-4 mr-2" />
-                        {t('paymentOptions.pay')}
+                        Pagar
                       </>
                     )}
                   </Button>
@@ -475,7 +386,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                 disabled={loading}
                 className="w-full"
               >
-                {loading ? t('paymentOptions.verifying') : t('paymentOptions.verifyStatus')}
+                {loading ? "Verificando..." : "Verificar Status do Pagamento"}
               </Button>
             </div>
           </div>
@@ -484,12 +395,13 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
             <div className="p-3 border border-red-200 bg-red-50 rounded-lg">
               <p className="text-sm text-red-800">
                 <Calendar className="h-4 w-4 inline mr-2" />
-                {t('paymentOptions.overdueWarning')}
+                Esta fatura está vencida. Entre em contato com seu professor se houver dúvidas.
               </p>
             </div>
           )}
         </CardContent>
       )}
-    </Card>
+      </Card>
+    </StripeAccountGuard>
   );
 }

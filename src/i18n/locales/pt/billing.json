@@ -11,15 +11,6 @@
       "label": "Dia de Cobrança Padrão",
       "description": "Dia do mês que será sugerido ao cadastrar novos alunos (1-28). Deixe vazio para não ter padrão.",
       "placeholder": "15"
-    },
-    "defaultPaymentMethod": {
-      "label": "Método de Pagamento Padrão",
-      "description": "Método usado para faturas automáticas. PIX tem taxa menor que boleto.",
-      "placeholder": "Selecione o método",
-      "options": {
-        "pix": "PIX (taxa de 1,19%)",
-        "boleto": "Boleto (taxa fixa R$ 3,49)"
-      }
     }
   },
   "validation": {
@@ -37,17 +28,5 @@
     "loadError": "Erro ao carregar configurações",
     "saveError": "Erro ao salvar configurações",
     "tryAgain": "Tente novamente mais tarde"
-  },
-  "feeComparison": {
-    "title": "Compare as taxas e economize!",
-    "description": "PIX tem taxa muito menor que boleto",
-    "pix": "PIX",
-    "pixFee": "1,19%",
-    "pixExample": "Ex: R$ 1,19 em R$ 100",
-    "boleto": "Boleto",
-    "boletoFee": "R$ 3,49",
-    "boletoFixed": "fixo por transação",
-    "savings": "Com {{students}} alunos, PIX economiza R$ {{amount}}/mês!",
-    "recommended": "Recomendado"
   }
 }

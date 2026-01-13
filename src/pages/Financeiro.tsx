@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X, QrCode, TrendingDown, Settings } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
@@ -434,10 +434,10 @@ export default function Financeiro() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold">
-              {isProfessor ? t('title') : t('myInvoices')}
+              {isProfessor ? "Gestão Financeira" : "Minhas Faturas"}
             </h1>
             <p className="text-muted-foreground">
-              {isProfessor ? t('description') : t('myInvoicesDescription')}
+              {isProfessor ? "Acompanhe seus recebimentos, despesas e lucro" : "Veja suas faturas e faça pagamentos"}
             </p>
           </div>
           {isProfessor && <ArchivedDataViewer />}
@@ -449,65 +449,30 @@ export default function Financeiro() {
 
         {/* Fee Transparency Alert - Only for Professors */}
         {isProfessor && showFeeAlert && (
-          <Alert className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-950 dark:to-blue-950 border-green-200 dark:border-green-800 relative">
-            <TrendingDown className="h-4 w-4 text-green-600 dark:text-green-400" />
-            <AlertTitle className="text-green-900 dark:text-green-100 pr-8">
-              {t('fees.compareTitle')}
+          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 relative">
+            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertTitle className="text-blue-900 dark:text-blue-100 pr-8">
+              Transparência de Taxas Stripe
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900"
+                className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900"
                 onClick={() => setShowFeeAlert(false)}
               >
-                <X className="h-4 w-4 text-green-600 dark:text-green-400" />
+                <X className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               </Button>
             </AlertTitle>
-            <AlertDescription className="text-green-800 dark:text-green-200">
-              <div className="grid md:grid-cols-2 gap-3 mb-3">
-                {/* PIX - Recomendado */}
-                <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-md border border-green-300 dark:border-green-700">
-                  <div className="flex items-center gap-2 mb-2">
-                    <QrCode className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    <span className="font-semibold text-green-800 dark:text-green-200">{t('fees.pixRecommended')}</span>
-                  </div>
-                  <p className="text-sm text-green-700 dark:text-green-300"><strong>{t('fees.pixFee')}</strong></p>
-                  <p className="text-xs text-green-600 dark:text-green-400">{t('fees.pixExample')}</p>
-                </div>
-                
-                {/* Boleto */}
-                <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Receipt className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-                    <span className="font-semibold text-gray-800 dark:text-gray-200">{t('fees.boletoLabel')}</span>
-                  </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300"><strong>{t('fees.boletoFeeFixed')}</strong></p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">{t('fees.boletoDescription')}</p>
-                </div>
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              <p className="mb-2">
+                Os boletos gerados possuem uma taxa fixa do Stripe de <strong>R$ 3,49</strong> por transação.
+                Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá.
+              </p>
+              <div className="bg-white dark:bg-gray-900 p-3 rounded-md text-sm border border-blue-100 dark:border-blue-900">
+                <p className="font-medium mb-1 text-blue-900 dark:text-blue-100">Exemplo de cálculo:</p>
+                <p className="text-blue-800 dark:text-blue-300">• Valor cobrado do aluno: R$ 100,00</p>
+                <p className="text-blue-800 dark:text-blue-300">• Taxa Stripe (boleto): -R$ 3,49</p>
+                <p className="font-bold text-green-600 dark:text-green-400">• Você receberá: R$ 96,51</p>
               </div>
-              
-              <div className="bg-white dark:bg-gray-900 p-3 rounded-md border border-green-200 dark:border-green-800">
-                <p className="font-medium text-green-700 dark:text-green-300">
-                  {t('fees.exampleWith34Students', { students: 34, amount: 100 })}
-                </p>
-                <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
-                  <p className="text-gray-700 dark:text-gray-300">
-                    • <span className="text-red-600 dark:text-red-400 font-medium">{t('fees.boletoCalculation', { students: 34, total: '118,66' })}</span>
-                  </p>
-                  <p className="text-gray-700 dark:text-gray-300">
-                    • <span className="text-green-600 dark:text-green-400 font-medium">{t('fees.pixCalculation', { students: 34, total: '40,46' })}</span>
-                  </p>
-                </div>
-                <p className="font-bold text-green-600 dark:text-green-400 mt-2">
-                  {t('fees.savingsAmount', { amount: '78,20', percentage: 66 })}
-                </p>
-              </div>
-              
-              <Button variant="link" className="p-0 h-auto mt-2 text-green-700 dark:text-green-300" asChild>
-                <a href="/configuracoes?tab=billing" className="flex items-center gap-1">
-                  <Settings className="h-3 w-3" />
-                  {t('fees.changeDefaultLink')}
-                </a>
-              </Button>
             </AlertDescription>
           </Alert>
         )}
@@ -516,46 +481,46 @@ export default function Financeiro() {
         {isProfessor && <div className="grid gap-4 md:grid-cols-4">
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('pendingReceivables')}</CardTitle>
+                <CardTitle className="text-sm font-medium">Receitas Pendentes</CardTitle>
                 <TrendingUp className="h-4 w-4 text-warning" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalPendente)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {t('awaitingPayment')}
+                  Aguardando pagamento
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('receivedRevenue')}</CardTitle>
+                <CardTitle className="text-sm font-medium">Receitas Recebidas</CardTitle>
                 <TrendingUp className="h-4 w-4 text-success" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{formatCurrency(totalPago)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {t('thisMonth')}
+                  Este mês
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('totalExpenses')}</CardTitle>
+                <CardTitle className="text-sm font-medium">Total de Despesas</CardTitle>
                 <Receipt className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">{formatCurrency(expenseSummary.total)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {t('expensesThisMonth', { count: expenseSummary.count })}
+                  {expenseSummary.count} despesas este mês
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t('netProfit')}</CardTitle>
+                <CardTitle className="text-sm font-medium">Lucro Líquido</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -563,7 +528,7 @@ export default function Financeiro() {
                   {formatCurrency(netProfit)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {t('revenueMinusExpenses')}
+                  Receitas - Despesas
                 </p>
               </CardContent>
             </Card>
@@ -572,8 +537,8 @@ export default function Financeiro() {
         {/* Tabs for professors, single view for students */}
         {isProfessor ? <Tabs defaultValue="receitas" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="receitas">{t('revenue')}</TabsTrigger>
-              <TabsTrigger value="despesas">{t('expenses')}</TabsTrigger>
+              <TabsTrigger value="receitas">Receitas</TabsTrigger>
+              <TabsTrigger value="despesas">Despesas</TabsTrigger>
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
@@ -582,7 +547,7 @@ export default function Financeiro() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="flex items-center gap-2">
                       <CreditCard className="h-5 w-5" />
-                      {t('issuedInvoices', { count: invoices.length })}
+                      Faturas Emitidas ({invoices.length})
                     </CardTitle>
             {students.filter(s => {
                         // Find the full student data to check business_profile_id
@@ -595,7 +560,7 @@ export default function Financeiro() {
                 <CardContent>
                   {loading ? <div className="text-center py-8">
                       <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">{t('loadingInvoices')}</p>
+                      <p className="text-muted-foreground">Carregando faturas...</p>
                     </div> : invoices.length === 0 ? <div className="text-center py-8">
                       <DollarSign className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                       <h3 className="text-lg font-medium mb-2">Nenhuma fatura encontrada</h3>

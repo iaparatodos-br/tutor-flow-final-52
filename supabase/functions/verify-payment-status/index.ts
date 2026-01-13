@@ -23,25 +23,6 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     
-    // Authenticate user
-    const authHeader = req.headers.get("Authorization");
-    const supabaseUserClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader || "" } }, auth: { persistSession: false } }
-    );
-
-    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
-    if (userError || !user) {
-      logStep("User not authenticated", { error: userError?.message });
-      return new Response(JSON.stringify({ error: "Usuário não autenticado" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
-      });
-    }
-
-    logStep("User authenticated", { userId: user.id });
-
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -62,45 +43,7 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
-    // Validate user has access to this invoice
-    const isStudent = user.id === invoice.student_id;
-    const isTeacher = user.id === invoice.teacher_id;
-
-    // Check if user is a responsible (guardian) for a dependent linked to this invoice
-    let isResponsible = false;
-    if (!isStudent && !isTeacher) {
-      // Check if user has a relationship with the teacher
-      const { data: relationship } = await supabaseClient
-        .from("teacher_student_relationships")
-        .select("id")
-        .eq("student_id", user.id)
-        .eq("teacher_id", invoice.teacher_id)
-        .maybeSingle();
-      
-      if (relationship) {
-        // Check if there are dependents linked to this responsible that match the invoice student_id
-        const { data: dependents } = await supabaseClient
-          .from("dependents")
-          .select("id")
-          .eq("responsible_id", user.id)
-          .eq("teacher_id", invoice.teacher_id);
-        
-        // The invoice student_id might be the responsible's profile ID when billing dependents
-        isResponsible = dependents && dependents.length > 0;
-      }
-    }
-
-    if (!isStudent && !isTeacher && !isResponsible) {
-      logStep("Access denied", { userId: user.id, invoiceStudentId: invoice.student_id, invoiceTeacherId: invoice.teacher_id });
-      return new Response(JSON.stringify({ error: "Sem permissão para verificar esta fatura" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 403,
-      });
-    }
-
-    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status, accessedBy: isStudent ? 'student' : isTeacher ? 'teacher' : 'responsible' });
-
-    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status, accessedBy: isStudent ? 'student' : 'teacher' });
+    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status });
 
     // If already paid, return current status
     if (invoice.status === 'paga') {
@@ -138,36 +81,7 @@ serve(async (req) => {
     
     if (paymentIntent.status === 'succeeded') {
       newStatus = 'paga';
-    } else if (paymentIntent.status === 'canceled') {
-      // PIX/Boleto expired - clear payment data and allow new generation
-      logStep("Payment intent canceled (expired)", { paymentIntentId: paymentIntent.id });
-      
-      const { error: clearError } = await supabaseClient
-        .from("invoices")
-        .update({ 
-          stripe_payment_intent_id: null,
-          pix_qr_code: null,
-          pix_copy_paste: null,
-          boleto_url: null,
-          linha_digitavel: null,
-          barcode: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", invoice_id);
-      
-      if (clearError) {
-        logStep("Error clearing expired payment data", clearError);
-      }
-      
-      return new Response(JSON.stringify({
-        status: invoice.status,
-        payment_expired: true,
-        message: 'O código de pagamento expirou. Gere um novo.'
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    } else if (paymentIntent.status === 'payment_failed') {
+    } else if (paymentIntent.status === 'canceled' || paymentIntent.status === 'payment_failed') {
       newStatus = 'falha_pagamento';
     }
 

@@ -79,8 +79,7 @@ serve(async (req) => {
           id,
           name,
           email,
-          payment_due_days,
-          default_payment_method
+          payment_due_days
         ),
         student:profiles!student_id (
           id,
@@ -512,64 +511,49 @@ serve(async (req) => {
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
         // PULAR se valor abaixo do mínimo para boleto
         if (skipBoletoGeneration) {
-          logStep(`Skipping payment generation for invoice ${invoiceId} - amount ${totalAmount} below minimum ${MINIMUM_BOLETO_AMOUNT}`, {
+          logStep(`Skipping boleto generation for invoice ${invoiceId} - amount ${totalAmount} below minimum ${MINIMUM_BOLETO_AMOUNT}`, {
             invoiceId,
             amount: totalAmount,
             student: studentInfo.student_name
           });
         } else {
-          // Usar preferência de método de pagamento do professor (PIX por padrão para economizar taxas)
-          const preferredPaymentMethod = teacher?.default_payment_method || 'pix';
-          logStep(`Generating ${preferredPaymentMethod.toUpperCase()} payment for invoice ${invoiceId}`);
-          
+          logStep(`Generating payment URL for invoice ${invoiceId}`);
           try {
             const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
               'create-payment-intent-connect',
               {
                 body: {
                   invoice_id: invoiceId,
-                  payment_method: preferredPaymentMethod
+                  payment_method: 'boleto' // Default to boleto for automated billing
                 }
               }
             );
 
-            if (!paymentError && (paymentResult?.boleto_url || paymentResult?.pix_qr_code)) {
-              // Atualizar fatura com dados de pagamento gerados
-              const updateData: any = {
-                stripe_payment_intent_id: paymentResult.payment_intent_id
-              };
-              
-              if (paymentResult.boleto_url) {
-                updateData.stripe_hosted_invoice_url = paymentResult.boleto_url;
-                updateData.boleto_url = paymentResult.boleto_url;
-                updateData.linha_digitavel = paymentResult.linha_digitavel;
-              }
-              
-              if (paymentResult.pix_qr_code) {
-                updateData.pix_qr_code = paymentResult.pix_qr_code;
-                updateData.pix_copy_paste = paymentResult.pix_copy_paste;
-              }
-              
+            if (!paymentError && paymentResult?.boleto_url) {
+              // Atualizar fatura com URL de pagamento gerada
               const { error: updateError } = await supabaseAdmin
                 .from('invoices')
-                .update(updateData)
+                .update({ 
+                  stripe_hosted_invoice_url: paymentResult.boleto_url,
+                  boleto_url: paymentResult.boleto_url,
+                  linha_digitavel: paymentResult.linha_digitavel,
+                  stripe_payment_intent_id: paymentResult.payment_intent_id
+                })
                 .eq('id', invoiceId);
 
               if (!updateError) {
-                logStep(`Payment (${preferredPaymentMethod}) generated and saved`, { 
+                logStep(`Payment URL generated and saved`, { 
                   invoiceId,
-                  paymentMethod: preferredPaymentMethod,
-                  hasBoleto: !!paymentResult.boleto_url,
-                  hasPix: !!paymentResult.pix_qr_code
+                  paymentUrl: paymentResult.boleto_url 
                 });
               } else {
-                logStep(`Warning: Could not update invoice with payment data`, updateError);
+                logStep(`Warning: Could not update invoice with payment URL`, updateError);
               }
             } else {
-              logStep(`Warning: Could not generate ${preferredPaymentMethod} payment`, paymentError);
+              logStep(`Warning: Could not generate payment URL`, paymentError);
             }
           } catch (paymentGenerationError) {
-            logStep(`Warning: Failed to generate ${preferredPaymentMethod} payment`, paymentGenerationError);
+            logStep(`Warning: Failed to generate payment URL`, paymentGenerationError);
             // Continue without failing the invoice creation
           }
         }
@@ -860,58 +844,37 @@ async function processMonthlySubscriptionBilling(
       totalAmount
     });
 
-    // Gerar pagamento se valor >= mínimo (usar preferência do professor - PIX economiza taxas)
+    // Gerar boleto se valor >= mínimo
     if (!skipBoletoGeneration) {
-      // Buscar preferência de método de pagamento do professor
-      const { data: teacherProfile } = await supabaseAdmin
-        .from('profiles')
-        .select('default_payment_method')
-        .eq('id', studentInfo.teacher_id)
-        .single();
-      
-      const preferredPaymentMethod = teacherProfile?.default_payment_method || 'pix';
-      
       try {
         const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
           'create-payment-intent-connect',
           {
             body: {
               invoice_id: invoiceId,
-              payment_method: preferredPaymentMethod
+              payment_method: 'boleto'
             }
           }
         );
 
-        if (!paymentError && (paymentResult?.boleto_url || paymentResult?.pix_qr_code)) {
-          const updateData: any = {
-            stripe_payment_intent_id: paymentResult.payment_intent_id
-          };
-          
-          if (paymentResult.boleto_url) {
-            updateData.stripe_hosted_invoice_url = paymentResult.boleto_url;
-            updateData.boleto_url = paymentResult.boleto_url;
-            updateData.linha_digitavel = paymentResult.linha_digitavel;
-          }
-          
-          if (paymentResult.pix_qr_code) {
-            updateData.pix_qr_code = paymentResult.pix_qr_code;
-            updateData.pix_copy_paste = paymentResult.pix_copy_paste;
-          }
-          
+        if (!paymentError && paymentResult?.boleto_url) {
           await supabaseAdmin
             .from('invoices')
-            .update(updateData)
+            .update({
+              stripe_hosted_invoice_url: paymentResult.boleto_url,
+              boleto_url: paymentResult.boleto_url,
+              linha_digitavel: paymentResult.linha_digitavel,
+              stripe_payment_intent_id: paymentResult.payment_intent_id
+            })
             .eq('id', invoiceId);
 
-          logStep(`💳 ${preferredPaymentMethod.toUpperCase()} generated for monthly subscription invoice`, {
+          logStep(`💳 Boleto generated for monthly subscription invoice`, {
             invoiceId,
-            paymentMethod: preferredPaymentMethod,
-            hasBoleto: !!paymentResult.boleto_url,
-            hasPix: !!paymentResult.pix_qr_code
+            boletoUrl: paymentResult.boleto_url
           });
         }
       } catch (paymentError) {
-        logStep(`⚠️ Failed to generate ${preferredPaymentMethod} for monthly subscription`, paymentError);
+        logStep(`⚠️ Failed to generate boleto for monthly subscription`, paymentError);
         // Continue without failing
       }
     }
@@ -996,58 +959,37 @@ async function processMonthlySubscriptionBilling(
             totalAmount: traditionalTotal
           });
           
-          // Gerar pagamento para fatura tradicional se valor >= mínimo (usar preferência do professor)
+          // Gerar boleto para fatura tradicional se valor >= mínimo
           if (!skipTraditionalBoleto) {
-            // Buscar preferência de método de pagamento do professor
-            const { data: teacherProfileTrad } = await supabaseAdmin
-              .from('profiles')
-              .select('default_payment_method')
-              .eq('id', studentInfo.teacher_id)
-              .single();
-            
-            const preferredPaymentMethodTrad = teacherProfileTrad?.default_payment_method || 'pix';
-            
             try {
               const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
                 'create-payment-intent-connect',
                 {
                   body: {
                     invoice_id: outsideCycleInvoiceId,
-                    payment_method: preferredPaymentMethodTrad
+                    payment_method: 'boleto'
                   }
                 }
               );
 
-              if (!paymentError && (paymentResult?.boleto_url || paymentResult?.pix_qr_code)) {
-                const updateData: any = {
-                  stripe_payment_intent_id: paymentResult.payment_intent_id
-                };
-                
-                if (paymentResult.boleto_url) {
-                  updateData.stripe_hosted_invoice_url = paymentResult.boleto_url;
-                  updateData.boleto_url = paymentResult.boleto_url;
-                  updateData.linha_digitavel = paymentResult.linha_digitavel;
-                }
-                
-                if (paymentResult.pix_qr_code) {
-                  updateData.pix_qr_code = paymentResult.pix_qr_code;
-                  updateData.pix_copy_paste = paymentResult.pix_copy_paste;
-                }
-                
+              if (!paymentError && paymentResult?.boleto_url) {
                 await supabaseAdmin
                   .from('invoices')
-                  .update(updateData)
+                  .update({
+                    stripe_hosted_invoice_url: paymentResult.boleto_url,
+                    boleto_url: paymentResult.boleto_url,
+                    linha_digitavel: paymentResult.linha_digitavel,
+                    stripe_payment_intent_id: paymentResult.payment_intent_id
+                  })
                   .eq('id', outsideCycleInvoiceId);
 
-                logStep(`💳 ${preferredPaymentMethodTrad.toUpperCase()} generated for traditional invoice (outside cycle)`, {
+                logStep(`💳 Boleto generated for traditional invoice (outside cycle)`, {
                   invoiceId: outsideCycleInvoiceId,
-                  paymentMethod: preferredPaymentMethodTrad,
-                  hasBoleto: !!paymentResult.boleto_url,
-                  hasPix: !!paymentResult.pix_qr_code
+                  boletoUrl: paymentResult.boleto_url
                 });
               }
             } catch (paymentError) {
-              logStep(`⚠️ Failed to generate ${preferredPaymentMethodTrad} for traditional invoice`, paymentError);
+              logStep(`⚠️ Failed to generate boleto for traditional invoice`, paymentError);
             }
           }
           

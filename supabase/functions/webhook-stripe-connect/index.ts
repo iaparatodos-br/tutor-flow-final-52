@@ -95,7 +95,6 @@ const validateStripeEvent = (event: Stripe.Event): boolean => {
       
     case 'payment_intent.succeeded':
     case 'payment_intent.payment_failed':
-    case 'payment_intent.canceled':
       return !!(eventObject.id && eventObject.status);
       
     default:
@@ -466,7 +465,7 @@ serve(async (req) => {
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
-            status: "paga",
+            status: "paid",
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
             updated_at: new Date().toISOString()
@@ -521,45 +520,6 @@ serve(async (req) => {
           logStep("No invoice found for failed payment intent", { 
             paymentIntentId: paymentIntent.id,
             metadata: paymentIntent.metadata
-          });
-        }
-        break;
-      }
-
-      case "payment_intent.canceled": {
-        // PIX/Boleto expirou - limpar dados de pagamento da fatura
-        const paymentIntent = eventObject as Stripe.PaymentIntent;
-        logStep("Payment intent canceled (PIX/Boleto expired)", {
-          paymentIntentId: paymentIntent.id,
-          cancellation_reason: paymentIntent.cancellation_reason,
-          metadata: paymentIntent.metadata
-        });
-
-        // Limpar dados de PIX/Boleto expirados da fatura
-        const { data: updatedInvoices, error } = await supabaseClient
-          .from("invoices")
-          .update({
-            stripe_payment_intent_id: null,
-            pix_qr_code: null,
-            pix_copy_paste: null,
-            boleto_url: null,
-            linha_digitavel: null,
-            barcode: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq("stripe_payment_intent_id", paymentIntent.id)
-          .select();
-
-        if (error) {
-          logStep("Error clearing expired payment data", error);
-        } else if (updatedInvoices && updatedInvoices.length > 0) {
-          logStep("Expired payment data cleared", {
-            invoiceId: updatedInvoices[0].id,
-            paymentIntentId: paymentIntent.id
-          });
-        } else {
-          logStep("No invoice found for canceled payment intent", {
-            paymentIntentId: paymentIntent.id
           });
         }
         break;

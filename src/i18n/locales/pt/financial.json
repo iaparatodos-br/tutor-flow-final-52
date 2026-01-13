@@ -218,6 +218,7 @@
     "boletoNotAvailable": "Boleto não disponível. Use PIX para pagamento mais rápido e com menor taxa.",
     "boletoMinimumWarning": "O valor mínimo para boleto é R$ 5,00. Use PIX ou Cartão.",
     "generateBoleto": "Gerar Boleto",
+    "creditCard": "Cartão de Crédito",
     "pay": "Pagar",
     "verifyStatus": "Verificar Status do Pagamento",
     "verifying": "Verificando...",

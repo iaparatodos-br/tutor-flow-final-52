@@ -55,18 +55,12 @@ serve(async (req) => {
       throw new Error("student_id and amount are required");
     }
 
-    // Validate minimum boleto amount (Stripe requirement: R$ 5.00)
-    const MINIMUM_BOLETO_AMOUNT = 5.00;
-    if (body.amount < MINIMUM_BOLETO_AMOUNT) {
-      logStep("Amount below minimum for boleto", { amount: body.amount, minimum: MINIMUM_BOLETO_AMOUNT });
-      return new Response(JSON.stringify({
-        success: false,
-        error: `O valor mínimo para geração de fatura com boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
+    // NOTE: Minimum boleto amount (R$ 5.00) validation is now done only when 
+    // the student selects boleto as payment method in create-payment-intent-connect.
+    // Invoice creation should allow any amount since student may choose PIX or card.
+    logStep("Invoice creation - amount validation deferred to payment method selection", { 
+      amount: body.amount 
+    });
     
     logStep("Request data", body);
 

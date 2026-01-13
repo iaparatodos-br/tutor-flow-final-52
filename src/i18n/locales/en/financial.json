@@ -217,7 +217,7 @@
     "boletoMinimumWarning": "Minimum amount for bank slip is R$ 5.00. Use PIX or Card.",
     "generateBoleto": "Generate Bank Slip",
     "creditCard": "Credit Card",
-    "pay": "Pagar",
+    "pay": "Pay",
     "verifyStatus": "Verify Payment Status",
     "verifying": "Verifying...",
     "overdueWarning": "This invoice is overdue. Contact your teacher if you have questions.",

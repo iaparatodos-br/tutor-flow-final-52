@@ -434,10 +434,10 @@ export default function Financeiro() {
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold">
-              {isProfessor ? "Gestão Financeira" : "Minhas Faturas"}
+              {isProfessor ? t('title') : t('myInvoices')}
             </h1>
             <p className="text-muted-foreground">
-              {isProfessor ? "Acompanhe seus recebimentos, despesas e lucro" : "Veja suas faturas e faça pagamentos"}
+              {isProfessor ? t('description') : t('myInvoicesDescription')}
             </p>
           </div>
           {isProfessor && <ArchivedDataViewer />}
@@ -516,46 +516,46 @@ export default function Financeiro() {
         {isProfessor && <div className="grid gap-4 md:grid-cols-4">
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Receitas Pendentes</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('pendingReceivables')}</CardTitle>
                 <TrendingUp className="h-4 w-4 text-warning" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalPendente)}</div>
                 <p className="text-xs text-muted-foreground">
-                  Aguardando pagamento
+                  {t('awaitingPayment')}
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Receitas Recebidas</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('receivedRevenue')}</CardTitle>
                 <TrendingUp className="h-4 w-4 text-success" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{formatCurrency(totalPago)}</div>
                 <p className="text-xs text-muted-foreground">
-                  Este mês
+                  {t('thisMonth')}
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Despesas</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('totalExpenses')}</CardTitle>
                 <Receipt className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">{formatCurrency(expenseSummary.total)}</div>
                 <p className="text-xs text-muted-foreground">
-                  {expenseSummary.count} despesas este mês
+                  {t('expensesThisMonth', { count: expenseSummary.count })}
                 </p>
               </CardContent>
             </Card>
 
             <Card className="shadow-card">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Lucro Líquido</CardTitle>
+                <CardTitle className="text-sm font-medium">{t('netProfit')}</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -563,7 +563,7 @@ export default function Financeiro() {
                   {formatCurrency(netProfit)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Receitas - Despesas
+                  {t('revenueMinusExpenses')}
                 </p>
               </CardContent>
             </Card>
@@ -572,8 +572,8 @@ export default function Financeiro() {
         {/* Tabs for professors, single view for students */}
         {isProfessor ? <Tabs defaultValue="receitas" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="receitas">Receitas</TabsTrigger>
-              <TabsTrigger value="despesas">Despesas</TabsTrigger>
+              <TabsTrigger value="receitas">{t('revenue')}</TabsTrigger>
+              <TabsTrigger value="despesas">{t('expenses')}</TabsTrigger>
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
@@ -582,7 +582,7 @@ export default function Financeiro() {
                   <div className="flex justify-between items-center">
                     <CardTitle className="flex items-center gap-2">
                       <CreditCard className="h-5 w-5" />
-                      Faturas Emitidas ({invoices.length})
+                      {t('issuedInvoices', { count: invoices.length })}
                     </CardTitle>
             {students.filter(s => {
                         // Find the full student data to check business_profile_id
@@ -595,7 +595,7 @@ export default function Financeiro() {
                 <CardContent>
                   {loading ? <div className="text-center py-8">
                       <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto mb-4"></div>
-                      <p className="text-muted-foreground">Carregando faturas...</p>
+                      <p className="text-muted-foreground">{t('loadingInvoices')}</p>
                     </div> : invoices.length === 0 ? <div className="text-center py-8">
                       <DollarSign className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
                       <h3 className="text-lg font-medium mb-2">Nenhuma fatura encontrada</h3>

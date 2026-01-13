@@ -251,6 +251,7 @@
     "statusPending": "Pending",
     "statusDescription": "Invoice status: {{status}}",
     "currentStatus": "Current status: {{status}}",
-    "verifyError": "Error verifying status"
+    "verifyError": "Error verifying status",
+    "pixExpiration": "This PIX code expires in 24 hours. Generate a new one if needed."
   }
 }

@@ -23,6 +23,25 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     
+    // Authenticate user
+    const authHeader = req.headers.get("Authorization");
+    const supabaseUserClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader || "" } }, auth: { persistSession: false } }
+    );
+
+    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
+    if (userError || !user) {
+      logStep("User not authenticated", { error: userError?.message });
+      return new Response(JSON.stringify({ error: "Usuário não autenticado" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
+    logStep("User authenticated", { userId: user.id });
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -43,7 +62,19 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
-    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status });
+    // Validate user has access to this invoice
+    const isStudent = user.id === invoice.student_id;
+    const isTeacher = user.id === invoice.teacher_id;
+
+    if (!isStudent && !isTeacher) {
+      logStep("Access denied", { userId: user.id, invoiceStudentId: invoice.student_id, invoiceTeacherId: invoice.teacher_id });
+      return new Response(JSON.stringify({ error: "Sem permissão para verificar esta fatura" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+      });
+    }
+
+    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status, accessedBy: isStudent ? 'student' : 'teacher' });
 
     // If already paid, return current status
     if (invoice.status === 'paga') {

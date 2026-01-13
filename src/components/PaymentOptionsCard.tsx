@@ -340,11 +340,22 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     )}
                   </div>
                 ) : !isBelowBoletoMinimum ? (
-                  <div className="p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {t('paymentOptions.boletoNotAvailable')}
-                    </p>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => createPaymentIntent('boleto')}
+                    disabled={loading && activePaymentMethod === 'boleto'}
+                    className="w-full"
+                  >
+                    {loading && activePaymentMethod === 'boleto' ? (
+                      t('paymentOptions.generating')
+                    ) : (
+                      <>
+                        <Receipt className="h-4 w-4 mr-2" />
+                        {t('paymentOptions.generateBoleto')}
+                      </>
+                    )}
+                  </Button>
                 ) : null}
               </div>
 

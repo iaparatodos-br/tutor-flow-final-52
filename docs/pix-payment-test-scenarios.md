@@ -103,6 +103,9 @@ sequenceDiagram
 | T1.7 | Stripe Connect desabilitado | charges_enabled = false | Tentar gerar PIX | Toast: "Conta Stripe não está habilitada para receber pagamentos" |
 | T1.8 | Fatura já paga | status = 'paga' | Abrir modal de pagamento | Botões de pagamento não aparecem, badge "Paga" exibido |
 | T1.9 | Valor mínimo PIX | Valor < R$ 1,00 (100 centavos) | Tentar gerar PIX | Deve funcionar (PIX não tem valor mínimo no Stripe) |
+| T1.10 | Responsável gera PIX para dependente | Responsável autenticado, fatura do dependente | Clicar "PIX" → "Gerar código PIX" | PIX gerado com sucesso, QR Code exibido |
+| T1.11 | Timeout na API Stripe | Stripe API demora mais de 30s | Tentar gerar PIX | Toast de erro "Erro ao processar", botão reabilitado para retry |
+| T1.12 | Double-click no botão | Usuário clica 2x rapidamente | Clicar "Gerar PIX" 2x | Apenas 1 PaymentIntent criado (loading state previne duplicatas) |
 
 ### Categoria 2: Exibição do PIX no Frontend
 
@@ -118,6 +121,7 @@ sequenceDiagram
 | T2.6 | Loading state | Durante geração do PIX | Botão desabilitado, ícone de loading |
 | T2.7 | Fatura vencida | due_date < hoje | Alerta amarelo "Esta fatura está vencida" exibido |
 | T2.8 | Fatura paga | status = 'paga' | Badge verde "Paga", sem botões de ação |
+| T2.9 | PIX já gerado anteriormente | Abrir modal com pix_qr_code existente | QR Code e código exibidos imediatamente (sem nova chamada API) |
 
 ### Categoria 3: Verificação de Status
 
@@ -132,6 +136,9 @@ sequenceDiagram
 | T3.5 | Verificar fatura de outro | Aluno A verifica fatura do Aluno B | Clicar "Verificar Status" | Erro 403, toast de permissão negada |
 | T3.6 | Fatura sem payment_intent | stripe_payment_intent_id = null | Clicar "Verificar Status" | Retorna status atual da fatura sem erro |
 | T3.7 | Fatura já marcada como paga | status = 'paga' no banco | Clicar "Verificar Status" | Retorna status 'paga' sem chamar Stripe |
+| T3.8 | Responsável verifica status do dependente | Responsável autenticado, fatura do dependente | Clicar "Verificar Status" | Status verificado com sucesso |
+| T3.9 | Timeout na verificação | Stripe API demora | Clicar "Verificar Status" | Toast de erro, permite nova tentativa |
+| T3.10 | PaymentIntent não existe no Stripe | PI deletado/inexistente | Clicar "Verificar Status" | Erro tratado, dados de pagamento limpos |
 
 ### Categoria 4: Webhook payment_intent.succeeded
 
@@ -255,6 +262,42 @@ ORDER BY processed_at DESC
 LIMIT 20;
 ```
 
+### PIX com PaymentIntent Potencialmente Expirado (>24h)
+
+```sql
+-- PIX gerados há mais de 24 horas que ainda estão pendentes
+SELECT 
+  id, 
+  description, 
+  stripe_payment_intent_id, 
+  pix_qr_code IS NOT NULL as has_pix,
+  created_at,
+  NOW() - created_at as age
+FROM invoices 
+WHERE stripe_payment_intent_id IS NOT NULL 
+  AND status = 'pendente'
+  AND pix_qr_code IS NOT NULL
+  AND created_at < NOW() - INTERVAL '24 hours';
+```
+
+### Faturas de Dependentes com PIX
+
+```sql
+SELECT 
+  i.id, 
+  i.description, 
+  i.status, 
+  i.amount,
+  d.name as dependent_name, 
+  p.name as responsible_name
+FROM invoices i
+JOIN dependents d ON d.responsible_id = i.student_id
+JOIN profiles p ON p.id = i.student_id
+WHERE i.pix_qr_code IS NOT NULL
+ORDER BY i.created_at DESC
+LIMIT 20;
+```
+
 ---
 
 ## Comandos de Teste cURL
@@ -357,6 +400,14 @@ stripe trigger payment_intent.succeeded \
 - [ ] Professor só acessa faturas dos seus alunos
 - [ ] Tokens expirados retornam erro 401
 - [ ] Stripe Connect desabilitado bloqueia geração
+
+### Responsáveis/Dependentes
+- [ ] Responsável consegue gerar PIX para fatura de dependente
+- [ ] Responsável consegue verificar status da fatura do dependente
+
+### Proteção contra Duplicatas
+- [ ] Double-click no botão não gera PaymentIntents duplicados
+- [ ] Loading state é ativado durante requisição
 
 ### Mobile
 - [ ] Drawer mobile abre corretamente

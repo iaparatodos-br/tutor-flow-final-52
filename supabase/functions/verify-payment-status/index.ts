@@ -66,13 +66,39 @@ serve(async (req) => {
     const isStudent = user.id === invoice.student_id;
     const isTeacher = user.id === invoice.teacher_id;
 
+    // Check if user is a responsible (guardian) for a dependent linked to this invoice
+    let isResponsible = false;
     if (!isStudent && !isTeacher) {
+      // Check if user has a relationship with the teacher
+      const { data: relationship } = await supabaseClient
+        .from("teacher_student_relationships")
+        .select("id")
+        .eq("student_id", user.id)
+        .eq("teacher_id", invoice.teacher_id)
+        .maybeSingle();
+      
+      if (relationship) {
+        // Check if there are dependents linked to this responsible that match the invoice student_id
+        const { data: dependents } = await supabaseClient
+          .from("dependents")
+          .select("id")
+          .eq("responsible_id", user.id)
+          .eq("teacher_id", invoice.teacher_id);
+        
+        // The invoice student_id might be the responsible's profile ID when billing dependents
+        isResponsible = dependents && dependents.length > 0;
+      }
+    }
+
+    if (!isStudent && !isTeacher && !isResponsible) {
       logStep("Access denied", { userId: user.id, invoiceStudentId: invoice.student_id, invoiceTeacherId: invoice.teacher_id });
       return new Response(JSON.stringify({ error: "Sem permissão para verificar esta fatura" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 403,
       });
     }
+
+    logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status, accessedBy: isStudent ? 'student' : isTeacher ? 'teacher' : 'responsible' });
 
     logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status, accessedBy: isStudent ? 'student' : 'teacher' });
 

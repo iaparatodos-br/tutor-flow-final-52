@@ -185,6 +185,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
       // Handle expired payment codes (PIX/Boleto)
       if (data.payment_expired) {
+        // Limpar estados locais para evitar dados stale
+        setGeneratedPix(null);
+        setGeneratedBoleto(null);
+        
         toast({
           title: t('paymentOptions.paymentExpired'),
           description: t('paymentOptions.generateNewCode'),

@@ -254,6 +254,10 @@
     "statusDescription": "Status da fatura: {{status}}",
     "currentStatus": "Status atual: {{status}}",
     "verifyError": "Erro ao verificar status",
-    "pixExpiration": "Este código PIX expira em 24 horas. Gere um novo se necessário."
-  }
+  "pixExpiration": "Este código PIX expira em 24 horas. Gere um novo se necessário.",
+  "sessionExpired": "Sua sessão expirou. Faça login novamente.",
+  "noPermission": "Você não tem permissão para acessar esta fatura.",
+  "paymentExpired": "Código de pagamento expirado",
+  "generateNewCode": "O código PIX/Boleto expirou. Gere um novo para continuar."
+}
 }

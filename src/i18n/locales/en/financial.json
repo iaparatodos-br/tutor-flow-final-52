@@ -252,6 +252,10 @@
     "statusDescription": "Invoice status: {{status}}",
     "currentStatus": "Current status: {{status}}",
     "verifyError": "Error verifying status",
-    "pixExpiration": "This PIX code expires in 24 hours. Generate a new one if needed."
-  }
+  "pixExpiration": "This PIX code expires in 24 hours. Generate a new one if needed.",
+  "sessionExpired": "Your session has expired. Please log in again.",
+  "noPermission": "You do not have permission to access this invoice.",
+  "paymentExpired": "Payment code expired",
+  "generateNewCode": "The PIX/Boleto code has expired. Generate a new one to continue."
+}
 }

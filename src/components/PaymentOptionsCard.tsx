@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { QRCodeSVG } from "qrcode.react";
 import { 
   Receipt, 
   QrCode, 
@@ -283,11 +284,15 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     {/* QR Code Visual - if available */}
                     {(generatedPix?.qr_code || invoice.pix_qr_code) && (
                       <div className="flex justify-center mb-3">
-                        <img 
-                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(generatedPix?.qr_code || invoice.pix_qr_code!)}`}
-                          alt="QR Code PIX"
-                          className="w-36 h-36 rounded"
-                        />
+                        <div className="bg-white p-2 rounded">
+                          <QRCodeSVG 
+                            value={generatedPix?.qr_code || invoice.pix_qr_code!}
+                            size={144}
+                            level="M"
+                            bgColor="#ffffff"
+                            fgColor="#000000"
+                          />
+                        </div>
                       </div>
                     )}
                     

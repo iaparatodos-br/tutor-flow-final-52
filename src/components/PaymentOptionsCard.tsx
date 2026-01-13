@@ -279,7 +279,18 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                 
                 {/* Show PIX code - either from invoice or newly generated */}
                 {(invoice.pix_qr_code || generatedPix) && (
-                  <div className="mt-3 p-2 bg-white dark:bg-gray-800 rounded border border-green-200 dark:border-green-700">
+                  <div className="mt-3 p-3 bg-white dark:bg-gray-800 rounded border border-green-200 dark:border-green-700">
+                    {/* QR Code Visual - if available */}
+                    {(generatedPix?.qr_code || invoice.pix_qr_code) && (
+                      <div className="flex justify-center mb-3">
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(generatedPix?.qr_code || invoice.pix_qr_code!)}`}
+                          alt="QR Code PIX"
+                          className="w-36 h-36 rounded"
+                        />
+                      </div>
+                    )}
+                    
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">{t('paymentOptions.pixCode')}</span>
                       <Button
@@ -290,10 +301,11 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                           "PIX"
                         )}
                       >
-                        <Copy className="h-3 w-3" />
+                        <Copy className="h-3 w-3 mr-1" />
+                        <span className="text-xs">{t('paymentOptions.copy')}</span>
                       </Button>
                     </div>
-                    <code className="text-xs break-all block mt-1">
+                    <code className="text-xs break-all block mt-1 p-2 bg-muted rounded">
                       {generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code}
                     </code>
                   </div>
@@ -318,15 +330,15 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   </Alert>
                 )}
                 
-                {/* Show existing boleto prominently */}
-                {invoice.boleto_url && !isBelowBoletoMinimum ? (
+              {/* Show existing boleto or newly generated boleto */}
+                {(invoice.boleto_url || generatedBoleto) && !isBelowBoletoMinimum ? (
                   <div className="space-y-2">
                     <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
                       <p className="text-sm text-blue-800 dark:text-blue-200 font-medium mb-2">{t('paymentOptions.boletoAvailable')}</p>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => window.open(invoice.boleto_url!, '_blank')}
+                        onClick={() => window.open(generatedBoleto?.url || invoice.boleto_url!, '_blank')}
                         className="w-full"
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
@@ -334,19 +346,24 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                       </Button>
                     </div>
                     
-                    {invoice.linha_digitavel && (
+                    {(generatedBoleto?.linha_digitavel || invoice.linha_digitavel) && (
                       <div className="p-2 bg-muted rounded text-sm">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs text-muted-foreground">{t('paymentOptions.digitableLine')}</span>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => copyToClipboard(invoice.linha_digitavel!, t('paymentOptions.digitableLine'))}
+                            onClick={() => copyToClipboard(
+                              generatedBoleto?.linha_digitavel || invoice.linha_digitavel!, 
+                              t('paymentOptions.digitableLine')
+                            )}
                           >
                             <Copy className="h-3 w-3" />
                           </Button>
                         </div>
-                        <code className="text-xs break-all font-mono">{invoice.linha_digitavel}</code>
+                        <code className="text-xs break-all font-mono">
+                          {generatedBoleto?.linha_digitavel || invoice.linha_digitavel}
+                        </code>
                       </div>
                     )}
                   </div>

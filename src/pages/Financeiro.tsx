@@ -20,7 +20,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X, QrCode, TrendingDown, Settings } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
@@ -449,30 +449,65 @@ export default function Financeiro() {
 
         {/* Fee Transparency Alert - Only for Professors */}
         {isProfessor && showFeeAlert && (
-          <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800 relative">
-            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            <AlertTitle className="text-blue-900 dark:text-blue-100 pr-8">
-              Transparência de Taxas Stripe
+          <Alert className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-950 dark:to-blue-950 border-green-200 dark:border-green-800 relative">
+            <TrendingDown className="h-4 w-4 text-green-600 dark:text-green-400" />
+            <AlertTitle className="text-green-900 dark:text-green-100 pr-8">
+              Compare as Taxas e Economize!
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-blue-100 dark:hover:bg-blue-900"
+                className="absolute right-2 top-2 h-6 w-6 p-0 hover:bg-green-100 dark:hover:bg-green-900"
                 onClick={() => setShowFeeAlert(false)}
               >
-                <X className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <X className="h-4 w-4 text-green-600 dark:text-green-400" />
               </Button>
             </AlertTitle>
-            <AlertDescription className="text-blue-800 dark:text-blue-200">
-              <p className="mb-2">
-                Os boletos gerados possuem uma taxa fixa do Stripe de <strong>R$ 3,49</strong> por transação.
-                Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá.
-              </p>
-              <div className="bg-white dark:bg-gray-900 p-3 rounded-md text-sm border border-blue-100 dark:border-blue-900">
-                <p className="font-medium mb-1 text-blue-900 dark:text-blue-100">Exemplo de cálculo:</p>
-                <p className="text-blue-800 dark:text-blue-300">• Valor cobrado do aluno: R$ 100,00</p>
-                <p className="text-blue-800 dark:text-blue-300">• Taxa Stripe (boleto): -R$ 3,49</p>
-                <p className="font-bold text-green-600 dark:text-green-400">• Você receberá: R$ 96,51</p>
+            <AlertDescription className="text-green-800 dark:text-green-200">
+              <div className="grid md:grid-cols-2 gap-3 mb-3">
+                {/* PIX - Recomendado */}
+                <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-md border border-green-300 dark:border-green-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <QrCode className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    <span className="font-semibold text-green-800 dark:text-green-200">PIX - Recomendado</span>
+                  </div>
+                  <p className="text-sm text-green-700 dark:text-green-300">Taxa: <strong>1,19%</strong></p>
+                  <p className="text-xs text-green-600 dark:text-green-400">Ex: R$ 1,19 em R$ 100</p>
+                </div>
+                
+                {/* Boleto */}
+                <div className="p-3 bg-gray-100 dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Receipt className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                    <span className="font-semibold text-gray-800 dark:text-gray-200">Boleto</span>
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">Taxa: <strong>R$ 3,49</strong> fixo</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Independente do valor</p>
+                </div>
               </div>
+              
+              <div className="bg-white dark:bg-gray-900 p-3 rounded-md border border-green-200 dark:border-green-800">
+                <p className="font-medium text-green-700 dark:text-green-300">
+                  💡 Exemplo com 34 alunos e faturas de R$ 100:
+                </p>
+                <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
+                  <p className="text-gray-700 dark:text-gray-300">
+                    • Boleto: 34 × R$ 3,49 = <span className="text-red-600 dark:text-red-400 font-medium">R$ 118,66/mês</span>
+                  </p>
+                  <p className="text-gray-700 dark:text-gray-300">
+                    • PIX: 34 × R$ 1,19 = <span className="text-green-600 dark:text-green-400 font-medium">R$ 40,46/mês</span>
+                  </p>
+                </div>
+                <p className="font-bold text-green-600 dark:text-green-400 mt-2">
+                  ✨ Economia: R$ 78,20/mês (66% menos taxas!)
+                </p>
+              </div>
+              
+              <Button variant="link" className="p-0 h-auto mt-2 text-green-700 dark:text-green-300" asChild>
+                <a href="/configuracoes?tab=billing" className="flex items-center gap-1">
+                  <Settings className="h-3 w-3" />
+                  Alterar método padrão nas configurações →
+                </a>
+              </Button>
             </AlertDescription>
           </Alert>
         )}

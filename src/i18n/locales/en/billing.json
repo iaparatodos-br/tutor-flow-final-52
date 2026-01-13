@@ -11,6 +11,15 @@
       "label": "Default Billing Day",
       "description": "Day of the month to be suggested when registering new students (1-28). Leave empty for no default.",
       "placeholder": "15"
+    },
+    "defaultPaymentMethod": {
+      "label": "Default Payment Method",
+      "description": "Method used for automated invoices. PIX has lower fees than boleto.",
+      "placeholder": "Select method",
+      "options": {
+        "pix": "PIX (1.19% fee)",
+        "boleto": "Boleto (R$ 3.49 fixed fee)"
+      }
     }
   },
   "validation": {
@@ -28,5 +37,17 @@
     "loadError": "Error loading settings",
     "saveError": "Error saving settings",
     "tryAgain": "Please try again later"
+  },
+  "feeComparison": {
+    "title": "Compare fees and save!",
+    "description": "PIX has much lower fees than boleto",
+    "pix": "PIX",
+    "pixFee": "1.19%",
+    "pixExample": "e.g.: R$ 1.19 on R$ 100",
+    "boleto": "Boleto",
+    "boletoFee": "R$ 3.49",
+    "boletoFixed": "fixed per transaction",
+    "savings": "With {{students}} students, PIX saves R$ {{amount}}/month!",
+    "recommended": "Recommended"
   }
 }

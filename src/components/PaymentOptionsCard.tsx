@@ -146,9 +146,18 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
     } catch (error: any) {
       console.error('Error creating payment intent:', error);
+      
+      // Handle authorization errors with user-friendly messages
+      let userMessage = error.message || t('messages.loadError');
+      if (error.message?.includes('401') || error.message?.includes('não autenticado') || error.message?.includes('autenticado')) {
+        userMessage = t('paymentOptions.sessionExpired');
+      } else if (error.message?.includes('403') || error.message?.includes('permissão')) {
+        userMessage = t('paymentOptions.noPermission');
+      }
+      
       toast({
         title: t('paymentOptions.paymentError'),
-        description: error.message || t('messages.loadError'),
+        description: userMessage,
         variant: "destructive",
       });
     } finally {
@@ -169,6 +178,22 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
       if (error) throw error;
 
+      // Validate API response for errors
+      if (data && data.error) {
+        throw new Error(data.error);
+      }
+
+      // Handle expired payment codes (PIX/Boleto)
+      if (data.payment_expired) {
+        toast({
+          title: t('paymentOptions.paymentExpired'),
+          description: t('paymentOptions.generateNewCode'),
+          variant: "default",
+        });
+        onPaymentSuccess?.(); // Refresh to clear UI
+        return;
+      }
+
       const statusLabel = data.status === 'paga' ? t('paymentOptions.statusPaid') : t('paymentOptions.statusPending');
 
       if (data.updated) {
@@ -186,9 +211,18 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
 
     } catch (error: any) {
       console.error('Error verifying payment status:', error);
+      
+      // Handle authorization errors with user-friendly messages
+      let userMessage = error.message || t('messages.loadError');
+      if (error.message?.includes('401') || error.message?.includes('não autenticado') || error.message?.includes('autenticado')) {
+        userMessage = t('paymentOptions.sessionExpired');
+      } else if (error.message?.includes('403') || error.message?.includes('permissão')) {
+        userMessage = t('paymentOptions.noPermission');
+      }
+      
       toast({
         title: t('paymentOptions.verifyError'),
-        description: error.message || t('messages.loadError'),
+        description: userMessage,
         variant: "destructive",
       });
     } finally {

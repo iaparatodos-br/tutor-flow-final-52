@@ -112,7 +112,36 @@ serve(async (req) => {
     
     if (paymentIntent.status === 'succeeded') {
       newStatus = 'paga';
-    } else if (paymentIntent.status === 'canceled' || paymentIntent.status === 'payment_failed') {
+    } else if (paymentIntent.status === 'canceled') {
+      // PIX/Boleto expired - clear payment data and allow new generation
+      logStep("Payment intent canceled (expired)", { paymentIntentId: paymentIntent.id });
+      
+      const { error: clearError } = await supabaseClient
+        .from("invoices")
+        .update({ 
+          stripe_payment_intent_id: null,
+          pix_qr_code: null,
+          pix_copy_paste: null,
+          boleto_url: null,
+          linha_digitavel: null,
+          barcode: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("id", invoice_id);
+      
+      if (clearError) {
+        logStep("Error clearing expired payment data", clearError);
+      }
+      
+      return new Response(JSON.stringify({
+        status: invoice.status,
+        payment_expired: true,
+        message: 'O código de pagamento expirou. Gere um novo.'
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    } else if (paymentIntent.status === 'payment_failed') {
       newStatus = 'falha_pagamento';
     }
 

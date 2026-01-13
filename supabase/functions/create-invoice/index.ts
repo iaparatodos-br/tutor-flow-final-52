@@ -356,87 +356,13 @@ serve(async (req) => {
       });
     }
 
-    // Generate payment URL automatically
-    logStep("Generating payment URL", { invoiceId: newInvoice.id });
-    try {
-      // Fetch guardian data from relationship for better logging
-      const { data: relationshipData, error: relError } = await supabaseClient
-        .from('teacher_student_relationships')
-        .select('student_guardian_cpf, student_guardian_name, student_guardian_email, student_guardian_phone, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code')
-        .eq('student_id', billingStudentId)
-        .eq('teacher_id', user.id)
-        .single();
-      
-      logStep('Guardian data from relationship', {
-        hasRelationshipData: !!relationshipData,
-        hasGuardianCpf: !!relationshipData?.student_guardian_cpf,
-        hasGuardianName: !!relationshipData?.student_guardian_name,
-        hasGuardianAddress: !!(relationshipData?.student_guardian_address_street && relationshipData?.student_guardian_address_city),
-        guardianCpf: relationshipData?.student_guardian_cpf ? `***${String(relationshipData.student_guardian_cpf).slice(-4)}` : 'none'
-      });
-      
-      const { data: paymentResult, error: paymentError } = await supabaseClient.functions.invoke(
-        'create-payment-intent-connect',
-        {
-          body: {
-            invoice_id: newInvoice.id,
-            payment_method: 'boleto' // Default to boleto for automatic generation
-          },
-          headers: {
-            Authorization: authHeader
-          }
-        }
-      );
-
-      logStep("Payment intent response", { 
-        status: paymentError ? 'error' : 'success',
-        hasData: !!paymentResult,
-        hasBoletoUrl: !!paymentResult?.boleto_url,
-        hasLinhaDigitavel: !!paymentResult?.linha_digitavel,
-        errorMessage: paymentError?.message,
-        errorDetails: paymentError
-      });
-
-      if (!paymentError && paymentResult?.boleto_url) {
-        // Update invoice with the generated payment URL
-        const { error: updateError } = await supabaseClient
-          .from('invoices')
-          .update({ 
-            stripe_hosted_invoice_url: paymentResult.boleto_url,
-            boleto_url: paymentResult.boleto_url,
-            linha_digitavel: paymentResult.linha_digitavel,
-            stripe_payment_intent_id: paymentResult.payment_intent_id
-          })
-          .eq('id', newInvoice.id);
-
-        if (!updateError) {
-          logStep("Payment URL generated and saved", { 
-            invoiceId: newInvoice.id,
-            paymentUrl: paymentResult.boleto_url 
-          });
-          
-          // Update the invoice object to return the complete data
-          newInvoice.stripe_hosted_invoice_url = paymentResult.boleto_url;
-          newInvoice.boleto_url = paymentResult.boleto_url;
-          newInvoice.linha_digitavel = paymentResult.linha_digitavel;
-          newInvoice.stripe_payment_intent_id = paymentResult.payment_intent_id;
-        } else {
-          logStep("Warning: Could not update invoice with payment URL", { error: updateError });
-        }
-      } else {
-        logStep("Warning: Could not generate payment URL", { 
-          error: paymentError,
-          hasResult: !!paymentResult,
-          resultData: paymentResult
-        });
-      }
-    } catch (paymentGenerationError: any) {
-      logStep("Warning: Failed to generate payment URL", { 
-        error: paymentGenerationError.message,
-        stack: paymentGenerationError.stack
-      });
-      // Continue without failing the invoice creation
-    }
+    // Payment will be generated when student selects their preferred payment method
+    // This allows the student to choose between PIX (recommended), Boleto, or Credit Card
+    logStep("Invoice created - payment will be generated when student selects payment method", { 
+      invoiceId: newInvoice.id,
+      amount: newInvoice.amount,
+      dueDate: newInvoice.due_date
+    });
 
     // Enviar notificação de fatura criada (não-bloqueante)
     supabaseClient.functions

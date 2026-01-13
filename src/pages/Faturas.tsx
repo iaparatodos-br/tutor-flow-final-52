@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Layout } from '@/components/Layout';
@@ -7,12 +8,17 @@ import { Button } from '@/components/ui/button';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { InvoiceTypeBadge } from '@/components/InvoiceTypeBadge';
 import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { ptBR, enUS } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, FileText } from 'lucide-react';
+import { AlertCircle, FileText, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { PaymentOptionsCard } from '@/components/PaymentOptionsCard';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useTranslation } from 'react-i18next';
 
 interface Invoice {
   id: string;
@@ -27,12 +33,36 @@ interface Invoice {
   payment_intent_cancelled_at: string | null;
   payment_intent_cancelled_by: string | null;
   invoice_type: string | null;
+  boleto_url: string | null;
+  linha_digitavel: string | null;
+  pix_qr_code: string | null;
+  pix_copy_paste: string | null;
+  stripe_payment_intent_id: string | null;
 }
 
 const fetchStudentInvoices = async (teacherId: string) => {
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id, payment_origin, manual_payment_notes, payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type')
+    .select(`
+      id, 
+      created_at, 
+      due_date, 
+      amount, 
+      status, 
+      stripe_hosted_invoice_url, 
+      description, 
+      teacher_id, 
+      payment_origin, 
+      manual_payment_notes, 
+      payment_intent_cancelled_at, 
+      payment_intent_cancelled_by, 
+      invoice_type,
+      boleto_url,
+      linha_digitavel,
+      pix_qr_code,
+      pix_copy_paste,
+      stripe_payment_intent_id
+    `)
     .eq('teacher_id', teacherId)
     .order('created_at', { ascending: false });
 
@@ -41,17 +71,29 @@ const fetchStudentInvoices = async (teacherId: string) => {
 };
 
 export default function Faturas() {
+  const { t, i18n } = useTranslation('financial');
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  const { data: invoices, isLoading, error } = useQuery({
+  const { data: invoices, isLoading, error, refetch } = useQuery({
     queryKey: ['studentInvoices', selectedTeacherId],
     queryFn: () => fetchStudentInvoices(selectedTeacherId!),
     enabled: !!selectedTeacherId,
   });
 
-  const handlePayNow = (url: string) => {
-    window.open(url, '_blank');
+  const handlePayNow = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setIsPaymentModalOpen(true);
+  };
+
+  const handlePaymentSuccess = () => {
+    setIsPaymentModalOpen(false);
+    setSelectedInvoice(null);
+    refetch();
   };
 
   const handleViewReceipt = (invoiceId: string) => {
@@ -65,13 +107,29 @@ export default function Faturas() {
     }).format(amount);
   };
 
+  const dateLocale = i18n.language === 'pt' ? ptBR : enUS;
+
+  // Convert Invoice to format expected by PaymentOptionsCard
+  const convertInvoiceForPaymentCard = (invoice: Invoice) => ({
+    id: invoice.id,
+    amount: invoice.amount.toString(),
+    due_date: invoice.due_date,
+    description: invoice.description || t('invoiceDefaultDescription'),
+    status: invoice.status,
+    boleto_url: invoice.boleto_url || undefined,
+    linha_digitavel: invoice.linha_digitavel || undefined,
+    pix_qr_code: invoice.pix_qr_code || undefined,
+    pix_copy_paste: invoice.pix_copy_paste || undefined,
+    stripe_payment_intent_id: invoice.stripe_payment_intent_id || undefined,
+  });
+
   // Loading state while teacher context is loading
   if (teacherLoading) {
     return (
       <Layout>
         <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+            <h1 className="text-3xl font-bold">{t('myInvoices')}</h1>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -93,12 +151,12 @@ export default function Faturas() {
       <Layout>
         <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+            <h1 className="text-3xl font-bold">{t('myInvoices')}</h1>
           </div>
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Selecione um professor para visualizar suas faturas.
+              {t('selectTeacherToViewInvoices')}
             </AlertDescription>
           </Alert>
         </div>
@@ -106,16 +164,60 @@ export default function Faturas() {
     );
   }
 
+  // Payment Modal - Responsive (Drawer on mobile, Dialog on desktop)
+  const PaymentModal = () => {
+    if (!selectedInvoice) return null;
+
+    const modalContent = (
+      <div className="p-4">
+        <PaymentOptionsCard 
+          invoice={convertInvoiceForPaymentCard(selectedInvoice)}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      </div>
+    );
+
+    if (isMobile) {
+      return (
+        <Drawer open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                {t('paymentOptions.title')}
+              </DrawerTitle>
+            </DrawerHeader>
+            {modalContent}
+          </DrawerContent>
+        </Drawer>
+      );
+    }
+
+    return (
+      <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              {t('paymentOptions.title')}
+            </DialogTitle>
+          </DialogHeader>
+          {modalContent}
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
   return (
     <Layout>
       <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+          <h1 className="text-3xl font-bold">{t('myInvoices')}</h1>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Histórico de Cobranças</CardTitle>
+            <CardTitle>{t('chargeHistory')}</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -126,36 +228,36 @@ export default function Faturas() {
               </div>
             ) : error ? (
               <div className="text-center py-8">
-                <p className="text-destructive">Erro ao carregar as faturas.</p>
+                <p className="text-destructive">{t('messages.loadError')}</p>
               </div>
             ) : !invoices || invoices.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">Nenhuma fatura encontrada.</p>
+                <p className="text-muted-foreground">{t('noInvoicesFound')}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead>{t('date')}</TableHead>
+                    <TableHead>{t('description')}</TableHead>
+                    <TableHead>{t('dueDate')}</TableHead>
+                    <TableHead>{t('amount')}</TableHead>
+                    <TableHead>{t('status')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {invoices.map((invoice) => (
                     <TableRow key={invoice.id}>
                       <TableCell>
-                        {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                        {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: dateLocale })}
                       </TableCell>
                       <TableCell>
-                        {invoice.description || 'Cobrança de aula'}
+                        {invoice.description || t('invoiceDefaultDescription')}
                       </TableCell>
                       <TableCell>
                         {invoice.due_date 
-                          ? format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: ptBR }) 
+                          ? format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: dateLocale }) 
                           : '-'
                         }
                       </TableCell>
@@ -170,23 +272,18 @@ export default function Faturas() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        {/* Faturas pendentes/vencidas: Botão "Pagar Agora" */}
+                        {/* Faturas pendentes/vencidas: Botão "Pagar Agora" - Abre modal com opções */}
                         {(invoice.status === 'open' || 
                           invoice.status === 'overdue' || 
                           invoice.status === 'pendente' || 
                           invoice.status === 'vencida') && (
-                          invoice.stripe_hosted_invoice_url ? (
-                            <Button 
-                              onClick={() => handlePayNow(invoice.stripe_hosted_invoice_url!)}
-                              size="sm"
-                            >
-                              Pagar Agora
-                            </Button>
-                          ) : (
-                            <div className="text-sm text-muted-foreground">
-                              URL de pagamento não disponível
-                            </div>
-                          )
+                          <Button 
+                            onClick={() => handlePayNow(invoice)}
+                            size="sm"
+                          >
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            {t('payNow')}
+                          </Button>
                         )}
 
                         {/* Faturas pagas: Botão "Ver Recibo" */}
@@ -197,7 +294,7 @@ export default function Faturas() {
                             variant="outline"
                           >
                             <FileText className="h-4 w-4 mr-2" />
-                            Ver Recibo
+                            {t('viewReceipt')}
                           </Button>
                         )}
                       </TableCell>
@@ -209,6 +306,9 @@ export default function Faturas() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Payment Options Modal */}
+      <PaymentModal />
     </Layout>
   );
 }

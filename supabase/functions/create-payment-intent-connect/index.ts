@@ -23,14 +23,46 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    
+    // Client with user's JWT for auth validation
+    const authHeader = req.headers.get("Authorization");
+    const supabaseUserClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader || "" } },
+      auth: { persistSession: false }
+    });
+    
+    // Service role client for data operations
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false }
+    });
+
+    // ===== VALIDAÇÃO DE AUTENTICAÇÃO =====
+    const { data: { user }, error: userError } = await supabaseUserClient.auth.getUser();
+    if (userError || !user) {
+      logStep("AUTH ERROR: No authenticated user", { error: userError?.message });
+      return new Response(JSON.stringify({
+        error: "Usuário não autenticado",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+    logStep("User authenticated", { userId: user.id });
 
     const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email, payer_address } = await req.json();
-    if (!invoice_id) throw new Error("invoice_id is required");
+    if (!invoice_id) {
+      return new Response(JSON.stringify({
+        error: "invoice_id é obrigatório",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
 
     // Get invoice details with business profile
     // NOTE: Guardian data is now stored ONLY in teacher_student_relationships
@@ -51,8 +83,65 @@ serve(async (req) => {
       .single();
 
     if (invoiceError || !invoice) {
-      throw new Error("Invoice not found");
+      logStep("Invoice not found", { invoiceId: invoice_id, error: invoiceError?.message });
+      return new Response(JSON.stringify({
+        error: "Fatura não encontrada",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
     }
+
+    // ===== VALIDAÇÃO DE ACESSO =====
+    // Usuário pode gerar pagamento se for:
+    // 1. O aluno da fatura (student_id)
+    // 2. O professor da fatura (teacher_id)  
+    // 3. O responsável do aluno (verificado via teacher_student_relationships)
+    const isStudent = user.id === invoice.student_id;
+    const isTeacher = user.id === invoice.teacher_id;
+    
+    let isResponsible = false;
+    if (!isStudent && !isTeacher) {
+      // Verificar se o usuário é responsável de algum dependente do aluno
+      // Buscar relacionamentos onde o usuário é o student_id (responsável)
+      // e verificar se há dependentes que correspondem ao student_id da fatura
+      const { data: userRelationships } = await supabaseClient
+        .from("teacher_student_relationships")
+        .select("student_id")
+        .eq("student_id", user.id)
+        .eq("teacher_id", invoice.teacher_id);
+      
+      if (userRelationships && userRelationships.length > 0) {
+        // Usuário tem relacionamento com o professor da fatura como aluno/responsável
+        // Verificar se a fatura é do próprio usuário ou de um dependente
+        if (invoice.student_id === user.id) {
+          isResponsible = true;
+        }
+      }
+    }
+    
+    if (!isStudent && !isTeacher && !isResponsible) {
+      logStep("ACCESS DENIED: User not authorized for this invoice", { 
+        userId: user.id, 
+        invoiceStudentId: invoice.student_id,
+        invoiceTeacherId: invoice.teacher_id 
+      });
+      return new Response(JSON.stringify({
+        error: "Você não tem permissão para gerar pagamento para esta fatura",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+      });
+    }
+    
+    logStep("Access validated", { 
+      userId: user.id, 
+      isStudent, 
+      isTeacher, 
+      isResponsible 
+    });
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
 
@@ -107,7 +196,13 @@ serve(async (req) => {
     // 1. Validar que fatura possui business_profile_id
     if (!invoice.business_profile_id) {
       logStep("VALIDATION ERROR: Invoice missing business_profile_id", { invoiceId: invoice_id });
-      throw new Error("Fatura não possui negócio definido para roteamento de pagamento");
+      return new Response(JSON.stringify({
+        error: "Fatura não possui negócio definido para roteamento de pagamento",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     // 2. Validar que business profile existe e está ativo
@@ -116,7 +211,13 @@ serve(async (req) => {
         invoiceId: invoice_id, 
         businessProfileId: invoice.business_profile_id 
       });
-      throw new Error("Negócio da fatura não encontrado");
+      return new Response(JSON.stringify({
+        error: "Negócio da fatura não encontrado",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     // 3. Validar que business profile possui Stripe Connect ID
@@ -126,7 +227,13 @@ serve(async (req) => {
         businessProfileId: invoice.business_profile_id,
         businessName: invoice.business_profile.business_name 
       });
-      throw new Error("Conta Stripe Connect não encontrada para o negócio desta fatura");
+      return new Response(JSON.stringify({
+        error: "Conta Stripe Connect não encontrada para o negócio desta fatura",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     logStep("Using business profile for payment routing", { 
@@ -189,7 +296,13 @@ serve(async (req) => {
             details_submitted: stripeAccount.details_submitted
           }
         });
-        throw new Error(`Problemas críticos na conta Stripe Connect: ${accountIssues.join("; ")}`);
+        return new Response(JSON.stringify({
+          error: `Problemas críticos na conta Stripe Connect: ${accountIssues.join("; ")}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
       }
       
       logStep("Stripe Connect account validation passed", { 
@@ -204,7 +317,13 @@ serve(async (req) => {
         error: stripeError,
         accountId: stripeConnectAccountId 
       });
-      throw new Error("Erro crítico ao verificar conta Stripe Connect do negócio");
+      return new Response(JSON.stringify({
+        error: "Erro crítico ao verificar conta Stripe Connect do negócio",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     // Convert amount from decimal to cents
@@ -213,7 +332,13 @@ serve(async (req) => {
     // Determine customer email - use guardian from relationship if available
     const customerEmail = relationship?.student_guardian_email || invoice.student?.email;
     if (!customerEmail) {
-      throw new Error("No email found for customer");
+      return new Response(JSON.stringify({
+        error: "E-mail do cliente não encontrado",
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
     
     // Use relationship data if available (for guardian information)
@@ -480,10 +605,24 @@ serve(async (req) => {
         // Handle boleto confirmation and retrieve boleto details
         // Boleto requires CPF/CNPJ (tax_id) and address
         if (!finalPayerTaxId) {
-          throw new Error("Para boleto, é necessário informar payer_tax_id (CPF/CNPJ).");
+          logStep("VALIDATION ERROR: Boleto missing CPF/CNPJ", { invoiceId: invoice_id });
+          return new Response(JSON.stringify({
+            error: "Para boleto, é necessário informar CPF/CNPJ. Atualize os dados do responsável.",
+            success: false
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
         }
         if (!finalPayerAddress || !finalPayerAddress.street || !finalPayerAddress.city || !finalPayerAddress.state || !finalPayerAddress.postal_code) {
-          throw new Error("Para boleto, é necessário informar o endereço completo (street, city, state, postal_code).");
+          logStep("VALIDATION ERROR: Boleto missing address", { invoiceId: invoice_id, hasAddress: !!finalPayerAddress });
+          return new Response(JSON.stringify({
+            error: "Para boleto, é necessário endereço completo. Atualize os dados do responsável.",
+            success: false
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
         }
         
         const taxId = String(finalPayerTaxId).replace(/\D/g, "");

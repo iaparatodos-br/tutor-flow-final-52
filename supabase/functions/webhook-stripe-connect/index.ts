@@ -466,7 +466,7 @@ serve(async (req) => {
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
-            status: "paid",
+            status: "paga",
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
             updated_at: new Date().toISOString()

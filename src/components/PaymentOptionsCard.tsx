@@ -14,7 +14,8 @@ import {
   Calendar,
   DollarSign,
   Copy,
-  AlertTriangle
+  AlertTriangle,
+  Clock
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -92,6 +93,11 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
       });
 
       if (error) throw error;
+
+      // Validate API response for validation errors
+      if (data && data.success === false) {
+        throw new Error(data.error || t('paymentOptions.paymentError'));
+      }
 
       if (paymentMethod === 'boleto' && data.boleto_url) {
         setGeneratedBoleto({
@@ -313,6 +319,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     <code className="text-xs break-all block mt-1 p-2 bg-muted rounded">
                       {generatedPix?.copy_paste || invoice.pix_copy_paste || invoice.pix_qr_code}
                     </code>
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {t('paymentOptions.pixExpiration')}
+                    </p>
                   </div>
                 )}
               </div>

@@ -253,6 +253,7 @@
     "statusPending": "Pendente",
     "statusDescription": "Status da fatura: {{status}}",
     "currentStatus": "Status atual: {{status}}",
-    "verifyError": "Erro ao verificar status"
+    "verifyError": "Erro ao verificar status",
+    "pixExpiration": "Este código PIX expira em 24 horas. Gere um novo se necessário."
   }
 }

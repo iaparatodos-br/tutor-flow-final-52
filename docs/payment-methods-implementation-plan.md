@@ -1,6 +1,6 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 1.0  
+> **Versão**: 1.1  
 > **Data**: 2026-01-14  
 > **Status**: Planejamento
 
@@ -53,6 +53,14 @@ COMMENT ON COLUMN business_profiles.enabled_payment_methods IS
 |--------|-------|------|---------|-----------|
 | `business_profiles` | `enabled_payment_methods` | `TEXT[]` | `['boleto', 'pix', 'card']` | Métodos habilitados |
 
+### 3.3 Regeneração de Tipos
+
+Após a migração, regenerar os tipos do Supabase:
+
+```bash
+npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integrations/supabase/types.ts
+```
+
 ---
 
 ## 4. Constantes de Taxas
@@ -66,7 +74,12 @@ COMMENT ON COLUMN business_profiles.enabled_payment_methods IS
  * Source: https://stripe.com/en-br/pricing/local-payment-methods
  */
 
-// Taxas do Stripe Brasil
+// Constantes existentes (manter)
+export const STRIPE_BOLETO_FEE = 3.49;
+export const MINIMUM_BOLETO_AMOUNT = 5.00;
+export const MAXIMUM_BOLETO_AMOUNT = 49999.99;
+
+// Taxas do Stripe Brasil - NOVAS
 export const STRIPE_FEES = {
   boleto: {
     type: 'fixed' as const,
@@ -169,6 +182,63 @@ export const validateEnabledMethods = (methods: PaymentMethodType[]): boolean =>
 
 ### 5.1 Arquivo: `src/components/Settings/BillingSettings.tsx`
 
+#### ⚠️ IMPORTANTE: Adaptação Necessária
+
+O componente atual (`BillingSettings.tsx`) carrega e salva dados da tabela `profiles`. Para a nova funcionalidade de métodos de pagamento, precisamos:
+
+1. **Carregar `business_profiles`** do professor (não `profiles`)
+2. **Verificar se existe** um `business_profile` antes de exibir a seção
+3. **Salvar `enabled_payment_methods`** em `business_profiles`
+
+#### Lógica de Carregamento
+
+```typescript
+// Carregar business_profile do professor
+const { data: businessProfile } = await supabase
+  .from('business_profiles')
+  .select('id, enabled_payment_methods')
+  .eq('user_id', user.id)
+  .maybeSingle();
+
+// Se não existe business_profile, mostrar alerta
+if (!businessProfile) {
+  return (
+    <Alert variant="warning">
+      <AlertTriangle className="h-4 w-4" />
+      <AlertDescription>
+        Você precisa configurar um perfil de negócios antes de gerenciar métodos de pagamento.
+        <Link to="/painel-negocios">Configurar agora</Link>
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+// Usar métodos habilitados ou default
+const enabledMethods = businessProfile.enabled_payment_methods || ['boleto', 'pix', 'card'];
+```
+
+#### Lógica de Salvamento
+
+```typescript
+const onSavePaymentMethods = async (methods: PaymentMethodType[]) => {
+  if (!validateEnabledMethods(methods)) {
+    toast.error(t('billing.paymentMethods.atLeastOne'));
+    return;
+  }
+
+  const { error } = await supabase
+    .from('business_profiles')
+    .update({ enabled_payment_methods: methods })
+    .eq('user_id', user.id);
+
+  if (error) {
+    toast.error(t('common.errorSaving'));
+  } else {
+    toast.success(t('common.saved'));
+  }
+};
+```
+
 #### Layout Proposto
 
 ```
@@ -221,18 +291,61 @@ interface PaymentMethodToggleProps {
 
 ### 6.1 Arquivo: `src/components/PaymentOptionsCard.tsx`
 
-#### Alterações Necessárias
+#### ⚠️ IMPORTANTE: Atualização da Interface Invoice
 
-1. **Buscar métodos habilitados**: Consultar `business_profiles.enabled_payment_methods` via invoice
-2. **Filtrar métodos**: Mostrar apenas os habilitados pelo professor
-3. **Ordenar alfabeticamente**: Boleto → Cartão → PIX
-4. **Lógica de método único**: Se apenas 1 método, redirecionar direto ao Stripe
+A interface `Invoice` atual (linhas 27-39) **NÃO inclui** `business_profile`. Precisamos atualizar:
 
-#### Pseudo-código da Lógica
+```typescript
+// Interface ATUAL (incompleta)
+interface Invoice {
+  id: string;
+  amount: string;
+  due_date: string;
+  description: string;
+  status: string;
+  boleto_url: string | null;
+  barcode: string | null;
+  linha_digitavel: string | null;
+  pix_qr_code: string | null;
+  pix_copy_paste: string | null;
+  stripe_hosted_invoice_url: string | null;
+}
+
+// Interface ATUALIZADA (nova)
+interface Invoice {
+  id: string;
+  amount: string;
+  due_date: string;
+  description: string;
+  status: string;
+  boleto_url: string | null;
+  barcode: string | null;
+  linha_digitavel: string | null;
+  pix_qr_code: string | null;
+  pix_copy_paste: string | null;
+  stripe_hosted_invoice_url: string | null;
+  // NOVO: Informações do business_profile
+  business_profile?: {
+    id: string;
+    business_name: string;
+    enabled_payment_methods: string[] | null;
+  } | null;
+}
+```
+
+### 6.2 Alterações Necessárias
+
+1. **Atualizar interface Invoice**: Incluir `business_profile`
+2. **Buscar métodos habilitados**: Consultar `business_profiles.enabled_payment_methods` via invoice
+3. **Filtrar métodos**: Mostrar apenas os habilitados pelo professor
+4. **Ordenar alfabeticamente**: Boleto → Cartão → PIX
+5. **Lógica de método único**: Se apenas 1 método, redirecionar direto ao Stripe
+
+### 6.3 Pseudo-código da Lógica
 
 ```typescript
 const enabledMethods = invoice.business_profile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
-const sortedMethods = sortPaymentMethods(enabledMethods);
+const sortedMethods = sortPaymentMethods(enabledMethods as PaymentMethodType[]);
 
 // Se apenas 1 método habilitado, redirecionar direto
 if (sortedMethods.length === 1) {
@@ -241,7 +354,9 @@ if (sortedMethods.length === 1) {
   // Mostrar botão único
   return (
     <Button onClick={() => createPaymentIntent(onlyMethod)}>
-      Pagar com {PAYMENT_METHOD_CONFIG[onlyMethod].name}
+      {t('billing.paymentMethods.singleMethodButton', { 
+        method: t(`billing.paymentMethods.methods.${onlyMethod}.name`) 
+      })}
     </Button>
   );
 }
@@ -260,7 +375,7 @@ return (
 );
 ```
 
-#### Layout - Múltiplos Métodos
+### 6.4 Layout - Múltiplos Métodos
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -285,7 +400,7 @@ return (
 └──────────────────────────────────────────────────────────────┘
 ```
 
-#### Layout - Método Único
+### 6.5 Layout - Método Único
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -300,9 +415,58 @@ return (
 
 ---
 
-## 7. Backend - Validação e Segurança
+## 7. Query de Invoices - Financeiro.tsx
 
-### 7.1 Arquivo: `supabase/functions/create-payment-intent-connect/index.ts`
+### 7.1 Arquivo: `src/pages/Financeiro.tsx`
+
+#### ⚠️ PROBLEMA IDENTIFICADO
+
+A query atual de invoices **NÃO busca `business_profiles`**, apenas faz um JOIN vazio ou não inclui o relacionamento. Precisamos garantir que a query inclua `enabled_payment_methods`.
+
+#### Query Atual (Exemplo - linha ~200)
+
+```typescript
+const { data: invoicesData } = await supabase
+  .from('invoices')
+  .select(`
+    *,
+    student:profiles!invoices_student_id_fkey(name, email),
+    monthly_subscription:monthly_subscriptions(name)
+  `)
+  .eq('teacher_id', effectiveTeacherId);
+```
+
+#### Query Corrigida
+
+```typescript
+const { data: invoicesData } = await supabase
+  .from('invoices')
+  .select(`
+    *,
+    student:profiles!invoices_student_id_fkey(name, email),
+    monthly_subscription:monthly_subscriptions(name),
+    business_profile:business_profiles!invoices_business_profile_id_fkey(
+      id,
+      business_name,
+      enabled_payment_methods
+    )
+  `)
+  .eq('teacher_id', effectiveTeacherId);
+```
+
+### 7.2 Verificar Outros Locais de Query de Invoice
+
+Procurar por todas as queries de `invoices` no projeto e garantir que incluam `business_profile`:
+
+- `src/pages/Financeiro.tsx`
+- `src/pages/StudentDashboard.tsx` (se aplicável)
+- Qualquer outro componente que exiba faturas para alunos
+
+---
+
+## 8. Backend - Validação e Segurança
+
+### 8.1 Arquivo: `supabase/functions/create-payment-intent-connect/index.ts`
 
 #### Validação de Método Permitido
 
@@ -341,11 +505,105 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
 )
 ```
 
+### 8.2 Verificação de PIX Capability
+
+#### ⚠️ PROBLEMA IDENTIFICADO
+
+Antes de exibir PIX como opção ao aluno, devemos verificar se a conta Stripe do professor tem a capability `pix_payments` ativa. Caso contrário, o aluno verá erro ao tentar usar PIX.
+
+#### Solução Proposta
+
+1. **Verificação no Backend**: Adicionar check de capabilities no `create-payment-intent-connect`
+2. **Endpoint de Verificação**: Criar endpoint para verificar capabilities disponíveis
+
+```typescript
+// Em create-payment-intent-connect/index.ts
+// Antes de processar PIX, verificar capability
+
+if (payment_method === 'pix') {
+  const account = await stripe.accounts.retrieve(stripeConnectId);
+  const pixCapability = account.capabilities?.pix_payments;
+  
+  if (pixCapability !== 'active') {
+    return new Response(
+      JSON.stringify({ 
+        error: 'PIX não está habilitado para esta conta. Entre em contato com o professor.',
+        errorCode: 'PIX_NOT_ENABLED'
+      }),
+      { status: 400, headers: corsHeaders }
+    );
+  }
+}
+```
+
+#### Filtro Proativo no Frontend (Opcional - Fase 2)
+
+Para evitar exibir opções que falharão, podemos criar um endpoint que retorna os métodos realmente disponíveis (combinando `enabled_payment_methods` com capabilities do Stripe):
+
+```typescript
+// Possível endpoint futuro: check-available-payment-methods
+// Retorna apenas métodos que: 1) estão habilitados pelo professor E 2) estão ativos no Stripe
+
+// Por ora, tratamos erro no backend e exibimos mensagem amigável ao aluno
+```
+
 ---
 
-## 8. Internacionalização (i18n)
+## 9. Tratamento de Múltiplos Business Profiles
 
-### 8.1 Português: `src/i18n/locales/pt/billing.json`
+### 9.1 Contexto
+
+Um professor pode ter **múltiplos** `business_profiles` (múltiplas contas Stripe Connect). Cada invoice está associada a um `business_profile_id` específico.
+
+### 9.2 Considerações
+
+- A query de invoice já traz o `business_profile_id` correto via FK
+- O JOIN com `business_profiles` deve usar esse ID específico
+- Não precisamos buscar "todos os business_profiles do professor"
+
+### 9.3 Verificação
+
+Garantir que a query use o relacionamento correto:
+
+```typescript
+// ✅ Correto - usa FK da invoice
+business_profile:business_profiles!invoices_business_profile_id_fkey(
+  id, business_name, enabled_payment_methods
+)
+
+// ❌ Errado - buscaria todos os profiles do usuário
+// NÃO fazer isso
+```
+
+---
+
+## 10. Notificação de Invoice (send-invoice-notification)
+
+### 10.1 Arquivo: `supabase/functions/send-invoice-notification/index.ts`
+
+#### Consideração
+
+Ao enviar email de fatura, como apresentar as opções de pagamento?
+
+#### Abordagens Possíveis
+
+1. **Link Genérico**: Email contém link para página de pagamento onde aluno vê opções habilitadas
+   - ✅ Mais simples
+   - ✅ Sempre mostra opções atualizadas
+   
+2. **Listar Métodos no Email**: Incluir texto com métodos disponíveis
+   - ❌ Mais complexo
+   - ❌ Pode ficar desatualizado se professor mudar configuração
+
+#### Decisão
+
+Manter **Link Genérico** (abordagem atual). O email direciona para a página de pagamento que exibe dinamicamente as opções habilitadas.
+
+---
+
+## 11. Internacionalização (i18n)
+
+### 11.1 Português: `src/i18n/locales/pt/billing.json`
 
 ```json
 {
@@ -356,26 +614,36 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
     "feeLabel": "Taxa",
     "exampleLabel": "Exemplo",
     "exampleFormat": "Em {{amount}} = {{fee}} de taxa",
+    "noBusinessProfile": "Você precisa configurar um perfil de negócios antes de gerenciar métodos de pagamento.",
+    "configureNow": "Configurar agora",
     "methods": {
       "boleto": {
         "name": "Boleto Bancário",
-        "fee": "R$ 3,49 por transação"
+        "fee": "R$ 3,49 por transação",
+        "action": "Gerar Boleto"
       },
       "card": {
         "name": "Cartão de Crédito",
-        "fee": "3,99% + R$ 0,39"
+        "fee": "3,99% + R$ 0,39",
+        "action": "Pagar"
       },
       "pix": {
         "name": "PIX",
-        "fee": "1,19%"
+        "fee": "1,19%",
+        "action": "Gerar PIX"
       }
     },
-    "singleMethodButton": "Pagar com {{method}}"
+    "singleMethodButton": "Pagar com {{method}}",
+    "chooseMethod": "Escolha a forma de pagamento",
+    "errors": {
+      "pixNotEnabled": "PIX não está habilitado para esta conta. Entre em contato com o professor.",
+      "methodNotAllowed": "Este método de pagamento não está disponível."
+    }
   }
 }
 ```
 
-### 8.2 Inglês: `src/i18n/locales/en/billing.json`
+### 11.2 Inglês: `src/i18n/locales/en/billing.json`
 
 ```json
 {
@@ -386,42 +654,53 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
     "feeLabel": "Fee",
     "exampleLabel": "Example",
     "exampleFormat": "On {{amount}} = {{fee}} fee",
+    "noBusinessProfile": "You need to set up a business profile before managing payment methods.",
+    "configureNow": "Configure now",
     "methods": {
       "boleto": {
         "name": "Boleto Bancário",
-        "fee": "R$ 3.49 per transaction"
+        "fee": "R$ 3.49 per transaction",
+        "action": "Generate Boleto"
       },
       "card": {
         "name": "Credit Card",
-        "fee": "3.99% + R$ 0.39"
+        "fee": "3.99% + R$ 0.39",
+        "action": "Pay"
       },
       "pix": {
         "name": "PIX",
-        "fee": "1.19%"
+        "fee": "1.19%",
+        "action": "Generate PIX"
       }
     },
-    "singleMethodButton": "Pay with {{method}}"
+    "singleMethodButton": "Pay with {{method}}",
+    "chooseMethod": "Choose payment method",
+    "errors": {
+      "pixNotEnabled": "PIX is not enabled for this account. Please contact the teacher.",
+      "methodNotAllowed": "This payment method is not available."
+    }
   }
 }
 ```
 
 ---
 
-## 9. Arquivos a Modificar/Criar
+## 12. Arquivos a Modificar/Criar
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
 | Migração SQL | **CRIAR** | Adicionar coluna `enabled_payment_methods` |
 | `src/utils/stripe-fees.ts` | **MODIFICAR** | Adicionar taxas de todos métodos + funções auxiliares |
-| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Adicionar seção de métodos de pagamento |
-| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Filtrar métodos + lógica de redirecionamento direto |
-| `supabase/functions/create-payment-intent-connect/index.ts` | **MODIFICAR** | Validar método permitido + incluir campo na query |
+| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Adicionar seção de métodos de pagamento (buscar de `business_profiles`) |
+| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Atualizar interface Invoice + filtrar métodos + lógica de redirecionamento |
+| `src/pages/Financeiro.tsx` | **MODIFICAR** | Atualizar query de invoices para incluir `business_profile.enabled_payment_methods` |
+| `supabase/functions/create-payment-intent-connect/index.ts` | **MODIFICAR** | Validar método permitido + verificar PIX capability + incluir campo na query |
 | `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Adicionar textos em português |
 | `src/i18n/locales/en/billing.json` | **MODIFICAR** | Adicionar textos em inglês |
 
 ---
 
-## 10. Fluxo Completo
+## 13. Fluxo Completo
 
 ```
 ┌─────────────────────┐
@@ -431,7 +710,9 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
           │
           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ BillingSettings: Toggles para Boleto/Cartão/PIX                 │
+│ BillingSettings: Carrega de business_profiles                   │
+│ - Verifica se existe business_profile                           │
+│ - Toggles para Boleto/Cartão/PIX                                │
 │ - Mostra taxa de cada método                                    │
 │ - Mostra exemplo prático (em R$ 200 = X de taxa)                │
 │ - Salva em business_profiles.enabled_payment_methods            │
@@ -445,7 +726,14 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
           │
           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ PaymentOptionsCard: Mostra apenas métodos habilitados           │
+│ Financeiro.tsx: Query inclui business_profile.enabled_methods   │
+└─────────────────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ PaymentOptionsCard: Interface Invoice inclui business_profile   │
+│ - Filtra métodos habilitados                                    │
+│ - Ordena alfabeticamente                                        │
 │                                                                 │
 │   ┌─── Apenas 1 método? ───┐                                    │
 │   │                        │                                    │
@@ -457,7 +745,10 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
           │
           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ create-payment-intent-connect: Valida método + processa         │
+│ create-payment-intent-connect:                                  │
+│ - Valida método está em enabled_payment_methods                 │
+│ - Verifica PIX capability se método = pix                       │
+│ - Processa pagamento                                            │
 └─────────────────────────────────────────────────────────────────┘
           │
           ▼
@@ -469,89 +760,106 @@ business_profile:business_profiles!invoices_business_profile_id_fkey(
 
 ---
 
-## 11. Considerações Técnicas
+## 14. Considerações Técnicas
 
-### 11.1 PIX no Stripe Connect
+### 14.1 PIX no Stripe Connect
 
 O PIX já está implementado no backend (`create-payment-intent-connect/index.ts`, linhas 343-423), mas pode exigir que o professor habilite o método no Dashboard do Stripe da conta conectada.
 
-**Ação necessária**: Documentar para o professor como habilitar PIX no Stripe Dashboard.
+**Ação necessária**: 
+1. Verificar capability `pix_payments` antes de processar
+2. Documentar para o professor como habilitar PIX no Stripe Dashboard
 
-### 11.2 Compatibilidade Retroativa
+### 14.2 Compatibilidade Retroativa
 
 Professores existentes sem a configuração terão todos os métodos habilitados por default (array padrão da coluna).
 
-### 11.3 Segurança
+### 14.3 Segurança
 
 - **Backend**: Validação impede que alunos tentem usar métodos não habilitados
 - **Frontend**: Filtragem de métodos evita exibição de opções inválidas
+- **Stripe**: Verificação de capabilities evita erros em runtime
 
-### 11.4 Performance
+### 14.4 Performance
 
 - Query de invoice já faz JOIN com `business_profiles`
 - Adição de um campo array não impacta performance significativamente
+- Verificação de capabilities pode ser cacheada (considerar para fase 2)
 
 ---
 
-## 12. Checklist de Implementação
+## 15. Checklist de Implementação
 
 ### Fase 1: Database
-- [ ] Criar migração SQL
+- [ ] Criar migração SQL para `enabled_payment_methods`
 - [ ] Testar migração em ambiente de desenvolvimento
 - [ ] Aplicar migração em produção
+- [ ] Regenerar tipos Supabase
 
 ### Fase 2: Backend
-- [ ] Atualizar `src/utils/stripe-fees.ts`
-- [ ] Modificar query de invoice em `create-payment-intent-connect`
+- [ ] Atualizar `src/utils/stripe-fees.ts` com novas constantes e funções
+- [ ] Modificar query de invoice em `create-payment-intent-connect` para incluir `enabled_payment_methods`
 - [ ] Adicionar validação de método permitido
+- [ ] Adicionar verificação de PIX capability
 - [ ] Testar edge function
 
 ### Fase 3: Frontend - Professor
-- [ ] Adicionar i18n para português
-- [ ] Adicionar i18n para inglês
-- [ ] Implementar seção em `BillingSettings.tsx`
+- [ ] Adicionar i18n para português (`billing.json`)
+- [ ] Adicionar i18n para inglês (`billing.json`)
+- [ ] Modificar `BillingSettings.tsx` para carregar de `business_profiles`
+- [ ] Implementar seção de toggles de métodos de pagamento
+- [ ] Implementar validação (mínimo 1 método)
 - [ ] Testar configuração de métodos
+- [ ] Testar cenário sem business_profile
 
 ### Fase 4: Frontend - Aluno
-- [ ] Modificar `PaymentOptionsCard.tsx`
-- [ ] Implementar lógica de método único
+- [ ] Atualizar interface `Invoice` em `PaymentOptionsCard.tsx`
+- [ ] Modificar query em `Financeiro.tsx` para incluir `business_profile`
+- [ ] Implementar filtro e ordenação de métodos
+- [ ] Implementar lógica de método único (redirecionamento direto)
+- [ ] Adicionar tratamento de erro para PIX não habilitado
 - [ ] Testar fluxo de pagamento com diferentes configurações
 
 ### Fase 5: Testes e Validação
 - [ ] Testar professor sem business_profile
 - [ ] Testar todos os métodos habilitados
-- [ ] Testar apenas 1 método habilitado
-- [ ] Testar validação de backend
+- [ ] Testar apenas 1 método habilitado (cada método)
+- [ ] Testar validação de backend (método não permitido)
+- [ ] Testar PIX capability não ativa
 - [ ] Teste de regressão geral
+- [ ] Testar múltiplos business_profiles
 
 ---
 
-## 13. Estimativa de Tempo
+## 16. Estimativa de Tempo
 
 | Tarefa | Estimativa |
 |--------|------------|
-| Migração SQL | 15 min |
+| Migração SQL + regenerar tipos | 20 min |
 | Atualizar stripe-fees.ts | 30 min |
-| BillingSettings + Toggles | 1.5 horas |
-| PaymentOptionsCard | 1 hora |
-| Backend validation | 30 min |
+| BillingSettings (carregar de business_profiles + toggles) | 2 horas |
+| PaymentOptionsCard (interface + lógica) | 1.5 horas |
+| Financeiro.tsx (query) | 30 min |
+| Backend validation + PIX capability | 1 hora |
 | i18n | 30 min |
-| Testes e ajustes | 1 hora |
-| **Total** | **~5 horas** |
+| Testes e ajustes | 1.5 horas |
+| **Total** | **~8 horas** |
 
 ---
 
-## 14. Riscos e Mitigações
+## 17. Riscos e Mitigações
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|---------------|---------|-----------|
-| PIX não habilitado na conta Stripe do professor | Alta | Médio | Verificar status da capability antes de exibir opção |
+| PIX não habilitado na conta Stripe do professor | Alta | Médio | Verificar capability antes de processar + mensagem clara |
 | Professor desabilita todos os métodos | Baixa | Alto | Validação frontend + backend impede |
 | Aluno tenta burlar validação frontend | Baixa | Médio | Validação backend é obrigatória |
+| Query de invoice não inclui business_profile | Média | Alto | Verificar todas as queries antes de implementar |
+| Interface Invoice desatualizada | Média | Alto | Atualizar interface antes de usar dados |
 
 ---
 
-## 15. Próximos Passos
+## 18. Próximos Passos
 
 1. **Aprovação do plano**: Revisar e aprovar este documento
 2. **Criação de tasks**: Criar issues/tasks para cada fase
@@ -566,3 +874,4 @@ Professores existentes sem a configuração terão todos os métodos habilitados
 | Versão | Data | Autor | Descrição |
 |--------|------|-------|-----------|
 | 1.0 | 2026-01-14 | Lovable AI | Versão inicial do plano |
+| 1.1 | 2026-01-14 | Lovable AI | Adicionadas lacunas identificadas: query Financeiro.tsx, interface Invoice, BillingSettings com business_profiles, verificação PIX capability, múltiplos business_profiles, i18n aluno, estimativa atualizada |

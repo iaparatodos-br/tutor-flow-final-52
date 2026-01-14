@@ -1431,6 +1431,7 @@ export type Database = {
           created_at: string | null
           current_plan_id: string | null
           default_billing_day: number | null
+          default_payment_method: string | null
           email: string
           id: string
           name: string
@@ -1455,6 +1456,7 @@ export type Database = {
           created_at?: string | null
           current_plan_id?: string | null
           default_billing_day?: number | null
+          default_payment_method?: string | null
           email: string
           id?: string
           name: string
@@ -1479,6 +1481,7 @@ export type Database = {
           created_at?: string | null
           current_plan_id?: string | null
           default_billing_day?: number | null
+          default_payment_method?: string | null
           email?: string
           id?: string
           name?: string

@@ -28,5 +28,57 @@
     "loadError": "Erro ao carregar configurações",
     "saveError": "Erro ao salvar configurações",
     "tryAgain": "Tente novamente mais tarde"
+  },
+  "paymentMethods": {
+    "title": "Métodos de Pagamento",
+    "description": "Configure quais formas de pagamento seus alunos podem usar para pagar faturas.",
+    "boleto": {
+      "label": "Boleto Bancário",
+      "fee": "R$ 3,49 fixo",
+      "note": "Gerado automaticamente nas faturas"
+    },
+    "pix": {
+      "label": "PIX",
+      "fee": "1,19%"
+    },
+    "card": {
+      "label": "Cartão de Crédito",
+      "fee": "3,99% + R$ 0,39"
+    },
+    "minimumRequired": "Pelo menos um método deve estar habilitado",
+    "saveSuccess": "Configurações de pagamento salvas com sucesso",
+    "noBusinessProfile": "Configure um perfil de negócio para gerenciar métodos de pagamento",
+    "minimum": {
+      "boleto": "Valor mínimo para Boleto: R$ 5,00",
+      "pix": "Valor mínimo para PIX: R$ 1,00",
+      "card": "Valor mínimo para Cartão: R$ 0,50"
+    },
+    "existingPayment": {
+      "pixReady": "PIX gerado",
+      "boletoReady": "Boleto gerado",
+      "expiresIn": "Expira em {{time}}",
+      "downloadBoleto": "Baixar Boleto PDF",
+      "copyPixCode": "Copiar código PIX",
+      "copyBarcode": "Copiar linha digitável",
+      "copied": "Copiado!",
+      "changeMethod": "Alterar Forma de Pagamento"
+    },
+    "selectMethod": "Escolha a forma de pagamento:",
+    "changeConfirmation": {
+      "title": "Alterar Forma de Pagamento?",
+      "descriptionPix": "Você já possui um PIX gerado que ainda está válido. Ao alterar, o pagamento anterior será cancelado.",
+      "descriptionBoleto": "Você já possui um Boleto gerado que ainda está válido. Ao alterar, o pagamento anterior será cancelado.",
+      "keep": "Manter Atual",
+      "confirm": "Confirmar Alteração"
+    },
+    "errors": {
+      "methodNotAvailable": "Seu professor não possui essa opção de pagamento disponível",
+      "changeMethodFailed": "Erro ao alterar método de pagamento",
+      "createPaymentFailed": "Erro ao gerar pagamento"
+    },
+    "fees": {
+      "title": "Taxas de Pagamento",
+      "description": "Os pagamentos possuem taxas do Stripe que variam por método:"
+    }
   }
 }

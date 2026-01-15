@@ -28,57 +28,5 @@
     "loadError": "Error loading settings",
     "saveError": "Error saving settings",
     "tryAgain": "Please try again later"
-  },
-  "paymentMethods": {
-    "title": "Payment Methods",
-    "description": "Configure which payment methods your students can use to pay invoices.",
-    "boleto": {
-      "label": "Boleto Bancário",
-      "fee": "R$ 3.49 fixed",
-      "note": "Automatically generated on invoices"
-    },
-    "pix": {
-      "label": "PIX",
-      "fee": "1.19%"
-    },
-    "card": {
-      "label": "Credit Card",
-      "fee": "3.99% + R$ 0.39"
-    },
-    "minimumRequired": "At least one method must be enabled",
-    "saveSuccess": "Payment settings saved successfully",
-    "noBusinessProfile": "Configure a business profile to manage payment methods",
-    "minimum": {
-      "boleto": "Minimum for Boleto: R$ 5.00",
-      "pix": "Minimum for PIX: R$ 1.00",
-      "card": "Minimum for Card: R$ 0.50"
-    },
-    "existingPayment": {
-      "pixReady": "PIX generated",
-      "boletoReady": "Boleto generated",
-      "expiresIn": "Expires in {{time}}",
-      "downloadBoleto": "Download Boleto PDF",
-      "copyPixCode": "Copy PIX code",
-      "copyBarcode": "Copy barcode",
-      "copied": "Copied!",
-      "changeMethod": "Change Payment Method"
-    },
-    "selectMethod": "Choose payment method:",
-    "changeConfirmation": {
-      "title": "Change Payment Method?",
-      "descriptionPix": "You already have a valid PIX generated. Changing will cancel the previous payment.",
-      "descriptionBoleto": "You already have a valid Boleto generated. Changing will cancel the previous payment.",
-      "keep": "Keep Current",
-      "confirm": "Confirm Change"
-    },
-    "errors": {
-      "methodNotAvailable": "Your teacher does not have this payment option available",
-      "changeMethodFailed": "Error changing payment method",
-      "createPaymentFailed": "Error generating payment"
-    },
-    "fees": {
-      "title": "Payment Fees",
-      "description": "Payments have Stripe fees that vary by method:"
-    }
   }
 }

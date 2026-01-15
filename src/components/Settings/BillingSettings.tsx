@@ -8,48 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { DollarSign, Calendar, Loader2, CreditCard, FileText, Zap, AlertCircle, Info } from "lucide-react";
+import { DollarSign, Calendar, Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { PaymentMethodType, DEFAULT_PAYMENT_METHODS, getFeeDescription, formatFeeExample } from "@/utils/stripe-fees";
-
-interface PaymentMethodConfig {
-  id: PaymentMethodType;
-  label: string;
-  fee: string;
-  feeExample: string;
-  icon: typeof FileText;
-  note?: string;
-}
-
-const PAYMENT_METHODS_CONFIG: PaymentMethodConfig[] = [
-  { 
-    id: 'boleto', 
-    label: 'Boleto Bancário', 
-    fee: getFeeDescription('boleto'),
-    feeExample: formatFeeExample('boleto', 200),
-    icon: FileText,
-    note: 'Gerado automaticamente nas faturas'
-  },
-  { 
-    id: 'pix', 
-    label: 'PIX', 
-    fee: getFeeDescription('pix'),
-    feeExample: formatFeeExample('pix', 200),
-    icon: Zap
-  },
-  { 
-    id: 'card', 
-    label: 'Cartão de Crédito', 
-    fee: getFeeDescription('card'),
-    feeExample: formatFeeExample('card', 200),
-    icon: CreditCard
-  }
-];
 
 export function BillingSettings() {
   const { profile } = useProfile();
@@ -57,9 +18,6 @@ export function BillingSettings() {
   const { t } = useTranslation('billing');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [businessProfileId, setBusinessProfileId] = useState<string | null>(null);
-  const [enabledMethods, setEnabledMethods] = useState<PaymentMethodType[]>(DEFAULT_PAYMENT_METHODS);
-  const [savingMethods, setSavingMethods] = useState(false);
 
   const billingSchema = z.object({
     payment_due_days: z.number().min(1, t('validation.minDays')).max(90, t('validation.maxDays')),
@@ -84,36 +42,18 @@ export function BillingSettings() {
 
   const loadBillingSettings = async () => {
     try {
-      // Load profile settings
-      const { data: profileData, error: profileError } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('payment_due_days, default_billing_day')
         .eq('id', profile!.id)
         .single();
 
-      if (profileError) throw profileError;
+      if (error) throw error;
 
       form.reset({
-        payment_due_days: (profileData as any)?.payment_due_days || 15,
-        default_billing_day: (profileData as any)?.default_billing_day || null,
+        payment_due_days: (data as any)?.payment_due_days || 15,
+        default_billing_day: (data as any)?.default_billing_day || null,
       });
-
-      // Load business profile for payment methods
-      const { data: businessProfile, error: businessError } = await supabase
-        .from('business_profiles')
-        .select('id, enabled_payment_methods')
-        .eq('user_id', profile!.id)
-        .maybeSingle();
-
-      if (!businessError && businessProfile) {
-        setBusinessProfileId(businessProfile.id);
-        const methods = (businessProfile as any).enabled_payment_methods as string[] | null;
-        if (methods && Array.isArray(methods)) {
-          setEnabledMethods(methods as PaymentMethodType[]);
-        } else {
-          setEnabledMethods(DEFAULT_PAYMENT_METHODS);
-        }
-      }
     } catch (error) {
       console.error('Erro ao carregar configurações de cobrança:', error);
       toast({
@@ -157,54 +97,6 @@ export function BillingSettings() {
     }
   };
 
-  const handleMethodToggle = (method: PaymentMethodType, enabled: boolean) => {
-    let newMethods: PaymentMethodType[];
-    
-    if (enabled) {
-      newMethods = [...enabledMethods, method];
-    } else {
-      newMethods = enabledMethods.filter(m => m !== method);
-    }
-    
-    // Ensure at least one method is always enabled
-    if (newMethods.length === 0) {
-      toast({
-        title: t('paymentMethods.minimumRequired'),
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    setEnabledMethods(newMethods);
-  };
-
-  const savePaymentMethods = async () => {
-    if (!businessProfileId) return;
-    
-    setSavingMethods(true);
-    try {
-      const { error } = await supabase
-        .from('business_profiles')
-        .update({ enabled_payment_methods: enabledMethods })
-        .eq('id', businessProfileId);
-
-      if (error) throw error;
-
-      toast({
-        title: t('paymentMethods.saveSuccess'),
-      });
-    } catch (error) {
-      console.error('Erro ao salvar métodos de pagamento:', error);
-      toast({
-        title: t('messages.saveError'),
-        description: t('messages.tryAgain'),
-        variant: "destructive",
-      });
-    } finally {
-      setSavingMethods(false);
-    }
-  };
-
   if (loading) {
     return (
       <Card>
@@ -224,169 +116,80 @@ export function BillingSettings() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Billing Settings Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            {t('title')}
-          </CardTitle>
-          <CardDescription>
-            {t('subtitle')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="payment_due_days"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('fields.paymentDueDays.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="90"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('fields.paymentDueDays.description')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <DollarSign className="h-5 w-5" />
+          {t('title')}
+        </CardTitle>
+        <CardDescription>
+          {t('subtitle')}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <FormField
+              control={form.control}
+              name="payment_due_days"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('fields.paymentDueDays.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="90"
+                      {...field}
+                      onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('fields.paymentDueDays.description')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <FormField
-                control={form.control}
-                name="default_billing_day"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      {t('fields.defaultBillingDay.label')}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="28"
-                        placeholder={t('fields.defaultBillingDay.placeholder')}
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          field.onChange(value ? parseInt(value) : null);
-                        }}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('fields.defaultBillingDay.description')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <FormField
+              control={form.control}
+              name="default_billing_day"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {t('fields.defaultBillingDay.label')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="28"
+                      placeholder={t('fields.defaultBillingDay.placeholder')}
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value ? parseInt(value) : null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('fields.defaultBillingDay.description')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {saving ? t('actions.saving') : t('actions.save')}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-
-      {/* Payment Methods Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            {t('paymentMethods.title')}
-          </CardTitle>
-          <CardDescription>
-            {t('paymentMethods.description')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!businessProfileId ? (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                {t('paymentMethods.noBusinessProfile')}
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <div className="space-y-4">
-                {PAYMENT_METHODS_CONFIG.map((method) => {
-                  const Icon = method.icon;
-                  const isEnabled = enabledMethods.includes(method.id);
-                  
-                  return (
-                    <div 
-                      key={method.id}
-                      className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
-                        isEnabled ? 'bg-primary/5 border-primary/20' : 'bg-muted/30'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-full ${isEnabled ? 'bg-primary/10' : 'bg-muted'}`}>
-                          <Icon className={`h-5 w-5 ${isEnabled ? 'text-primary' : 'text-muted-foreground'}`} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{method.label}</span>
-                            <Badge variant="outline" className="text-xs">
-                              {method.fee}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {method.feeExample}
-                          </p>
-                          {method.note && isEnabled && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <Zap className="h-3 w-3 text-amber-500" />
-                              <span className="text-xs text-amber-600">{method.note}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <Switch
-                        checked={isEnabled}
-                        onCheckedChange={(checked) => handleMethodToggle(method.id, checked)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-
-              <Separator />
-
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  {t('paymentMethods.minimumRequired')}
-                </AlertDescription>
-              </Alert>
-
-              <Button 
-                onClick={savePaymentMethods} 
-                disabled={savingMethods}
-                className="w-full"
-              >
-                {savingMethods && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {savingMethods ? t('actions.saving') : t('actions.save')}
-              </Button>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            <Button type="submit" disabled={saving}>
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {saving ? t('actions.saving') : t('actions.save')}
+            </Button>
+          </form>
+        </Form>
+      </CardContent>
+    </Card>
   );
 }

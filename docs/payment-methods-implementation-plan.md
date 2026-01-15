@@ -1,6 +1,6 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.0  
+> **Versão**: 2.1  
 > **Data**: 2026-01-15  
 > **Status**: Planejamento
 
@@ -25,6 +25,16 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **Invalidação ao desabilitar** | ✅ Se professor desabilita método, boletos/PIX existentes são invalidados |
 | **Expiração de boleto** | Herdar de `payment_due_days` do professor |
 
+### Novas Adições v2.1
+
+| Aspecto | Decisão |
+|---------|---------|
+| **Validação de mínimos por método** | ✅ Frontend e backend validam: Boleto ≥ R$5, PIX ≥ R$1, Card ≥ R$0.50 |
+| **PIX capability check** | ✅ Verificar em `create-payment-intent-connect` antes de processar PIX |
+| **Tratamento de boleto ativo no Stripe** | ✅ Usar try/catch no `change-payment-method` (boleto PI não pode ser cancelado) |
+| **config.toml para nova função** | ✅ Adicionar `[functions.change-payment-method]` com `verify_jwt = false` |
+| **Limpeza de expiração no webhook** | ✅ Limpar `pix_expires_at`/`boleto_expires_at` quando pagamento sucede |
+
 ---
 
 ## 2. Arquitetura Híbrida v2.0
@@ -40,6 +50,8 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 | Pagamento PIX/Card **bem-sucedido** | Invoice marcada como paga, boleto antigo invalidado |
 | Professor **desabilita Boleto** após fatura criada | Boleto existente é **invalidado** - aluno não pode usar |
 | **PIX capability** não ativa no Stripe | Erro amigável: "Seu professor não possui essa opção de pagamento disponível" |
+| **Valor abaixo do mínimo** para um método | Método não exibido (frontend) + erro 400 (backend) |
+| **Boleto PI ativo no Stripe** | `change-payment-method` trata erro graciosamente (não falha) |
 
 ### Fluxo Visual Resumido
 
@@ -54,7 +66,7 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 │ FATURA CRIADA (create-invoice / automated-billing)             │
 │                                                                │
 │   Boleto habilitado?  ──┬─── SIM ───▶ Gerar boleto automático  │
-│                         │            (salvar boleto_expires_at)│
+│   + valor >= R$5?       │            (salvar boleto_expires_at)│
 │                         │                                      │
 │                         └─── NÃO ───▶ Não gerar nada           │
 │                                       (aluno escolhe depois)   │
@@ -72,9 +84,10 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 │ PaymentOptionsCard analisa invoice:                            │
 │                                                                │
 │   1. Verifica enabled_payment_methods (invalida se desabilitado)│
-│   2. hasValidBoleto()?  ─── SIM ───▶ Exibe boleto + "Alterar"  │
-│   3. hasValidPix()?     ─── SIM ───▶ Exibe PIX + "Alterar"     │
-│   4. Senão              ─────────▶ Exibe opções habilitadas    │
+│   2. Filtra métodos por valor mínimo (getAvailableMethodsForAmount)│
+│   3. hasValidBoleto()?  ─── SIM ───▶ Exibe boleto + "Alterar"  │
+│   4. hasValidPix()?     ─── SIM ───▶ Exibe PIX + "Alterar"     │
+│   5. Senão              ─────────▶ Exibe opções habilitadas    │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -82,7 +95,8 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 │ Aluno clica "Alterar Método":                                  │
 │                                                                │
 │ 1. Modal de confirmação                                        │
-│ 2. Chama change-payment-method → Cancela PI no Stripe          │
+│ 2. Chama change-payment-method → Tenta cancelar PI no Stripe   │
+│    (se falhar por boleto ativo, continua mesmo assim)          │
 │ 3. Limpa campos de pagamento da invoice                        │
 │ 4. Exibe opções habilitadas (exceto método atual)              │
 │ 5. Gera novo pagamento via create-payment-intent-connect       │
@@ -93,11 +107,11 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 
 ## 3. Taxas Oficiais do Stripe Brasil
 
-| Método | Taxa | Exemplo (R$ 200,00) |
-|--------|------|---------------------|
-| **Boleto** | R$ 3,49 fixo | R$ 3,49 |
-| **PIX** | 1,19% | R$ 2,38 |
-| **Cartão** | 3,99% + R$ 0,39 | R$ 8,37 |
+| Método | Taxa | Exemplo (R$ 200,00) | **Valor Mínimo** |
+|--------|------|---------------------|------------------|
+| **Boleto** | R$ 3,49 fixo | R$ 3,49 | **R$ 5,00** |
+| **PIX** | 1,19% | R$ 2,38 | **R$ 1,00** |
+| **Cartão** | 3,99% + R$ 0,39 | R$ 8,37 | **R$ 0,50** |
 
 > **Fonte**: [Stripe Brasil - Local Payment Methods](https://stripe.com/en-br/pricing/local-payment-methods)
 
@@ -105,41 +119,33 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 
 ## 4. Alterações no Banco de Dados
 
-### 4.1 Migração SQL
+### 4.1 Status dos Campos (v2.1)
+
+> ⚠️ **IMPORTANTE**: As colunas já existem no banco de dados. Apenas verificar se os índices estão criados.
+
+| Tabela | Campo | Status | Descrição |
+|--------|-------|--------|-----------|
+| `business_profiles` | `enabled_payment_methods` | ✅ EXISTE | `TEXT[] DEFAULT ['boleto', 'pix', 'card']` |
+| `invoices` | `pix_expires_at` | ✅ EXISTE | `TIMESTAMPTZ` |
+| `invoices` | `boleto_expires_at` | ✅ EXISTE | `TIMESTAMPTZ` |
+| `invoices` | `boleto_url` | ✅ EXISTE | `TEXT` |
+| `invoices` | `pix_qr_code` | ✅ EXISTE | `TEXT` |
+| `invoices` | `payment_method` | ✅ EXISTE | `TEXT` |
+
+### 4.2 Migração SQL (Se Índices Não Existirem)
 
 ```sql
--- 1. Adicionar coluna para métodos de pagamento habilitados no business_profiles
-ALTER TABLE business_profiles 
-ADD COLUMN IF NOT EXISTS enabled_payment_methods TEXT[] DEFAULT ARRAY['boleto', 'pix', 'card'];
-
--- Comentário para documentação
-COMMENT ON COLUMN business_profiles.enabled_payment_methods IS 
-  'Array de métodos de pagamento habilitados pelo professor: boleto, pix, card';
-
--- 2. Adicionar campos de expiração em invoices
-ALTER TABLE invoices 
-ADD COLUMN IF NOT EXISTS pix_expires_at TIMESTAMPTZ,
-ADD COLUMN IF NOT EXISTS boleto_expires_at TIMESTAMPTZ;
-
--- 3. Índices para queries de expiração (otimização)
+-- Índices para queries de expiração (otimização)
 CREATE INDEX IF NOT EXISTS idx_invoices_pix_expires 
   ON invoices(pix_expires_at) WHERE pix_expires_at IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_invoices_boleto_expires 
   ON invoices(boleto_expires_at) WHERE boleto_expires_at IS NOT NULL;
 
--- 4. Comentários para documentação
+-- Comentários para documentação
 COMMENT ON COLUMN invoices.pix_expires_at IS 'Data/hora de expiração do código PIX (24 horas após geração)';
 COMMENT ON COLUMN invoices.boleto_expires_at IS 'Data/hora de expiração do boleto (baseado em payment_due_days do professor)';
 ```
-
-### 4.2 Campos Afetados
-
-| Tabela | Campo | Tipo | Default | Descrição |
-|--------|-------|------|---------|-----------|
-| `business_profiles` | `enabled_payment_methods` | `TEXT[]` | `['boleto', 'pix', 'card']` | Métodos habilitados |
-| `invoices` | `pix_expires_at` | `TIMESTAMPTZ` | `null` | Expiração do PIX |
-| `invoices` | `boleto_expires_at` | `TIMESTAMPTZ` | `null` | Expiração do boleto |
 
 ### 4.3 Regeneração de Tipos
 
@@ -158,7 +164,7 @@ npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integr
 ```typescript
 /**
  * Stripe fee calculation utilities for all payment methods
- * Updated: 2026-01-15
+ * Updated: 2026-01-15 (v2.1)
  * Source: https://stripe.com/en-br/pricing/local-payment-methods
  */
 
@@ -167,7 +173,7 @@ export const STRIPE_BOLETO_FEE = 3.49;
 export const MINIMUM_BOLETO_AMOUNT = 5.00;
 export const MAXIMUM_BOLETO_AMOUNT = 49999.99;
 
-// Valores mínimos por método de pagamento
+// Valores mínimos por método de pagamento (v2.1 - CRÍTICO)
 export const MINIMUM_PAYMENT_AMOUNTS = {
   boleto: 5.00,
   pix: 1.00,
@@ -209,7 +215,8 @@ export const PAYMENT_METHOD_CONFIG = {
     icon: 'Receipt',
     fee: STRIPE_FEES.boleto,
     description: 'Boletos são gerados automaticamente nas faturas',
-    descriptionKey: 'billing.paymentMethods.methods.boleto.description'
+    descriptionKey: 'billing.paymentMethods.methods.boleto.description',
+    minimumAmount: MINIMUM_PAYMENT_AMOUNTS.boleto
   },
   card: {
     id: 'card',
@@ -218,7 +225,8 @@ export const PAYMENT_METHOD_CONFIG = {
     icon: 'CreditCard',
     fee: STRIPE_FEES.card,
     description: 'Pagamento processado pelo Stripe Checkout',
-    descriptionKey: 'billing.paymentMethods.methods.card.description'
+    descriptionKey: 'billing.paymentMethods.methods.card.description',
+    minimumAmount: MINIMUM_PAYMENT_AMOUNTS.card
   },
   pix: {
     id: 'pix',
@@ -227,7 +235,8 @@ export const PAYMENT_METHOD_CONFIG = {
     icon: 'QrCode',
     fee: STRIPE_FEES.pix,
     description: 'Código expira em 24 horas',
-    descriptionKey: 'billing.paymentMethods.methods.pix.description'
+    descriptionKey: 'billing.paymentMethods.methods.pix.description',
+    minimumAmount: MINIMUM_PAYMENT_AMOUNTS.pix
   }
 } as const;
 
@@ -280,20 +289,33 @@ export const validateEnabledMethods = (methods: PaymentMethodType[]): boolean =>
 };
 
 /**
- * Verifica se um valor atende ao mínimo para um método
+ * Verifica se um valor atende ao mínimo para um método (v2.1 - CRÍTICO)
  */
 export const meetsMinimumAmount = (method: PaymentMethodType, amount: number): boolean => {
   return amount >= MINIMUM_PAYMENT_AMOUNTS[method];
 };
 
 /**
- * Filtra métodos disponíveis baseado no valor da fatura
+ * Filtra métodos disponíveis baseado no valor da fatura (v2.1 - CRÍTICO)
+ * Usado tanto no frontend (PaymentOptionsCard) quanto no backend (validação)
  */
 export const getAvailableMethodsForAmount = (
   enabledMethods: PaymentMethodType[], 
   amount: number
 ): PaymentMethodType[] => {
   return enabledMethods.filter(method => meetsMinimumAmount(method, amount));
+};
+
+/**
+ * Retorna mensagem de erro para valor abaixo do mínimo (v2.1)
+ */
+export const getMinimumAmountError = (method: PaymentMethodType): string => {
+  const min = MINIMUM_PAYMENT_AMOUNTS[method];
+  const formatted = new Intl.NumberFormat('pt-BR', { 
+    style: 'currency', 
+    currency: 'BRL' 
+  }).format(min);
+  return `Valor mínimo para ${PAYMENT_METHOD_CONFIG[method].name}: ${formatted}`;
 };
 ```
 
@@ -308,6 +330,7 @@ export const getAvailableMethodsForAmount = (
 1. Buscar `enabled_payment_methods` do `business_profile`
 2. Verificar se `boleto` está habilitado antes de gerar automaticamente
 3. Buscar `payment_due_days` do professor para definir expiração
+4. **v2.1**: Verificar valor mínimo de R$ 5,00 antes de gerar
 
 ```typescript
 // Após criar a invoice, verificar se deve gerar boleto automaticamente
@@ -330,9 +353,14 @@ const { data: teacherProfile } = await supabase
 
 const paymentDueDays = teacherProfile?.payment_due_days || 7;
 
-// 3. Gerar boleto automaticamente APENAS se habilitado E valor >= mínimo
+// 3. Constante para valor mínimo (v2.1)
+const MINIMUM_BOLETO_AMOUNT = 5.00;
+
+// 4. Gerar boleto automaticamente APENAS se:
+//    - Método habilitado
+//    - Valor >= mínimo (R$ 5,00)
 if (enabledMethods.includes('boleto') && amount >= MINIMUM_BOLETO_AMOUNT) {
-  logStep('Boleto habilitado - gerando automaticamente');
+  logStep('Boleto habilitado e valor suficiente - gerando automaticamente');
   
   const { data: paymentResult, error: paymentError } = await supabase.functions.invoke(
     'create-payment-intent-connect',
@@ -359,21 +387,25 @@ if (enabledMethods.includes('boleto') && amount >= MINIMUM_BOLETO_AMOUNT) {
     }).eq('id', invoiceId);
   }
 } else {
-  logStep('Boleto não habilitado ou valor abaixo do mínimo - aluno escolherá método');
+  logStep('Boleto não habilitado ou valor abaixo do mínimo - aluno escolherá método', {
+    boletoEnabled: enabledMethods.includes('boleto'),
+    amount,
+    minimumRequired: MINIMUM_BOLETO_AMOUNT
+  });
 }
 ```
 
 ### 6.2 Arquivo: `supabase/functions/automated-billing/index.ts`
 
-**Mesma lógica do `create-invoice`**: Verificar `enabled_payment_methods` antes de gerar boleto automaticamente.
+**Mesma lógica do `create-invoice`**: Verificar `enabled_payment_methods` e valor mínimo antes de gerar boleto automaticamente.
 
 ---
 
-## 7. Backend - Salvar Expiração e Validação
+## 7. Backend - Validação, PIX Capability e Expiração
 
 ### 7.1 Arquivo: `supabase/functions/create-payment-intent-connect/index.ts`
 
-**Alterações necessárias:**
+**Alterações necessárias (v2.1 - CRÍTICO):**
 
 #### 7.1.1 Incluir `enabled_payment_methods` na query de invoice
 
@@ -414,7 +446,37 @@ if (!enabledMethods.includes(payment_method)) {
 }
 ```
 
-#### 7.1.3 Verificar PIX capability (antes de processar PIX)
+#### 7.1.3 Validar valor mínimo (v2.1 - NOVO)
+
+```typescript
+// Valores mínimos por método
+const MINIMUM_AMOUNTS = {
+  boleto: 5.00,
+  pix: 1.00,
+  card: 0.50
+};
+
+const amount = invoice.amount;
+const minimumForMethod = MINIMUM_AMOUNTS[payment_method] || 0;
+
+if (amount < minimumForMethod) {
+  logStep('❌ Valor abaixo do mínimo', { 
+    amount, 
+    method: payment_method, 
+    minimum: minimumForMethod 
+  });
+  
+  return new Response(
+    JSON.stringify({ 
+      error: `Valor mínimo para ${payment_method} é R$ ${minimumForMethod.toFixed(2)}`,
+      errorCode: 'AMOUNT_BELOW_MINIMUM'
+    }),
+    { status: 400, headers: corsHeaders }
+  );
+}
+```
+
+#### 7.1.4 Verificar PIX capability (v2.1 - CRÍTICO)
 
 ```typescript
 // Antes de processar PIX, verificar capability
@@ -423,7 +485,10 @@ if (payment_method === 'pix') {
   const pixCapability = account.capabilities?.pix_payments;
   
   if (pixCapability !== 'active') {
-    logStep('❌ PIX capability não ativa', { pixCapability });
+    logStep('❌ PIX capability não ativa', { 
+      pixCapability,
+      accountId: stripeConnectId
+    });
     
     return new Response(
       JSON.stringify({ 
@@ -433,10 +498,12 @@ if (payment_method === 'pix') {
       { status: 400, headers: corsHeaders }
     );
   }
+  
+  logStep('✓ PIX capability ativa');
 }
 ```
 
-#### 7.1.4 Salvar timestamps de expiração
+#### 7.1.5 Salvar timestamps de expiração e limpar método anterior
 
 ```typescript
 // Ao criar PIX - expiração em 24 horas
@@ -446,7 +513,8 @@ await supabase.from('invoices').update({
   pix_copy_paste: data.pix_copy_paste,
   pix_expires_at: pixExpiresAt,
   payment_method: 'pix',
-  // Limpar boleto anterior
+  stripe_payment_intent_id: paymentIntent.id,
+  // Limpar boleto anterior (v2.1)
   boleto_url: null,
   linha_digitavel: null,
   barcode: null,
@@ -464,7 +532,21 @@ await supabase.from('invoices').update({
   barcode: data.barcode,
   boleto_expires_at: boletoExpiresAt.toISOString(),
   payment_method: 'boleto',
-  // Limpar PIX anterior
+  stripe_payment_intent_id: paymentIntent.id,
+  // Limpar PIX anterior (v2.1)
+  pix_qr_code: null,
+  pix_copy_paste: null,
+  pix_expires_at: null
+}).eq('id', invoice_id);
+
+// Ao usar Card (checkout session) - limpar ambos
+await supabase.from('invoices').update({
+  payment_method: 'card',
+  // Limpar boleto e PIX anteriores (v2.1)
+  boleto_url: null,
+  linha_digitavel: null,
+  barcode: null,
+  boleto_expires_at: null,
   pix_qr_code: null,
   pix_copy_paste: null,
   pix_expires_at: null
@@ -483,6 +565,8 @@ await supabase.from('invoices').update({
 - `cancel-payment-intent`: Marca fatura como paga manualmente (usado pelo professor)
 - `change-payment-method`: Limpa dados de pagamento, mantém status pendente (usado pelo aluno)
 
+**v2.1 - Tratamento de boleto ativo**: Boletos confirmados no Stripe não podem ser cancelados. O código trata esse erro graciosamente.
+
 ```typescript
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -491,6 +575,10 @@ import Stripe from "https://esm.sh/stripe@14.14.0";
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const logStep = (step: string, details?: any) => {
+  console.log(`[change-payment-method] ${step}`, details ? JSON.stringify(details) : '');
 };
 
 serve(async (req) => {
@@ -511,11 +599,12 @@ serve(async (req) => {
     if (!user) {
       return new Response(
         JSON.stringify({ error: 'Não autorizado' }),
-        { status: 401, headers: corsHeaders }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const { invoice_id } = await req.json();
+    logStep('Iniciando alteração de método', { invoice_id, user_id: user.id });
 
     // Buscar invoice
     const { data: invoice, error: invoiceError } = await supabase
@@ -530,29 +619,34 @@ serve(async (req) => {
       .single();
 
     if (invoiceError || !invoice) {
+      logStep('❌ Fatura não encontrada', { invoiceError });
       return new Response(
         JSON.stringify({ error: 'Fatura não encontrada' }),
-        { status: 404, headers: corsHeaders }
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Validar que usuário é o dono da fatura
     if (invoice.student_id !== user.id) {
+      logStep('❌ Usuário não autorizado', { student_id: invoice.student_id, user_id: user.id });
       return new Response(
         JSON.stringify({ error: 'Você não tem permissão para alterar esta fatura' }),
-        { status: 403, headers: corsHeaders }
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     // Validar que fatura está pendente
     if (invoice.status !== 'pendente') {
+      logStep('❌ Status inválido', { status: invoice.status });
       return new Response(
         JSON.stringify({ error: 'Apenas faturas pendentes podem ter o método alterado' }),
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Cancelar Payment Intent no Stripe (se existir)
+    // Tentar cancelar Payment Intent no Stripe (se existir)
+    // v2.1: Tratar graciosamente se for boleto ativo (não pode ser cancelado)
+    let stripeCancelled = false;
     if (invoice.stripe_payment_intent_id && invoice.business_profile?.stripe_connect_id) {
       try {
         const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -563,9 +657,27 @@ serve(async (req) => {
           invoice.stripe_payment_intent_id,
           { stripeAccount: invoice.business_profile.stripe_connect_id }
         );
-      } catch (stripeError) {
-        console.log('Erro ao cancelar PI (pode já estar cancelado):', stripeError);
-        // Continuar mesmo se falhar - PI pode já estar cancelado
+        
+        stripeCancelled = true;
+        logStep('✓ Payment Intent cancelado no Stripe');
+        
+      } catch (stripeError: any) {
+        // v2.1: Tratamento específico para boleto ativo
+        // Boletos confirmados não podem ser cancelados no Stripe
+        const errorMessage = stripeError?.message || '';
+        
+        if (errorMessage.includes('cannot be canceled') || 
+            errorMessage.includes('already succeeded') ||
+            errorMessage.includes('already canceled')) {
+          logStep('⚠️ PI não pode ser cancelado (provavelmente boleto ativo)', { 
+            errorMessage,
+            paymentIntentId: invoice.stripe_payment_intent_id
+          });
+          // Continuar mesmo assim - vamos limpar os dados localmente
+        } else {
+          logStep('⚠️ Erro ao cancelar PI no Stripe', { errorMessage });
+          // Continuar mesmo assim para limpar dados localmente
+        }
       }
     }
 
@@ -587,35 +699,68 @@ serve(async (req) => {
       .eq('id', invoice_id);
 
     if (updateError) {
+      logStep('❌ Erro ao limpar dados de pagamento', { updateError });
       return new Response(
         JSON.stringify({ error: 'Erro ao limpar dados de pagamento' }),
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    logStep('✓ Método de pagamento alterado com sucesso', { stripeCancelled });
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Método de pagamento alterado. Escolha um novo método.' 
+        message: 'Método de pagamento alterado. Escolha um novo método.',
+        stripeCancelled
       }),
-      { status: 200, headers: corsHeaders }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Erro:', error);
     return new Response(
       JSON.stringify({ error: 'Erro interno do servidor' }),
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 ```
 
+### 8.2 Configuração: `supabase/config.toml` (v2.1 - CRÍTICO)
+
+Adicionar a seguinte configuração no arquivo `supabase/config.toml`:
+
+```toml
+[functions.change-payment-method]
+verify_jwt = false
+```
+
 ---
 
-## 9. Frontend - BillingSettings (Professor)
+## 9. Backend - Webhook: Limpar Expiração ao Pagar
 
-### 9.1 Arquivo: `src/components/Settings/BillingSettings.tsx`
+### 9.1 Arquivo: `supabase/functions/webhook-stripe-connect/index.ts`
+
+**v2.1 - Alteração opcional mas recomendada**: Limpar `pix_expires_at` e `boleto_expires_at` quando pagamento é bem-sucedido.
+
+```typescript
+// No handler de payment_intent.succeeded ou invoice.paid
+
+// Ao atualizar invoice para 'pago', também limpar timestamps de expiração
+await supabase.from('invoices').update({
+  status: 'pago',
+  // v2.1: Limpar expiração pois pagamento foi concluído
+  pix_expires_at: null,
+  boleto_expires_at: null
+}).eq('stripe_payment_intent_id', paymentIntentId);
+```
+
+---
+
+## 10. Frontend - BillingSettings (Professor)
+
+### 10.1 Arquivo: `src/components/Settings/BillingSettings.tsx`
 
 **Alterações necessárias:**
 
@@ -638,14 +783,17 @@ serve(async (req) => {
 │    Taxa: R$ 3,49 por transação                                   │
 │    Exemplo: Em R$ 200,00 = R$ 3,49 de taxa                       │
 │    ⚡ Boletos são gerados automaticamente nas faturas            │
+│    ℹ️ Valor mínimo: R$ 5,00                                      │
 │                                                                  │
 │ 💳 Cartão de Crédito                                  [TOGGLE ✓] │
 │    Taxa: 3,99% + R$ 0,39                                         │
 │    Exemplo: Em R$ 200,00 = R$ 8,37 de taxa                       │
+│    ℹ️ Valor mínimo: R$ 0,50                                      │
 │                                                                  │
 │ ⚡ PIX                                                 [TOGGLE ✓] │
 │    Taxa: 1,19%                                                   │
 │    Exemplo: Em R$ 200,00 = R$ 2,38 de taxa                       │
+│    ℹ️ Valor mínimo: R$ 1,00                                      │
 │                                                                  │
 │ ⚠️ Pelo menos um método deve estar habilitado                     │
 │                                                                  │
@@ -663,6 +811,7 @@ interface PaymentMethodToggleProps {
   disabled?: boolean; // Para impedir desabilitar o último método
   exampleAmount?: number; // Default: 200
   showAutoGenerate?: boolean; // Para boleto
+  showMinimumAmount?: boolean; // v2.1: Exibir valor mínimo
 }
 ```
 
@@ -717,25 +866,26 @@ const onSavePaymentMethods = async (methods: PaymentMethodType[]) => {
 
 ---
 
-## 10. Frontend - PaymentOptionsCard (Aluno)
+## 11. Frontend - PaymentOptionsCard (Aluno)
 
-### 10.1 Arquivo: `src/components/PaymentOptionsCard.tsx`
+### 11.1 Arquivo: `src/components/PaymentOptionsCard.tsx`
 
 **Alterações necessárias:**
 
 1. **Atualizar interface Invoice** com campos de expiração e business_profile
 2. **Funções de validação** (`hasValidBoleto`, `hasValidPix`)
 3. **Verificar `enabled_payment_methods`** para invalidar boletos/PIX de métodos desabilitados
-4. **UI condicional** (pagamento existente vs opções)
-5. **Modal de confirmação** para alterar método
-6. **Chamar nova função** `change-payment-method`
+4. **v2.1: Filtrar métodos por valor mínimo** (`getAvailableMethodsForAmount`)
+5. **UI condicional** (pagamento existente vs opções)
+6. **Modal de confirmação** para alterar método
+7. **Chamar nova função** `change-payment-method`
 
 #### Nova Interface Invoice
 
 ```typescript
 interface Invoice {
   id: string;
-  amount: string;
+  amount: number; // v2.1: Usar number, não string
   due_date: string;
   description: string;
   status: string;
@@ -758,9 +908,16 @@ interface Invoice {
 }
 ```
 
-#### Funções de Validação
+#### Funções de Validação (v2.1 - Atualizadas)
 
 ```typescript
+import { 
+  PaymentMethodType, 
+  meetsMinimumAmount, 
+  sortPaymentMethods,
+  getAvailableMethodsForAmount 
+} from '@/utils/stripe-fees';
+
 // Verifica se boleto está válido E habilitado
 const hasValidBoleto = (): boolean => {
   if (!invoice.boleto_url) return false;
@@ -807,16 +964,20 @@ const getExpirationTime = (expiresAt: string | null): string | null => {
   return `${hours} hora${hours > 1 ? 's' : ''}`;
 };
 
-// Obtém métodos disponíveis (habilitados + valor mínimo)
+// v2.1: Obtém métodos disponíveis (habilitados + valor mínimo)
 const getAvailableMethods = (): PaymentMethodType[] => {
   const enabledMethods = invoice.business_profile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
-  const amount = parseFloat(invoice.amount);
+  const amount = typeof invoice.amount === 'string' ? parseFloat(invoice.amount) : invoice.amount;
   
+  // Filtrar por métodos habilitados E que atendem ao valor mínimo
   return sortPaymentMethods(
-    (enabledMethods as PaymentMethodType[]).filter(method => 
-      meetsMinimumAmount(method, amount)
-    )
+    getAvailableMethodsForAmount(enabledMethods as PaymentMethodType[], amount)
   );
+};
+
+// v2.1: Verificar se há métodos disponíveis
+const hasAvailableMethods = (): boolean => {
+  return getAvailableMethods().length > 0;
 };
 ```
 
@@ -891,7 +1052,28 @@ const getAvailableMethods = (): PaymentMethodType[] => {
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 10.2 Modal de Confirmação - Alterar Método
+#### Layout - Valor Abaixo de Todos os Mínimos (v2.1)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Fatura - Taxa Única                  [Badge: Pendente]       │
+│ Valor: R$ 0,30    Vencimento: 15/02/2026                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│ ┌────────────────────────────────────────────────────────┐   │
+│ │ ⚠️ Valor abaixo do mínimo para pagamento online        │   │
+│ │                                                        │   │
+│ │ O valor desta fatura está abaixo do mínimo aceito      │   │
+│ │ pelos métodos de pagamento disponíveis.                │   │
+│ │                                                        │   │
+│ │ Entre em contato com seu professor para outras         │   │
+│ │ formas de pagamento.                                   │   │
+│ └────────────────────────────────────────────────────────┘   │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 Modal de Confirmação - Alterar Método
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -933,9 +1115,9 @@ const handleChangeMethod = async () => {
 
 ---
 
-## 11. Frontend - Queries Atualizadas
+## 12. Frontend - Queries Atualizadas
 
-### 11.1 Arquivo: `src/pages/Faturas.tsx`
+### 12.1 Arquivo: `src/pages/Faturas.tsx`
 
 **Query atualizada:**
 
@@ -956,7 +1138,9 @@ const { data: invoicesData } = await supabase
   .order('created_at', { ascending: false });
 ```
 
-### 11.2 Arquivo: `src/pages/Financeiro.tsx`
+**Nota v2.1**: Remover uso de `stripe_hosted_invoice_url` - usar modal com `PaymentOptionsCard` ao invés de redirecionar.
+
+### 12.2 Arquivo: `src/pages/Financeiro.tsx`
 
 **Query atualizada (para professor ver faturas):**
 
@@ -974,7 +1158,7 @@ const { data: invoicesData } = await supabase
   .eq('teacher_id', effectiveTeacherId);
 ```
 
-**Alerta de taxas completo:**
+**Alerta de taxas completo (v2.1 - todos os métodos):**
 
 ```jsx
 <Alert>
@@ -992,9 +1176,9 @@ const { data: invoicesData } = await supabase
 
 ---
 
-## 12. Internacionalização (i18n)
+## 13. Internacionalização (i18n)
 
-### 12.1 Português: `src/i18n/locales/pt/billing.json`
+### 13.1 Português: `src/i18n/locales/pt/billing.json`
 
 ```json
 {
@@ -1005,6 +1189,7 @@ const { data: invoicesData } = await supabase
     "feeLabel": "Taxa",
     "exampleLabel": "Exemplo",
     "exampleFormat": "Em {{amount}} = {{fee}} de taxa",
+    "minimumLabel": "Valor mínimo",
     "noBusinessProfile": "Você precisa configurar um perfil de negócios antes de gerenciar métodos de pagamento.",
     "configureNow": "Configurar agora",
     "saveSettings": "Salvar Configurações",
@@ -1013,23 +1198,28 @@ const { data: invoicesData } = await supabase
         "name": "Boleto Bancário",
         "fee": "R$ 3,49 por transação",
         "action": "Gerar Boleto",
-        "description": "Boletos são gerados automaticamente nas faturas"
+        "description": "Boletos são gerados automaticamente nas faturas",
+        "minimum": "R$ 5,00"
       },
       "card": {
         "name": "Cartão de Crédito",
         "fee": "3,99% + R$ 0,39",
         "action": "Pagar",
-        "description": "Pagamento processado pelo Stripe Checkout"
+        "description": "Pagamento processado pelo Stripe Checkout",
+        "minimum": "R$ 0,50"
       },
       "pix": {
         "name": "PIX",
         "fee": "1,19%",
         "action": "Gerar PIX",
-        "description": "Código expira em 24 horas"
+        "description": "Código expira em 24 horas",
+        "minimum": "R$ 1,00"
       }
     },
     "singleMethodButton": "Pagar com {{method}}",
     "chooseMethod": "Escolha a forma de pagamento",
+    "noMethodsAvailable": "Valor abaixo do mínimo para pagamento online",
+    "noMethodsDescription": "O valor desta fatura está abaixo do mínimo aceito pelos métodos de pagamento disponíveis. Entre em contato com seu professor para outras formas de pagamento.",
     "existingPayment": {
       "boletoAvailable": "Boleto disponível",
       "pixAvailable": "PIX disponível",
@@ -1049,13 +1239,14 @@ const { data: invoicesData } = await supabase
     "errors": {
       "pixNotEnabled": "Seu professor não possui essa opção de pagamento disponível",
       "methodNotAllowed": "Este método de pagamento não está disponível.",
-      "changeMethodFailed": "Erro ao alterar método de pagamento. Tente novamente."
+      "changeMethodFailed": "Erro ao alterar método de pagamento. Tente novamente.",
+      "amountBelowMinimum": "Valor abaixo do mínimo para este método de pagamento"
     }
   }
 }
 ```
 
-### 12.2 Inglês: `src/i18n/locales/en/billing.json`
+### 13.2 Inglês: `src/i18n/locales/en/billing.json`
 
 ```json
 {
@@ -1066,6 +1257,7 @@ const { data: invoicesData } = await supabase
     "feeLabel": "Fee",
     "exampleLabel": "Example",
     "exampleFormat": "On {{amount}} = {{fee}} fee",
+    "minimumLabel": "Minimum amount",
     "noBusinessProfile": "You need to set up a business profile before managing payment methods.",
     "configureNow": "Configure now",
     "saveSettings": "Save Settings",
@@ -1074,23 +1266,28 @@ const { data: invoicesData } = await supabase
         "name": "Boleto Bancário",
         "fee": "R$ 3.49 per transaction",
         "action": "Generate Boleto",
-        "description": "Boletos are automatically generated on invoices"
+        "description": "Boletos are automatically generated on invoices",
+        "minimum": "R$ 5.00"
       },
       "card": {
         "name": "Credit Card",
         "fee": "3.99% + R$ 0.39",
         "action": "Pay",
-        "description": "Payment processed by Stripe Checkout"
+        "description": "Payment processed by Stripe Checkout",
+        "minimum": "R$ 0.50"
       },
       "pix": {
         "name": "PIX",
         "fee": "1.19%",
         "action": "Generate PIX",
-        "description": "Code expires in 24 hours"
+        "description": "Code expires in 24 hours",
+        "minimum": "R$ 1.00"
       }
     },
     "singleMethodButton": "Pay with {{method}}",
     "chooseMethod": "Choose payment method",
+    "noMethodsAvailable": "Amount below minimum for online payment",
+    "noMethodsDescription": "The amount of this invoice is below the minimum accepted by available payment methods. Contact your teacher for other payment options.",
     "existingPayment": {
       "boletoAvailable": "Boleto available",
       "pixAvailable": "PIX available",
@@ -1110,7 +1307,8 @@ const { data: invoicesData } = await supabase
     "errors": {
       "pixNotEnabled": "Your teacher does not have this payment option available",
       "methodNotAllowed": "This payment method is not available.",
-      "changeMethodFailed": "Error changing payment method. Please try again."
+      "changeMethodFailed": "Error changing payment method. Please try again.",
+      "amountBelowMinimum": "Amount below minimum for this payment method"
     }
   }
 }
@@ -1118,37 +1316,37 @@ const { data: invoicesData } = await supabase
 
 ---
 
-## 13. Arquivos a Modificar/Criar
+## 14. Arquivos a Modificar/Criar
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| Migração SQL | **CRIAR** | `enabled_payment_methods`, `pix_expires_at`, `boleto_expires_at` |
-| `src/utils/stripe-fees.ts` | **MODIFICAR** | Adicionar taxas, constantes e funções auxiliares |
-| `supabase/functions/create-invoice/index.ts` | **MODIFICAR** | Geração condicional de boleto |
-| `supabase/functions/automated-billing/index.ts` | **MODIFICAR** | Geração condicional de boleto |
-| `supabase/functions/create-payment-intent-connect/index.ts` | **MODIFICAR** | Validação de método + PIX capability + expiração |
-| `supabase/functions/change-payment-method/index.ts` | **CRIAR** | Nova função para aluno trocar método |
-| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento |
-| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Interface, validação, reutilização, modal alterar |
-| `src/pages/Faturas.tsx` | **MODIFICAR** | Query com campos de expiração |
-| `src/pages/Financeiro.tsx` | **MODIFICAR** | Query e alerta de taxas |
-| `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Strings em português |
-| `src/i18n/locales/en/billing.json` | **MODIFICAR** | Strings em inglês |
-| `supabase/config.toml` | **MODIFICAR** | Configurar nova edge function |
+| Migração SQL (índices) | **CRIAR** | Apenas índices (colunas já existem) |
+| `src/utils/stripe-fees.ts` | **MODIFICAR** | Adicionar taxas, constantes, valores mínimos e funções auxiliares |
+| `supabase/functions/create-invoice/index.ts` | **MODIFICAR** | Geração condicional de boleto + valor mínimo |
+| `supabase/functions/automated-billing/index.ts` | **MODIFICAR** | Geração condicional de boleto + valor mínimo |
+| `supabase/functions/create-payment-intent-connect/index.ts` | **MODIFICAR** | Validação de método + PIX capability + valor mínimo + expiração |
+| `supabase/functions/change-payment-method/index.ts` | **CRIAR** | Nova função para aluno trocar método (com tratamento de boleto ativo) |
+| `supabase/config.toml` | **MODIFICAR** | Adicionar `[functions.change-payment-method]` |
+| `supabase/functions/webhook-stripe-connect/index.ts` | **MODIFICAR** | Limpar expiração ao pagar (opcional) |
+| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento + valores mínimos |
+| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Interface, validação, reutilização, filtro por mínimo, modal alterar |
+| `src/pages/Faturas.tsx` | **MODIFICAR** | Query com campos de expiração + usar modal ao invés de URL |
+| `src/pages/Financeiro.tsx` | **MODIFICAR** | Query e alerta de taxas completo (todos os métodos) |
+| `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Strings em português + valores mínimos + erros |
+| `src/i18n/locales/en/billing.json` | **MODIFICAR** | Strings em inglês + valores mínimos + erros |
 
 ---
 
-## 14. Checklist de Implementação
+## 15. Checklist de Implementação
 
 ### Fase 1: Database
-- [ ] Criar migração SQL para `enabled_payment_methods`
-- [ ] Criar migração SQL para `pix_expires_at`, `boleto_expires_at`
-- [ ] Criar índices de expiração
-- [ ] Aplicar migração
+- [ ] Verificar se índices de expiração existem
+- [ ] Criar índices se não existirem
 - [ ] Regenerar tipos Supabase
 
 ### Fase 2: Backend - Geração Condicional
 - [ ] `create-invoice`: Verificar `enabled_payment_methods` antes de gerar boleto
+- [ ] `create-invoice`: Verificar valor mínimo R$ 5,00 antes de gerar boleto
 - [ ] `create-invoice`: Buscar `payment_due_days` para expiração
 - [ ] `automated-billing`: Mesma lógica do create-invoice
 - [ ] Testar geração condicional
@@ -1156,101 +1354,117 @@ const { data: invoicesData } = await supabase
 ### Fase 3: Backend - Validação e Expiração
 - [ ] `create-payment-intent-connect`: Query com `enabled_payment_methods`
 - [ ] `create-payment-intent-connect`: Validar método habilitado
-- [ ] `create-payment-intent-connect`: Verificar PIX capability
+- [ ] `create-payment-intent-connect`: Validar valor mínimo por método (v2.1)
+- [ ] `create-payment-intent-connect`: Verificar PIX capability (v2.1)
 - [ ] `create-payment-intent-connect`: Salvar timestamps de expiração
 - [ ] `create-payment-intent-connect`: Limpar dados do método anterior
 - [ ] Testar validações
 
 ### Fase 4: Backend - Alterar Método
 - [ ] Criar `change-payment-method/index.ts`
-- [ ] Configurar em `supabase/config.toml`
+- [ ] Implementar tratamento de boleto ativo (v2.1)
+- [ ] Configurar em `supabase/config.toml` (v2.1)
 - [ ] Testar cancelamento de PI e limpeza de dados
 - [ ] Deploy da função
 
-### Fase 5: Frontend - stripe-fees.ts
-- [ ] Adicionar `MINIMUM_PAYMENT_AMOUNTS`
-- [ ] Adicionar `PAYMENT_METHOD_CONFIG` com descrições
-- [ ] Adicionar funções auxiliares
+### Fase 5: Backend - Webhook (Opcional)
+- [ ] `webhook-stripe-connect`: Limpar expiração ao pagar (v2.1)
 
-### Fase 6: Frontend - Professor
+### Fase 6: Frontend - stripe-fees.ts
+- [ ] Adicionar `MINIMUM_PAYMENT_AMOUNTS`
+- [ ] Adicionar `PAYMENT_METHOD_CONFIG` com descrições e mínimos
+- [ ] Adicionar funções auxiliares (`meetsMinimumAmount`, `getAvailableMethodsForAmount`, `getMinimumAmountError`)
+
+### Fase 7: Frontend - Professor
 - [ ] `BillingSettings`: Carregar de `business_profiles`
 - [ ] `BillingSettings`: Toggles de métodos com taxas
+- [ ] `BillingSettings`: Exibir valores mínimos por método (v2.1)
 - [ ] `BillingSettings`: Indicar geração automática de boleto
 - [ ] `BillingSettings`: Validação mínimo 1 método
 - [ ] Testar salvamento
 
-### Fase 7: Frontend - Aluno
+### Fase 8: Frontend - Aluno
 - [ ] `PaymentOptionsCard`: Atualizar interface Invoice
 - [ ] `PaymentOptionsCard`: Funções `hasValidBoleto`, `hasValidPix`
 - [ ] `PaymentOptionsCard`: Verificar `enabled_payment_methods` (invalidação)
+- [ ] `PaymentOptionsCard`: Filtrar métodos por valor mínimo (v2.1)
+- [ ] `PaymentOptionsCard`: Exibir alerta quando nenhum método disponível (v2.1)
 - [ ] `PaymentOptionsCard`: UI condicional (existente vs opções)
 - [ ] `PaymentOptionsCard`: Modal confirmação alterar método
 - [ ] `PaymentOptionsCard`: Chamar `change-payment-method`
 - [ ] `Faturas.tsx`: Atualizar query com campos de expiração
-- [ ] `Financeiro.tsx`: Alerta de taxas completo
+- [ ] `Faturas.tsx`: Usar modal ao invés de `stripe_hosted_invoice_url`
+- [ ] `Financeiro.tsx`: Alerta de taxas completo (todos os métodos)
 
-### Fase 8: i18n
-- [ ] `pt/billing.json`: Todas as strings novas
+### Fase 9: i18n
+- [ ] `pt/billing.json`: Todas as strings novas + mínimos + erros
 - [ ] `en/billing.json`: Equivalentes em inglês
 
-### Fase 9: Testes
+### Fase 10: Testes
 - [ ] Professor configura métodos → Salva corretamente
-- [ ] Fatura criada com boleto habilitado → Boleto gerado automaticamente
+- [ ] Fatura criada com boleto habilitado + valor >= R$5 → Boleto gerado automaticamente
+- [ ] Fatura criada com boleto habilitado + valor < R$5 → Nenhum pagamento gerado
 - [ ] Fatura criada sem boleto habilitado → Nenhum pagamento gerado
 - [ ] Aluno vê boleto existente → Pode baixar ou alterar
 - [ ] Professor desabilita boleto → Boleto existente invalidado
-- [ ] Aluno altera de boleto para PIX → Boleto cancelado, PIX gerado
+- [ ] Aluno altera de boleto para PIX → Boleto cancelado (ou tratado), PIX gerado
 - [ ] Aluno tenta PIX sem capability → Erro amigável
-- [ ] Validação de mínimos por método
+- [ ] Aluno tenta método com valor abaixo do mínimo → Erro amigável (v2.1)
+- [ ] Fatura com valor < R$0.50 → Nenhum método disponível (v2.1)
+- [ ] Validação de mínimos funciona para todos os métodos
 - [ ] Múltiplos business_profiles funcionam
 
 ---
 
-## 15. Estimativa de Tempo
+## 16. Estimativa de Tempo
 
 | Tarefa | Tempo |
 |--------|-------|
-| Migração SQL + regenerar tipos | 30 min |
+| Migração SQL (índices) + regenerar tipos | 20 min |
 | Backend: Geração condicional (create-invoice, automated-billing) | 1.5 horas |
-| Backend: Validação + PIX capability + expiração | 1.5 horas |
-| Backend: change-payment-method | 1 hora |
-| stripe-fees.ts | 30 min |
-| BillingSettings | 2 horas |
-| PaymentOptionsCard (reutilização + alterar) | 3 horas |
-| Faturas.tsx + Financeiro.tsx | 1 hora |
+| Backend: Validação + PIX capability + valor mínimo + expiração | 2 horas |
+| Backend: change-payment-method + config.toml | 1 hora |
+| Backend: Webhook limpar expiração (opcional) | 30 min |
+| stripe-fees.ts | 45 min |
+| BillingSettings | 2.5 horas |
+| PaymentOptionsCard (reutilização + alterar + mínimos) | 3.5 horas |
+| Faturas.tsx + Financeiro.tsx | 1.5 horas |
 | i18n | 45 min |
-| Testes | 2 horas |
-| **Total** | **~14 horas** |
+| Testes | 2.5 horas |
+| **Total** | **~17 horas** |
 
 ---
 
-## 16. Riscos e Mitigações
+## 17. Riscos e Mitigações
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|---------------|---------|-----------|
-| PIX não habilitado na conta Stripe do professor | Alta | Médio | Verificar capability + mensagem amigável |
+| PIX não habilitado na conta Stripe do professor | Alta | Médio | Verificar capability + mensagem amigável (v2.1) |
 | Professor desabilita todos os métodos | Baixa | Alto | Validação frontend + backend impede |
 | Aluno tenta burlar validação frontend | Baixa | Médio | Validação backend é obrigatória |
 | Professor desabilita método com pagamentos pendentes | Média | Médio | Invalidar pagamentos existentes (decisão confirmada) |
 | Expiração de boleto incorreta | Baixa | Médio | Usar `payment_due_days` do professor |
 | Query de invoice não inclui business_profile | Média | Alto | Verificar todas as queries |
+| Boleto ativo no Stripe não pode ser cancelado | Média | Médio | Tratar erro graciosamente (v2.1) |
+| Valor abaixo do mínimo para todos os métodos | Baixa | Médio | Exibir alerta + contato com professor (v2.1) |
 
 ---
 
-## 17. Histórico de Revisões
+## 18. Histórico de Revisões
 
 | Versão | Data | Descrição |
 |--------|------|-----------|
 | 1.0 | 2026-01-14 | Versão inicial do plano |
 | 1.1 | 2026-01-14 | Lacunas: query Financeiro.tsx, interface Invoice, BillingSettings com business_profiles, PIX capability, múltiplos business_profiles |
-| **2.0** | **2026-01-15** | **Arquitetura híbrida v2.0**: geração automática de boleto (se habilitado), campos de expiração, reutilização de links, alterar método pelo aluno, invalidação ao desabilitar método, cartão pode ser desabilitado, expiração de boleto usa `payment_due_days`, mensagem amigável para PIX capability |
+| 2.0 | 2026-01-15 | Arquitetura híbrida v2.0: geração automática de boleto (se habilitado), campos de expiração, reutilização de links, alterar método pelo aluno, invalidação ao desabilitar método, cartão pode ser desabilitado, expiração de boleto usa `payment_due_days`, mensagem amigável para PIX capability |
+| **2.1** | **2026-01-15** | **Análise de lacunas v2.1**: validação de valores mínimos por método (Boleto R$5, PIX R$1, Card R$0.50), PIX capability check em `create-payment-intent-connect`, tratamento de boleto ativo no Stripe (`change-payment-method` trata erro graciosamente), configuração `config.toml` para nova edge function, limpeza de expiração no webhook, UI para valor abaixo do mínimo, estimativa atualizada para ~17h |
 
 ---
 
-## 18. Próximos Passos
+## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.0**: Revisar este documento
-2. ⏳ **Criar migração SQL**: Adicionar colunas necessárias
+1. ✅ **Aprovação do plano v2.1**: Este documento
+2. ⏳ **Criar migração SQL**: Índices (colunas já existem)
 3. ⏳ **Implementação Backend**: Edge functions
 4. ⏳ **Implementação Frontend**: Componentes e páginas
 5. ⏳ **Testes**: Validar todos os cenários

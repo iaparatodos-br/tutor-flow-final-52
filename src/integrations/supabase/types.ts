@@ -130,6 +130,7 @@ export type Database = {
           business_name: string
           cnpj: string | null
           created_at: string
+          enabled_payment_methods: string[] | null
           id: string
           stripe_connect_id: string
           updated_at: string
@@ -139,6 +140,7 @@ export type Database = {
           business_name: string
           cnpj?: string | null
           created_at?: string
+          enabled_payment_methods?: string[] | null
           id?: string
           stripe_connect_id: string
           updated_at?: string
@@ -148,6 +150,7 @@ export type Database = {
           business_name?: string
           cnpj?: string | null
           created_at?: string
+          enabled_payment_methods?: string[] | null
           id?: string
           stripe_connect_id?: string
           updated_at?: string
@@ -830,6 +833,7 @@ export type Database = {
         Row: {
           amount: number
           barcode: string | null
+          boleto_expires_at: string | null
           boleto_url: string | null
           business_profile_id: string | null
           cancellation_policy_id: string | null
@@ -851,6 +855,7 @@ export type Database = {
           payment_method: string | null
           payment_origin: string | null
           pix_copy_paste: string | null
+          pix_expires_at: string | null
           pix_qr_code: string | null
           sent_to_guardian: boolean | null
           status: string
@@ -865,6 +870,7 @@ export type Database = {
         Insert: {
           amount: number
           barcode?: string | null
+          boleto_expires_at?: string | null
           boleto_url?: string | null
           business_profile_id?: string | null
           cancellation_policy_id?: string | null
@@ -886,6 +892,7 @@ export type Database = {
           payment_method?: string | null
           payment_origin?: string | null
           pix_copy_paste?: string | null
+          pix_expires_at?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
@@ -900,6 +907,7 @@ export type Database = {
         Update: {
           amount?: number
           barcode?: string | null
+          boleto_expires_at?: string | null
           boleto_url?: string | null
           business_profile_id?: string | null
           cancellation_policy_id?: string | null
@@ -921,6 +929,7 @@ export type Database = {
           payment_method?: string | null
           payment_origin?: string | null
           pix_copy_paste?: string | null
+          pix_expires_at?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string

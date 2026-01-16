@@ -1,6 +1,6 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.2  
+> **Versão**: 2.3  
 > **Data**: 2026-01-16  
 > **Status**: Planejamento
 
@@ -8,7 +8,7 @@
 
 ## 1. Resumo Executivo
 
-Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto, PIX) estarão disponíveis para seus alunos, com **geração automática de boleto** quando habilitado e possibilidade do aluno alterar o método de pagamento.
+Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto, PIX) estarão disponíveis para seus alunos, com **geração automática de pagamento** (prioridade: Boleto → PIX) quando habilitado e possibilidade do aluno alterar o método de pagamento.
 
 ### Decisões de Design v2.0
 
@@ -45,19 +45,34 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **Modal em Faturas.tsx** | ✅ Substituir redirect `stripe_hosted_invoice_url` por modal com `PaymentOptionsCard` |
 | **Callback `onPaymentMethodChanged`** | ✅ Adicionar prop em `PaymentOptionsCard` para recarregar dados após troca |
 | **BillingSettings gerencia métodos** | ✅ Componente carrega e salva `enabled_payment_methods` de `business_profiles` |
-| **Limpeza obrigatória no webhook** | ✅ Limpar `pix_qr_code`, `pix_expires_at`, `boleto_url`, `boleto_expires_at`, `barcode` após pagamento |
+| **Limpeza obrigatória no webhook** | ✅ Limpar `pix_qr_code`, `pix_copy_paste`, `pix_expires_at`, `boleto_url`, `boleto_expires_at`, `barcode`, `linha_digitavel` após pagamento |
 | **Índices já existem** | ✅ Remover criação de `idx_invoices_pix_expires` e `idx_invoices_boleto_expires` da migração |
+
+### Novas Adições v2.3 (CRÍTICO)
+
+| Aspecto | Decisão |
+|---------|---------|
+| **`create-invoice` já gera boleto** | ✅ CONFIRMADO: `create-invoice` chama `create-payment-intent-connect` internamente |
+| **Verificar `enabled_payment_methods` em `create-invoice`** | ✅ OBRIGATÓRIO: Antes de gerar boleto, verificar se está habilitado |
+| **Hierarquia de geração automática** | ✅ Prioridade: 1º Boleto (se habilitado + valor ≥ R$5) → 2º PIX (se habilitado + valor ≥ R$1) → 3º Nenhum (aluno escolhe) |
+| **`automated-billing` mesma lógica** | ✅ Aplicar mesma hierarquia e verificação de `enabled_payment_methods` |
+| **`create-payment-intent-connect` salva `pix_expires_at`** | ✅ OBRIGATÓRIO: Ao criar PIX, salvar `pix_expires_at = now + 24h` |
+| **Webhook limpa `pix_copy_paste`** | ✅ Incluir na limpeza obrigatória (estava faltando no detalhamento) |
+| **`stripe-fees.ts` completo** | ✅ Adicionar todas as constantes e funções auxiliares que faltavam |
+| **Consistência de tipos `amount`** | ✅ Garantir que `amount` seja `number` em toda a aplicação |
 
 ---
 
-## 2. Arquitetura Híbrida v2.0
+## 2. Arquitetura Híbrida v2.3
 
-A nova arquitetura combina geração automática de boleto (quando habilitado) com possibilidade de escolha do aluno:
+A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
 | Cenário | Comportamento |
 |---------|---------------|
-| Professor tem **Boleto habilitado** | Fatura criada → Boleto gerado automaticamente |
-| Professor tem **apenas PIX/Card** | Fatura criada → Nenhum pagamento gerado (aluno escolhe) |
+| Professor tem **Boleto habilitado** + valor ≥ R$5 | Fatura criada → Boleto gerado automaticamente |
+| Professor tem **apenas PIX habilitado** + valor ≥ R$1 | Fatura criada → PIX gerado automaticamente (v2.3) |
+| Professor tem **apenas Card habilitado** | Fatura criada → Nenhum pagamento gerado (aluno escolhe) |
+| Valor abaixo do mínimo de todos os métodos auto | Fatura criada → Nenhum pagamento gerado (v2.3) |
 | Aluno abre fatura com **boleto existente válido** | Modal exibe "Pagar Boleto" + opção "Alterar Método" |
 | Aluno clica **"Alterar Método"** | Cancela boleto anterior → Gera PIX ou redireciona para Card |
 | Pagamento PIX/Card **bem-sucedido** | Invoice marcada como paga, boleto antigo invalidado |
@@ -67,6 +82,28 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 | **Boleto PI ativo no Stripe** | `change-payment-method` trata erro graciosamente (não falha) |
 | **Fatura com `falha_pagamento`** | ✅ v2.2: Aluno pode alterar método e tentar novamente |
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
+
+### Hierarquia de Geração Automática v2.3
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ PRIORIDADE DE GERAÇÃO AUTOMÁTICA (em create-invoice)            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│ 1️⃣ BOLETO habilitado + valor ≥ R$5?                             │
+│    └─── SIM ───▶ Gerar Boleto (padrão atual)                    │
+│    └─── NÃO ───▼                                                │
+│                                                                 │
+│ 2️⃣ PIX habilitado + valor ≥ R$1 + PIX capability ativa?         │
+│    └─── SIM ───▶ Gerar PIX automaticamente                      │
+│    └─── NÃO ───▼                                                │
+│                                                                 │
+│ 3️⃣ NENHUM método auto-gerável disponível                        │
+│    └─── Deixar invoice sem pagamento pré-gerado                 │
+│    └─── Aluno escolhe ao acessar Faturas.tsx                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ### Fluxo Visual Resumido
 
@@ -80,11 +117,12 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 ┌────────────────────────────────────────────────────────────────┐
 │ FATURA CRIADA (create-invoice / automated-billing)             │
 │                                                                │
-│   Boleto habilitado?  ──┬─── SIM ───▶ Gerar boleto automático  │
-│   + valor >= R$5?       │            (salvar boleto_expires_at)│
-│                         │                                      │
-│                         └─── NÃO ───▶ Não gerar nada           │
-│                                       (aluno escolhe depois)   │
+│   1. Buscar enabled_payment_methods do business_profile (v2.3) │
+│   2. Aplicar hierarquia de geração automática:                 │
+│      - Boleto habilitado + valor >= R$5? → Gerar boleto        │
+│      - PIX habilitado + valor >= R$1? → Gerar PIX (v2.3)       │
+│      - Senão → Não gerar nada                                  │
+│                                                                │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -329,28 +367,48 @@ export const getMinimumAmountError = (method: PaymentMethodType): string => {
 
 ---
 
-## 6. Backend - Geração Condicional de Boleto
+## 6. Backend - Geração Condicional com Hierarquia v2.3
 
 ### 6.1 Arquivo: `supabase/functions/create-invoice/index.ts`
 
-**Alterações necessárias:**
+**Alterações necessárias (v2.3 - CRÍTICO):**
 
 1. Buscar `enabled_payment_methods` do `business_profile`
-2. Verificar se `boleto` está habilitado antes de gerar automaticamente
-3. Buscar `payment_due_days` do professor para definir expiração
-4. **v2.1**: Verificar valor mínimo de R$ 5,00 antes de gerar
+2. Aplicar **hierarquia de geração automática**: Boleto → PIX → Nenhum
+3. Buscar `payment_due_days` do professor para definir expiração de boleto
+4. Verificar PIX capability antes de gerar PIX automaticamente
+5. Verificar valores mínimos para cada método
+
+> ⚠️ **IMPORTANTE**: `create-invoice` **já chama** `create-payment-intent-connect` internamente.
+> O problema atual é que **sempre gera boleto**, ignorando `enabled_payment_methods`.
 
 ```typescript
-// Após criar a invoice, verificar se deve gerar boleto automaticamente
+// ============================================================
+// CÓDIGO ATUAL (PROBLEMÁTICO) - linhas ~359-439
+// ============================================================
+// O código atual sempre tenta gerar boleto, sem verificar
+// se o método está habilitado no business_profile.
 
-// 1. Buscar business_profile com métodos habilitados
+// ============================================================
+// CÓDIGO CORRIGIDO (v2.3) - Inserir ANTES de chamar create-payment-intent-connect
+// ============================================================
+
+// Constantes de valores mínimos
+const MINIMUM_AMOUNTS = {
+  boleto: 5.00,
+  pix: 1.00,
+  card: 0.50
+};
+
+// 1. Buscar enabled_payment_methods do business_profile
 const { data: businessProfile } = await supabase
   .from('business_profiles')
-  .select('id, enabled_payment_methods')
+  .select('id, enabled_payment_methods, stripe_connect_id')
   .eq('id', businessProfileId)
   .single();
 
-const enabledMethods = businessProfile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
+const enabledMethods: string[] = businessProfile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
+logStep('Métodos habilitados', { enabledMethods });
 
 // 2. Buscar payment_due_days do professor para expiração do boleto
 const { data: teacherProfile } = await supabase
@@ -361,51 +419,81 @@ const { data: teacherProfile } = await supabase
 
 const paymentDueDays = teacherProfile?.payment_due_days || 7;
 
-// 3. Constante para valor mínimo (v2.1)
-const MINIMUM_BOLETO_AMOUNT = 5.00;
+// 3. Aplicar hierarquia de geração automática (v2.3)
+let autoGeneratedMethod: string | null = null;
 
-// 4. Gerar boleto automaticamente APENAS se:
-//    - Método habilitado
-//    - Valor >= mínimo (R$ 5,00)
-if (enabledMethods.includes('boleto') && amount >= MINIMUM_BOLETO_AMOUNT) {
-  logStep('Boleto habilitado e valor suficiente - gerando automaticamente');
-  
-  const { data: paymentResult, error: paymentError } = await supabase.functions.invoke(
-    'create-payment-intent-connect',
-    {
-      body: { 
-        invoice_id: invoiceId, 
-        payment_method: 'boleto',
-        expires_after_days: paymentDueDays
-      }
-    }
-  );
-  
-  if (!paymentError && paymentResult) {
-    // Atualizar invoice com dados do boleto
-    const boletoExpiresAt = new Date();
-    boletoExpiresAt.setDate(boletoExpiresAt.getDate() + paymentDueDays);
-    
-    await supabase.from('invoices').update({
-      boleto_url: paymentResult.boleto_url,
-      linha_digitavel: paymentResult.linha_digitavel,
-      barcode: paymentResult.barcode,
-      boleto_expires_at: boletoExpiresAt.toISOString(),
-      payment_method: 'boleto'
-    }).eq('id', invoiceId);
-  }
-} else {
-  logStep('Boleto não habilitado ou valor abaixo do mínimo - aluno escolherá método', {
-    boletoEnabled: enabledMethods.includes('boleto'),
-    amount,
-    minimumRequired: MINIMUM_BOLETO_AMOUNT
+// Prioridade 1: Boleto
+if (enabledMethods.includes('boleto') && amount >= MINIMUM_AMOUNTS.boleto) {
+  autoGeneratedMethod = 'boleto';
+  logStep('Hierarquia v2.3: Gerando boleto automaticamente', { amount, minBoleto: MINIMUM_AMOUNTS.boleto });
+}
+// Prioridade 2: PIX (se boleto não disponível)
+else if (enabledMethods.includes('pix') && amount >= MINIMUM_AMOUNTS.pix) {
+  // Verificar PIX capability antes de tentar gerar
+  // (será validado novamente em create-payment-intent-connect)
+  autoGeneratedMethod = 'pix';
+  logStep('Hierarquia v2.3: Gerando PIX automaticamente (boleto não disponível)', { 
+    amount, 
+    minPix: MINIMUM_AMOUNTS.pix,
+    boletoEnabled: enabledMethods.includes('boleto')
   });
+}
+// Prioridade 3: Nenhum método auto-gerável
+else {
+  logStep('Hierarquia v2.3: Nenhum método auto-gerável disponível', {
+    enabledMethods,
+    amount,
+    boletoEnabled: enabledMethods.includes('boleto'),
+    pixEnabled: enabledMethods.includes('pix'),
+    minBoleto: MINIMUM_AMOUNTS.boleto,
+    minPix: MINIMUM_AMOUNTS.pix
+  });
+}
+
+// 4. Gerar pagamento automaticamente se houver método disponível
+if (autoGeneratedMethod) {
+  try {
+    const { data: paymentResult, error: paymentError } = await supabase.functions.invoke(
+      'create-payment-intent-connect',
+      {
+        body: { 
+          invoice_id: invoiceId, 
+          payment_method: autoGeneratedMethod,
+          expires_after_days: autoGeneratedMethod === 'boleto' ? paymentDueDays : undefined
+        }
+      }
+    );
+    
+    if (paymentError) {
+      logStep(`⚠️ Erro ao gerar ${autoGeneratedMethod} automaticamente`, { error: paymentError });
+      // Não falhar a criação da invoice por causa disso
+      // Aluno poderá escolher método manualmente
+    } else if (paymentResult) {
+      logStep(`✓ ${autoGeneratedMethod} gerado automaticamente`, { 
+        hasUrl: !!paymentResult.boleto_url || !!paymentResult.pix_qr_code
+      });
+      
+      // Dados são atualizados pelo próprio create-payment-intent-connect
+    }
+  } catch (autoGenError) {
+    logStep(`⚠️ Exceção ao gerar ${autoGeneratedMethod}`, { error: String(autoGenError) });
+    // Continuar mesmo assim - invoice foi criada
+  }
 }
 ```
 
 ### 6.2 Arquivo: `supabase/functions/automated-billing/index.ts`
 
-**Mesma lógica do `create-invoice`**: Verificar `enabled_payment_methods` e valor mínimo antes de gerar boleto automaticamente.
+**Mesma lógica do `create-invoice` (v2.3)**:
+
+1. Buscar `enabled_payment_methods` do business_profile
+2. Aplicar hierarquia: Boleto → PIX → Nenhum
+3. Verificar valores mínimos antes de gerar
+
+```typescript
+// Aplicar a mesma lógica de hierarquia v2.3 descrita acima
+// Copiar o bloco de código da seção 6.1
+```
 
 ---
 
@@ -1394,19 +1482,20 @@ const { data: invoicesData } = await supabase
 - [x] Verificar se colunas existem (v2.2: JÁ EXISTEM)
 - [ ] Regenerar tipos Supabase (se necessário)
 
-### Fase 2: Backend - Geração Condicional
-- [ ] `create-invoice`: Verificar `enabled_payment_methods` antes de gerar boleto
-- [ ] `create-invoice`: Verificar valor mínimo R$ 5,00 antes de gerar boleto
-- [ ] `create-invoice`: Buscar `payment_due_days` para expiração
-- [ ] `automated-billing`: Mesma lógica do create-invoice
-- [ ] Testar geração condicional
+### Fase 2: Backend - Geração Condicional com Hierarquia v2.3
+- [ ] `create-invoice`: Buscar `enabled_payment_methods` do business_profile (v2.3)
+- [ ] `create-invoice`: Implementar hierarquia de geração: Boleto → PIX → Nenhum (v2.3)
+- [ ] `create-invoice`: Verificar valor mínimo antes de gerar cada método (v2.3)
+- [ ] `create-invoice`: Buscar `payment_due_days` para expiração de boleto
+- [ ] `automated-billing`: Mesma lógica de hierarquia v2.3
+- [ ] Testar geração condicional com diferentes configurações
 
 ### Fase 3: Backend - Validação e Expiração
 - [ ] `create-payment-intent-connect`: Query com `enabled_payment_methods`
 - [ ] `create-payment-intent-connect`: Validar método habilitado
 - [ ] `create-payment-intent-connect`: Validar valor mínimo por método (v2.1)
 - [ ] `create-payment-intent-connect`: Verificar PIX capability (v2.1)
-- [ ] `create-payment-intent-connect`: Salvar timestamps de expiração
+- [ ] `create-payment-intent-connect`: Salvar `pix_expires_at` ao criar PIX (v2.3 - CRÍTICO)
 - [ ] `create-payment-intent-connect`: Limpar dados do método anterior
 - [ ] Testar validações
 
@@ -1421,12 +1510,16 @@ const { data: invoicesData } = await supabase
 
 ### Fase 5: Backend - Webhook (OBRIGATÓRIO v2.2)
 - [ ] `webhook-stripe-connect`: Limpeza obrigatória ao pagar
-- [ ] Incluir `barcode` na limpeza (v2.2)
+- [ ] Incluir `barcode`, `linha_digitavel`, `pix_copy_paste` na limpeza (v2.3)
 
-### Fase 6: Frontend - stripe-fees.ts
+### Fase 6: Frontend - stripe-fees.ts (v2.3 - COMPLETO)
 - [ ] Adicionar `MINIMUM_PAYMENT_AMOUNTS`
-- [ ] Adicionar `PAYMENT_METHOD_CONFIG` com descrições e mínimos
-- [ ] Adicionar funções auxiliares (`meetsMinimumAmount`, `getAvailableMethodsForAmount`, `getMinimumAmountError`)
+- [ ] Adicionar `STRIPE_FEES` com todas as configurações
+- [ ] Adicionar `PAYMENT_METHOD_ORDER`
+- [ ] Adicionar `PAYMENT_METHOD_CONFIG` com descrições, icons e mínimos
+- [ ] Adicionar `calculateFee()`, `formatFeeExample()`
+- [ ] Adicionar `sortPaymentMethods()`, `validateEnabledMethods()`
+- [ ] Adicionar `meetsMinimumAmount()`, `getAvailableMethodsForAmount()`, `getMinimumAmountError()`
 
 ### Fase 7: Frontend - Professor
 - [ ] `BillingSettings`: Carregar de `business_profiles` (v2.2)
@@ -1437,7 +1530,7 @@ const { data: invoicesData } = await supabase
 - [ ] Testar salvamento
 
 ### Fase 8: Frontend - Aluno
-- [ ] `PaymentOptionsCard`: Atualizar interface Invoice
+- [ ] `PaymentOptionsCard`: Atualizar interface Invoice (usar `amount: number`)
 - [ ] `PaymentOptionsCard`: Adicionar prop `onPaymentMethodChanged` (v2.2)
 - [ ] `PaymentOptionsCard`: Funções `hasValidBoleto`, `hasValidPix`
 - [ ] `PaymentOptionsCard`: Verificar `enabled_payment_methods` (invalidação)
@@ -1457,9 +1550,11 @@ const { data: invoicesData } = await supabase
 ### Fase 10: Testes
 - [ ] Professor configura métodos → Salva corretamente
 - [ ] Fatura criada com boleto habilitado + valor >= R$5 → Boleto gerado automaticamente
-- [ ] Fatura criada com boleto habilitado + valor < R$5 → Nenhum pagamento gerado
-- [ ] Fatura criada sem boleto habilitado → Nenhum pagamento gerado
+- [ ] Fatura criada com boleto desabilitado + PIX habilitado + valor >= R$1 → PIX gerado automaticamente (v2.3)
+- [ ] Fatura criada com boleto habilitado + valor < R$5 + PIX habilitado → PIX gerado (v2.3)
+- [ ] Fatura criada com apenas Card habilitado → Nenhum pagamento gerado
 - [ ] Aluno vê boleto existente → Pode baixar ou alterar
+- [ ] Aluno vê PIX existente → Pode copiar código ou alterar
 - [ ] Professor desabilita boleto → Boleto existente invalidado
 - [ ] Aluno altera de boleto para PIX → Boleto cancelado (ou tratado), PIX gerado
 - [ ] Aluno tenta PIX sem capability → Erro amigável
@@ -1470,7 +1565,7 @@ const { data: invoicesData } = await supabase
 - [ ] **v2.2**: Fatura com `falha_pagamento` permite troca de método
 - [ ] **v2.2**: Responsável pode ver faturas de dependentes
 - [ ] **v2.2**: Responsável pode pagar faturas de dependentes
-- [ ] **v2.2**: Webhook limpa campos temporários após pagamento
+- [ ] **v2.2**: Webhook limpa campos temporários após pagamento (incluindo `pix_copy_paste`)
 
 ---
 
@@ -1518,14 +1613,15 @@ const { data: invoicesData } = await supabase
 | 1.1 | 2026-01-14 | Lacunas: query Financeiro.tsx, interface Invoice, BillingSettings com business_profiles, PIX capability, múltiplos business_profiles |
 | 2.0 | 2026-01-15 | Arquitetura híbrida v2.0: geração automática de boleto (se habilitado), campos de expiração, reutilização de links, alterar método pelo aluno, invalidação ao desabilitar método, cartão pode ser desabilitado, expiração de boleto usa `payment_due_days`, mensagem amigável para PIX capability |
 | 2.1 | 2026-01-15 | Análise de lacunas v2.1: validação de valores mínimos por método (Boleto R$5, PIX R$1, Card R$0.50), PIX capability check em `create-payment-intent-connect`, tratamento de boleto ativo no Stripe (`change-payment-method` trata erro graciosamente), configuração `config.toml` para nova edge function, limpeza de expiração no webhook, UI para valor abaixo do mínimo, estimativa atualizada para ~17h |
-| **2.2** | **2026-01-16** | **Análise de lacunas v2.2**: autorização de dependentes em `change-payment-method` (valida `responsible_id`), status `falha_pagamento` permite troca de método, query `Faturas.tsx` suporta dependentes via `responsible_id`, modal substitui redirect `stripe_hosted_invoice_url`, callback `onPaymentMethodChanged` em `PaymentOptionsCard`, `BillingSettings` gerencia `enabled_payment_methods` de `business_profiles`, limpeza de campos temporários OBRIGATÓRIA no webhook (incluindo `barcode`), remoção de índices redundantes da migração (já existem), novas strings i18n `failedPaymentInfo`, estimativa atualizada para ~19h |
+| 2.2 | 2026-01-16 | Análise de lacunas v2.2: autorização de dependentes em `change-payment-method` (valida `responsible_id`), status `falha_pagamento` permite troca de método, query `Faturas.tsx` suporta dependentes via `responsible_id`, modal substitui redirect `stripe_hosted_invoice_url`, callback `onPaymentMethodChanged` em `PaymentOptionsCard`, `BillingSettings` gerencia `enabled_payment_methods` de `business_profiles`, limpeza de campos temporários OBRIGATÓRIA no webhook (incluindo `barcode`), remoção de índices redundantes da migração (já existem), novas strings i18n `failedPaymentInfo`, estimativa atualizada para ~19h |
+| **2.3** | **2026-01-16** | **Correções críticas v2.3**: Confirmado que `create-invoice` já chama `create-payment-intent-connect` internamente; OBRIGATÓRIO verificar `enabled_payment_methods` antes de gerar pagamento; **hierarquia de geração automática** (Boleto → PIX → Nenhum) para quando boleto não está disponível; `create-payment-intent-connect` DEVE salvar `pix_expires_at`; webhook DEVE limpar `pix_copy_paste` e `linha_digitavel`; `stripe-fees.ts` atualizado com todas as constantes e funções; checklist expandido com novos cenários de teste para hierarquia v2.3; estimativa mantida em ~19h |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.2**: Este documento
-2. ⏳ **Implementação Backend**: Edge functions (prioridade: `change-payment-method`)
-3. ⏳ **Implementação Frontend**: Componentes e páginas
-4. ⏳ **Testes**: Validar todos os cenários
+1. ✅ **Aprovação do plano v2.3**: Este documento
+2. ⏳ **Implementação Backend**: Edge functions (prioridade: `create-invoice` → `create-payment-intent-connect` → `change-payment-method` → `webhook-stripe-connect`)
+3. ⏳ **Implementação Frontend**: `stripe-fees.ts` → `BillingSettings` → `PaymentOptionsCard` → `Faturas.tsx`
+4. ⏳ **Testes**: Validar todos os cenários incluindo hierarquia v2.3
 5. ⏳ **Deploy**: Staging → Produção

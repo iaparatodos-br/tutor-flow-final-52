@@ -1,7 +1,7 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.1  
-> **Data**: 2026-01-15  
+> **Versão**: 2.2  
+> **Data**: 2026-01-16  
 > **Status**: Planejamento
 
 ---
@@ -35,6 +35,19 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **config.toml para nova função** | ✅ Adicionar `[functions.change-payment-method]` com `verify_jwt = false` |
 | **Limpeza de expiração no webhook** | ✅ Limpar `pix_expires_at`/`boleto_expires_at` quando pagamento sucede |
 
+### Novas Adições v2.2
+
+| Aspecto | Decisão |
+|---------|---------|
+| **Autorização de dependentes** | ✅ `change-payment-method` valida `responsible_id` além de `student_id` |
+| **Status `falha_pagamento`** | ✅ Aluno pode trocar método em faturas com status `falha_pagamento` (não apenas `pendente`) |
+| **Responsáveis em Faturas.tsx** | ✅ Query busca faturas do aluno OU de seus dependentes via `responsible_id` |
+| **Modal em Faturas.tsx** | ✅ Substituir redirect `stripe_hosted_invoice_url` por modal com `PaymentOptionsCard` |
+| **Callback `onPaymentMethodChanged`** | ✅ Adicionar prop em `PaymentOptionsCard` para recarregar dados após troca |
+| **BillingSettings gerencia métodos** | ✅ Componente carrega e salva `enabled_payment_methods` de `business_profiles` |
+| **Limpeza obrigatória no webhook** | ✅ Limpar `pix_qr_code`, `pix_expires_at`, `boleto_url`, `boleto_expires_at`, `barcode` após pagamento |
+| **Índices já existem** | ✅ Remover criação de `idx_invoices_pix_expires` e `idx_invoices_boleto_expires` da migração |
+
 ---
 
 ## 2. Arquitetura Híbrida v2.0
@@ -52,6 +65,8 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 | **PIX capability** não ativa no Stripe | Erro amigável: "Seu professor não possui essa opção de pagamento disponível" |
 | **Valor abaixo do mínimo** para um método | Método não exibido (frontend) + erro 400 (backend) |
 | **Boleto PI ativo no Stripe** | `change-payment-method` trata erro graciosamente (não falha) |
+| **Fatura com `falha_pagamento`** | ✅ v2.2: Aluno pode alterar método e tentar novamente |
+| **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 
 ### Fluxo Visual Resumido
 
@@ -74,9 +89,9 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
                               │
                               ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ ALUNO acessa Faturas.tsx                                       │
-│ → Query inclui business_profile + campos de expiração          │
-│ → Clica "Pagar Agora" → Abre modal PaymentOptionsCard          │
+│ ALUNO/RESPONSÁVEL acessa Faturas.tsx                           │
+│ → Query busca faturas do aluno OU de seus dependentes (v2.2)   │
+│ → Clica "Pagar Agora" → Abre modal PaymentOptionsCard (v2.2)   │
 └────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -98,8 +113,9 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 │ 2. Chama change-payment-method → Tenta cancelar PI no Stripe   │
 │    (se falhar por boleto ativo, continua mesmo assim)          │
 │ 3. Limpa campos de pagamento da invoice                        │
-│ 4. Exibe opções habilitadas (exceto método atual)              │
-│ 5. Gera novo pagamento via create-payment-intent-connect       │
+│ 4. Chama callback onPaymentMethodChanged() (v2.2)              │
+│ 5. Exibe opções habilitadas (exceto método atual)              │
+│ 6. Gera novo pagamento via create-payment-intent-connect       │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -119,9 +135,9 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 
 ## 4. Alterações no Banco de Dados
 
-### 4.1 Status dos Campos (v2.1)
+### 4.1 Status dos Campos (v2.2)
 
-> ⚠️ **IMPORTANTE**: As colunas já existem no banco de dados. Apenas verificar se os índices estão criados.
+> ⚠️ **IMPORTANTE**: As colunas E os índices já existem no banco de dados. Nenhuma migração necessária.
 
 | Tabela | Campo | Status | Descrição |
 |--------|-------|--------|-----------|
@@ -131,25 +147,17 @@ A nova arquitetura combina geração automática de boleto (quando habilitado) c
 | `invoices` | `boleto_url` | ✅ EXISTE | `TEXT` |
 | `invoices` | `pix_qr_code` | ✅ EXISTE | `TEXT` |
 | `invoices` | `payment_method` | ✅ EXISTE | `TEXT` |
+| `invoices` | `barcode` | ✅ EXISTE | `TEXT` |
+| Índice `idx_invoices_pix_expires` | ✅ EXISTE | - |
+| Índice `idx_invoices_boleto_expires` | ✅ EXISTE | - |
 
-### 4.2 Migração SQL (Se Índices Não Existirem)
+### 4.2 Migração SQL
 
-```sql
--- Índices para queries de expiração (otimização)
-CREATE INDEX IF NOT EXISTS idx_invoices_pix_expires 
-  ON invoices(pix_expires_at) WHERE pix_expires_at IS NOT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_invoices_boleto_expires 
-  ON invoices(boleto_expires_at) WHERE boleto_expires_at IS NOT NULL;
-
--- Comentários para documentação
-COMMENT ON COLUMN invoices.pix_expires_at IS 'Data/hora de expiração do código PIX (24 horas após geração)';
-COMMENT ON COLUMN invoices.boleto_expires_at IS 'Data/hora de expiração do boleto (baseado em payment_due_days do professor)';
-```
+> **v2.2**: Nenhuma migração necessária. Todos os campos e índices já existem.
 
 ### 4.3 Regeneração de Tipos
 
-Após a migração, regenerar os tipos do Supabase:
+Após qualquer migração, regenerar os tipos do Supabase:
 
 ```bash
 npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integrations/supabase/types.ts
@@ -164,7 +172,7 @@ npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integr
 ```typescript
 /**
  * Stripe fee calculation utilities for all payment methods
- * Updated: 2026-01-15 (v2.1)
+ * Updated: 2026-01-16 (v2.2)
  * Source: https://stripe.com/en-br/pricing/local-payment-methods
  */
 
@@ -567,6 +575,10 @@ await supabase.from('invoices').update({
 
 **v2.1 - Tratamento de boleto ativo**: Boletos confirmados no Stripe não podem ser cancelados. O código trata esse erro graciosamente.
 
+**v2.2 - Autorização de dependentes**: Valida `responsible_id` além de `student_id`.
+
+**v2.2 - Status `falha_pagamento`**: Permite troca de método também para faturas com falha.
+
 ```typescript
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -606,13 +618,17 @@ serve(async (req) => {
     const { invoice_id } = await req.json();
     logStep('Iniciando alteração de método', { invoice_id, user_id: user.id });
 
-    // Buscar invoice
+    // Buscar invoice com dados do aluno para verificar responsible_id (v2.2)
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .select(`
         *,
         business_profile:business_profiles!invoices_business_profile_id_fkey(
           stripe_connect_id
+        ),
+        student:profiles!invoices_student_id_fkey(
+          id,
+          name
         )
       `)
       .eq('id', invoice_id)
@@ -626,20 +642,54 @@ serve(async (req) => {
       );
     }
 
-    // Validar que usuário é o dono da fatura
-    if (invoice.student_id !== user.id) {
-      logStep('❌ Usuário não autorizado', { student_id: invoice.student_id, user_id: user.id });
+    // v2.2: Verificar se é o aluno OU o responsável de um dependente
+    // Buscar relationship para verificar responsible_id
+    const { data: relationship } = await supabase
+      .from('teacher_student_relationships')
+      .select('student_id, student_guardian_email')
+      .eq('student_id', invoice.student_id)
+      .eq('teacher_id', invoice.teacher_id)
+      .single();
+
+    // Buscar dependents onde o usuário é o responsável
+    const { data: dependentsAsResponsible } = await supabase
+      .from('dependents')
+      .select('id, responsible_id')
+      .eq('responsible_id', user.id);
+
+    const isStudent = invoice.student_id === user.id;
+    const isResponsible = dependentsAsResponsible?.some(dep => dep.responsible_id === user.id) || false;
+    
+    // Também verificar se o usuário é guardião na relationship
+    const { data: guardianRelationship } = await supabase
+      .from('teacher_student_relationships')
+      .select('id')
+      .eq('student_id', invoice.student_id)
+      .eq('student_guardian_email', user.email)
+      .single();
+    
+    const isGuardian = !!guardianRelationship;
+
+    if (!isStudent && !isResponsible && !isGuardian) {
+      logStep('❌ Usuário não autorizado', { 
+        student_id: invoice.student_id, 
+        user_id: user.id,
+        isStudent,
+        isResponsible,
+        isGuardian
+      });
       return new Response(
         JSON.stringify({ error: 'Você não tem permissão para alterar esta fatura' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Validar que fatura está pendente
-    if (invoice.status !== 'pendente') {
+    // v2.2: Validar que fatura está pendente OU com falha de pagamento
+    const allowedStatuses = ['pendente', 'falha_pagamento'];
+    if (!allowedStatuses.includes(invoice.status)) {
       logStep('❌ Status inválido', { status: invoice.status });
       return new Response(
-        JSON.stringify({ error: 'Apenas faturas pendentes podem ter o método alterado' }),
+        JSON.stringify({ error: 'Apenas faturas pendentes ou com falha podem ter o método alterado' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -682,6 +732,7 @@ serve(async (req) => {
     }
 
     // Limpar campos de pagamento da invoice (manter status pendente)
+    // v2.2: Limpar também status para 'pendente' se estava em 'falha_pagamento'
     const { error: updateError } = await supabase
       .from('invoices')
       .update({
@@ -694,6 +745,7 @@ serve(async (req) => {
         pix_expires_at: null,
         stripe_payment_intent_id: null,
         payment_method: null,
+        status: 'pendente', // v2.2: Resetar para pendente
         updated_at: new Date().toISOString()
       })
       .eq('id', invoice_id);
@@ -738,22 +790,49 @@ verify_jwt = false
 
 ---
 
-## 9. Backend - Webhook: Limpar Expiração ao Pagar
+## 9. Backend - Webhook: Limpeza Obrigatória ao Pagar
 
 ### 9.1 Arquivo: `supabase/functions/webhook-stripe-connect/index.ts`
 
-**v2.1 - Alteração opcional mas recomendada**: Limpar `pix_expires_at` e `boleto_expires_at` quando pagamento é bem-sucedido.
+**v2.2 - Alteração OBRIGATÓRIA**: Limpar todos os campos temporários de pagamento quando pagamento é bem-sucedido.
 
 ```typescript
-// No handler de payment_intent.succeeded ou invoice.paid
+// No handler de payment_intent.succeeded
 
-// Ao atualizar invoice para 'pago', também limpar timestamps de expiração
-await supabase.from('invoices').update({
-  status: 'pago',
-  // v2.1: Limpar expiração pois pagamento foi concluído
-  pix_expires_at: null,
-  boleto_expires_at: null
-}).eq('stripe_payment_intent_id', paymentIntentId);
+case 'payment_intent.succeeded': {
+  const paymentIntent = event.data.object;
+  
+  logStep('Payment Intent succeeded', { 
+    paymentIntentId: paymentIntent.id,
+    amount: paymentIntent.amount
+  });
+  
+  // Atualizar invoice para 'pago' E limpar campos temporários (v2.2 - OBRIGATÓRIO)
+  const { error: updateError } = await supabaseAdmin
+    .from('invoices')
+    .update({
+      status: 'pago',
+      updated_at: new Date().toISOString(),
+      // v2.2: Limpeza obrigatória de campos temporários
+      pix_qr_code: null,
+      pix_copy_paste: null,
+      pix_expires_at: null,
+      boleto_url: null,
+      linha_digitavel: null,
+      barcode: null,
+      boleto_expires_at: null
+    })
+    .eq('stripe_payment_intent_id', paymentIntent.id);
+    
+  if (updateError) {
+    logStep('Erro ao atualizar invoice', { error: updateError });
+    // Não falhar o webhook por isso - pagamento foi processado
+  } else {
+    logStep('✓ Invoice atualizada e campos temporários limpos');
+  }
+  
+  break;
+}
 ```
 
 ---
@@ -762,7 +841,7 @@ await supabase.from('invoices').update({
 
 ### 10.1 Arquivo: `src/components/Settings/BillingSettings.tsx`
 
-**Alterações necessárias:**
+**Alterações necessárias (v2.2 - CRÍTICO):**
 
 1. **Carregar de `business_profiles`** (não `profiles`)
 2. **Adicionar seção de toggles** para Boleto/PIX/Card
@@ -815,7 +894,7 @@ interface PaymentMethodToggleProps {
 }
 ```
 
-#### Lógica de Carregamento
+#### Lógica de Carregamento (v2.2 - ATUALIZADA)
 
 ```typescript
 // Carregar business_profile do professor
@@ -842,7 +921,7 @@ if (!businessProfile) {
 const enabledMethods = businessProfile.enabled_payment_methods || ['boleto', 'pix', 'card'];
 ```
 
-#### Lógica de Salvamento
+#### Lógica de Salvamento (v2.2)
 
 ```typescript
 const onSavePaymentMethods = async (methods: PaymentMethodType[]) => {
@@ -879,6 +958,7 @@ const onSavePaymentMethods = async (methods: PaymentMethodType[]) => {
 5. **UI condicional** (pagamento existente vs opções)
 6. **Modal de confirmação** para alterar método
 7. **Chamar nova função** `change-payment-method`
+8. **v2.2: Adicionar callback `onPaymentMethodChanged`**
 
 #### Nova Interface Invoice
 
@@ -905,6 +985,16 @@ interface Invoice {
     business_name: string;
     enabled_payment_methods: string[] | null;
   } | null;
+}
+```
+
+#### Interface de Props (v2.2)
+
+```typescript
+interface PaymentOptionsCardProps {
+  invoice: Invoice;
+  onPaymentSuccess?: () => void;
+  onPaymentMethodChanged?: () => void; // v2.2: Novo callback
 }
 ```
 
@@ -981,114 +1071,7 @@ const hasAvailableMethods = (): boolean => {
 };
 ```
 
-#### Layout - Boleto Existente Válido
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Fatura - Mensalidade Janeiro         [Badge: Pendente]       │
-│ Valor: R$ 200,00    Vencimento: 15/02/2026                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ ✓ Boleto disponível                                    │   │
-│ │   Expira em 2 dias                                     │   │
-│ │                                                        │   │
-│ │ [   📥 Baixar Boleto PDF   ]  [   Alterar Método   ]   │   │
-│ │                                                        │   │
-│ │ Linha digitável:                                       │   │
-│ │ 12345.67890.12345.678901.23456.789012.3.12340000020000 │   │
-│ │                                        [📋 Copiar]     │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-│                    [   Verificar Pagamento   ]               │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Layout - PIX Existente Válido
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Fatura - Mensalidade Janeiro         [Badge: Pendente]       │
-│ Valor: R$ 200,00    Vencimento: 15/02/2026                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ ✓ PIX disponível                                       │   │
-│ │   Expira em 18 horas                                   │   │
-│ │                                                        │   │
-│ │       [QR CODE]                                        │   │
-│ │                                                        │   │
-│ │ [   📋 Copiar Código PIX   ]  [   Alterar Método   ]   │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-│                    [   Verificar Pagamento   ]               │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Layout - Sem Pagamento Existente (Escolha)
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Fatura - Mensalidade Janeiro         [Badge: Pendente]       │
-│ Valor: R$ 200,00    Vencimento: 15/02/2026                   │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ Escolha a forma de pagamento:                                │
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ 🎫 Boleto Bancário                     [Gerar Boleto]  │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ 💳 Cartão de Crédito                        [Pagar]    │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ ⚡ PIX                                   [Gerar PIX]    │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Layout - Valor Abaixo de Todos os Mínimos (v2.1)
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Fatura - Taxa Única                  [Badge: Pendente]       │
-│ Valor: R$ 0,30    Vencimento: 15/02/2026                     │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ ┌────────────────────────────────────────────────────────┐   │
-│ │ ⚠️ Valor abaixo do mínimo para pagamento online        │   │
-│ │                                                        │   │
-│ │ O valor desta fatura está abaixo do mínimo aceito      │   │
-│ │ pelos métodos de pagamento disponíveis.                │   │
-│ │                                                        │   │
-│ │ Entre em contato com seu professor para outras         │   │
-│ │ formas de pagamento.                                   │   │
-│ └────────────────────────────────────────────────────────┘   │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### 11.2 Modal de Confirmação - Alterar Método
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Alterar Forma de Pagamento?                                  │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│ Você já possui um boleto gerado que ainda está válido.       │
-│ Ao alterar, o boleto anterior será cancelado.                │
-│                                                              │
-│       [  Manter Boleto  ]    [  Confirmar Alteração  ]       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-#### Lógica de Alteração
+#### Lógica de Alteração (v2.2)
 
 ```typescript
 const handleChangeMethod = async () => {
@@ -1103,7 +1086,7 @@ const handleChangeMethod = async () => {
     
     toast.success(t('billing.paymentMethods.methodChanged'));
     setShowChangeConfirmation(false);
-    onPaymentMethodChanged?.(); // Callback para recarregar dados
+    onPaymentMethodChanged?.(); // v2.2: Callback para recarregar dados
     
   } catch (error) {
     toast.error(t('billing.paymentMethods.errors.changeMethodFailed'));
@@ -1117,28 +1100,94 @@ const handleChangeMethod = async () => {
 
 ## 12. Frontend - Queries Atualizadas
 
-### 12.1 Arquivo: `src/pages/Faturas.tsx`
+### 12.1 Arquivo: `src/pages/Faturas.tsx` (v2.2 - CRÍTICO)
 
-**Query atualizada:**
+**Query atualizada para suportar dependentes:**
 
 ```typescript
-const { data: invoicesData } = await supabase
-  .from('invoices')
-  .select(`
-    id, created_at, due_date, amount, status, description, invoice_type,
-    boleto_url, linha_digitavel, barcode,
-    pix_qr_code, pix_copy_paste,
-    stripe_payment_intent_id, payment_method,
-    pix_expires_at, boleto_expires_at,
-    business_profile:business_profiles!invoices_business_profile_id_fkey(
-      id, business_name, enabled_payment_methods
-    )
-  `)
-  .eq('student_id', user.id)
-  .order('created_at', { ascending: false });
+// v2.2: Query busca faturas do aluno OU de seus dependentes
+const fetchStudentInvoices = async () => {
+  if (!user?.id) return [];
+  
+  // Primeiro, buscar IDs de dependentes onde o usuário é responsável
+  const { data: dependents } = await supabase
+    .from('dependents')
+    .select('id, responsible_id')
+    .eq('responsible_id', user.id);
+  
+  // Buscar relationships onde o usuário é guardião
+  const { data: guardianRelationships } = await supabase
+    .from('teacher_student_relationships')
+    .select('student_id')
+    .eq('student_guardian_email', user.email);
+  
+  // Coletar todos os student_ids que o usuário pode ver
+  const studentIds = [user.id];
+  if (guardianRelationships) {
+    guardianRelationships.forEach(rel => {
+      if (!studentIds.includes(rel.student_id)) {
+        studentIds.push(rel.student_id);
+      }
+    });
+  }
+  
+  // Buscar faturas
+  const { data: invoicesData, error } = await supabase
+    .from('invoices')
+    .select(`
+      id, created_at, due_date, amount, status, description, invoice_type,
+      boleto_url, linha_digitavel, barcode,
+      pix_qr_code, pix_copy_paste,
+      stripe_payment_intent_id, payment_method,
+      pix_expires_at, boleto_expires_at,
+      student:profiles!invoices_student_id_fkey(id, name),
+      business_profile:business_profiles!invoices_business_profile_id_fkey(
+        id, business_name, enabled_payment_methods
+      )
+    `)
+    .in('student_id', studentIds)
+    .order('created_at', { ascending: false });
+    
+  if (error) throw error;
+  return invoicesData || [];
+};
 ```
 
-**Nota v2.1**: Remover uso de `stripe_hosted_invoice_url` - usar modal com `PaymentOptionsCard` ao invés de redirecionar.
+**v2.2: Substituir redirect por modal:**
+
+```tsx
+// ANTES (NÃO USAR)
+<Button onClick={() => window.open(invoice.stripe_hosted_invoice_url)}>
+  Pagar
+</Button>
+
+// DEPOIS (v2.2)
+const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+
+// Na tabela
+<Button onClick={() => setSelectedInvoice(invoice)}>
+  Pagar
+</Button>
+
+// Modal
+<Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle>{t('financial.payInvoice')}</DialogTitle>
+    </DialogHeader>
+    {selectedInvoice && (
+      <PaymentOptionsCard 
+        invoice={selectedInvoice}
+        onPaymentSuccess={() => {
+          setSelectedInvoice(null);
+          refetch();
+        }}
+        onPaymentMethodChanged={() => refetch()} // v2.2
+      />
+    )}
+  </DialogContent>
+</Dialog>
+```
 
 ### 12.2 Arquivo: `src/pages/Financeiro.tsx`
 
@@ -1232,6 +1281,7 @@ const { data: invoicesData } = await supabase
       "title": "Alterar Forma de Pagamento?",
       "boletoWarning": "Você já possui um boleto gerado que ainda está válido. Ao alterar, o boleto anterior será cancelado.",
       "pixWarning": "Você já possui um código PIX gerado que ainda está válido. Ao alterar, o PIX anterior será cancelado.",
+      "failedPaymentInfo": "O pagamento anterior falhou. Você pode tentar com outro método.",
       "keepCurrent": "Manter Atual",
       "confirmChange": "Confirmar Alteração"
     },
@@ -1300,6 +1350,7 @@ const { data: invoicesData } = await supabase
       "title": "Change Payment Method?",
       "boletoWarning": "You already have a valid boleto generated. By changing, the previous boleto will be cancelled.",
       "pixWarning": "You already have a valid PIX code generated. By changing, the previous PIX will be cancelled.",
+      "failedPaymentInfo": "The previous payment failed. You can try with another method.",
       "keepCurrent": "Keep Current",
       "confirmChange": "Confirm Change"
     },
@@ -1320,17 +1371,16 @@ const { data: invoicesData } = await supabase
 
 | Arquivo | Ação | Descrição |
 |---------|------|-----------|
-| Migração SQL (índices) | **CRIAR** | Apenas índices (colunas já existem) |
 | `src/utils/stripe-fees.ts` | **MODIFICAR** | Adicionar taxas, constantes, valores mínimos e funções auxiliares |
 | `supabase/functions/create-invoice/index.ts` | **MODIFICAR** | Geração condicional de boleto + valor mínimo |
 | `supabase/functions/automated-billing/index.ts` | **MODIFICAR** | Geração condicional de boleto + valor mínimo |
 | `supabase/functions/create-payment-intent-connect/index.ts` | **MODIFICAR** | Validação de método + PIX capability + valor mínimo + expiração |
-| `supabase/functions/change-payment-method/index.ts` | **CRIAR** | Nova função para aluno trocar método (com tratamento de boleto ativo) |
+| `supabase/functions/change-payment-method/index.ts` | **CRIAR** | Nova função para aluno trocar método (v2.2: autorização dependentes + status falha) |
 | `supabase/config.toml` | **MODIFICAR** | Adicionar `[functions.change-payment-method]` |
-| `supabase/functions/webhook-stripe-connect/index.ts` | **MODIFICAR** | Limpar expiração ao pagar (opcional) |
-| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento + valores mínimos |
-| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Interface, validação, reutilização, filtro por mínimo, modal alterar |
-| `src/pages/Faturas.tsx` | **MODIFICAR** | Query com campos de expiração + usar modal ao invés de URL |
+| `supabase/functions/webhook-stripe-connect/index.ts` | **MODIFICAR** | Limpeza OBRIGATÓRIA ao pagar (v2.2) |
+| `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento + carregar de business_profiles (v2.2) |
+| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | Interface, validação, callback onPaymentMethodChanged (v2.2), modal alterar |
+| `src/pages/Faturas.tsx` | **MODIFICAR** | Query dependentes (v2.2) + modal ao invés de URL (v2.2) |
 | `src/pages/Financeiro.tsx` | **MODIFICAR** | Query e alerta de taxas completo (todos os métodos) |
 | `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Strings em português + valores mínimos + erros |
 | `src/i18n/locales/en/billing.json` | **MODIFICAR** | Strings em inglês + valores mínimos + erros |
@@ -1340,9 +1390,9 @@ const { data: invoicesData } = await supabase
 ## 15. Checklist de Implementação
 
 ### Fase 1: Database
-- [ ] Verificar se índices de expiração existem
-- [ ] Criar índices se não existirem
-- [ ] Regenerar tipos Supabase
+- [x] Verificar se índices de expiração existem (v2.2: JÁ EXISTEM)
+- [x] Verificar se colunas existem (v2.2: JÁ EXISTEM)
+- [ ] Regenerar tipos Supabase (se necessário)
 
 ### Fase 2: Backend - Geração Condicional
 - [ ] `create-invoice`: Verificar `enabled_payment_methods` antes de gerar boleto
@@ -1363,12 +1413,15 @@ const { data: invoicesData } = await supabase
 ### Fase 4: Backend - Alterar Método
 - [ ] Criar `change-payment-method/index.ts`
 - [ ] Implementar tratamento de boleto ativo (v2.1)
+- [ ] Implementar autorização de dependentes (v2.2)
+- [ ] Implementar status `falha_pagamento` (v2.2)
 - [ ] Configurar em `supabase/config.toml` (v2.1)
 - [ ] Testar cancelamento de PI e limpeza de dados
 - [ ] Deploy da função
 
-### Fase 5: Backend - Webhook (Opcional)
-- [ ] `webhook-stripe-connect`: Limpar expiração ao pagar (v2.1)
+### Fase 5: Backend - Webhook (OBRIGATÓRIO v2.2)
+- [ ] `webhook-stripe-connect`: Limpeza obrigatória ao pagar
+- [ ] Incluir `barcode` na limpeza (v2.2)
 
 ### Fase 6: Frontend - stripe-fees.ts
 - [ ] Adicionar `MINIMUM_PAYMENT_AMOUNTS`
@@ -1376,7 +1429,7 @@ const { data: invoicesData } = await supabase
 - [ ] Adicionar funções auxiliares (`meetsMinimumAmount`, `getAvailableMethodsForAmount`, `getMinimumAmountError`)
 
 ### Fase 7: Frontend - Professor
-- [ ] `BillingSettings`: Carregar de `business_profiles`
+- [ ] `BillingSettings`: Carregar de `business_profiles` (v2.2)
 - [ ] `BillingSettings`: Toggles de métodos com taxas
 - [ ] `BillingSettings`: Exibir valores mínimos por método (v2.1)
 - [ ] `BillingSettings`: Indicar geração automática de boleto
@@ -1385,6 +1438,7 @@ const { data: invoicesData } = await supabase
 
 ### Fase 8: Frontend - Aluno
 - [ ] `PaymentOptionsCard`: Atualizar interface Invoice
+- [ ] `PaymentOptionsCard`: Adicionar prop `onPaymentMethodChanged` (v2.2)
 - [ ] `PaymentOptionsCard`: Funções `hasValidBoleto`, `hasValidPix`
 - [ ] `PaymentOptionsCard`: Verificar `enabled_payment_methods` (invalidação)
 - [ ] `PaymentOptionsCard`: Filtrar métodos por valor mínimo (v2.1)
@@ -1392,12 +1446,12 @@ const { data: invoicesData } = await supabase
 - [ ] `PaymentOptionsCard`: UI condicional (existente vs opções)
 - [ ] `PaymentOptionsCard`: Modal confirmação alterar método
 - [ ] `PaymentOptionsCard`: Chamar `change-payment-method`
-- [ ] `Faturas.tsx`: Atualizar query com campos de expiração
-- [ ] `Faturas.tsx`: Usar modal ao invés de `stripe_hosted_invoice_url`
+- [ ] `Faturas.tsx`: Atualizar query para suportar dependentes (v2.2)
+- [ ] `Faturas.tsx`: Usar modal ao invés de `stripe_hosted_invoice_url` (v2.2)
 - [ ] `Financeiro.tsx`: Alerta de taxas completo (todos os métodos)
 
 ### Fase 9: i18n
-- [ ] `pt/billing.json`: Todas as strings novas + mínimos + erros
+- [ ] `pt/billing.json`: Todas as strings novas + mínimos + erros + failedPaymentInfo
 - [ ] `en/billing.json`: Equivalentes em inglês
 
 ### Fase 10: Testes
@@ -1413,6 +1467,10 @@ const { data: invoicesData } = await supabase
 - [ ] Fatura com valor < R$0.50 → Nenhum método disponível (v2.1)
 - [ ] Validação de mínimos funciona para todos os métodos
 - [ ] Múltiplos business_profiles funcionam
+- [ ] **v2.2**: Fatura com `falha_pagamento` permite troca de método
+- [ ] **v2.2**: Responsável pode ver faturas de dependentes
+- [ ] **v2.2**: Responsável pode pagar faturas de dependentes
+- [ ] **v2.2**: Webhook limpa campos temporários após pagamento
 
 ---
 
@@ -1420,18 +1478,18 @@ const { data: invoicesData } = await supabase
 
 | Tarefa | Tempo |
 |--------|-------|
-| Migração SQL (índices) + regenerar tipos | 20 min |
 | Backend: Geração condicional (create-invoice, automated-billing) | 1.5 horas |
 | Backend: Validação + PIX capability + valor mínimo + expiração | 2 horas |
-| Backend: change-payment-method + config.toml | 1 hora |
-| Backend: Webhook limpar expiração (opcional) | 30 min |
+| Backend: change-payment-method + config.toml (v2.2 atualizado) | 1.5 horas |
+| Backend: Webhook limpeza obrigatória (v2.2) | 30 min |
 | stripe-fees.ts | 45 min |
-| BillingSettings | 2.5 horas |
-| PaymentOptionsCard (reutilização + alterar + mínimos) | 3.5 horas |
-| Faturas.tsx + Financeiro.tsx | 1.5 horas |
+| BillingSettings (v2.2 atualizado) | 2.5 horas |
+| PaymentOptionsCard (v2.2: callback + validações) | 3.5 horas |
+| Faturas.tsx (v2.2: dependentes + modal) | 2 horas |
+| Financeiro.tsx | 1 hora |
 | i18n | 45 min |
-| Testes | 2.5 horas |
-| **Total** | **~17 horas** |
+| Testes (incluindo cenários v2.2) | 3 horas |
+| **Total** | **~19 horas** |
 
 ---
 
@@ -1447,6 +1505,8 @@ const { data: invoicesData } = await supabase
 | Query de invoice não inclui business_profile | Média | Alto | Verificar todas as queries |
 | Boleto ativo no Stripe não pode ser cancelado | Média | Médio | Tratar erro graciosamente (v2.1) |
 | Valor abaixo do mínimo para todos os métodos | Baixa | Médio | Exibir alerta + contato com professor (v2.1) |
+| **v2.2**: Responsável não consegue ver faturas de dependentes | Média | Alto | Query atualizada com lógica de dependentes |
+| **v2.2**: Campos temporários não limpos após pagamento | Baixa | Médio | Limpeza obrigatória no webhook |
 
 ---
 
@@ -1457,15 +1517,15 @@ const { data: invoicesData } = await supabase
 | 1.0 | 2026-01-14 | Versão inicial do plano |
 | 1.1 | 2026-01-14 | Lacunas: query Financeiro.tsx, interface Invoice, BillingSettings com business_profiles, PIX capability, múltiplos business_profiles |
 | 2.0 | 2026-01-15 | Arquitetura híbrida v2.0: geração automática de boleto (se habilitado), campos de expiração, reutilização de links, alterar método pelo aluno, invalidação ao desabilitar método, cartão pode ser desabilitado, expiração de boleto usa `payment_due_days`, mensagem amigável para PIX capability |
-| **2.1** | **2026-01-15** | **Análise de lacunas v2.1**: validação de valores mínimos por método (Boleto R$5, PIX R$1, Card R$0.50), PIX capability check em `create-payment-intent-connect`, tratamento de boleto ativo no Stripe (`change-payment-method` trata erro graciosamente), configuração `config.toml` para nova edge function, limpeza de expiração no webhook, UI para valor abaixo do mínimo, estimativa atualizada para ~17h |
+| 2.1 | 2026-01-15 | Análise de lacunas v2.1: validação de valores mínimos por método (Boleto R$5, PIX R$1, Card R$0.50), PIX capability check em `create-payment-intent-connect`, tratamento de boleto ativo no Stripe (`change-payment-method` trata erro graciosamente), configuração `config.toml` para nova edge function, limpeza de expiração no webhook, UI para valor abaixo do mínimo, estimativa atualizada para ~17h |
+| **2.2** | **2026-01-16** | **Análise de lacunas v2.2**: autorização de dependentes em `change-payment-method` (valida `responsible_id`), status `falha_pagamento` permite troca de método, query `Faturas.tsx` suporta dependentes via `responsible_id`, modal substitui redirect `stripe_hosted_invoice_url`, callback `onPaymentMethodChanged` em `PaymentOptionsCard`, `BillingSettings` gerencia `enabled_payment_methods` de `business_profiles`, limpeza de campos temporários OBRIGATÓRIA no webhook (incluindo `barcode`), remoção de índices redundantes da migração (já existem), novas strings i18n `failedPaymentInfo`, estimativa atualizada para ~19h |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.1**: Este documento
-2. ⏳ **Criar migração SQL**: Índices (colunas já existem)
-3. ⏳ **Implementação Backend**: Edge functions
-4. ⏳ **Implementação Frontend**: Componentes e páginas
-5. ⏳ **Testes**: Validar todos os cenários
-6. ⏳ **Deploy**: Staging → Produção
+1. ✅ **Aprovação do plano v2.2**: Este documento
+2. ⏳ **Implementação Backend**: Edge functions (prioridade: `change-payment-method`)
+3. ⏳ **Implementação Frontend**: Componentes e páginas
+4. ⏳ **Testes**: Validar todos os cenários
+5. ⏳ **Deploy**: Staging → Produção

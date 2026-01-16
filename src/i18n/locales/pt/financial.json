@@ -78,7 +78,8 @@
     "pending": "Pendente",
     "overdue": "Vencida",
     "cancelled": "Cancelada",
-    "refunded": "Reembolsada"
+    "refunded": "Reembolsada",
+    "paymentFailed": "Falha no Pagamento"
   },
   "methods": {
     "cash": "Dinheiro",
@@ -188,5 +189,35 @@
     "maximumAmountError": "O valor máximo para boleto é R$ 49.999,99",
     "amountBelowMinimum": "Valor abaixo do mínimo para boleto",
     "amountBelowMinimumStudent": "O valor desta fatura está abaixo do mínimo de R$ 5,00 para geração de boleto. Entre em contato com o professor."
+  },
+  "studentInvoices": {
+    "title": "Minhas Faturas",
+    "billingHistory": "Histórico de Cobranças",
+    "selectTeacher": "Selecione um professor para visualizar suas faturas.",
+    "noInvoices": "Nenhuma fatura encontrada.",
+    "loadError": "Erro ao carregar as faturas.",
+    "columns": {
+      "date": "Data",
+      "description": "Descrição",
+      "dueDate": "Vencimento",
+      "amount": "Valor",
+      "status": "Status",
+      "actions": "Ações"
+    },
+    "defaultDescription": "Cobrança de aula",
+    "dependentBadge": "Dependente",
+    "payNow": "Pagar Agora",
+    "choosePaymentMethod": "Escolher Método",
+    "viewReceipt": "Ver Recibo",
+    "noPaymentMethod": "Nenhum pagamento gerado",
+    "changePaymentMethod": {
+      "title": "Alterar Método de Pagamento",
+      "description": "Você poderá escolher um novo método de pagamento para esta fatura.",
+      "warning": "Ao alterar, o pagamento atual será cancelado e você precisará gerar um novo.",
+      "confirm": "Confirmar Alteração",
+      "cancel": "Cancelar",
+      "success": "Método de pagamento alterado com sucesso! Você pode agora escolher um novo método.",
+      "error": "Erro ao alterar método de pagamento"
+    }
   }
 }

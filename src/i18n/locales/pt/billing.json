@@ -13,6 +13,21 @@
       "placeholder": "15"
     }
   },
+  "paymentMethods": {
+    "title": "Métodos de Pagamento",
+    "description": "Selecione os métodos de pagamento que seus alunos podem usar. Os métodos serão aplicados na ordem de prioridade: Boleto → PIX → Cartão.",
+    "card": "Cartão de Crédito/Débito",
+    "cardDescription": "Aceite pagamentos via cartão de crédito ou débito",
+    "boleto": "Boleto Bancário",
+    "boletoDescription": "Gera boleto bancário automaticamente (mínimo R$ 5,00)",
+    "pix": "PIX",
+    "pixDescription": "Gera QR Code PIX automaticamente (mínimo R$ 1,00)",
+    "noMethodsWarning": "Selecione pelo menos um método de pagamento para poder cobrar seus alunos.",
+    "noMethodsError": "Você precisa ter pelo menos um método de pagamento habilitado.",
+    "saveSuccess": "Métodos de pagamento atualizados com sucesso.",
+    "saveError": "Erro ao atualizar métodos de pagamento.",
+    "loadError": "Erro ao carregar métodos de pagamento."
+  },
   "validation": {
     "minDays": "Deve ser pelo menos 1 dia",
     "maxDays": "Máximo 90 dias",

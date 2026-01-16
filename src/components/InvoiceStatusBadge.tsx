@@ -4,14 +4,14 @@ import { CheckCircle, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 interface InvoiceStatusBadgeProps {
-  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
+  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada' | 'falha_pagamento';
   paymentOrigin?: string | null;
 }
 
 export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadgeProps) {
   const { t } = useTranslation('financial');
 
-  const statusMap = {
+  const statusMap: Record<string, { label: string; className: string }> = {
     paid: { label: t('status.paid'), className: 'bg-success text-success-foreground hover:bg-success/80' },
     paga: { label: t('status.paid'), className: 'bg-success text-success-foreground hover:bg-success/80' },
     open: { label: t('status.pending'), className: 'bg-primary text-primary-foreground hover:bg-primary/80' },
@@ -21,6 +21,7 @@ export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadge
     void: { label: t('status.cancelled'), className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
     cancelada: { label: t('status.cancelled'), className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
     draft: { label: t('status.pending'), className: 'bg-warning text-warning-foreground hover:bg-warning/80' },
+    falha_pagamento: { label: t('status.paymentFailed'), className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
   };
 
   const { label, className } = statusMap[status] || statusMap.void;

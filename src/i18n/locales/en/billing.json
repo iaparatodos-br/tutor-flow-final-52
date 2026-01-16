@@ -13,6 +13,21 @@
       "placeholder": "15"
     }
   },
+  "paymentMethods": {
+    "title": "Payment Methods",
+    "description": "Select the payment methods your students can use. Methods will be applied in priority order: Boleto → PIX → Card.",
+    "card": "Credit/Debit Card",
+    "cardDescription": "Accept payments via credit or debit card",
+    "boleto": "Bank Slip (Boleto)",
+    "boletoDescription": "Automatically generates bank slip (minimum R$ 5.00)",
+    "pix": "PIX",
+    "pixDescription": "Automatically generates PIX QR Code (minimum R$ 1.00)",
+    "noMethodsWarning": "Select at least one payment method to charge your students.",
+    "noMethodsError": "You must have at least one payment method enabled.",
+    "saveSuccess": "Payment methods updated successfully.",
+    "saveError": "Error updating payment methods.",
+    "loadError": "Error loading payment methods."
+  },
   "validation": {
     "minDays": "Must be at least 1 day",
     "maxDays": "Maximum 90 days",

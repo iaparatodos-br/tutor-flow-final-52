@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { InvoiceTypeBadge } from '@/components/InvoiceTypeBadge';
 import { format } from 'date-fns';
@@ -11,15 +13,19 @@ import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertCircle, FileText, RefreshCw, Loader2, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 interface Invoice {
   id: string;
   created_at: string;
   due_date: string;
   amount: number;
-  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
+  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada' | 'falha_pagamento';
   stripe_hosted_invoice_url: string | null;
   description: string | null;
   payment_origin: string | null;
@@ -27,35 +33,143 @@ interface Invoice {
   payment_intent_cancelled_at: string | null;
   payment_intent_cancelled_by: string | null;
   invoice_type: string | null;
+  student_id: string;
+  payment_method: string | null;
+  boleto_url: string | null;
+  pix_qr_code: string | null;
+  pix_copy_paste: string | null;
+  student?: {
+    id: string;
+    name: string;
+    email: string;
+  };
 }
-
-const fetchStudentInvoices = async (teacherId: string) => {
-  const { data, error } = await supabase
-    .from('invoices')
-    .select('id, created_at, due_date, amount, status, stripe_hosted_invoice_url, description, teacher_id, payment_origin, manual_payment_notes, payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type')
-    .eq('teacher_id', teacherId)
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return data as Invoice[];
-};
 
 export default function Faturas() {
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const { t } = useTranslation('financial');
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const [changeMethodDialogOpen, setChangeMethodDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [changingMethod, setChangingMethod] = useState(false);
 
-  const { data: invoices, isLoading, error } = useQuery({
-    queryKey: ['studentInvoices', selectedTeacherId],
-    queryFn: () => fetchStudentInvoices(selectedTeacherId!),
-    enabled: !!selectedTeacherId,
+  // Query para buscar IDs de dependentes do usuário
+  const { data: dependentIds = [] } = useQuery({
+    queryKey: ['userDependentIds', user?.id, selectedTeacherId],
+    queryFn: async () => {
+      if (!user?.id || !selectedTeacherId) return [];
+      
+      // Buscar dependentes onde o usuário é o responsável
+      const { data, error } = await supabase
+        .from('dependents')
+        .select('id')
+        .eq('responsible_id', user.id)
+        .eq('teacher_id', selectedTeacherId);
+
+      if (error) {
+        console.error('Error fetching dependents:', error);
+        return [];
+      }
+
+      return data?.map(d => d.id) || [];
+    },
+    enabled: !!user?.id && !!selectedTeacherId,
   });
 
-  const handlePayNow = (url: string) => {
-    window.open(url, '_blank');
+  // Query principal de faturas (próprias + dependentes)
+  const { data: invoices, isLoading, error, refetch } = useQuery({
+    queryKey: ['studentInvoices', selectedTeacherId, user?.id, dependentIds],
+    queryFn: async () => {
+      if (!selectedTeacherId || !user?.id) return [];
+
+      // Buscar faturas do próprio usuário
+      let query = supabase
+        .from('invoices')
+        .select(`
+          id, created_at, due_date, amount, status, stripe_hosted_invoice_url, 
+          description, teacher_id, payment_origin, manual_payment_notes, 
+          payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type,
+          student_id, payment_method, boleto_url, pix_qr_code, pix_copy_paste,
+          student:profiles!invoices_student_id_fkey(id, name, email)
+        `)
+        .eq('teacher_id', selectedTeacherId);
+
+      // Combinar IDs: usuário + dependentes
+      const allStudentIds = [user.id, ...dependentIds];
+      query = query.in('student_id', allStudentIds);
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw new Error(error.message);
+      return data as Invoice[];
+    },
+    enabled: !!selectedTeacherId && !!user?.id,
+  });
+
+  const handlePayNow = (invoice: Invoice) => {
+    // Se tem método de pagamento definido, abrir URL correspondente
+    if (invoice.payment_method === 'boleto' && invoice.boleto_url) {
+      window.open(invoice.boleto_url, '_blank');
+    } else if (invoice.stripe_hosted_invoice_url) {
+      window.open(invoice.stripe_hosted_invoice_url, '_blank');
+    }
+  };
+
+  const handleChoosePaymentMethod = (invoice: Invoice) => {
+    // Abrir modal ou página de escolha de método
+    if (invoice.stripe_hosted_invoice_url) {
+      window.open(invoice.stripe_hosted_invoice_url, '_blank');
+    }
   };
 
   const handleViewReceipt = (invoiceId: string) => {
     navigate(`/recibo/${invoiceId}`);
+  };
+
+  const openChangeMethodDialog = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setChangeMethodDialogOpen(true);
+  };
+
+  const handleChangePaymentMethod = async () => {
+    if (!selectedInvoice) return;
+
+    setChangingMethod(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('change-payment-method', {
+        body: { invoice_id: selectedInvoice.id }
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: t('studentInvoices.changePaymentMethod.success'),
+      });
+
+      setChangeMethodDialogOpen(false);
+      setSelectedInvoice(null);
+      
+      // Refetch invoices
+      queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
+      refetch();
+    } catch (error: any) {
+      console.error('Error changing payment method:', error);
+      toast({
+        title: t('studentInvoices.changePaymentMethod.error'),
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setChangingMethod(false);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -65,13 +179,26 @@ export default function Faturas() {
     }).format(amount);
   };
 
+  const canChangePaymentMethod = (invoice: Invoice) => {
+    const changeableStatuses = ['open', 'pendente', 'overdue', 'vencida', 'falha_pagamento'];
+    return changeableStatuses.includes(invoice.status) && invoice.payment_method;
+  };
+
+  const hasPaymentReady = (invoice: Invoice) => {
+    return invoice.boleto_url || invoice.pix_qr_code || invoice.stripe_hosted_invoice_url;
+  };
+
+  const isDependent = (invoice: Invoice) => {
+    return invoice.student_id !== user?.id;
+  };
+
   // Loading state while teacher context is loading
   if (teacherLoading) {
     return (
       <Layout>
         <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+            <h1 className="text-3xl font-bold">{t('studentInvoices.title')}</h1>
           </div>
           <Card>
             <CardContent className="pt-6">
@@ -93,12 +220,12 @@ export default function Faturas() {
       <Layout>
         <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
           <div className="flex items-center justify-between">
-            <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+            <h1 className="text-3xl font-bold">{t('studentInvoices.title')}</h1>
           </div>
           <Alert>
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Selecione um professor para visualizar suas faturas.
+              {t('studentInvoices.selectTeacher')}
             </AlertDescription>
           </Alert>
         </div>
@@ -110,12 +237,12 @@ export default function Faturas() {
     <Layout>
       <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-4 sm:space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Minhas Faturas</h1>
+          <h1 className="text-3xl font-bold">{t('studentInvoices.title')}</h1>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Histórico de Cobranças</CardTitle>
+            <CardTitle>{t('studentInvoices.billingHistory')}</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -126,22 +253,22 @@ export default function Faturas() {
               </div>
             ) : error ? (
               <div className="text-center py-8">
-                <p className="text-destructive">Erro ao carregar as faturas.</p>
+                <p className="text-destructive">{t('studentInvoices.loadError')}</p>
               </div>
             ) : !invoices || invoices.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-muted-foreground">Nenhuma fatura encontrada.</p>
+                <p className="text-muted-foreground">{t('studentInvoices.noInvoices')}</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Data</TableHead>
-                    <TableHead>Descrição</TableHead>
-                    <TableHead>Vencimento</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                    <TableHead>{t('studentInvoices.columns.date')}</TableHead>
+                    <TableHead>{t('studentInvoices.columns.description')}</TableHead>
+                    <TableHead>{t('studentInvoices.columns.dueDate')}</TableHead>
+                    <TableHead>{t('studentInvoices.columns.amount')}</TableHead>
+                    <TableHead>{t('studentInvoices.columns.status')}</TableHead>
+                    <TableHead className="text-right">{t('studentInvoices.columns.actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -151,7 +278,15 @@ export default function Faturas() {
                         {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: ptBR })}
                       </TableCell>
                       <TableCell>
-                        {invoice.description || 'Cobrança de aula'}
+                        <div className="flex items-center gap-2">
+                          {invoice.description || t('studentInvoices.defaultDescription')}
+                          {isDependent(invoice) && (
+                            <Badge variant="outline" className="text-xs">
+                              <Users className="h-3 w-3 mr-1" />
+                              {invoice.student?.name || t('studentInvoices.dependentBadge')}
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {invoice.due_date 
@@ -170,36 +305,60 @@ export default function Faturas() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        {/* Faturas pendentes/vencidas: Botão "Pagar Agora" */}
-                        {(invoice.status === 'open' || 
-                          invoice.status === 'overdue' || 
-                          invoice.status === 'pendente' || 
-                          invoice.status === 'vencida') && (
-                          invoice.stripe_hosted_invoice_url ? (
-                            <Button 
-                              onClick={() => handlePayNow(invoice.stripe_hosted_invoice_url!)}
-                              size="sm"
-                            >
-                              Pagar Agora
-                            </Button>
-                          ) : (
-                            <div className="text-sm text-muted-foreground">
-                              URL de pagamento não disponível
-                            </div>
-                          )
-                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {/* Faturas pendentes/vencidas */}
+                          {(invoice.status === 'open' || 
+                            invoice.status === 'overdue' || 
+                            invoice.status === 'pendente' || 
+                            invoice.status === 'vencida' ||
+                            invoice.status === 'falha_pagamento') && (
+                            <>
+                              {hasPaymentReady(invoice) ? (
+                                <>
+                                  <Button 
+                                    onClick={() => handlePayNow(invoice)}
+                                    size="sm"
+                                  >
+                                    {t('studentInvoices.payNow')}
+                                  </Button>
+                                  {canChangePaymentMethod(invoice) && (
+                                    <Button 
+                                      onClick={() => openChangeMethodDialog(invoice)}
+                                      size="sm"
+                                      variant="outline"
+                                    >
+                                      <RefreshCw className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </>
+                              ) : (
+                                <Button 
+                                  onClick={() => handleChoosePaymentMethod(invoice)}
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={!invoice.stripe_hosted_invoice_url}
+                                >
+                                  {invoice.stripe_hosted_invoice_url 
+                                    ? t('studentInvoices.choosePaymentMethod')
+                                    : t('studentInvoices.noPaymentMethod')
+                                  }
+                                </Button>
+                              )}
+                            </>
+                          )}
 
-                        {/* Faturas pagas: Botão "Ver Recibo" */}
-                        {(invoice.status === 'paid' || invoice.status === 'paga') && (
-                          <Button 
-                            onClick={() => handleViewReceipt(invoice.id)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            <FileText className="h-4 w-4 mr-2" />
-                            Ver Recibo
-                          </Button>
-                        )}
+                          {/* Faturas pagas */}
+                          {(invoice.status === 'paid' || invoice.status === 'paga') && (
+                            <Button 
+                              onClick={() => handleViewReceipt(invoice.id)}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <FileText className="h-4 w-4 mr-2" />
+                              {t('studentInvoices.viewReceipt')}
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -209,6 +368,42 @@ export default function Faturas() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Change Payment Method Dialog */}
+      <Dialog open={changeMethodDialogOpen} onOpenChange={setChangeMethodDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('studentInvoices.changePaymentMethod.title')}</DialogTitle>
+            <DialogDescription>
+              {t('studentInvoices.changePaymentMethod.description')}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {t('studentInvoices.changePaymentMethod.warning')}
+            </AlertDescription>
+          </Alert>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setChangeMethodDialogOpen(false)}
+              disabled={changingMethod}
+            >
+              {t('studentInvoices.changePaymentMethod.cancel')}
+            </Button>
+            <Button
+              onClick={handleChangePaymentMethod}
+              disabled={changingMethod}
+            >
+              {changingMethod && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('studentInvoices.changePaymentMethod.confirm')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

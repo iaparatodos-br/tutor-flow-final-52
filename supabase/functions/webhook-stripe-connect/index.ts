@@ -461,14 +461,25 @@ serve(async (req) => {
           break;
         }
 
-        // Atualizar fatura usando stripe_payment_intent_id
+        // v2.5: CRITICAL - Clear ALL temporary payment fields when payment succeeds
+        // This prevents stale data from being displayed after payment
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
             status: "paid",
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // v2.5: Clear all temporary payment fields
+            pix_qr_code: null,
+            pix_copy_paste: null,
+            pix_expires_at: null,
+            boleto_url: null,
+            linha_digitavel: null,
+            boleto_expires_at: null,
+            barcode: null,
+            stripe_hosted_invoice_url: null,
+            // Keep stripe_payment_intent_id for reference
           })
           .eq("stripe_payment_intent_id", paymentIntent.id)
           .select();
@@ -476,7 +487,7 @@ serve(async (req) => {
         if (error) {
           logStep("Error updating invoice from payment intent", error);
         } else if (updatedInvoices && updatedInvoices.length > 0) {
-          logStep("Invoice updated from payment intent", { 
+          logStep("Invoice updated from payment intent (v2.5: cleared temporary fields)", { 
             invoiceId: updatedInvoices[0].id,
             paymentIntentId: paymentIntent.id,
             paymentMethod: paymentIntent.payment_method_types[0]

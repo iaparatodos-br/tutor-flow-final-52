@@ -138,11 +138,17 @@ serve(async (req) => {
       dependentName
     });
 
-    // Get the business_profile_id from teacher_student_relationships
+    // Get the business_profile_id and enabled_payment_methods from teacher_student_relationships
     // Usar billingStudentId (responsável) em vez de body.student_id
     const { data: relationship, error: relationshipError } = await supabaseClient
       .from('teacher_student_relationships')
-      .select('business_profile_id, teacher_id')
+      .select(`
+        business_profile_id, 
+        teacher_id,
+        business_profile:business_profiles!teacher_student_relationships_business_profile_id_fkey(
+          enabled_payment_methods
+        )
+      `)
       .eq('student_id', billingStudentId)
       .eq('teacher_id', user.id)
       .single();
@@ -356,8 +362,16 @@ serve(async (req) => {
       });
     }
 
-    // Generate payment URL automatically
-    logStep("Generating payment URL", { invoiceId: newInvoice.id });
+    // v2.5: Generate payment URL automatically using hierarchy: Boleto → PIX → None
+    // Get enabled payment methods from business profile
+    const enabledMethods: string[] = (relationship as any)?.business_profile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
+    
+    logStep("Generating payment URL with hierarchy", { 
+      invoiceId: newInvoice.id,
+      enabledMethods,
+      amount: body.amount
+    });
+    
     try {
       // Fetch guardian data from relationship for better logging
       const { data: relationshipData, error: relError } = await supabaseClient
@@ -375,59 +389,135 @@ serve(async (req) => {
         guardianCpf: relationshipData?.student_guardian_cpf ? `***${String(relationshipData.student_guardian_cpf).slice(-4)}` : 'none'
       });
       
-      const { data: paymentResult, error: paymentError } = await supabaseClient.functions.invoke(
-        'create-payment-intent-connect',
-        {
-          body: {
-            invoice_id: newInvoice.id,
-            payment_method: 'boleto' // Default to boleto for automatic generation
-          },
-          headers: {
-            Authorization: authHeader
-          }
-        }
-      );
-
-      logStep("Payment intent response", { 
-        status: paymentError ? 'error' : 'success',
-        hasData: !!paymentResult,
-        hasBoletoUrl: !!paymentResult?.boleto_url,
-        hasLinhaDigitavel: !!paymentResult?.linha_digitavel,
-        errorMessage: paymentError?.message,
-        errorDetails: paymentError
+      // v2.5: Determine which payment method to use based on hierarchy
+      // Priority: Boleto (if enabled and amount >= 5) → PIX (if enabled) → None
+      let selectedPaymentMethod: string | null = null;
+      const MINIMUM_BOLETO_AMOUNT = 5.00;
+      
+      if (enabledMethods.includes('boleto') && body.amount >= MINIMUM_BOLETO_AMOUNT) {
+        selectedPaymentMethod = 'boleto';
+      } else if (enabledMethods.includes('pix')) {
+        selectedPaymentMethod = 'pix';
+      }
+      // Card is not auto-generated (requires user action via checkout)
+      
+      logStep("Selected payment method from hierarchy", { 
+        selectedPaymentMethod,
+        enabledMethods,
+        amount: body.amount,
+        minimumBoleto: MINIMUM_BOLETO_AMOUNT
       });
+      
+      if (selectedPaymentMethod) {
+        const { data: paymentResult, error: paymentError } = await supabaseClient.functions.invoke(
+          'create-payment-intent-connect',
+          {
+            body: {
+              invoice_id: newInvoice.id,
+              payment_method: selectedPaymentMethod
+            },
+            headers: {
+              Authorization: authHeader
+            }
+          }
+        );
 
-      if (!paymentError && paymentResult?.boleto_url) {
-        // Update invoice with the generated payment URL
-        const { error: updateError } = await supabaseClient
-          .from('invoices')
-          .update({ 
-            stripe_hosted_invoice_url: paymentResult.boleto_url,
-            boleto_url: paymentResult.boleto_url,
-            linha_digitavel: paymentResult.linha_digitavel,
-            stripe_payment_intent_id: paymentResult.payment_intent_id
-          })
-          .eq('id', newInvoice.id);
+        logStep("Payment intent response", { 
+          status: paymentError ? 'error' : 'success',
+          hasData: !!paymentResult,
+          selectedMethod: selectedPaymentMethod,
+          hasBoletoUrl: !!paymentResult?.boleto_url,
+          hasPixQrCode: !!paymentResult?.pix_qr_code,
+          errorMessage: paymentError?.message,
+          errorDetails: paymentError
+        });
 
-        if (!updateError) {
-          logStep("Payment URL generated and saved", { 
-            invoiceId: newInvoice.id,
-            paymentUrl: paymentResult.boleto_url 
+        if (!paymentError && (paymentResult?.boleto_url || paymentResult?.pix_qr_code)) {
+          // Update invoice with the generated payment data
+          const updateFields: any = {
+            stripe_payment_intent_id: paymentResult.payment_intent_id,
+            payment_method: selectedPaymentMethod
+          };
+          
+          if (selectedPaymentMethod === 'boleto') {
+            updateFields.stripe_hosted_invoice_url = paymentResult.boleto_url;
+            updateFields.boleto_url = paymentResult.boleto_url;
+            updateFields.linha_digitavel = paymentResult.linha_digitavel;
+          } else if (selectedPaymentMethod === 'pix') {
+            updateFields.pix_qr_code = paymentResult.pix_qr_code;
+            updateFields.pix_copy_paste = paymentResult.pix_copy_paste;
+            updateFields.pix_expires_at = paymentResult.pix_expires_at;
+          }
+          
+          const { error: updateError } = await supabaseClient
+            .from('invoices')
+            .update(updateFields)
+            .eq('id', newInvoice.id);
+
+          if (!updateError) {
+            logStep("Payment URL generated and saved", { 
+              invoiceId: newInvoice.id,
+              paymentMethod: selectedPaymentMethod,
+              paymentUrl: paymentResult.boleto_url || paymentResult.pix_qr_code
+            });
+            
+            // Update the invoice object to return the complete data
+            Object.assign(newInvoice, updateFields);
+          } else {
+            logStep("Warning: Could not update invoice with payment data", { error: updateError });
+          }
+        } else if (paymentError && selectedPaymentMethod === 'boleto' && enabledMethods.includes('pix')) {
+          // v2.5: Fallback to PIX if boleto fails
+          logStep("Boleto generation failed, attempting PIX fallback", { 
+            boletoError: paymentError?.message 
           });
           
-          // Update the invoice object to return the complete data
-          newInvoice.stripe_hosted_invoice_url = paymentResult.boleto_url;
-          newInvoice.boleto_url = paymentResult.boleto_url;
-          newInvoice.linha_digitavel = paymentResult.linha_digitavel;
-          newInvoice.stripe_payment_intent_id = paymentResult.payment_intent_id;
+          const { data: pixResult, error: pixError } = await supabaseClient.functions.invoke(
+            'create-payment-intent-connect',
+            {
+              body: {
+                invoice_id: newInvoice.id,
+                payment_method: 'pix'
+              },
+              headers: {
+                Authorization: authHeader
+              }
+            }
+          );
+          
+          if (!pixError && pixResult?.pix_qr_code) {
+            const pixUpdateFields = {
+              stripe_payment_intent_id: pixResult.payment_intent_id,
+              payment_method: 'pix',
+              pix_qr_code: pixResult.pix_qr_code,
+              pix_copy_paste: pixResult.pix_copy_paste,
+              pix_expires_at: pixResult.pix_expires_at
+            };
+            
+            await supabaseClient
+              .from('invoices')
+              .update(pixUpdateFields)
+              .eq('id', newInvoice.id);
+            
+            Object.assign(newInvoice, pixUpdateFields);
+            logStep("PIX fallback successful", { invoiceId: newInvoice.id });
+          } else {
+            logStep("PIX fallback also failed, invoice will have no payment method", { 
+              pixError: pixError?.message 
+            });
+          }
         } else {
-          logStep("Warning: Could not update invoice with payment URL", { error: updateError });
+          logStep("Warning: Could not generate payment URL", { 
+            error: paymentError,
+            hasResult: !!paymentResult,
+            resultData: paymentResult
+          });
         }
       } else {
-        logStep("Warning: Could not generate payment URL", { 
-          error: paymentError,
-          hasResult: !!paymentResult,
-          resultData: paymentResult
+        logStep("No suitable automatic payment method available", { 
+          enabledMethods,
+          amount: body.amount,
+          reason: "Either no methods enabled or amount below minimum"
         });
       }
     } catch (paymentGenerationError: any) {

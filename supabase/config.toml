@@ -59,3 +59,6 @@ verify_jwt = true
 
 [functions.dev-seed-test-data]
 verify_jwt = true
+
+[functions.change-payment-method]
+verify_jwt = true

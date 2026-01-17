@@ -89,6 +89,7 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **`stripe-fees.ts` completo** | ✅ OBRIGATÓRIO: Adicionar todas as constantes e funções auxiliares (`MINIMUM_PAYMENT_AMOUNTS`, `STRIPE_FEES`, `PAYMENT_METHOD_ORDER`, `PAYMENT_METHOD_CONFIG`, `calculateFee`, `sortPaymentMethods`, `getAvailableMethodsForAmount`, etc.) | ❌ PENDENTE |
 | **`Faturas.tsx` query com business_profile** | ✅ OBRIGATÓRIO: Buscar `enabled_payment_methods` do business_profile na query de faturas | ❌ PENDENTE |
 | **`Faturas.tsx` campos de expiração** | ✅ OBRIGATÓRIO: Incluir `pix_expires_at` e `boleto_expires_at` na query para exibição | ❌ PENDENTE |
+| **`PaymentOptionsCard` interface com `amount: number`** | ✅ RECOMENDADO: Alterar `amount: string` → `amount: number` na interface Invoice para consistência de tipos (evita `parseFloat()` workarounds) | ⚠️ PARCIALMENTE IMPLEMENTADO |
 | **Audit log em `change-payment-method`** | ✅ IMPLEMENTADO: Registra old_data e new_data na tabela audit_logs | ✅ CONCLUÍDO |
 
 ---

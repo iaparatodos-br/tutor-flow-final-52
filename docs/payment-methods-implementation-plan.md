@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.6  
-> **Data**: 2026-01-16  
-> **Status**: Em Implementação (Backend Concluído)
+> **Versão**: 2.7  
+> **Data**: 2026-01-17  
+> **Status**: Em Implementação (Backend Concluído, Frontend Parcial)
 
 ---
 
@@ -80,7 +80,7 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **`create-payment-intent-connect`: Limpar método anterior** | ✅ OBRIGATÓRIO: Ao gerar boleto, limpar campos PIX; ao gerar PIX, limpar campos boleto; ao usar card, limpar ambos |
 | **Mínimo global de R$5 para faturas** | ✅ CONFIRMADO: Manter validação de R$5 como mínimo global em `create-invoice` (comportamento atual) |
 
-### Novas Adições v2.6 (LACUNAS FINAIS IDENTIFICADAS)
+### Novas Adições v2.6 (LACUNAS IDENTIFICADAS)
 
 | Aspecto | Decisão | Status |
 |---------|---------|--------|
@@ -92,9 +92,17 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **`PaymentOptionsCard` interface com `amount: number`** | ✅ RECOMENDADO: Alterar `amount: string` → `amount: number` na interface Invoice para consistência de tipos (evita `parseFloat()` workarounds) | ⚠️ PARCIALMENTE IMPLEMENTADO |
 | **Audit log em `change-payment-method`** | ✅ IMPLEMENTADO: Registra old_data e new_data na tabela audit_logs | ✅ CONCLUÍDO |
 
+### Novas Adições v2.7 (PONTAS SOLTAS FINAIS)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **`PaymentOptionsCard` validação de métodos habilitados** | ✅ OBRIGATÓRIO: Filtrar botões de pagamento com base no `enabled_payment_methods` do `business_profile` (não exibir métodos desabilitados) | ❌ PENDENTE |
+| **`PaymentOptionsCard` UI de expiração** | ✅ RECOMENDADO: Exibir informação de expiração (countdown/badge) para PIX e Boleto usando `pix_expires_at` e `boleto_expires_at` | ❌ PENDENTE |
+| **`Faturas.tsx` UI de expiração** | ✅ RECOMENDADO: Exibir badge ou indicador de expiração na lista de faturas para PIX/Boleto pendentes | ❌ PENDENTE |
+
 ---
 
-## 2. Arquitetura Híbrida v2.6
+## 2. Arquitetura Híbrida v2.7
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -115,7 +123,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.6
+### Hierarquia de Geração Automática v2.7
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

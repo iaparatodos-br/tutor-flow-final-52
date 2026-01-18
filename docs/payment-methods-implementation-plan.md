@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.10  
+> **Versão**: 2.11  
 > **Data**: 2026-01-18  
-> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~60% Concluído)
+> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~55% Concluído)
 
 ---
 
@@ -112,9 +112,15 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 |---------|---------|--------|
 | **`stripe-fees.ts` seção 5.1 é CÓDIGO DESEJADO** | ⚠️ IMPORTANTE: O código na seção 5.1 deste documento (`MINIMUM_PAYMENT_AMOUNTS`, `STRIPE_FEES`, `PAYMENT_METHOD_ORDER`, `PAYMENT_METHOD_CONFIG`, `getPaymentMethodLabel()`, `canGeneratePaymentMethod()`, etc.) representa o **ESTADO FINAL DESEJADO**, NÃO o código atual no repositório. O arquivo atual (`src/utils/stripe-fees.ts`) contém apenas constantes básicas de boleto. A implementação completa conforme seção 5.1 é necessária. | ❌ PENDENTE |
 
+### Novas Adições v2.11 (LACUNA IDENTIFICADA)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **`PaymentOptionsCard` callback `onPaymentMethodChanged`** | ⚠️ IMPORTANTE: A interface de props `PaymentOptionsCardProps` (linha 41-44 do componente) não possui o callback `onPaymentMethodChanged` mencionado na seção 11.1 deste documento. Este callback é necessário para que `Faturas.tsx` possa recarregar automaticamente a lista de faturas após o aluno alterar o método de pagamento. Sem este callback, o usuário precisaria recarregar a página manualmente. | ❌ PENDENTE |
+
 ---
 
-## 2. Arquitetura Híbrida v2.10
+## 2. Arquitetura Híbrida v2.11
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -135,7 +141,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.10
+### Hierarquia de Geração Automática v2.11
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1688,7 +1694,7 @@ const { data: invoicesData } = await supabase
 | `supabase/config.toml` | **MODIFICAR** | Adicionar `[functions.change-payment-method]` | ✅ CONCLUÍDO |
 | `supabase/functions/webhook-stripe-connect/index.ts` | **MODIFICAR** | v2.5: Limpeza COMPLETA de campos temporários ao pagar (CRÍTICO) | ✅ CONCLUÍDO |
 | `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento + carregar de business_profiles (v2.2) | ✅ CONCLUÍDO |
-| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | v2.4: Interface Invoice (`amount: number` + campos expiração), callback onPaymentMethodChanged (v2.2), modal alterar | ⚠️ PARCIAL |
+| `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | v2.11: Interface Invoice (`amount: number` + campos expiração) + **callback `onPaymentMethodChanged`** (v2.2/v2.11) + filtro métodos + UI expiração | ❌ PENDENTE |
 | `src/pages/Faturas.tsx` | **MODIFICAR** | Query dependentes (v2.2) + modal ao invés de URL (v2.2) + **v2.6: campos expiração + business_profile** | ❌ PENDENTE |
 | `src/pages/Financeiro.tsx` | **MODIFICAR** | Query e alerta de taxas completo (todos os métodos) | ⚠️ A VERIFICAR |
 | `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Strings em português + valores mínimos + erros | ✅ CONCLUÍDO |
@@ -1767,6 +1773,7 @@ const { data: invoicesData } = await supabase
 - [ ] `PaymentOptionsCard`: Funções `hasValidBoleto`, `hasValidPix` (verificar expiração)
 - [ ] `PaymentOptionsCard`: Verificar `enabled_payment_methods` (invalidação)
 - [ ] `PaymentOptionsCard`: Filtrar métodos por valor mínimo (v2.1)
+- [ ] **v2.11**: `PaymentOptionsCard`: Adicionar callback `onPaymentMethodChanged` à interface de props ❌ PENDENTE
 - [ ] `Financeiro.tsx`: Alerta de taxas completo (todos os métodos)
 
 ### Fase 9: i18n (CONCLUÍDO)
@@ -1798,7 +1805,7 @@ const { data: invoicesData } = await supabase
 
 ---
 
-## 16. Estimativa de Tempo (v2.6 - ATUALIZADO COM PROGRESSO)
+## 16. Estimativa de Tempo (v2.11 - ATUALIZADO COM PROGRESSO)
 
 | Tarefa | Tempo Estimado | Status |
 |--------|----------------|--------|
@@ -1811,10 +1818,11 @@ const { data: invoicesData } = await supabase
 | **v2.6**: stripe-fees.ts completo | 45 min | ❌ PENDENTE |
 | BillingSettings | 2.5 horas | ✅ CONCLUÍDO |
 | **v2.6**: Faturas.tsx (query completa + expiração) | 1 hora | ❌ PENDENTE |
+| **v2.11**: PaymentOptionsCard callback `onPaymentMethodChanged` | 10 min | ❌ PENDENTE |
 | Financeiro.tsx | 1 hora | ⚠️ A VERIFICAR |
 | i18n | 45 min | ✅ CONCLUÍDO |
 | Testes (incluindo cenários v2.6) | 4 horas | ⚠️ EM ANDAMENTO |
-| **Total Restante** | **~4 horas** | |
+| **Total Restante** | **~4h 10min** | |
 | **Total Geral** | **~18.5 horas** | |
 
 ---
@@ -1857,18 +1865,19 @@ const { data: invoicesData } = await supabase
 | 2.8 | 2026-01-18 | Falha crítica identificada: `automated-billing` query de businessProfile (linha 134) não inclui `enabled_payment_methods`, impossibilitando a hierarquia v2.3/v2.4 |
 | 2.9 | 2026-01-18 | Clarificação importante: O código na seção 5.1 (`stripe-fees.ts`) representa o **ESTADO FINAL DESEJADO**, NÃO o código atual no repositório |
 | 2.10 | 2026-01-18 | Correção de inconsistências: Histórico de revisões atualizado (entrada duplicada v2.5 removida), seção Próximos Passos atualizada para v2.10, estimativa de tempo validada (~3h 45min para 10 itens pendentes) |
+| 2.11 | 2026-01-18 | Lacuna identificada: `PaymentOptionsCard.tsx` não possui o callback `onPaymentMethodChanged` na interface de props (linhas 41-44), conforme especificado na seção 11.1. Total de itens pendentes: 11 (4 backend + 7 frontend). Estimativa restante: ~4h 10min |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.10**: Este documento (análise final concluída)
+1. ✅ **Aprovação do plano v2.11**: Este documento (análise final concluída)
 2. ⏳ **Implementação Backend restante** (~1h 30min):
    - `automated-billing`: Query de businessProfile com `enabled_payment_methods`
    - `automated-billing`: Hierarquia v2.3/v2.4 nos 3 pontos (tradicional, mensalidade, fora do ciclo)
-3. ⏳ **Implementação Frontend restante** (~1h 45min):
+3. ⏳ **Implementação Frontend restante** (~2h 10min):
    - `stripe-fees.ts`: Código completo conforme seção 5.1
    - `Faturas.tsx`: Query expandida + UI de expiração
-   - `PaymentOptionsCard`: Interface corrigida + filtro métodos + UI expiração
+   - `PaymentOptionsCard`: Interface corrigida (`amount: number`) + **callback `onPaymentMethodChanged`** + filtro métodos + UI expiração
 4. ⏳ **Testes** (~30min): Validar todos os cenários de hierarquia e expiração
 5. ⏳ **Deploy**: Staging → Produção

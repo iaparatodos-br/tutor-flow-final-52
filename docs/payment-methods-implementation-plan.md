@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.11  
+> **Versão**: 2.12  
 > **Data**: 2026-01-18  
-> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~55% Concluído)
+> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~50% Concluído)
 
 ---
 
@@ -118,9 +118,15 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 |---------|---------|--------|
 | **`PaymentOptionsCard` callback `onPaymentMethodChanged`** | ⚠️ IMPORTANTE: A interface de props `PaymentOptionsCardProps` (linha 41-44 do componente) não possui o callback `onPaymentMethodChanged` mencionado na seção 11.1 deste documento. Este callback é necessário para que `Faturas.tsx` possa recarregar automaticamente a lista de faturas após o aluno alterar o método de pagamento. Sem este callback, o usuário precisaria recarregar a página manualmente. | ❌ PENDENTE |
 
+### Novas Adições v2.12 (LACUNA CRÍTICA IDENTIFICADA)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **`Faturas.tsx` usa `window.open` ao invés de modal** | ⚠️ CRÍTICO: As funções `handlePayNow` e `handleChoosePaymentMethod` (linhas 113-127 do componente) redirecionam diretamente via `window.open()` para `boleto_url` ou `stripe_hosted_invoice_url` ao invés de abrir modal com `PaymentOptionsCard` conforme especificado na seção 12.1 (v2.2). Isso impede o aluno de escolher ou alterar o método de pagamento dentro da aplicação. A correção requer: (1) criar estado `selectedInvoice` para controlar modal, (2) alterar `handlePayNow` para usar `setSelectedInvoice(invoice)`, (3) renderizar `PaymentOptionsCard` em modal/dialog. | ❌ PENDENTE |
+
 ---
 
-## 2. Arquitetura Híbrida v2.11
+## 2. Arquitetura Híbrida v2.12
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -141,7 +147,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.11
+### Hierarquia de Geração Automática v2.12
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1695,7 +1701,7 @@ const { data: invoicesData } = await supabase
 | `supabase/functions/webhook-stripe-connect/index.ts` | **MODIFICAR** | v2.5: Limpeza COMPLETA de campos temporários ao pagar (CRÍTICO) | ✅ CONCLUÍDO |
 | `src/components/Settings/BillingSettings.tsx` | **MODIFICAR** | Toggles de métodos de pagamento + carregar de business_profiles (v2.2) | ✅ CONCLUÍDO |
 | `src/components/PaymentOptionsCard.tsx` | **MODIFICAR** | v2.11: Interface Invoice (`amount: number` + campos expiração) + **callback `onPaymentMethodChanged`** (v2.2/v2.11) + filtro métodos + UI expiração | ❌ PENDENTE |
-| `src/pages/Faturas.tsx` | **MODIFICAR** | Query dependentes (v2.2) + modal ao invés de URL (v2.2) + **v2.6: campos expiração + business_profile** | ❌ PENDENTE |
+| `src/pages/Faturas.tsx` | **MODIFICAR** | v2.12: Query expandida + **handlePayNow deve abrir modal com PaymentOptionsCard** (v2.2/v2.12) + campos expiração + business_profile | ❌ PENDENTE |
 | `src/pages/Financeiro.tsx` | **MODIFICAR** | Query e alerta de taxas completo (todos os métodos) | ⚠️ A VERIFICAR |
 | `src/i18n/locales/pt/billing.json` | **MODIFICAR** | Strings em português + valores mínimos + erros | ✅ CONCLUÍDO |
 | `src/i18n/locales/en/billing.json` | **MODIFICAR** | Strings em inglês + valores mínimos + erros | ✅ CONCLUÍDO |
@@ -1769,6 +1775,7 @@ const { data: invoicesData } = await supabase
 - [x] `Faturas.tsx`: Invocar `change-payment-method` ✅
 - [ ] **v2.6**: `Faturas.tsx`: Buscar `business_profile.enabled_payment_methods` na query ❌ PENDENTE
 - [ ] **v2.6**: `Faturas.tsx`: Buscar `pix_expires_at` e `boleto_expires_at` na query ❌ PENDENTE
+- [ ] **v2.12**: `Faturas.tsx`: Alterar `handlePayNow` para abrir modal com `PaymentOptionsCard` ao invés de `window.open()` ❌ PENDENTE
 - [ ] `PaymentOptionsCard`: Atualizar interface Invoice (se necessário)
 - [ ] `PaymentOptionsCard`: Funções `hasValidBoleto`, `hasValidPix` (verificar expiração)
 - [ ] `PaymentOptionsCard`: Verificar `enabled_payment_methods` (invalidação)
@@ -1805,7 +1812,7 @@ const { data: invoicesData } = await supabase
 
 ---
 
-## 16. Estimativa de Tempo (v2.11 - ATUALIZADO COM PROGRESSO)
+## 16. Estimativa de Tempo (v2.12 - ATUALIZADO COM PROGRESSO)
 
 | Tarefa | Tempo Estimado | Status |
 |--------|----------------|--------|
@@ -1818,6 +1825,7 @@ const { data: invoicesData } = await supabase
 | **v2.6**: stripe-fees.ts completo | 45 min | ❌ PENDENTE |
 | BillingSettings | 2.5 horas | ✅ CONCLUÍDO |
 | **v2.6**: Faturas.tsx (query completa + expiração) | 1 hora | ❌ PENDENTE |
+| **v2.12**: Faturas.tsx handlePayNow modal | 15 min | ❌ PENDENTE |
 | **v2.11**: PaymentOptionsCard callback `onPaymentMethodChanged` | 10 min | ❌ PENDENTE |
 | Financeiro.tsx | 1 hora | ⚠️ A VERIFICAR |
 | i18n | 45 min | ✅ CONCLUÍDO |
@@ -1866,18 +1874,19 @@ const { data: invoicesData } = await supabase
 | 2.9 | 2026-01-18 | Clarificação importante: O código na seção 5.1 (`stripe-fees.ts`) representa o **ESTADO FINAL DESEJADO**, NÃO o código atual no repositório |
 | 2.10 | 2026-01-18 | Correção de inconsistências: Histórico de revisões atualizado (entrada duplicada v2.5 removida), seção Próximos Passos atualizada para v2.10, estimativa de tempo validada (~3h 45min para 10 itens pendentes) |
 | 2.11 | 2026-01-18 | Lacuna identificada: `PaymentOptionsCard.tsx` não possui o callback `onPaymentMethodChanged` na interface de props (linhas 41-44), conforme especificado na seção 11.1. Total de itens pendentes: 11 (4 backend + 7 frontend). Estimativa restante: ~4h 10min |
+| 2.12 | 2026-01-18 | Lacuna #12 identificada: `Faturas.tsx` funções `handlePayNow` e `handleChoosePaymentMethod` (linhas 113-127) usam `window.open()` para redirecionar ao invés de abrir modal com `PaymentOptionsCard` conforme v2.2. Total de itens pendentes: 12 (4 backend + 8 frontend). Estimativa restante: ~4h 25min |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.11**: Este documento (análise final concluída)
+1. ✅ **Aprovação do plano v2.12**: Este documento (análise final concluída)
 2. ⏳ **Implementação Backend restante** (~1h 30min):
    - `automated-billing`: Query de businessProfile com `enabled_payment_methods`
-   - `automated-billing`: Hierarquia v2.3/v2.4 nos 3 pontos (tradicional, mensalidade, fora do ciclo)
-3. ⏳ **Implementação Frontend restante** (~2h 10min):
+   - `automated-billing`: Hierarquia v2.3/v2.4 nos 4 pontos (query, tradicional, mensalidade, fora do ciclo)
+3. ⏳ **Implementação Frontend restante** (~2h 25min):
    - `stripe-fees.ts`: Código completo conforme seção 5.1
-   - `Faturas.tsx`: Query expandida + UI de expiração
+   - `Faturas.tsx`: Query expandida + UI de expiração + **handlePayNow modal** (v2.12)
    - `PaymentOptionsCard`: Interface corrigida (`amount: number`) + **callback `onPaymentMethodChanged`** + filtro métodos + UI expiração
 4. ⏳ **Testes** (~30min): Validar todos os cenários de hierarquia e expiração
 5. ⏳ **Deploy**: Staging → Produção

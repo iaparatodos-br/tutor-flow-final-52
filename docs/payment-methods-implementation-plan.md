@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.7  
-> **Data**: 2026-01-17  
-> **Status**: Em Implementação (Backend Concluído, Frontend Parcial)
+> **Versão**: 2.8  
+> **Data**: 2026-01-18  
+> **Status**: Em Implementação (Backend Parcial, Frontend Parcial)
 
 ---
 
@@ -92,7 +92,7 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **`PaymentOptionsCard` interface com `amount: number`** | ✅ RECOMENDADO: Alterar `amount: string` → `amount: number` na interface Invoice para consistência de tipos (evita `parseFloat()` workarounds) | ⚠️ PARCIALMENTE IMPLEMENTADO |
 | **Audit log em `change-payment-method`** | ✅ IMPLEMENTADO: Registra old_data e new_data na tabela audit_logs | ✅ CONCLUÍDO |
 
-### Novas Adições v2.7 (PONTAS SOLTAS FINAIS)
+### Novas Adições v2.7 (PONTAS SOLTAS)
 
 | Aspecto | Decisão | Status |
 |---------|---------|--------|
@@ -100,9 +100,15 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | **`PaymentOptionsCard` UI de expiração** | ✅ RECOMENDADO: Exibir informação de expiração (countdown/badge) para PIX e Boleto usando `pix_expires_at` e `boleto_expires_at` | ❌ PENDENTE |
 | **`Faturas.tsx` UI de expiração** | ✅ RECOMENDADO: Exibir badge ou indicador de expiração na lista de faturas para PIX/Boleto pendentes | ❌ PENDENTE |
 
+### Novas Adições v2.8 (FALHA CRÍTICA IDENTIFICADA)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **`automated-billing` query de businessProfile sem `enabled_payment_methods`** | ✅ CRÍTICO: A query na linha 132-137 busca apenas `id, business_name`. Deve incluir `enabled_payment_methods` para que a hierarquia v2.3/v2.4 funcione. Sem este campo, mesmo implementando a lógica de hierarquia, ela não terá acesso aos métodos habilitados. | ❌ PENDENTE |
+
 ---
 
-## 2. Arquitetura Híbrida v2.7
+## 2. Arquitetura Híbrida v2.8
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -123,7 +129,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.7
+### Hierarquia de Geração Automática v2.8
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

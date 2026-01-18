@@ -1,6 +1,6 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.8  
+> **Versão**: 2.9  
 > **Data**: 2026-01-18  
 > **Status**: Em Implementação (Backend Parcial, Frontend Parcial)
 
@@ -106,9 +106,15 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 |---------|---------|--------|
 | **`automated-billing` query de businessProfile sem `enabled_payment_methods`** | ✅ CRÍTICO: A query na linha 132-137 busca apenas `id, business_name`. Deve incluir `enabled_payment_methods` para que a hierarquia v2.3/v2.4 funcione. Sem este campo, mesmo implementando a lógica de hierarquia, ela não terá acesso aos métodos habilitados. | ❌ PENDENTE |
 
+### Novas Adições v2.9 (CLARIFICAÇÃO IMPORTANTE)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **`stripe-fees.ts` seção 5.1 é CÓDIGO DESEJADO** | ⚠️ IMPORTANTE: O código na seção 5.1 deste documento (`MINIMUM_PAYMENT_AMOUNTS`, `STRIPE_FEES`, `PAYMENT_METHOD_ORDER`, `PAYMENT_METHOD_CONFIG`, `getPaymentMethodLabel()`, `canGeneratePaymentMethod()`, etc.) representa o **ESTADO FINAL DESEJADO**, NÃO o código atual no repositório. O arquivo atual (`src/utils/stripe-fees.ts`) contém apenas constantes básicas de boleto. A implementação completa conforme seção 5.1 é necessária. | ❌ PENDENTE |
+
 ---
 
-## 2. Arquitetura Híbrida v2.8
+## 2. Arquitetura Híbrida v2.9
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -129,7 +135,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.8
+### Hierarquia de Geração Automática v2.9
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -254,6 +260,10 @@ npx supabase gen types typescript --project-id nwgomximjevgczwuyqcx > src/integr
 ## 5. Constantes de Taxas e Utilitários
 
 ### 5.1 Arquivo: `src/utils/stripe-fees.ts`
+
+> ⚠️ **ATENÇÃO v2.9**: O código abaixo representa o **ESTADO FINAL DESEJADO** para `stripe-fees.ts`.  
+> O arquivo atual no repositório contém apenas constantes básicas de boleto (`STRIPE_BOLETO_FEE`, `MINIMUM_BOLETO_AMOUNT`, `MAXIMUM_BOLETO_AMOUNT`).  
+> **TODO**: Implementar o código completo abaixo para suportar todos os métodos de pagamento.
 
 ```typescript
 /**

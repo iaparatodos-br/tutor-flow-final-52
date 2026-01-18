@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.9  
+> **Versão**: 2.10  
 > **Data**: 2026-01-18  
-> **Status**: Em Implementação (Backend Parcial, Frontend Parcial)
+> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~60% Concluído)
 
 ---
 
@@ -114,7 +114,7 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 
 ---
 
-## 2. Arquitetura Híbrida v2.9
+## 2. Arquitetura Híbrida v2.10
 
 A nova arquitetura combina geração automática (prioridade: Boleto → PIX) com possibilidade de escolha do aluno:
 
@@ -135,7 +135,7 @@ A nova arquitetura combina geração automática (prioridade: Boleto → PIX) co
 | **Responsável de dependente** | ✅ v2.2: Pode ver e pagar faturas dos dependentes |
 | **Mensalidade mensal** | ✅ v2.4: Mesma hierarquia de geração automática (Boleto → PIX → Nenhum) |
 
-### Hierarquia de Geração Automática v2.9
+### Hierarquia de Geração Automática v2.10
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1853,14 +1853,22 @@ const { data: invoicesData } = await supabase
 | 2.4 | 2026-01-16 | Correções finais v2.4: `processMonthlySubscriptionBilling` DEVE aplicar mesma hierarquia v2.3 (Boleto → PIX → Nenhum) para faturamento de mensalidades mensais; `PaymentOptionsCard` interface corrigida (`amount: string` → `amount: number`); adicionados campos `pix_expires_at`, `boleto_expires_at`, `business_profile` à interface Invoice; corrigidos `formatCurrency()` e `isBelowMinimum` para usar number; checklist expandido com novos itens v2.4; testes adicionais para mensalidades; estimativa atualizada para ~22h |
 | 2.5 | 2026-01-16 | Lacunas finais v2.5: Webhook DEVE limpar campos temporários ao pagar (incluindo `stripe_hosted_invoice_url`); `create-payment-intent-connect` DEVE salvar `pix_expires_at` ao criar PIX; `create-payment-intent-connect` DEVE validar `enabled_payment_methods`; DEVE limpar método anterior ao gerar novo; mínimo global de R$5 confirmado |
 | 2.6 | 2026-01-16 | **IMPLEMENTAÇÃO PARCIAL**: Backend 90% concluído (`create-invoice`, `create-payment-intent-connect`, `webhook-stripe-connect`, `change-payment-method` com audit log). **5 lacunas identificadas e documentadas**: (1) `automated-billing` hierarquia v2.3, (2) `processMonthlySubscriptionBilling` hierarquia v2.4, (3) `stripe-fees.ts` completo, (4) `Faturas.tsx` query com business_profile, (5) `Faturas.tsx` campos de expiração. Frontend parcialmente concluído (`BillingSettings`, `Faturas.tsx` base, i18n). Estimativa restante: ~4h |
-| **2.5** | **2026-01-16** | **Lacunas finais v2.5**: (1) `webhook-stripe-connect` DEVE limpar TODOS os campos temporários no `payment_intent.succeeded` (incluindo `stripe_hosted_invoice_url`); (2) `create-payment-intent-connect` DEVE salvar `pix_expires_at` ao criar PIX; (3) `create-payment-intent-connect` DEVE validar `enabled_payment_methods` do business_profile antes de processar; (4) `create-payment-intent-connect` DEVE limpar dados do método anterior ao gerar novo método; **CONFIRMADO**: Manter R$5 como mínimo global para faturas; checklist expandido com novos testes v2.5; estimativa atualizada para ~23h |
+| 2.7 | 2026-01-18 | Novas pontas soltas identificadas: (1) `PaymentOptionsCard` validação de métodos habilitados, (2) `PaymentOptionsCard` UI de expiração, (3) `Faturas.tsx` UI de expiração na lista |
+| 2.8 | 2026-01-18 | Falha crítica identificada: `automated-billing` query de businessProfile (linha 134) não inclui `enabled_payment_methods`, impossibilitando a hierarquia v2.3/v2.4 |
+| 2.9 | 2026-01-18 | Clarificação importante: O código na seção 5.1 (`stripe-fees.ts`) representa o **ESTADO FINAL DESEJADO**, NÃO o código atual no repositório |
+| 2.10 | 2026-01-18 | Correção de inconsistências: Histórico de revisões atualizado (entrada duplicada v2.5 removida), seção Próximos Passos atualizada para v2.10, estimativa de tempo validada (~3h 45min para 10 itens pendentes) |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.5**: Este documento
-2. ⏳ **Implementação Backend**: Edge functions (prioridade: `create-payment-intent-connect` (v2.5 crítico) → `create-invoice` → `automated-billing` (incluindo `processMonthlySubscriptionBilling`) → `change-payment-method` → `webhook-stripe-connect` (v2.5 crítico))
-3. ⏳ **Implementação Frontend**: `stripe-fees.ts` → `BillingSettings` → `PaymentOptionsCard` → `Faturas.tsx`
-4. ⏳ **Testes**: Validar todos os cenários incluindo lacunas v2.5 (limpeza webhook, pix_expires_at, validação enabled_payment_methods, limpeza método anterior)
+1. ✅ **Aprovação do plano v2.10**: Este documento (análise final concluída)
+2. ⏳ **Implementação Backend restante** (~1h 30min):
+   - `automated-billing`: Query de businessProfile com `enabled_payment_methods`
+   - `automated-billing`: Hierarquia v2.3/v2.4 nos 3 pontos (tradicional, mensalidade, fora do ciclo)
+3. ⏳ **Implementação Frontend restante** (~1h 45min):
+   - `stripe-fees.ts`: Código completo conforme seção 5.1
+   - `Faturas.tsx`: Query expandida + UI de expiração
+   - `PaymentOptionsCard`: Interface corrigida + filtro métodos + UI expiração
+4. ⏳ **Testes** (~30min): Validar todos os cenários de hierarquia e expiração
 5. ⏳ **Deploy**: Staging → Produção

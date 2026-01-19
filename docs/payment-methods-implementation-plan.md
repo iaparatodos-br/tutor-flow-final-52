@@ -1,8 +1,8 @@
 # Plano de Implementação: Métodos de Pagamento Configuráveis pelo Professor
 
-> **Versão**: 2.12  
-> **Data**: 2026-01-18  
-> **Status**: Em Implementação (Backend ~90% Concluído, Frontend ~50% Concluído)
+> **Versão**: 2.13  
+> **Data**: 2026-01-19  
+> **Status**: Em Implementação (Backend ~85% Concluído, Frontend ~45% Concluído)
 
 ---
 
@@ -123,6 +123,14 @@ Permitir que professores configurem quais métodos de pagamento (Cartão, Boleto
 | Aspecto | Decisão | Status |
 |---------|---------|--------|
 | **`Faturas.tsx` usa `window.open` ao invés de modal** | ⚠️ CRÍTICO: As funções `handlePayNow` e `handleChoosePaymentMethod` (linhas 113-127 do componente) redirecionam diretamente via `window.open()` para `boleto_url` ou `stripe_hosted_invoice_url` ao invés de abrir modal com `PaymentOptionsCard` conforme especificado na seção 12.1 (v2.2). Isso impede o aluno de escolher ou alterar o método de pagamento dentro da aplicação. A correção requer: (1) criar estado `selectedInvoice` para controlar modal, (2) alterar `handlePayNow` para usar `setSelectedInvoice(invoice)`, (3) renderizar `PaymentOptionsCard` em modal/dialog. | ❌ PENDENTE |
+
+### Novas Adições v2.13 (LACUNAS CRÍTICAS - PIX CAPABILITY)
+
+| Aspecto | Decisão | Status |
+|---------|---------|--------|
+| **FALHA #13: `create-business-profile` sem `pix_payments` capability** | ⚠️ CRÍTICO: O arquivo `supabase/functions/create-business-profile/index.ts` (linhas 63-66) solicita apenas `card_payments` e `transfers` ao criar conta Stripe Connect para perfis PJ/CNPJ. Falta `pix_payments: { requested: true }`. Isso causa inconsistência onde contas criadas via `create-connect-account` (CPF) têm PIX, mas contas PJ não terão. Professores PJ não poderão receber via PIX. | ❌ PENDENTE |
+| **FALHA #14: `business_profiles` sem coluna `capabilities`** | ⚠️ CRÍTICO: A tabela `business_profiles` não possui coluna para armazenar o status das capabilities do Stripe (`pix_payments: 'active' \| 'pending' \| 'inactive'`). A tabela `stripe_connect_accounts` possui a coluna `capabilities`, mas para contas CPF. Para contas PJ via `business_profiles`, não há como saber se PIX está ativo, pendente ou inativo. Necessário: (1) Adicionar coluna `capabilities JSONB` à tabela `business_profiles`, (2) Sincronizar via webhook `account.updated` ou edge function. | ❌ PENDENTE |
+| **FALHA #15: `BillingSettings` não verifica capabilities ativas** | ⚠️ CRÍTICO: O componente `BillingSettings.tsx` permite ao professor ativar qualquer método de pagamento (Boleto, PIX, Card) sem verificar se a capability correspondente está `"active"` no Stripe. Durante o período de ~60 dias de ativação do PIX no Brasil, professor poderia habilitar PIX mesmo sem estar ativo, fazendo alunos verem opção que não funciona. Solução: (1) `BillingSettings` buscar capabilities, (2) Desabilitar checkbox se status !== 'active', (3) Mostrar UI "Em ativação (~60 dias)" para pending. | ❌ PENDENTE |
 
 ---
 
@@ -1812,7 +1820,7 @@ const { data: invoicesData } = await supabase
 
 ---
 
-## 16. Estimativa de Tempo (v2.12 - ATUALIZADO COM PROGRESSO)
+## 16. Estimativa de Tempo (v2.13 - ATUALIZADO COM PROGRESSO)
 
 | Tarefa | Tempo Estimado | Status |
 |--------|----------------|--------|
@@ -1822,16 +1830,20 @@ const { data: invoicesData } = await supabase
 | Backend: Validação + PIX capability + `pix_expires_at` + limpeza | 2.5 horas | ✅ CONCLUÍDO |
 | Backend: change-payment-method + config.toml + audit log | 1.5 horas | ✅ CONCLUÍDO |
 | Backend: Webhook limpeza COMPLETA ao pagar | 45 min | ✅ CONCLUÍDO |
+| **v2.13**: Backend: `create-business-profile` adicionar `pix_payments` | 5 min | ❌ PENDENTE |
+| **v2.13**: Database: Migração coluna `capabilities` em `business_profiles` | 15 min | ❌ PENDENTE |
+| **v2.13**: Backend: Sincronização capabilities (webhook ou função) | 30 min | ❌ PENDENTE |
 | **v2.6**: stripe-fees.ts completo | 45 min | ❌ PENDENTE |
 | BillingSettings | 2.5 horas | ✅ CONCLUÍDO |
+| **v2.13**: BillingSettings: Verificar capabilities antes de permitir toggle | 30 min | ❌ PENDENTE |
 | **v2.6**: Faturas.tsx (query completa + expiração) | 1 hora | ❌ PENDENTE |
 | **v2.12**: Faturas.tsx handlePayNow modal | 15 min | ❌ PENDENTE |
 | **v2.11**: PaymentOptionsCard callback `onPaymentMethodChanged` | 10 min | ❌ PENDENTE |
 | Financeiro.tsx | 1 hora | ⚠️ A VERIFICAR |
 | i18n | 45 min | ✅ CONCLUÍDO |
-| Testes (incluindo cenários v2.6) | 4 horas | ⚠️ EM ANDAMENTO |
-| **Total Restante** | **~4h 10min** | |
-| **Total Geral** | **~18.5 horas** | |
+| Testes (incluindo cenários v2.6 + v2.13) | 4 horas | ⚠️ EM ANDAMENTO |
+| **Total Restante** | **~5h 30min** | |
+| **Total Geral** | **~19.5 horas** | |
 
 ---
 
@@ -1875,18 +1887,54 @@ const { data: invoicesData } = await supabase
 | 2.10 | 2026-01-18 | Correção de inconsistências: Histórico de revisões atualizado (entrada duplicada v2.5 removida), seção Próximos Passos atualizada para v2.10, estimativa de tempo validada (~3h 45min para 10 itens pendentes) |
 | 2.11 | 2026-01-18 | Lacuna identificada: `PaymentOptionsCard.tsx` não possui o callback `onPaymentMethodChanged` na interface de props (linhas 41-44), conforme especificado na seção 11.1. Total de itens pendentes: 11 (4 backend + 7 frontend). Estimativa restante: ~4h 10min |
 | 2.12 | 2026-01-18 | Lacuna #12 identificada: `Faturas.tsx` funções `handlePayNow` e `handleChoosePaymentMethod` (linhas 113-127) usam `window.open()` para redirecionar ao invés de abrir modal com `PaymentOptionsCard` conforme v2.2. Total de itens pendentes: 12 (4 backend + 8 frontend). Estimativa restante: ~4h 25min |
+| 2.13 | 2026-01-19 | **3 LACUNAS CRÍTICAS DE PIX CAPABILITY**: (1) FALHA #13: `create-business-profile/index.ts` não solicita `pix_payments` capability para contas PJ - professores PJ não terão PIX; (2) FALHA #14: Tabela `business_profiles` não possui coluna `capabilities` para armazenar status das capabilities Stripe (active/pending/inactive); (3) FALHA #15: `BillingSettings` permite ativar métodos sem verificar se capability está ativa no Stripe - durante 60 dias de ativação PIX, professor poderia habilitar método não funcional. Total: 15 itens pendentes (~5h 30min) |
 
 ---
 
 ## 19. Próximos Passos
 
-1. ✅ **Aprovação do plano v2.12**: Este documento (análise final concluída)
-2. ⏳ **Implementação Backend restante** (~1h 30min):
+1. ✅ **Aprovação do plano v2.13**: Este documento (análise final concluída)
+2. ⏳ **Implementação Backend/Database v2.13** (~50min):
+   - `create-business-profile/index.ts`: Adicionar `pix_payments: { requested: true }` às capabilities (5 min)
+   - Migração: Adicionar coluna `capabilities JSONB` à tabela `business_profiles` (15 min)
+   - Sincronização: Webhook `account.updated` ou edge function para atualizar capabilities (30 min)
+3. ⏳ **Implementação Backend restante** (~1h 30min):
    - `automated-billing`: Query de businessProfile com `enabled_payment_methods`
    - `automated-billing`: Hierarquia v2.3/v2.4 nos 4 pontos (query, tradicional, mensalidade, fora do ciclo)
-3. ⏳ **Implementação Frontend restante** (~2h 25min):
+4. ⏳ **Implementação Frontend v2.13** (~30min):
+   - `BillingSettings`: Buscar capabilities e desabilitar toggles para métodos não ativos
+   - `BillingSettings`: UI "Em ativação (~60 dias)" para capabilities pending
+5. ⏳ **Implementação Frontend restante** (~2h 25min):
    - `stripe-fees.ts`: Código completo conforme seção 5.1
    - `Faturas.tsx`: Query expandida + UI de expiração + **handlePayNow modal** (v2.12)
    - `PaymentOptionsCard`: Interface corrigida (`amount: number`) + **callback `onPaymentMethodChanged`** + filtro métodos + UI expiração
-4. ⏳ **Testes** (~30min): Validar todos os cenários de hierarquia e expiração
-5. ⏳ **Deploy**: Staging → Produção
+6. ⏳ **Testes** (~30min): Validar todos os cenários de hierarquia, expiração e capabilities
+7. ⏳ **Deploy**: Staging → Produção
+
+---
+
+## 20. Resumo de Itens Pendentes v2.13
+
+### Backend (6 itens - ~2h 20min)
+1. ❌ `automated-billing` query - Adicionar `enabled_payment_methods`
+2. ❌ `automated-billing` tradicional - Hierarquia v2.3
+3. ❌ `processMonthlySubscriptionBilling` - Hierarquia v2.4
+4. ❌ Aulas fora do ciclo - Hierarquia v2.3
+5. ❌ **v2.13**: `create-business-profile` - Adicionar `pix_payments` capability
+6. ❌ **v2.13**: Sincronização capabilities (webhook ou edge function)
+
+### Database (1 item - ~15min)
+7. ❌ **v2.13**: Migração - Coluna `capabilities JSONB` em `business_profiles`
+
+### Frontend (9 itens - ~2h 55min)
+8. ❌ `stripe-fees.ts` - Código completo
+9. ❌ `Faturas.tsx` query - Campos de expiração
+10. ❌ `Faturas.tsx` interface - Campos de expiração
+11. ❌ `Faturas.tsx` handlePayNow - Modal ao invés de window.open (v2.12)
+12. ❌ `PaymentOptionsCard` interface - `amount: number`
+13. ❌ `PaymentOptionsCard` callback - `onPaymentMethodChanged` (v2.11)
+14. ❌ `PaymentOptionsCard` filtro - Filtrar por métodos habilitados
+15. ❌ **v2.13**: `BillingSettings` - Verificar capabilities + UI pending
+16. ❌ UI de expiração - Ambos componentes
+
+### **Total: 15 itens (~5h 30min)**

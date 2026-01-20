@@ -405,18 +405,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string): Promise<{ error: string | null }> => {
     try {
-      // Ensure the redirect URL is exactly what we want
-      const redirectUrl = `${window.location.protocol}//${window.location.host}/reset-password`;
+      console.log('AuthContext: Sending reset password request via edge function');
       
-      console.log('AuthContext: Sending reset password email with redirect to:', redirectUrl);
-      
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl
+      const { data, error } = await supabase.functions.invoke('send-password-reset', {
+        body: { email }
       });
-      
-      return { error: error?.message };
+
+      // Erro de conexão com edge function
+      if (error) {
+        console.error('Reset password invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      // Edge function retorna success:false para erros de validação (HTTP 400)
+      // Mas para segurança anti-enumeration, sempre retorna success:true quando email processado
+      if (!data.success) {
+        return { error: data.error || 'Erro ao processar solicitação' };
+      }
+
+      return { error: null };
     } catch (error) {
       console.error('Reset password error:', error);
       return { error: 'Erro inesperado ao solicitar redefinição de senha' };

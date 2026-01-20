@@ -13,7 +13,7 @@ A Central de Ações é uma funcionalidade que centraliza todas as tarefas pende
 
 ### Solução
 
-- Ícone de sino (🔔) no header com badge de contagem
+- Ícone de sino (🔔) no header com badge de contagem e popover preview
 - Página dedicada `/inbox` com lista agrupada de ações
 - Ações inline para resolver pendências rapidamente
 
@@ -27,12 +27,14 @@ A Central de Ações é uma funcionalidade que centraliza todas as tarefas pende
 Header (Layout.tsx)
     └── NotificationBell
             └── Badge com contagem total
+            └── Popover com preview das ações urgentes
             └── Clique navega para /inbox
             
 /inbox (InboxPage)
     └── InboxSummaryCards (grid de contadores)
     └── InboxActionList (lista agrupada por categoria)
             └── InboxActionItem (item com ações inline)
+    └── InboxEmptyState (estado vazio dedicado)
 ```
 
 ### Estrutura de Arquivos
@@ -44,9 +46,12 @@ src/
 │   └── Inbox/
 │       ├── InboxSummaryCards.tsx
 │       ├── InboxActionList.tsx
-│       └── InboxActionItem.tsx
+│       ├── InboxActionItem.tsx
+│       └── InboxEmptyState.tsx
 ├── hooks/
 │   └── useInboxCounts.ts
+├── types/
+│   └── inbox.ts
 ├── pages/
 │   └── Inbox.tsx
 └── i18n/locales/
@@ -56,12 +61,86 @@ src/
 
 ---
 
+## Tipos Compartilhados
+
+**Arquivo:** `src/types/inbox.ts`
+
+```typescript
+// Categorias de ações do inbox
+export type InboxCategory = 
+  | 'pending_past_classes'
+  | 'amnesty_eligible'
+  | 'overdue_invoices'
+  | 'pending_reports';
+
+// Níveis de urgência
+export type UrgencyLevel = 'high' | 'medium' | 'low' | 'info';
+
+// Contagens retornadas pela RPC
+export interface InboxCounts {
+  pending_past_classes: number;
+  amnesty_eligible: number;
+  overdue_invoices: number;
+  pending_reports: number;
+  total: number;
+}
+
+// Item individual do inbox
+export interface InboxItem {
+  id: string;
+  category: InboxCategory;
+  title: string;
+  subtitle: string;
+  date: string;
+  urgency: UrgencyLevel;
+  metadata: Record<string, unknown>;
+}
+
+// Props do hook
+export interface UseInboxCountsReturn {
+  counts: InboxCounts | null;
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
+// Mapeamento de categoria para configuração visual
+export const INBOX_CATEGORY_CONFIG: Record<InboxCategory, {
+  icon: string;
+  urgency: UrgencyLevel;
+  colorClass: string;
+}> = {
+  pending_past_classes: {
+    icon: 'Clock',
+    urgency: 'high',
+    colorClass: 'text-destructive',
+  },
+  amnesty_eligible: {
+    icon: 'Gift',
+    urgency: 'medium',
+    colorClass: 'text-warning',
+  },
+  overdue_invoices: {
+    icon: 'AlertCircle',
+    urgency: 'high',
+    colorClass: 'text-destructive',
+  },
+  pending_reports: {
+    icon: 'FileText',
+    urgency: 'low',
+    colorClass: 'text-primary',
+  },
+};
+```
+
+---
+
 ## Categorias de Ações
 
 | Categoria | Descrição | Urgência | Ação Principal |
 |-----------|-----------|----------|----------------|
 | Aulas Passadas | Aulas com status 'pendente' e data < hoje | 🔴 Alta | Marcar Concluída |
-| Anistias Pendentes | Cancelamentos com cobrança aplicada sem anistia | 🟡 Média | Conceder Anistia |
+| Anistias Pendentes | Cancelamentos com cobrança (últimos 30 dias) | 🟡 Média | Conceder Anistia |
 | Faturas Atrasadas | Invoices com status 'atrasada' | 🔴 Alta | Ver Fatura |
 | Relatórios Pendentes | Aulas concluídas sem class_report | 🔵 Baixa | Criar Relatório |
 
@@ -71,35 +150,114 @@ src/
 
 ### Fase 1: MVP (Fundação)
 
+#### Tarefa 1.0: Função RPC PostgreSQL
+
+**Migração SQL:**
+
+```sql
+CREATE OR REPLACE FUNCTION get_teacher_inbox_counts(p_teacher_id UUID)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pending_past_classes INT;
+  v_amnesty_eligible INT;
+  v_overdue_invoices INT;
+  v_pending_reports INT;
+BEGIN
+  -- Aulas passadas pendentes
+  SELECT COUNT(*) INTO v_pending_past_classes
+  FROM classes
+  WHERE teacher_id = p_teacher_id
+    AND status = 'pendente'
+    AND class_date < NOW();
+
+  -- Cancelamentos elegíveis para anistia (últimos 30 dias)
+  SELECT COUNT(*) INTO v_amnesty_eligible
+  FROM classes
+  WHERE teacher_id = p_teacher_id
+    AND status = 'cancelada'
+    AND charge_applied = true
+    AND amnesty_granted = false
+    AND cancelled_at >= NOW() - INTERVAL '30 days';
+
+  -- Faturas atrasadas
+  SELECT COUNT(*) INTO v_overdue_invoices
+  FROM invoices
+  WHERE teacher_id = p_teacher_id
+    AND status = 'atrasada';
+
+  -- Aulas concluídas sem relatório (últimas 50)
+  SELECT COUNT(*) INTO v_pending_reports
+  FROM classes c
+  LEFT JOIN class_reports cr ON cr.class_id = c.id
+  WHERE c.teacher_id = p_teacher_id
+    AND c.status = 'concluida'
+    AND cr.id IS NULL
+    AND c.class_date >= NOW() - INTERVAL '30 days';
+
+  RETURN json_build_object(
+    'pending_past_classes', v_pending_past_classes,
+    'amnesty_eligible', v_amnesty_eligible,
+    'overdue_invoices', v_overdue_invoices,
+    'pending_reports', v_pending_reports,
+    'total', v_pending_past_classes + v_amnesty_eligible + v_overdue_invoices + v_pending_reports
+  );
+END;
+$$;
+```
+
 #### Tarefa 1.1: Hook useInboxCounts
 
 **Arquivo:** `src/hooks/useInboxCounts.ts`
 
 ```typescript
-interface InboxCounts {
-  pendingPastClasses: number;
-  amnestyEligible: number;
-  overdueInvoices: number;
-  pendingReports: number;
-  total: number;
-  isLoading: boolean;
-  refetch: () => void;
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useProfile } from '@/contexts/ProfileContext';
+import type { InboxCounts, UseInboxCountsReturn } from '@/types/inbox';
+
+export function useInboxCounts(): UseInboxCountsReturn {
+  const { profile } = useProfile();
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['inbox-counts', profile?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .rpc('get_teacher_inbox_counts', { p_teacher_id: profile?.id });
+      
+      if (error) throw error;
+      return data as InboxCounts;
+    },
+    enabled: !!profile?.id,
+    staleTime: 5 * 60 * 1000, // 5 minutos
+    refetchInterval: 60 * 1000, // Polling a cada 1 minuto
+    refetchIntervalInBackground: false, // Só quando tab ativa
+  });
+
+  return {
+    counts: data ?? null,
+    isLoading,
+    error: error as Error | null,
+    refetch,
+  };
 }
 ```
 
-- Usar `react-query` com `staleTime: 5 * 60 * 1000` (5 minutos)
-- Queries separadas por categoria para flexibilidade
-- Retornar contagens + total calculado
-
-#### Tarefa 1.2: Componente NotificationBell
+#### Tarefa 1.2: Componente NotificationBell com Popover
 
 **Arquivo:** `src/components/NotificationBell.tsx`
 
 - Ícone `Bell` do Lucide React
 - Badge circular vermelho posicionado no canto superior direito
 - Mostrar "99+" quando total > 99
-- Tooltip com breakdown por categoria
-- Clique navega para `/inbox`
+- **Popover** no hover/click com:
+  - Preview das 3 categorias mais urgentes
+  - Contagem por categoria
+  - Link "Ver todas →" para `/inbox`
+- Clique no link navega para `/inbox`
 
 #### Tarefa 1.3: Integração no Header
 
@@ -118,7 +276,7 @@ Estrutura:
 1. **Header**: Título + subtítulo com total + botão refresh
 2. **Summary Cards**: Grid 2x2 (mobile) ou 4 colunas (desktop)
 3. **Action List**: Seções colapsáveis por categoria
-4. **Empty State**: Ilustração quando não há pendências
+4. **Empty State**: Componente dedicado `InboxEmptyState`
 
 #### Tarefa 1.5: Componentes da Lista
 
@@ -127,6 +285,7 @@ Estrutura:
 - `InboxSummaryCards`: Cards com ícone, contagem e cor por urgência
 - `InboxActionList`: Lista com Accordion por categoria
 - `InboxActionItem`: Card com dados + ações inline
+- `InboxEmptyState`: Ilustração positiva "Tudo em dia! 🎉"
 
 #### Tarefa 1.6: Rota no App.tsx
 
@@ -154,17 +313,17 @@ Estrutura:
 - Invalidar cache após sucesso
 - Feedback visual de conclusão
 
-#### Tarefa 2.3: Quick Actions no Dropdown
-
-- Hover no sino mostra preview
-- 3 ações mais urgentes
-- Link "Ver todas →"
-
-#### Tarefa 2.4: Realtime Updates
+#### Tarefa 2.3: Realtime Updates
 
 - Supabase Realtime nas tabelas `classes` e `invoices`
 - Atualizar badge automaticamente
 - Toast opcional para novas pendências
+
+#### Tarefa 2.4: Estado "Ignorar"
+
+- Permitir professor dispensar item sem resolver
+- Armazenar em `localStorage` ou tabela `inbox_dismissed`
+- Opção para "Mostrar ignorados"
 
 ---
 
@@ -174,10 +333,13 @@ Estrutura:
 - **Mensalidades Vencendo**: Subscriptions próximas do fim
 - **Perfil Incompleto**: Configurações faltando (Stripe, etc.)
 - **Materiais Pendentes**: Aulas sem material compartilhado
+- **Aulas em Grupo**: Aulas com alunos faltando confirmação
 
 ---
 
 ## Queries de Banco de Dados
+
+> **Nota:** As queries individuais abaixo são para referência. Em produção, usar a RPC `get_teacher_inbox_counts` para performance.
 
 ### Aulas Passadas Pendentes
 
@@ -190,7 +352,7 @@ WHERE teacher_id = $1
 ORDER BY class_date ASC;
 ```
 
-### Cancelamentos Elegíveis para Anistia
+### Cancelamentos Elegíveis para Anistia (30 dias)
 
 ```sql
 SELECT id, class_date, student_id, cancelled_at, cancellation_reason
@@ -199,6 +361,7 @@ WHERE teacher_id = $1
   AND status = 'cancelada'
   AND charge_applied = true
   AND amnesty_granted = false
+  AND cancelled_at >= NOW() - INTERVAL '30 days'
 ORDER BY cancelled_at DESC;
 ```
 
@@ -212,7 +375,7 @@ WHERE teacher_id = $1
 ORDER BY due_date ASC;
 ```
 
-### Aulas sem Relatório
+### Aulas sem Relatório (30 dias)
 
 ```sql
 SELECT c.id, c.class_date, c.student_id
@@ -221,6 +384,7 @@ LEFT JOIN class_reports cr ON cr.class_id = c.id
 WHERE c.teacher_id = $1
   AND c.status = 'concluida'
   AND cr.id IS NULL
+  AND c.class_date >= NOW() - INTERVAL '30 days'
 ORDER BY c.class_date DESC
 LIMIT 50;
 ```
@@ -232,7 +396,7 @@ LIMIT 50;
 ### Estados
 
 - **Loading**: Skeleton nos cards e lista
-- **Empty**: Ilustração positiva "Tudo em dia! 🎉"
+- **Empty**: Componente `InboxEmptyState` com ilustração positiva
 - **Error**: Toast com retry automático
 
 ### Responsividade
@@ -260,8 +424,10 @@ LIMIT 50;
 
 ### Fase 1 (MVP)
 
+- [ ] RPC `get_teacher_inbox_counts` criada e funcionando
 - [ ] Sino aparece no header para professores
 - [ ] Badge mostra contagem total correta
+- [ ] Popover preview mostra categorias urgentes
 - [ ] Clique no sino navega para /inbox
 - [ ] Página lista todas as categorias de pendências
 - [ ] Ações inline funcionam (confirmar, anistiar, etc.)
@@ -271,8 +437,8 @@ LIMIT 50;
 ### Fase 2
 
 - [ ] Seleção múltipla funciona
-- [ ] Dropdown preview no hover
 - [ ] Atualizações em tempo real
+- [ ] Estado "Ignorar" implementado
 
 ---
 
@@ -289,6 +455,7 @@ LIMIT 50;
 
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|---------------|---------|-----------|
-| Queries lentas com muitos dados | Média | Alto | Paginação, índices, cache agressivo |
+| Queries lentas com muitos dados | Média | Alto | RPC única, índices, cache agressivo |
 | Conflito com outras features | Baixa | Médio | Componentes isolados, hooks independentes |
 | UX confusa com muitas categorias | Média | Médio | Priorização visual, collapse de categorias |
+| Notificações obsoletas | Baixa | Baixo | Polling + invalidação após ações |

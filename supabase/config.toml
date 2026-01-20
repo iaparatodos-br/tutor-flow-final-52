@@ -65,3 +65,6 @@ verify_jwt = true
 
 [functions.resend-confirmation]
 verify_jwt = false
+
+[functions.send-password-reset]
+verify_jwt = false

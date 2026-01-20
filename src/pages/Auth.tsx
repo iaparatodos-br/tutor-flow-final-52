@@ -94,19 +94,39 @@ export default function Auth() {
     
     setResendingConfirmation(true);
     
-    const { error } = await resendConfirmation(emailNotConfirmed);
+    const { error, code } = await resendConfirmation(emailNotConfirmed);
     
     if (error) {
-      toast({
-        title: t('messages.confirmationResentError'),
-        description: error.message || t('messages.confirmationResentErrorDescription'),
-        variant: "destructive",
-      });
+      // Tratamento específico por código de erro
+      if (code === 'already_confirmed') {
+        toast({
+          title: t('messages.emailAlreadyConfirmed'),
+        });
+        setEmailNotConfirmed(null); // Limpa o alerta, pois email já está confirmado
+      } else if (code === 'user_not_found') {
+        toast({
+          title: t('messages.confirmationResentError'),
+          description: t('messages.userNotFoundResend'),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: t('messages.confirmationResentError'),
+          description: error, // error já é string, não precisa de .message
+          variant: "destructive",
+        });
+      }
     } else {
       toast({
         title: t('messages.confirmationResentTitle'),
         description: t('messages.confirmationResentDescription'),
       });
+      // Toast adicional informando sobre possível delay
+      setTimeout(() => {
+        toast({
+          title: t('messages.emailMightBeDelayed'),
+        });
+      }, 1500);
       setEmailNotConfirmed(null);
     }
     

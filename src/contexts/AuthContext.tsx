@@ -43,7 +43,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
   updatePassword: (password: string) => Promise<{ error: any }>;
-  resendConfirmation: (email: string) => Promise<{ error: any }>;
+  resendConfirmation: (email: string) => Promise<{ error: string | null; code?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -436,17 +436,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const resendConfirmation = async (email: string) => {
+  const resendConfirmation = async (email: string): Promise<{ error: string | null; code?: string }> => {
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
+      const { data, error } = await supabase.functions.invoke('resend-confirmation', {
+        body: { email }
       });
 
-      return { error: error?.message };
+      // Edge function retorna HTTP 200 com success:false para erros de validação
+      if (error) {
+        console.error('Resend confirmation invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      if (!data.success) {
+        // Retorna código do erro para tratamento específico no frontend
+        return { 
+          error: data.error || 'Erro desconhecido',
+          code: data.code // 'already_confirmed', 'user_not_found', 'failed_to_generate', 'failed_to_send'
+        };
+      }
+
+      return { error: null };
     } catch (error: any) {
       console.error('Resend confirmation error:', error);
       return { error: 'Erro inesperado ao reenviar confirmação' };

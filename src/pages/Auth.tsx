@@ -209,18 +209,26 @@ export default function Auth() {
     const { error } = await resetPassword(resetForm.email);
     
     if (error) {
+      // Mostra erro apenas para erros de conexão/servidor
+      // A edge function NÃO revela se email existe (anti-enumeration)
       toast({
         title: t('messages.resetEmailError'),
-        description: error.includes("not found") 
-          ? t('messages.emailNotFound')
-          : error,
+        description: error,
         variant: "destructive",
       });
     } else {
+      // Mensagem genérica por segurança (não confirma se email existe)
       toast({
         title: t('messages.resetEmailSent'),
         description: t('messages.resetEmailSentDescription'),
       });
+      
+      // Toast adicional sobre possível delay de email
+      setTimeout(() => {
+        toast({
+          title: t('messages.emailMightBeDelayed'),
+        });
+      }, 1500);
       
       // Switch back to login form after success
       setShowResetForm(false);

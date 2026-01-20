@@ -62,3 +62,6 @@ verify_jwt = true
 
 [functions.change-payment-method]
 verify_jwt = true
+
+[functions.resend-confirmation]
+verify_jwt = false

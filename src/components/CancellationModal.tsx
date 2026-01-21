@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { AlertTriangle, Clock, DollarSign, Baby } from "lucide-react";
+import { AlertTriangle, Clock, DollarSign, Baby, Beaker } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface VirtualClassData {
@@ -19,6 +19,7 @@ interface VirtualClassData {
   service_price: number | null;
   class_template_id: string;
   duration_minutes: number;
+  is_experimental?: boolean;
   // student_id REMOVED - use class_participants instead
 }
 
@@ -69,6 +70,7 @@ export function CancellationModal({
     is_group_class: boolean;
     class_date: string;
     class_services: any;
+    is_experimental?: boolean;
   } | null>(null);
 
   // Check if teacher has financial module
@@ -94,13 +96,15 @@ export function CancellationModal({
           class_date: virtualClassData.class_date,
           service_id: virtualClassData.service_id,
           is_group_class: virtualClassData.is_group_class,
+          is_experimental: virtualClassData.is_experimental,
           class_services: virtualClassData.service_price ? { price: virtualClassData.service_price } : null
         };
         
         setClassData({ 
           is_group_class: fetchedClassData.is_group_class,
           class_date: fetchedClassData.class_date,
-          class_services: fetchedClassData.class_services
+          class_services: fetchedClassData.class_services,
+          is_experimental: fetchedClassData.is_experimental
         });
       } else {
         // Normal behavior: fetch from database
@@ -111,6 +115,7 @@ export function CancellationModal({
             class_date, 
             service_id,
             is_group_class,
+            is_experimental,
             class_services(price)
           `)
           .eq('id', classId)
@@ -126,7 +131,8 @@ export function CancellationModal({
         setClassData({ 
           is_group_class: fetchedClassData.is_group_class,
           class_date: fetchedClassData.class_date,
-          class_services: fetchedClassData.class_services
+          class_services: fetchedClassData.class_services,
+          is_experimental: fetchedClassData.is_experimental
         });
       }
 
@@ -160,6 +166,14 @@ export function CancellationModal({
       const hoursUntil = (classDateTime.getTime() - now.getTime()) / (1000 * 60 * 60);
       
       setHoursUntilClass(hoursUntil);
+
+      // CRITICAL: Experimental classes NEVER generate cancellation charges
+      if (fetchedClassData.is_experimental === true) {
+        console.log('🔬 Experimental class - charge disabled');
+        setWillBeCharged(false);
+        setChargeAmount(0);
+        return;
+      }
 
       // Only students get charged for late cancellations AND only if teacher has financial module
       if (!isProfessor && teacherHasFinancialModule && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
@@ -336,6 +350,17 @@ export function CancellationModal({
                 </Alert>
               )}
             </div>
+          )}
+          
+          {/* Experimental Class Alert */}
+          {classData?.is_experimental && (
+            <Alert className="border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950">
+              <Beaker className="h-4 w-4 text-violet-600" />
+              <AlertDescription className="text-violet-800 dark:text-violet-200">
+                <strong>{t('alert.experimental.title')}</strong><br />
+                {t('alert.experimental.noCharge')}
+              </AlertDescription>
+            </Alert>
           )}
           
           {classData?.is_group_class && !isProfessor && (

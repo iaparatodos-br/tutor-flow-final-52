@@ -37,6 +37,10 @@
       "title": "Aula de Dependente",
       "description": "Você está cancelando a aula de {{dependentName}}.",
       "chargeToResponsible": "A cobrança será direcionada ao responsável ({{responsibleName}})."
+    },
+    "experimental": {
+      "title": "Aula Experimental",
+      "noCharge": "Aulas experimentais não geram cobrança por cancelamento."
     }
   },
   "fields": {

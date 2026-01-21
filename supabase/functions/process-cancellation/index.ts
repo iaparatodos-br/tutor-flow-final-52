@@ -42,7 +42,7 @@ serve(async (req) => {
     // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
       .from('classes')
-      .select('id, teacher_id, class_date, status, is_group_class, service_id')
+      .select('id, teacher_id, class_date, status, is_group_class, service_id, is_experimental')
       .eq('id', class_id)
       .maybeSingle();
 
@@ -215,8 +215,12 @@ serve(async (req) => {
 
     let shouldCharge = false;
     
-    // Only charge students who cancel late
-    if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
+    // CRITICAL: Experimental classes NEVER generate cancellation charges
+    if (classData.is_experimental === true) {
+      console.log('🔬 Experimental class detected - no charge will be applied');
+      shouldCharge = false;
+    } else if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
+      // Only charge students who cancel late (and class is NOT experimental)
       shouldCharge = true;
     }
 

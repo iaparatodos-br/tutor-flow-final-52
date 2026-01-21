@@ -53,12 +53,47 @@ src/
 │   └── useInboxItems.ts
 ├── types/
 │   └── inbox.ts
+├── utils/
+│   └── inbox-cache.ts
 ├── pages/
 │   └── Inbox.tsx
 └── i18n/locales/
     ├── pt/inbox.json
     └── en/inbox.json
 ```
+
+---
+
+## Schema de Banco de Dados - Referência
+
+> ⚠️ **IMPORTANTE:** As queries deste documento foram validadas contra o schema real do banco.
+
+### Tabela `classes`
+
+A tabela `classes` **NÃO** possui `student_id` ou `dependent_id`. Esses campos existem apenas em `class_participants`.
+
+Colunas relevantes:
+- `id`, `teacher_id`, `class_date`, `status`, `is_group_class`
+- `cancelled_at`, `cancellation_reason`, `charge_applied`, `amnesty_granted`
+- `service_id`
+
+### Tabela `class_participants`
+
+Representa a participação de alunos (ou dependentes) em uma aula:
+- `class_id`, `student_id`, `dependent_id`, `status`
+- `confirmed_at`, `completed_at`, `cancelled_at`
+
+### Tabela `invoices`
+
+A tabela `invoices` **NÃO** possui `dependent_id`:
+- `id`, `teacher_id`, `student_id`, `amount`, `due_date`, `status`
+
+O `student_id` referencia `profiles.id` (o responsável/adulto).
+
+### Tabela `teacher_student_relationships`
+
+Contém o nome "amigável" do aluno definido pelo professor:
+- `teacher_id`, `student_id`, `student_name`
 
 ---
 
@@ -207,10 +242,14 @@ export const URGENCY_STYLES: Record<UrgencyLevel, {
 
 #### Tarefa 1.0: Função RPC PostgreSQL - Contagens
 
+> ⚠️ **ATENÇÃO:** Esta query usa `class_participants` como fonte de dados para aulas, pois `classes` não tem `student_id`.
+
 **Migração SQL:**
 
 ```sql
+-- ============================================
 -- RPC para contagens do inbox
+-- ============================================
 CREATE OR REPLACE FUNCTION get_teacher_inbox_counts(p_teacher_id UUID)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -223,34 +262,36 @@ DECLARE
   v_overdue_invoices INT;
   v_pending_reports INT;
 BEGIN
-  -- Aulas passadas pendentes (incluindo aulas em grupo)
+  -- VALIDAÇÃO DE SEGURANÇA: Garantir que o caller é o próprio professor
+  IF auth.uid() IS DISTINCT FROM p_teacher_id THEN
+    RAISE EXCEPTION 'Unauthorized: caller must be the teacher';
+  END IF;
+
+  -- Aulas passadas pendentes (via class_participants)
+  -- Conta AULAS distintas que têm pelo menos um participante pendente
   SELECT COUNT(DISTINCT c.id) INTO v_pending_past_classes
   FROM classes c
-  LEFT JOIN class_participants cp ON cp.class_id = c.id
+  INNER JOIN class_participants cp ON cp.class_id = c.id
   WHERE c.teacher_id = p_teacher_id
     AND c.class_date < NOW()
-    AND (
-      -- Aula individual pendente
-      (c.is_group_class = false AND c.status = 'pendente')
-      OR
-      -- Aula em grupo com algum participante pendente
-      (c.is_group_class = true AND cp.status = 'pendente')
-    );
+    AND c.status = 'pendente'
+    AND cp.status = 'pendente';
 
   -- Cancelamentos elegíveis para anistia (últimos 30 dias)
+  -- Nota: Aqui usamos classes diretamente pois é o status da AULA
   SELECT COUNT(*) INTO v_amnesty_eligible
-  FROM classes
-  WHERE teacher_id = p_teacher_id
-    AND status = 'cancelada'
-    AND charge_applied = true
-    AND amnesty_granted = false
-    AND cancelled_at >= NOW() - INTERVAL '30 days';
+  FROM classes c
+  WHERE c.teacher_id = p_teacher_id
+    AND c.status = 'cancelada'
+    AND c.charge_applied = true
+    AND c.amnesty_granted = false
+    AND c.cancelled_at >= NOW() - INTERVAL '30 days';
 
   -- Faturas atrasadas
   SELECT COUNT(*) INTO v_overdue_invoices
-  FROM invoices
-  WHERE teacher_id = p_teacher_id
-    AND status = 'atrasada';
+  FROM invoices i
+  WHERE i.teacher_id = p_teacher_id
+    AND i.status = 'atrasada';
 
   -- Aulas concluídas sem relatório (últimos 30 dias)
   SELECT COUNT(*) INTO v_pending_reports
@@ -262,11 +303,12 @@ BEGIN
     AND c.class_date >= NOW() - INTERVAL '30 days';
 
   RETURN json_build_object(
-    'pending_past_classes', v_pending_past_classes,
-    'amnesty_eligible', v_amnesty_eligible,
-    'overdue_invoices', v_overdue_invoices,
-    'pending_reports', v_pending_reports,
-    'total', v_pending_past_classes + v_amnesty_eligible + v_overdue_invoices + v_pending_reports
+    'pending_past_classes', COALESCE(v_pending_past_classes, 0),
+    'amnesty_eligible', COALESCE(v_amnesty_eligible, 0),
+    'overdue_invoices', COALESCE(v_overdue_invoices, 0),
+    'pending_reports', COALESCE(v_pending_reports, 0),
+    'total', COALESCE(v_pending_past_classes, 0) + COALESCE(v_amnesty_eligible, 0) + 
+             COALESCE(v_overdue_invoices, 0) + COALESCE(v_pending_reports, 0)
   );
 END;
 $$;
@@ -274,10 +316,17 @@ $$;
 
 #### Tarefa 1.1: Função RPC PostgreSQL - Itens Detalhados
 
+> ⚠️ **ATENÇÃO:** 
+> - `pending_past_classes` e `pending_reports` usam JOINs com `class_participants` e `teacher_student_relationships`
+> - `amnesty_eligible` usa `class_participants` para buscar o participante afetado
+> - `overdue_invoices` usa `teacher_student_relationships` para o nome amigável
+
 **Migração SQL:**
 
 ```sql
+-- ============================================
 -- RPC para itens detalhados do inbox por categoria
+-- ============================================
 CREATE OR REPLACE FUNCTION get_teacher_inbox_items(
   p_teacher_id UUID,
   p_category TEXT,
@@ -292,64 +341,99 @@ AS $$
 DECLARE
   v_result JSON;
 BEGIN
+  -- VALIDAÇÃO DE SEGURANÇA
+  IF auth.uid() IS DISTINCT FROM p_teacher_id THEN
+    RAISE EXCEPTION 'Unauthorized: caller must be the teacher';
+  END IF;
+
   CASE p_category
+    -- =============================================
+    -- AULAS PASSADAS PENDENTES
+    -- =============================================
     WHEN 'pending_past_classes' THEN
-      SELECT json_agg(item) INTO v_result
+      SELECT json_agg(item ORDER BY date ASC) INTO v_result
       FROM (
-        SELECT 
+        SELECT DISTINCT ON (c.id)
           c.id,
-          'pending_past_classes' as category,
-          COALESCE(sv.name, 'Aula') as title,
-          to_char(c.class_date, 'DD/MM/YYYY HH24:MI') as subtitle,
+          'pending_past_classes'::text as category,
+          COALESCE(cs.name, 'Aula') as title,
+          to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') as subtitle,
           c.class_date::text as date,
-          'high' as urgency,
-          c.student_id,
-          s.name as student_name,
-          c.dependent_id,
+          'high'::text as urgency,
+          cp.student_id,
+          COALESCE(tsr.student_name, p.name, 'Aluno') as student_name,
+          cp.dependent_id,
           d.name as dependent_name,
           json_build_object(
             'service_id', c.service_id,
-            'is_group_class', c.is_group_class
+            'is_group_class', c.is_group_class,
+            'pending_participants', (
+              SELECT json_agg(json_build_object(
+                'participant_id', cp2.id,
+                'student_id', cp2.student_id,
+                'student_name', COALESCE(tsr2.student_name, p2.name),
+                'dependent_id', cp2.dependent_id,
+                'dependent_name', d2.name
+              ))
+              FROM class_participants cp2
+              LEFT JOIN teacher_student_relationships tsr2 
+                ON tsr2.teacher_id = c.teacher_id AND tsr2.student_id = cp2.student_id
+              LEFT JOIN profiles p2 ON p2.id = cp2.student_id
+              LEFT JOIN dependents d2 ON d2.id = cp2.dependent_id
+              WHERE cp2.class_id = c.id AND cp2.status = 'pendente'
+            )
           ) as metadata
         FROM classes c
-        LEFT JOIN students s ON s.id = c.student_id
-        LEFT JOIN dependents d ON d.id = c.dependent_id
-        LEFT JOIN services sv ON sv.id = c.service_id
-        LEFT JOIN class_participants cp ON cp.class_id = c.id
+        INNER JOIN class_participants cp ON cp.class_id = c.id
+        LEFT JOIN teacher_student_relationships tsr 
+          ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
+        LEFT JOIN profiles p ON p.id = cp.student_id
+        LEFT JOIN dependents d ON d.id = cp.dependent_id
+        LEFT JOIN class_services cs ON cs.id = c.service_id
         WHERE c.teacher_id = p_teacher_id
           AND c.class_date < NOW()
-          AND (
-            (c.is_group_class = false AND c.status = 'pendente')
-            OR
-            (c.is_group_class = true AND cp.status = 'pendente')
-          )
-        GROUP BY c.id, sv.name, s.name, d.name
-        ORDER BY c.class_date ASC
+          AND c.status = 'pendente'
+          AND cp.status = 'pendente'
+        ORDER BY c.id, c.class_date ASC
         LIMIT p_limit OFFSET p_offset
       ) as item;
 
+    -- =============================================
+    -- CANCELAMENTOS ELEGÍVEIS PARA ANISTIA
+    -- =============================================
     WHEN 'amnesty_eligible' THEN
-      SELECT json_agg(item) INTO v_result
+      SELECT json_agg(item ORDER BY date DESC) INTO v_result
       FROM (
         SELECT 
           c.id,
-          'amnesty_eligible' as category,
-          COALESCE(sv.name, 'Aula cancelada') as title,
-          'Cancelado em ' || to_char(c.cancelled_at, 'DD/MM') as subtitle,
+          'amnesty_eligible'::text as category,
+          COALESCE(cs.name, 'Aula cancelada') as title,
+          'Cancelado em ' || to_char(c.cancelled_at AT TIME ZONE 'America/Sao_Paulo', 'DD/MM') as subtitle,
           c.cancelled_at::text as date,
-          'medium' as urgency,
-          c.student_id,
-          s.name as student_name,
-          c.dependent_id,
-          d.name as dependent_name,
+          'medium'::text as urgency,
+          -- Buscar o primeiro participante da aula para exibição
+          (SELECT cp.student_id FROM class_participants cp WHERE cp.class_id = c.id LIMIT 1) as student_id,
+          COALESCE(
+            (SELECT tsr.student_name FROM class_participants cp 
+             LEFT JOIN teacher_student_relationships tsr 
+               ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
+             WHERE cp.class_id = c.id LIMIT 1),
+            (SELECT p.name FROM class_participants cp 
+             LEFT JOIN profiles p ON p.id = cp.student_id
+             WHERE cp.class_id = c.id LIMIT 1),
+            'Aluno'
+          ) as student_name,
+          (SELECT cp.dependent_id FROM class_participants cp WHERE cp.class_id = c.id LIMIT 1) as dependent_id,
+          (SELECT d.name FROM class_participants cp 
+           LEFT JOIN dependents d ON d.id = cp.dependent_id 
+           WHERE cp.class_id = c.id AND cp.dependent_id IS NOT NULL LIMIT 1) as dependent_name,
           json_build_object(
             'cancellation_reason', c.cancellation_reason,
-            'class_date', c.class_date
+            'class_date', c.class_date,
+            'cancelled_by', c.cancelled_by
           ) as metadata
         FROM classes c
-        LEFT JOIN students s ON s.id = c.student_id
-        LEFT JOIN dependents d ON d.id = c.dependent_id
-        LEFT JOIN services sv ON sv.id = c.service_id
+        LEFT JOIN class_services cs ON cs.id = c.service_id
         WHERE c.teacher_id = p_teacher_id
           AND c.status = 'cancelada'
           AND c.charge_applied = true
@@ -359,60 +443,73 @@ BEGIN
         LIMIT p_limit OFFSET p_offset
       ) as item;
 
+    -- =============================================
+    -- FATURAS ATRASADAS
+    -- =============================================
     WHEN 'overdue_invoices' THEN
-      SELECT json_agg(item) INTO v_result
+      SELECT json_agg(item ORDER BY date ASC) INTO v_result
       FROM (
         SELECT 
           i.id,
-          'overdue_invoices' as category,
-          'Fatura #' || i.id::text as title,
+          'overdue_invoices'::text as category,
+          'Fatura R$ ' || to_char(i.amount, 'FM999G999D00') as title,
           'Venceu em ' || to_char(i.due_date, 'DD/MM') as subtitle,
           i.due_date::text as date,
-          'high' as urgency,
+          'high'::text as urgency,
           i.student_id,
-          s.name as student_name,
-          i.dependent_id,
-          d.name as dependent_name,
+          COALESCE(tsr.student_name, p.name, 'Aluno') as student_name,
+          NULL::uuid as dependent_id,  -- invoices não tem dependent_id
+          NULL::text as dependent_name,
           json_build_object(
             'amount', i.amount,
-            'days_overdue', EXTRACT(DAY FROM NOW() - i.due_date)::INT
+            'days_overdue', GREATEST(0, EXTRACT(DAY FROM NOW() - i.due_date)::INT),
+            'invoice_type', i.invoice_type,
+            'payment_method', i.payment_method
           ) as metadata
         FROM invoices i
-        LEFT JOIN students s ON s.id = i.student_id
-        LEFT JOIN dependents d ON d.id = i.dependent_id
+        LEFT JOIN teacher_student_relationships tsr 
+          ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
+        LEFT JOIN profiles p ON p.id = i.student_id
         WHERE i.teacher_id = p_teacher_id
           AND i.status = 'atrasada'
         ORDER BY i.due_date ASC
         LIMIT p_limit OFFSET p_offset
       ) as item;
 
+    -- =============================================
+    -- RELATÓRIOS PENDENTES
+    -- =============================================
     WHEN 'pending_reports' THEN
-      SELECT json_agg(item) INTO v_result
+      SELECT json_agg(item ORDER BY date DESC) INTO v_result
       FROM (
-        SELECT 
+        SELECT DISTINCT ON (c.id)
           c.id,
-          'pending_reports' as category,
-          COALESCE(sv.name, 'Aula') as title,
-          'Realizada em ' || to_char(c.class_date, 'DD/MM') as subtitle,
+          'pending_reports'::text as category,
+          COALESCE(cs.name, 'Aula') as title,
+          'Realizada em ' || to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM') as subtitle,
           c.class_date::text as date,
-          'low' as urgency,
-          c.student_id,
-          s.name as student_name,
-          c.dependent_id,
+          'low'::text as urgency,
+          cp.student_id,
+          COALESCE(tsr.student_name, p.name, 'Aluno') as student_name,
+          cp.dependent_id,
           d.name as dependent_name,
           json_build_object(
-            'service_id', c.service_id
+            'service_id', c.service_id,
+            'is_group_class', c.is_group_class
           ) as metadata
         FROM classes c
         LEFT JOIN class_reports cr ON cr.class_id = c.id
-        LEFT JOIN students s ON s.id = c.student_id
-        LEFT JOIN dependents d ON d.id = c.dependent_id
-        LEFT JOIN services sv ON sv.id = c.service_id
+        INNER JOIN class_participants cp ON cp.class_id = c.id
+        LEFT JOIN teacher_student_relationships tsr 
+          ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
+        LEFT JOIN profiles p ON p.id = cp.student_id
+        LEFT JOIN dependents d ON d.id = cp.dependent_id
+        LEFT JOIN class_services cs ON cs.id = c.service_id
         WHERE c.teacher_id = p_teacher_id
           AND c.status = 'concluida'
           AND cr.id IS NULL
           AND c.class_date >= NOW() - INTERVAL '30 days'
-        ORDER BY c.class_date DESC
+        ORDER BY c.id, c.class_date DESC
         LIMIT p_limit OFFSET p_offset
       ) as item;
 
@@ -428,22 +525,34 @@ $$;
 #### Tarefa 1.2: Índices de Banco de Dados
 
 ```sql
+-- ============================================
 -- Índices para otimização das queries do inbox
+-- ============================================
+
+-- Índice para aulas por professor/status/data
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_classes_teacher_status_date 
 ON classes(teacher_id, status, class_date);
 
+-- Índice para aulas canceladas (anistia)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_classes_teacher_cancelled 
 ON classes(teacher_id, status, charge_applied, amnesty_granted, cancelled_at)
 WHERE status = 'cancelada';
 
+-- Índice para faturas por professor/status
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_invoices_teacher_status 
 ON invoices(teacher_id, status);
 
+-- Índice para relatórios por aula
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_class_reports_class_id 
 ON class_reports(class_id);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_class_participants_status 
+-- Índice para participantes por aula/status
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_class_participants_class_status 
 ON class_participants(class_id, status);
+
+-- Índice para relacionamentos teacher-student
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_tsr_teacher_student 
+ON teacher_student_relationships(teacher_id, student_id);
 ```
 
 #### Tarefa 1.3: Hook useInboxCounts
@@ -451,19 +560,22 @@ ON class_participants(class_id, status);
 **Arquivo:** `src/hooks/useInboxCounts.ts`
 
 ```typescript
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/contexts/ProfileContext';
 import type { InboxCounts, UseInboxCountsReturn } from '@/types/inbox';
 
 export function useInboxCounts(): UseInboxCountsReturn {
   const { profile, isProfessor } = useProfile();
+  const queryClient = useQueryClient();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['inbox-counts', profile?.id],
     queryFn: async () => {
+      if (!profile?.id) throw new Error('No profile');
+      
       const { data, error } = await supabase
-        .rpc('get_teacher_inbox_counts', { p_teacher_id: profile?.id });
+        .rpc('get_teacher_inbox_counts', { p_teacher_id: profile.id });
       
       if (error) throw error;
       return data as InboxCounts;
@@ -481,6 +593,9 @@ export function useInboxCounts(): UseInboxCountsReturn {
     refetch,
   };
 }
+
+// Export query key para invalidação externa
+export const INBOX_COUNTS_QUERY_KEY = ['inbox-counts'];
 ```
 
 #### Tarefa 1.4: Hook useInboxItems
@@ -488,25 +603,29 @@ export function useInboxCounts(): UseInboxCountsReturn {
 **Arquivo:** `src/hooks/useInboxItems.ts`
 
 ```typescript
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/contexts/ProfileContext';
 import type { InboxCategory, InboxItem, UseInboxItemsReturn } from '@/types/inbox';
 
 export function useInboxItems(
   category: InboxCategory,
-  options?: { limit?: number; offset?: number }
+  options?: { limit?: number; offset?: number; enabled?: boolean }
 ): UseInboxItemsReturn {
   const { profile, isProfessor } = useProfile();
+  const queryClient = useQueryClient();
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
+  const enabled = options?.enabled ?? true;
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['inbox-items', category, profile?.id, limit, offset],
     queryFn: async () => {
+      if (!profile?.id) throw new Error('No profile');
+      
       const { data, error } = await supabase
         .rpc('get_teacher_inbox_items', {
-          p_teacher_id: profile?.id,
+          p_teacher_id: profile.id,
           p_category: category,
           p_limit: limit,
           p_offset: offset,
@@ -515,7 +634,7 @@ export function useInboxItems(
       if (error) throw error;
       return (data as InboxItem[]) ?? [];
     },
-    enabled: !!profile?.id && isProfessor,
+    enabled: !!profile?.id && isProfessor && enabled,
     staleTime: 2 * 60 * 1000, // 2 minutos
   });
 
@@ -526,158 +645,771 @@ export function useInboxItems(
     refetch,
     hasMore: (data?.length ?? 0) === limit,
     fetchMore: () => {
-      // Implementar paginação infinita se necessário
+      // Para paginação infinita, incrementar offset e refetch
+      // Implementação futura se necessário
     },
   };
 }
+
+// Export query key prefix para invalidação
+export const INBOX_ITEMS_QUERY_KEY_PREFIX = 'inbox-items';
 ```
 
-#### Tarefa 1.5: Componente NotificationBell com Popover
+#### Tarefa 1.5: Utilitário de Invalidação de Cache
+
+**Arquivo:** `src/utils/inbox-cache.ts`
+
+```typescript
+import { useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
+
+type InboxAction = 
+  | 'confirmClass' 
+  | 'grantAmnesty' 
+  | 'payInvoice' 
+  | 'createReport' 
+  | 'registerPayment'
+  | 'sendReminder';
+
+const INVALIDATION_MAP: Record<InboxAction, string[]> = {
+  confirmClass: ['inbox-counts', 'inbox-items', 'classes', 'class-participants'],
+  grantAmnesty: ['inbox-counts', 'inbox-items', 'classes', 'invoices'],
+  payInvoice: ['inbox-counts', 'inbox-items', 'invoices'],
+  createReport: ['inbox-counts', 'inbox-items', 'class-reports'],
+  registerPayment: ['inbox-counts', 'inbox-items', 'invoices'],
+  sendReminder: [], // Não altera contagens
+};
+
+export function useInboxCacheInvalidation() {
+  const queryClient = useQueryClient();
+
+  const invalidateAfterAction = useCallback((action: InboxAction) => {
+    const keys = INVALIDATION_MAP[action] ?? [];
+    keys.forEach(key => {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    });
+  }, [queryClient]);
+
+  const invalidateAll = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['inbox-counts'] });
+    queryClient.invalidateQueries({ queryKey: ['inbox-items'] });
+  }, [queryClient]);
+
+  return { invalidateAfterAction, invalidateAll };
+}
+```
+
+#### Tarefa 1.6: Componente NotificationBell com Popover
 
 **Arquivo:** `src/components/NotificationBell.tsx`
 
-- Ícone `Bell` do Lucide React
-- Badge circular vermelho posicionado no canto superior direito
-- Mostrar "99+" quando total > 99
-- **Desktop**: Popover no hover com preview das 3 categorias mais urgentes
-- **Mobile**: Touch navega diretamente para `/inbox`
-- Clique no link "Ver todas →" navega para `/inbox`
-
 ```tsx
-// NotificationBell.tsx
-const isMobile = useIsMobile();
-const navigate = useNavigate();
+import { Bell } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { useInboxCounts } from "@/hooks/useInboxCounts";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { INBOX_CATEGORY_CONFIG } from "@/types/inbox";
+import { cn } from "@/lib/utils";
 
-const handleClick = () => {
-  if (isMobile) {
+export function NotificationBell() {
+  const { t } = useTranslation('inbox');
+  const navigate = useNavigate();
+  const isMobile = useIsMobile();
+  const { counts, isLoading } = useInboxCounts();
+
+  const handleClick = () => {
+    if (isMobile) {
+      navigate('/inbox');
+    }
+  };
+
+  const handleViewAll = () => {
     navigate('/inbox');
-  }
-  // Desktop: Popover abre via onOpenChange
-};
+  };
 
-return (
-  <Popover>
-    <PopoverTrigger asChild>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="relative"
-        onClick={handleClick}
-        aria-label={`${counts?.total || 0} pendências`}
-      >
-        <Bell className="h-5 w-5" />
-        {counts?.total > 0 && (
-          <Badge 
-            className="absolute -top-1 -right-1 h-5 min-w-5 px-1"
-            role="status"
-            aria-label={`${counts.total} itens pendentes`}
-          >
-            {counts.total > 99 ? '99+' : counts.total}
-          </Badge>
-        )}
-      </Button>
-    </PopoverTrigger>
-    
-    {!isMobile && (
-      <PopoverContent>
-        {/* Preview das categorias */}
-      </PopoverContent>
-    )}
-  </Popover>
-);
+  const total = counts?.total ?? 0;
+
+  // Ordenar categorias por contagem (maior primeiro)
+  const sortedCategories = Object.entries(INBOX_CATEGORY_CONFIG)
+    .map(([key, config]) => ({
+      key: key as keyof typeof INBOX_CATEGORY_CONFIG,
+      config,
+      count: counts?.[key as keyof typeof counts] ?? 0,
+    }))
+    .filter(item => item.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3); // Máximo 3 no preview
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative"
+          onClick={handleClick}
+          aria-label={t('badge.ariaLabel', { count: total })}
+        >
+          <Bell className="h-5 w-5" />
+          {total > 0 && (
+            <Badge 
+              className={cn(
+                "absolute -top-1 -right-1 h-5 min-w-5 px-1 text-xs",
+                "animate-count-change"
+              )}
+              variant="destructive"
+              role="status"
+              aria-label={t('badge.pending', { count: total })}
+            >
+              {total > 99 ? '99+' : total}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      
+      {!isMobile && (
+        <PopoverContent className="w-72 p-3" align="end">
+          {isLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="h-6 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : total === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              {t('noItems')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {sortedCategories.map(({ key, config, count }) => (
+                <div 
+                  key={key}
+                  className={cn(
+                    "flex items-center justify-between p-2 rounded-md",
+                    config.bgClass
+                  )}
+                >
+                  <span className={cn("text-sm font-medium", config.colorClass)}>
+                    {t(config.labelKey)}
+                  </span>
+                  <Badge variant="secondary" className="text-xs">
+                    {count}
+                  </Badge>
+                </div>
+              ))}
+              
+              <Button 
+                variant="link" 
+                className="w-full mt-2 text-sm"
+                onClick={handleViewAll}
+              >
+                {t('viewAll', { count: total })} →
+              </Button>
+            </div>
+          )}
+        </PopoverContent>
+      )}
+    </Popover>
+  );
+}
 ```
 
-#### Tarefa 1.6: Integração no Header
+#### Tarefa 1.7: Integração no Header (Layout.tsx)
 
 **Arquivo:** `src/components/Layout.tsx`
 
-- Adicionar `NotificationBell` à direita do header
-- Renderizar apenas para professores (`isProfessor`)
-- Posicionar antes do menu de usuário/logout
+**Modificações necessárias:**
 
-#### Tarefa 1.7: Página Inbox
+1. Adicionar import no topo:
+```typescript
+import { NotificationBell } from "@/components/NotificationBell";
+import { useProfile } from "@/contexts/ProfileContext";
+```
+
+2. Dentro do componente, após os hooks existentes:
+```typescript
+const { isProfessor } = useProfile();
+```
+
+3. No header (linha ~69), modificar o bloco:
+```tsx
+<div className="ml-auto flex items-center gap-4">
+  {isProfessor && <NotificationBell />}
+  {isAluno && <TeacherContextSwitcher />}
+</div>
+```
+
+**Código completo do header modificado:**
+```tsx
+<header className="flex h-16 items-center border-b bg-card px-4">
+  <Button variant="ghost" size="sm" onClick={toggle} className="mr-2 hover:bg-accent hover:text-accent-foreground rounded-md p-2 transition-colors">
+    <Menu className="h-5 w-5" />
+  </Button>
+  <span className="font-semibold">TutorFlow</span>
+  
+  <div className="ml-auto flex items-center gap-4">
+    {isProfessor && <NotificationBell />}
+    {isAluno && <TeacherContextSwitcher />}
+  </div>
+</header>
+```
+
+#### Tarefa 1.8: Página Inbox
 
 **Arquivo:** `src/pages/Inbox.tsx`
 
-Estrutura:
+```tsx
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { RefreshCw } from "lucide-react";
+import { Layout } from "@/components/Layout";
+import { Button } from "@/components/ui/button";
+import { useProfile } from "@/contexts/ProfileContext";
+import { useInboxCounts } from "@/hooks/useInboxCounts";
+import { InboxSummaryCards } from "@/components/Inbox/InboxSummaryCards";
+import { InboxActionList } from "@/components/Inbox/InboxActionList";
+import { InboxEmptyState } from "@/components/Inbox/InboxEmptyState";
 
-1. **Header**: Título + subtítulo com total + botão refresh
-2. **Summary Cards**: Grid 2x2 (mobile) ou 4 colunas (desktop)
-3. **Action List**: Seções colapsáveis por categoria
-4. **Empty State**: Componente dedicado `InboxEmptyState`
+export default function Inbox() {
+  const { t } = useTranslation('inbox');
+  const { isProfessor } = useProfile();
+  const navigate = useNavigate();
+  const { counts, isLoading, refetch } = useInboxCounts();
 
-#### Tarefa 1.8: Componentes da Lista
+  // Proteção de rota: redirecionar se não for professor
+  useEffect(() => {
+    if (!isProfessor) {
+      navigate('/dashboard');
+    }
+  }, [isProfessor, navigate]);
 
-**Arquivos:** `src/components/Inbox/*.tsx`
+  if (!isProfessor) {
+    return null;
+  }
 
-- `InboxSummaryCards`: Cards com ícone, contagem e cor por urgência
-- `InboxActionList`: Lista com Accordion por categoria
-- `InboxActionItem`: Card com dados + ações inline + hierarquia visual
-- `InboxEmptyState`: Ilustração positiva "Tudo em dia! 🎉"
+  const total = counts?.total ?? 0;
+  const isEmpty = total === 0 && !isLoading;
+
+  return (
+    <Layout requireAuth>
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t('title')}
+            </h1>
+            <p className="text-muted-foreground">
+              {total === 0 
+                ? t('noItems')
+                : total === 1 
+                  ? t('subtitleSingular')
+                  : t('subtitle', { count: total })
+              }
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+            {t('refresh')}
+          </Button>
+        </div>
+
+        {/* Summary Cards */}
+        <InboxSummaryCards counts={counts} isLoading={isLoading} />
+
+        {/* Content */}
+        {isEmpty ? (
+          <InboxEmptyState />
+        ) : (
+          <InboxActionList counts={counts} isLoading={isLoading} />
+        )}
+      </div>
+    </Layout>
+  );
+}
+```
 
 #### Tarefa 1.9: Rota no App.tsx
 
-```tsx
-import Inbox from "./pages/Inbox";
+**Arquivo:** `src/App.tsx`
 
-// Dentro do componente Routes, APENAS para professores
+**Modificações necessárias:**
+
+1. Adicionar import (após linha ~41):
+```typescript
+import Inbox from "./pages/Inbox";
+```
+
+2. Adicionar rota antes do catch-all `"*"` (após linha ~157, antes de `<Route path="*" ...>`):
+```tsx
 <Route path="/inbox" element={<Inbox />} />
 ```
 
-**Proteção de Rota (dentro de Inbox.tsx):**
+**Nota:** A proteção de rota é feita dentro do `Inbox.tsx` com redirecionamento, não via wrapper externo.
+
+#### Tarefa 1.10: Componentes da Lista
+
+**Arquivo:** `src/components/Inbox/InboxSummaryCards.tsx`
 
 ```tsx
-// Inbox.tsx - início do componente
-const { isProfessor } = useProfile();
-const navigate = useNavigate();
+import { useTranslation } from "react-i18next";
+import { Clock, Gift, AlertCircle, FileText } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { InboxCounts, INBOX_CATEGORY_CONFIG } from "@/types/inbox";
+import { cn } from "@/lib/utils";
 
-// Redirecionar se não for professor
-useEffect(() => {
-  if (!isProfessor) {
-    navigate('/dashboard');
+const ICONS = {
+  Clock,
+  Gift,
+  AlertCircle,
+  FileText,
+};
+
+interface InboxSummaryCardsProps {
+  counts: InboxCounts | null;
+  isLoading: boolean;
+}
+
+export function InboxSummaryCards({ counts, isLoading }: InboxSummaryCardsProps) {
+  const { t } = useTranslation('inbox');
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[1, 2, 3, 4].map(i => (
+          <Card key={i} className="p-4">
+            <Skeleton className="h-4 w-20 mb-2" />
+            <Skeleton className="h-8 w-12" />
+          </Card>
+        ))}
+      </div>
+    );
   }
-}, [isProfessor, navigate]);
+
+  const categories = Object.entries(INBOX_CATEGORY_CONFIG) as [
+    keyof typeof INBOX_CATEGORY_CONFIG,
+    typeof INBOX_CATEGORY_CONFIG[keyof typeof INBOX_CATEGORY_CONFIG]
+  ][];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {categories.map(([key, config]) => {
+        const Icon = ICONS[config.icon as keyof typeof ICONS];
+        const count = counts?.[key] ?? 0;
+
+        return (
+          <Card 
+            key={key} 
+            className={cn(
+              "transition-all hover:shadow-md",
+              count > 0 && config.bgClass
+            )}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Icon className={cn("h-4 w-4", config.colorClass)} />
+                <span className="text-sm text-muted-foreground truncate">
+                  {t(config.labelKey)}
+                </span>
+              </div>
+              <p className={cn(
+                "text-2xl font-bold",
+                count > 0 ? config.colorClass : "text-muted-foreground"
+              )}>
+                {count}
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
 ```
 
-#### Tarefa 1.10: Link no AppSidebar (Opcional)
+**Arquivo:** `src/components/Inbox/InboxActionList.tsx`
 
 ```tsx
-// AppSidebar.tsx - Adicionar à lista de itens do professor
-{isProfessor && (
-  <li>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div 
-          onClick={() => handleNavigation("/inbox")} 
-          className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/inbox") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
-        >
-          <Inbox className="h-4 w-4 flex-shrink-0 text-primary" />
-          {isOpen && (
-            <div className="flex items-center justify-between w-full ml-4">
-              <span>{t('navigation:sidebar.inbox')}</span>
-              {counts?.total > 0 && (
-                <Badge variant="destructive" className="h-5 min-w-5 px-1">
-                  {counts.total > 99 ? '99+' : counts.total}
-                </Badge>
-              )}
-            </div>
-          )}
+import { useTranslation } from "react-i18next";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { InboxCounts, InboxCategory, INBOX_CATEGORY_CONFIG } from "@/types/inbox";
+import { useInboxItems } from "@/hooks/useInboxItems";
+import { InboxActionItem } from "./InboxActionItem";
+import { cn } from "@/lib/utils";
+
+interface InboxActionListProps {
+  counts: InboxCounts | null;
+  isLoading: boolean;
+}
+
+export function InboxActionList({ counts, isLoading }: InboxActionListProps) {
+  const { t } = useTranslation('inbox');
+
+  // Ordenar categorias por urgência e contagem
+  const sortedCategories = (Object.keys(INBOX_CATEGORY_CONFIG) as InboxCategory[])
+    .filter(key => (counts?.[key] ?? 0) > 0)
+    .sort((a, b) => {
+      const urgencyOrder = { high: 0, medium: 1, low: 2, info: 3 };
+      const aUrgency = INBOX_CATEGORY_CONFIG[a].urgency;
+      const bUrgency = INBOX_CATEGORY_CONFIG[b].urgency;
+      if (urgencyOrder[aUrgency] !== urgencyOrder[bUrgency]) {
+        return urgencyOrder[aUrgency] - urgencyOrder[bUrgency];
+      }
+      return (counts?.[b] ?? 0) - (counts?.[a] ?? 0);
+    });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="space-y-2">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <Accordion 
+      type="multiple" 
+      defaultValue={sortedCategories.slice(0, 2)} // Abrir as 2 primeiras
+      className="space-y-4"
+    >
+      {sortedCategories.map(category => (
+        <CategorySection 
+          key={category} 
+          category={category} 
+          count={counts?.[category] ?? 0} 
+        />
+      ))}
+    </Accordion>
+  );
+}
+
+interface CategorySectionProps {
+  category: InboxCategory;
+  count: number;
+}
+
+function CategorySection({ category, count }: CategorySectionProps) {
+  const { t } = useTranslation('inbox');
+  const config = INBOX_CATEGORY_CONFIG[category];
+  const { items, isLoading } = useInboxItems(category, { limit: 10 });
+
+  return (
+    <AccordionItem value={category} className="border rounded-lg">
+      <AccordionTrigger className={cn("px-4 hover:no-underline", config.bgClass)}>
+        <div className="flex items-center gap-3">
+          <span className={cn("font-medium", config.colorClass)}>
+            {t(config.labelKey)}
+          </span>
+          <Badge variant="secondary">{count}</Badge>
         </div>
-      </TooltipTrigger>
-      <TooltipContent side="right">
-        <p>{t('navigation:sidebar.inbox')}</p>
-      </TooltipContent>
-    </Tooltip>
-  </li>
-)}
+      </AccordionTrigger>
+      <AccordionContent className="px-4 pb-4">
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {t('noItems')}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {items.map(item => (
+              <InboxActionItem key={item.id} item={item} />
+            ))}
+          </div>
+        )}
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+```
+
+**Arquivo:** `src/components/Inbox/InboxActionItem.tsx`
+
+```tsx
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Check, Gift, Eye, FileText, MoreHorizontal } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { InboxItem, URGENCY_STYLES } from "@/types/inbox";
+import { useInboxCacheInvalidation } from "@/utils/inbox-cache";
+import { cn } from "@/lib/utils";
+
+interface InboxActionItemProps {
+  item: InboxItem;
+}
+
+export function InboxActionItem({ item }: InboxActionItemProps) {
+  const { t } = useTranslation('inbox');
+  const { toast } = useToast();
+  const { invalidateAfterAction } = useInboxCacheInvalidation();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isHidden, setIsHidden] = useState(false);
+
+  const urgencyStyle = URGENCY_STYLES[item.urgency];
+
+  const handleConfirmClass = async () => {
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ status: 'concluida' })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      // Também atualizar participantes
+      await supabase
+        .from('class_participants')
+        .update({ status: 'concluida', completed_at: new Date().toISOString() })
+        .eq('class_id', item.id)
+        .eq('status', 'pendente');
+
+      setIsHidden(true);
+      invalidateAfterAction('confirmClass');
+      toast({
+        description: t('toast.classCompleted'),
+      });
+    } catch (error: any) {
+      if (error.code === 'PGRST116') {
+        toast({ description: t('toast.alreadyResolved') });
+        invalidateAfterAction('confirmClass');
+      } else {
+        toast({ variant: "destructive", description: t('toast.error') });
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleGrantAmnesty = async () => {
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ 
+          amnesty_granted: true, 
+          amnesty_granted_at: new Date().toISOString() 
+        })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      setIsHidden(true);
+      invalidateAfterAction('grantAmnesty');
+      toast({
+        description: t('toast.amnestyGranted'),
+      });
+    } catch (error: any) {
+      if (error.code === 'PGRST116') {
+        toast({ description: t('toast.alreadyResolved') });
+        invalidateAfterAction('grantAmnesty');
+      } else {
+        toast({ variant: "destructive", description: t('toast.error') });
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleViewInvoice = () => {
+    // Navegar para a fatura ou abrir sheet
+    window.location.href = `/faturas?highlight=${item.id}`;
+  };
+
+  const handleCreateReport = () => {
+    // Navegar para a página de histórico com a aula selecionada
+    window.location.href = `/historico?report=${item.id}`;
+  };
+
+  if (isHidden) {
+    return (
+      <Card className={cn(
+        "p-4 animate-slide-up-fade",
+        urgencyStyle.border,
+        urgencyStyle.background
+      )}>
+        <p className="text-sm text-muted-foreground text-center">
+          ✓ {t('toast.classCompleted')}
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className={cn(
+      "p-4 transition-all",
+      urgencyStyle.border,
+      urgencyStyle.background,
+      isProcessing && "opacity-70 pointer-events-none"
+    )}>
+      <div className="flex items-center gap-4">
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium truncate">
+            {item.dependent_name || item.student_name}
+          </p>
+          {item.dependent_name && (
+            <p className="text-sm text-muted-foreground">
+              {t('dependent.responsible', { name: item.student_name })}
+            </p>
+          )}
+          <p className="text-sm text-muted-foreground">
+            {item.title} • {item.subtitle}
+          </p>
+        </div>
+
+        {/* Primary Action */}
+        <div className="flex items-center gap-2">
+          {item.category === 'pending_past_classes' && (
+            <Button 
+              size="sm" 
+              onClick={handleConfirmClass}
+              disabled={isProcessing}
+            >
+              <Check className="h-4 w-4 mr-1" />
+              {t('actions.markCompleted')}
+            </Button>
+          )}
+          
+          {item.category === 'amnesty_eligible' && (
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={handleGrantAmnesty}
+              disabled={isProcessing}
+            >
+              <Gift className="h-4 w-4 mr-1" />
+              {t('actions.grantAmnesty')}
+            </Button>
+          )}
+          
+          {item.category === 'overdue_invoices' && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={handleViewInvoice}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              {t('actions.viewInvoice')}
+            </Button>
+          )}
+          
+          {item.category === 'pending_reports' && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={handleCreateReport}
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              {t('actions.createReport')}
+            </Button>
+          )}
+
+          {/* More Actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem>
+                {t('actions.ignore')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </Card>
+  );
+}
+```
+
+**Arquivo:** `src/components/Inbox/InboxEmptyState.tsx`
+
+```tsx
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { CalendarDays, PartyPopper } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export function InboxEmptyState() {
+  const { t } = useTranslation('inbox');
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      {/* Ilustração */}
+      <div className="text-6xl mb-6 flex items-center gap-2">
+        <PartyPopper className="h-16 w-16 text-primary" />
+      </div>
+      
+      {/* Título positivo */}
+      <h3 className="text-xl font-semibold text-foreground mb-2">
+        {t('emptyState.title')}
+      </h3>
+      
+      {/* Subtítulo motivacional */}
+      <p className="text-muted-foreground max-w-sm mb-6">
+        {t('emptyState.description')}
+      </p>
+      
+      {/* CTA contextual */}
+      <Button variant="outline" asChild>
+        <Link to="/agenda">
+          <CalendarDays className="mr-2 h-4 w-4" />
+          {t('emptyState.cta')}
+        </Link>
+      </Button>
+    </div>
+  );
+}
 ```
 
 #### Tarefa 1.11: Traduções i18n
 
-**Arquivos:** `src/i18n/locales/{pt,en}/inbox.json`
+**Arquivo:** `src/i18n/locales/pt/inbox.json`
 
 ```json
-// pt/inbox.json
 {
   "title": "Central de Ações",
   "subtitle": "{{count}} pendências",
@@ -685,6 +1417,10 @@ useEffect(() => {
   "noItems": "Nenhuma pendência",
   "refresh": "Atualizar",
   "viewAll": "Ver todas ({{count}})",
+  "badge": {
+    "ariaLabel": "{{count}} pendências",
+    "pending": "{{count}} itens pendentes"
+  },
   "categories": {
     "pendingPastClasses": "Aulas não confirmadas",
     "amnestyEligible": "Anistias pendentes",
@@ -713,7 +1449,8 @@ useEffect(() => {
     "itemIgnored": "Item ignorado",
     "reminderSent": "Lembrete enviado",
     "paymentRegistered": "Pagamento registrado",
-    "error": "Erro ao processar ação"
+    "error": "Erro ao processar ação",
+    "alreadyResolved": "Este item já foi resolvido"
   },
   "dependent": {
     "responsible": "Responsável: {{name}}"
@@ -721,8 +1458,9 @@ useEffect(() => {
 }
 ```
 
+**Arquivo:** `src/i18n/locales/en/inbox.json`
+
 ```json
-// en/inbox.json
 {
   "title": "Action Center",
   "subtitle": "{{count}} pending items",
@@ -730,6 +1468,10 @@ useEffect(() => {
   "noItems": "No pending items",
   "refresh": "Refresh",
   "viewAll": "View all ({{count}})",
+  "badge": {
+    "ariaLabel": "{{count}} pending items",
+    "pending": "{{count}} pending items"
+  },
   "categories": {
     "pendingPastClasses": "Unconfirmed classes",
     "amnestyEligible": "Pending amnesty",
@@ -758,7 +1500,8 @@ useEffect(() => {
     "itemIgnored": "Item ignored",
     "reminderSent": "Reminder sent",
     "paymentRegistered": "Payment registered",
-    "error": "Error processing action"
+    "error": "Error processing action",
+    "alreadyResolved": "This item has already been resolved"
   },
   "dependent": {
     "responsible": "Responsible: {{name}}"
@@ -766,53 +1509,124 @@ useEffect(() => {
 }
 ```
 
-#### Tarefa 1.12: Customizações de Tailwind
+#### Tarefa 1.12: Registrar Namespace no i18n
+
+**Arquivo:** `src/i18n/index.ts`
+
+**Modificações necessárias:**
+
+1. Adicionar imports (após linha ~28):
+```typescript
+import ptInbox from './locales/pt/inbox.json';
+```
+
+2. Adicionar import EN (após linha ~52):
+```typescript
+import enInbox from './locales/en/inbox.json';
+```
+
+3. Adicionar ao objeto `resources.pt` (após linha ~78):
+```typescript
+inbox: ptInbox,
+```
+
+4. Adicionar ao objeto `resources.en` (após linha ~103):
+```typescript
+inbox: enInbox,
+```
+
+5. Adicionar ao array `ns` (linha ~126):
+```typescript
+ns: ['common', 'navigation', /* ... outros ... */, 'inbox'],
+```
+
+#### Tarefa 1.13: Customizações de Tailwind
 
 **Arquivo:** `tailwind.config.ts`
 
-Adicionar ao `extend`:
+Adicionar ao `extend.keyframes` (após as keyframes existentes):
 
 ```javascript
-extend: {
-  colors: {
-    warning: {
-      DEFAULT: 'hsl(var(--warning))',
-      foreground: 'hsl(var(--warning-foreground))',
-    },
+keyframes: {
+  'accordion-down': { /* existente */ },
+  'accordion-up': { /* existente */ },
+  'slide-up-fade': {
+    '0%': { opacity: '1', transform: 'translateY(0)' },
+    '100%': { opacity: '0', transform: 'translateY(-10px)' },
   },
-  keyframes: {
-    'slide-up-fade': {
-      '0%': { opacity: '1', transform: 'translateY(0)' },
-      '100%': { opacity: '0', transform: 'translateY(-10px)' },
-    },
-    'count-change': {
-      '0%': { transform: 'scale(1)' },
-      '50%': { transform: 'scale(1.2)' },
-      '100%': { transform: 'scale(1)' },
-    },
+  'count-change': {
+    '0%': { transform: 'scale(1)' },
+    '50%': { transform: 'scale(1.2)' },
+    '100%': { transform: 'scale(1)' },
   },
-  animation: {
-    'slide-up-fade': 'slide-up-fade 0.3s ease-out forwards',
-    'count-change': 'count-change 0.3s ease-out',
-  },
-}
+},
 ```
 
-**Arquivo:** `src/index.css`
+Adicionar ao `extend.animation`:
 
-Adicionar variáveis de cor:
+```javascript
+animation: {
+  'accordion-down': '...', // existente
+  'accordion-up': '...',   // existente
+  'slide-up-fade': 'slide-up-fade 0.3s ease-out forwards',
+  'count-change': 'count-change 0.3s ease-out',
+},
+```
 
-```css
-:root {
-  /* ... existing colors ... */
-  --warning: 38 92% 50%;
-  --warning-foreground: 0 0% 100%;
+**Nota sobre cores `warning`:** As variáveis CSS `--warning` já existem no `src/index.css` (linhas 43-45 no light mode e linhas 90-91 no dark mode). A configuração no Tailwind já referencia `hsl(var(--warning))`.
+
+#### Tarefa 1.14: Link no AppSidebar (Opcional)
+
+**Arquivo:** `src/components/AppSidebar.tsx`
+
+Adicionar à lista de itens de navegação do professor um novo item para o Inbox:
+
+```tsx
+// No array getProfessorItems, adicionar:
+{
+  title: t('sidebar.inbox'),
+  url: "/inbox",
+  icon: Inbox, // Importar de lucide-react
 }
 
-.dark {
-  /* ... existing dark colors ... */
-  --warning: 38 92% 50%;
-  --warning-foreground: 0 0% 100%;
+// Ou, se preferir badge dinâmico, adicionar após o map dos itens:
+{isProfessor && (
+  <li>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div 
+          onClick={() => handleNavigation("/inbox")} 
+          className={cn(
+            "flex items-center rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer",
+            !isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3',
+            isActive("/inbox") 
+              ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md' 
+              : 'text-sidebar-foreground hover:bg-sidebar-accent'
+          )}
+        >
+          <Inbox className="h-4 w-4 flex-shrink-0 text-primary" />
+          {isOpen && (
+            <div className="flex items-center justify-between w-full ml-4">
+              <span>{t('sidebar.inbox')}</span>
+              {/* Badge com contagem - usar useInboxCounts se necessário */}
+            </div>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        <p>{t('sidebar.inbox')}</p>
+      </TooltipContent>
+    </Tooltip>
+  </li>
+)}
+```
+
+**Tradução a adicionar em `navigation.json`:**
+```json
+{
+  "sidebar": {
+    "inbox": "Central de Ações"
+  }
 }
 ```
 
@@ -828,7 +1642,7 @@ Adicionar variáveis de cor:
 
 #### Tarefa 2.2: Integrar AmnestyButton
 
-- Reutilizar componente existente
+- Reutilizar componente existente `AmnestyButton`
 - Invalidar cache após sucesso
 - Feedback visual de conclusão
 
@@ -838,11 +1652,19 @@ Adicionar variáveis de cor:
 - Atualizar badge automaticamente
 - Toast opcional para novas pendências
 
-#### Tarefa 2.4: Estado "Ignorar"
+#### Tarefa 2.4: Estado "Ignorar" com Undo
 
 - Permitir professor dispensar item sem resolver
-- Armazenar em `localStorage` ou tabela `inbox_dismissed`
+- Toast com botão "Desfazer" (8 segundos)
+- Armazenar em `localStorage` (Fase 2) ou tabela `inbox_dismissed` (Fase 3)
 - Opção para "Mostrar ignorados"
+
+#### Tarefa 2.5: Sheet/Drawer para Detalhes de Fatura
+
+- Abre ao clicar em "Ver Fatura"
+- Mostra: valor, vencimento, dias atrasados, itens
+- Botões: "Enviar Lembrete", "Registrar Pagamento Manual", "Ver Recibo"
+- Link: "Ver todas as faturas deste aluno"
 
 ---
 
@@ -852,7 +1674,7 @@ Adicionar variáveis de cor:
 - **Mensalidades Vencendo**: Subscriptions próximas do fim
 - **Perfil Incompleto**: Configurações faltando (Stripe, etc.)
 - **Materiais Pendentes**: Aulas sem material compartilhado
-- **Aulas em Grupo**: Aulas com alunos faltando confirmação
+- **dependent_id em Invoices**: Considerar adicionar para rastrear qual dependente gerou a cobrança
 
 ---
 
@@ -863,24 +1685,21 @@ Adicionar variáveis de cor:
 ### Aulas Passadas Pendentes
 
 ```sql
-SELECT c.id, c.class_date, c.student_id, c.service_id, c.is_group_class
+-- Conta aulas distintas com participantes pendentes
+SELECT DISTINCT c.id, c.class_date, c.service_id, c.is_group_class
 FROM classes c
-LEFT JOIN class_participants cp ON cp.class_id = c.id
+INNER JOIN class_participants cp ON cp.class_id = c.id
 WHERE c.teacher_id = $1
   AND c.class_date < NOW()
-  AND (
-    (c.is_group_class = false AND c.status = 'pendente')
-    OR
-    (c.is_group_class = true AND cp.status = 'pendente')
-  )
-GROUP BY c.id
+  AND c.status = 'pendente'
+  AND cp.status = 'pendente'
 ORDER BY c.class_date ASC;
 ```
 
 ### Cancelamentos Elegíveis para Anistia (30 dias)
 
 ```sql
-SELECT id, class_date, student_id, cancelled_at, cancellation_reason
+SELECT id, class_date, cancelled_at, cancellation_reason
 FROM classes
 WHERE teacher_id = $1
   AND status = 'cancelada'
@@ -893,19 +1712,24 @@ ORDER BY cancelled_at DESC;
 ### Faturas Atrasadas
 
 ```sql
-SELECT id, student_id, amount, due_date
-FROM invoices
-WHERE teacher_id = $1
-  AND status = 'atrasada'
-ORDER BY due_date ASC;
+SELECT i.id, i.student_id, i.amount, i.due_date,
+       COALESCE(tsr.student_name, p.name) as student_name
+FROM invoices i
+LEFT JOIN teacher_student_relationships tsr 
+  ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
+LEFT JOIN profiles p ON p.id = i.student_id
+WHERE i.teacher_id = $1
+  AND i.status = 'atrasada'
+ORDER BY i.due_date ASC;
 ```
 
 ### Aulas sem Relatório (30 dias)
 
 ```sql
-SELECT c.id, c.class_date, c.student_id
+SELECT DISTINCT c.id, c.class_date, c.service_id
 FROM classes c
 LEFT JOIN class_reports cr ON cr.class_id = c.id
+INNER JOIN class_participants cp ON cp.class_id = c.id
 WHERE c.teacher_id = $1
   AND c.status = 'concluida'
   AND cr.id IS NULL
@@ -922,39 +1746,29 @@ Após cada ação no inbox, os seguintes query keys devem ser invalidados:
 
 | Ação | Query Keys a Invalidar |
 |------|------------------------|
-| Confirmar aula | `inbox-counts`, `inbox-items-pending_past_classes`, `classes` |
-| Conceder anistia | `inbox-counts`, `inbox-items-amnesty_eligible`, `classes`, `invoices` |
-| Ver/Pagar fatura | `inbox-counts`, `inbox-items-overdue_invoices`, `invoices` |
-| Criar relatório | `inbox-counts`, `inbox-items-pending_reports`, `class-reports` |
+| Confirmar aula | `inbox-counts`, `inbox-items`, `classes`, `class-participants` |
+| Conceder anistia | `inbox-counts`, `inbox-items`, `classes`, `invoices` |
+| Ver/Pagar fatura | `inbox-counts`, `inbox-items`, `invoices` |
+| Criar relatório | `inbox-counts`, `inbox-items`, `class-reports` |
 | Enviar lembrete | Nenhum (ação não altera contagens) |
-| Registrar pagamento | `inbox-counts`, `inbox-items-overdue_invoices`, `invoices` |
+| Registrar pagamento | `inbox-counts`, `inbox-items`, `invoices` |
 
-**Implementação:**
+### Padrão de Query Keys
 
+| Hook | Query Key Pattern |
+|------|-------------------|
+| useInboxCounts | `['inbox-counts', teacherId]` |
+| useInboxItems | `['inbox-items', category, teacherId, limit, offset]` |
+
+**Invalidação por prefixo:**
 ```typescript
-// utils/inbox-cache.ts
-import { useQueryClient } from '@tanstack/react-query';
+// Invalida todas as queries de itens (todas as categorias)
+queryClient.invalidateQueries({ queryKey: ['inbox-items'] });
 
-export function useInboxCacheInvalidation() {
-  const queryClient = useQueryClient();
-
-  const invalidateAfterAction = (action: string) => {
-    const keysToInvalidate: Record<string, string[]> = {
-      confirmClass: ['inbox-counts', 'inbox-items-pending_past_classes', 'classes'],
-      grantAmnesty: ['inbox-counts', 'inbox-items-amnesty_eligible', 'classes', 'invoices'],
-      payInvoice: ['inbox-counts', 'inbox-items-overdue_invoices', 'invoices'],
-      createReport: ['inbox-counts', 'inbox-items-pending_reports', 'class-reports'],
-      registerPayment: ['inbox-counts', 'inbox-items-overdue_invoices', 'invoices'],
-    };
-
-    const keys = keysToInvalidate[action] ?? [];
-    keys.forEach(key => {
-      queryClient.invalidateQueries({ queryKey: [key] });
-    });
-  };
-
-  return { invalidateAfterAction };
-}
+// Invalida categoria específica
+queryClient.invalidateQueries({ 
+  queryKey: ['inbox-items', 'pending_past_classes'] 
+});
 ```
 
 ---
@@ -966,18 +1780,19 @@ export function useInboxCacheInvalidation() {
 1. Professor clica em "Concluída" no `InboxActionItem`
 2. Botão mostra spinner inline
 3. Chamada para atualizar `classes.status = 'concluida'`
-4. Em caso de sucesso:
+4. **TAMBÉM atualizar** `class_participants.status = 'concluida'` para participantes pendentes
+5. Em caso de sucesso:
    - Item desliza para cima com fade-out
    - Toast: "Aula confirmada ✓" com opção "Adicionar Relatório"
    - Cache invalidado
-5. Em caso de erro:
+6. Em caso de erro:
    - Toast de erro com retry
    - Item retorna ao estado normal
 
 ### Conceder Anistia
 
 1. Professor clica em "Conceder Anistia"
-2. **Reutiliza componente `AmnestyButton` existente**
+2. **Reutiliza componente `AmnestyButton` existente** (ou lógica similar)
 3. Modal de confirmação (se houver)
 4. Em caso de sucesso:
    - Item desliza para cima com fade-out
@@ -1030,6 +1845,16 @@ Quando um item do inbox envolve um dependente:
 </div>
 ```
 
+### Nota sobre Faturas e Dependentes
+
+Atualmente, a tabela `invoices` **não possui** coluna `dependent_id`. Portanto:
+- Faturas são sempre vinculadas ao **responsável** (`student_id` = profile do adulto)
+- Mesmo quando a aula é para um dependente, a fatura vai para o responsável
+- Na UI, exibir apenas o nome do responsável (sem indicador de dependente)
+
+**Melhoria Futura (Fase 3):**
+Considerar adicionar `dependent_id` em `invoices` para rastrear qual dependente gerou a cobrança.
+
 ---
 
 ## Tratamento de Erros de Concorrência
@@ -1052,6 +1877,44 @@ const handleAction = async () => {
   }
 };
 ```
+
+---
+
+## Edge Cases e Tratamentos
+
+### Aula sem Participantes
+
+Classes antigas (pré-migração) podem não ter registros em `class_participants`. A RPC trata isso usando `INNER JOIN`:
+
+```sql
+-- Ignorar aulas sem participantes (dados inconsistentes)
+INNER JOIN class_participants cp ON cp.class_id = c.id
+```
+
+Isso naturalmente exclui aulas órfãs.
+
+### Aulas em Grupo com Status Misto
+
+Uma aula em grupo pode ter participantes com status diferentes. O inbox deve:
+1. Mostrar a aula como pendente se **qualquer** participante estiver pendente
+2. Na action, listar quais participantes precisam confirmação (via `metadata.pending_participants`)
+3. Permitir confirmar individualmente ou em lote
+
+A RPC `get_teacher_inbox_items` retorna metadata com `pending_participants`:
+```sql
+json_build_object(
+  'is_group_class', c.is_group_class,
+  'pending_participants', (
+    SELECT json_agg(...)
+    FROM class_participants cp2
+    WHERE cp2.class_id = c.id AND cp2.status = 'pendente'
+  )
+)
+```
+
+### Timezone
+
+Todas as datas são formatadas usando `AT TIME ZONE 'America/Sao_Paulo'` nas RPCs para consistência com o resto do sistema.
 
 ---
 
@@ -1087,10 +1950,10 @@ const handleAction = async () => {
 
 ## Hierarquia Visual por Urgência
 
-Para diferenciar visualmente os níveis de urgência, cada `InboxActionItem` deve aplicar estilos distintos:
+Para diferenciar visualmente os níveis de urgência, cada `InboxActionItem` aplica estilos distintos:
 
 ```tsx
-// Configuração de estilos por urgência (já definida em src/types/inbox.ts)
+// Configuração de estilos por urgência (definida em src/types/inbox.ts)
 const URGENCY_STYLES: Record<UrgencyLevel, {
   border: string;
   background: string;
@@ -1179,13 +2042,13 @@ const URGENCY_STYLES: Record<UrgencyLevel, {
 
 ## Empty State Elaborado
 
-O componente `InboxEmptyState` deve transmitir uma sensação positiva de "missão cumprida":
+O componente `InboxEmptyState` transmite uma sensação positiva de "missão cumprida":
 
 ```tsx
 // InboxEmptyState.tsx
 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
   {/* Ilustração vetorial ou emoji grande */}
-  <div className="text-6xl mb-6">🎉</div>
+  <PartyPopper className="h-16 w-16 text-primary mb-6" />
   
   {/* Título positivo */}
   <h3 className="text-xl font-semibold text-foreground mb-2">
@@ -1204,11 +2067,6 @@ O componente `InboxEmptyState` deve transmitir uma sensação positiva de "miss�
       {t('inbox.emptyState.cta')}
     </Link>
   </Button>
-  
-  {/* Timestamp opcional */}
-  <p className="text-xs text-muted-foreground mt-8">
-    {t('inbox.emptyState.lastChecked', { time: formatRelative(lastCheck) })}
-  </p>
 </div>
 ```
 
@@ -1297,21 +2155,38 @@ const ignoreItem = (itemId: string) => {
 
 ---
 
+## Dependências de Backend
+
+### Cron Jobs Necessários
+
+Para que o inbox funcione corretamente, verificar que os seguintes cron jobs estão ativos:
+
+| Job | Função | Verificação |
+|-----|--------|-------------|
+| `check-overdue-invoices` | Atualiza `status` de faturas para `atrasada` | Verificar em Supabase Dashboard > Scheduled Functions |
+
+Se o job não existir, faturas não serão marcadas como atrasadas automaticamente e não aparecerão no inbox.
+
+---
+
 ## Critérios de Aceitação
 
 ### Fase 1 (MVP)
 
 - [ ] RPC `get_teacher_inbox_counts` criada e funcionando
 - [ ] RPC `get_teacher_inbox_items` criada e funcionando
+- [ ] Validação de segurança (`auth.uid()`) nas RPCs
 - [ ] Índices de banco de dados criados para otimização
 - [ ] Hook `useInboxCounts` implementado
 - [ ] Hook `useInboxItems` implementado
+- [ ] Utilitário `useInboxCacheInvalidation` implementado
 - [ ] Sino aparece no header para professores
 - [ ] Badge mostra contagem total correta com `role="status"`
 - [ ] **Desktop**: Popover preview mostra categorias urgentes no hover
 - [ ] **Mobile**: Touch no sino navega diretamente para `/inbox`
 - [ ] Clique no link "Ver todas" navega para `/inbox`
-- [ ] Rota `/inbox` protegida para professores apenas
+- [ ] Rota `/inbox` criada no App.tsx
+- [ ] Proteção de rota (redirect se não for professor)
 - [ ] Link opcional no menu lateral com badge
 - [ ] Página lista todas as categorias de pendências
 - [ ] Hierarquia visual por urgência (bordas coloridas, backgrounds)
@@ -1322,8 +2197,8 @@ const ignoreItem = (itemId: string) => {
 - [ ] Tratamento de erros de concorrência
 - [ ] Empty State elaborado com ilustração e CTA
 - [ ] Skeleton loading nos cards e lista
-- [ ] Cores `warning` configuradas no Tailwind
 - [ ] Animações customizadas configuradas no Tailwind
+- [ ] Namespace `inbox` registrado no i18n
 - [ ] Traduções PT/EN completas
 
 ### Fase 2
@@ -1358,3 +2233,5 @@ const ignoreItem = (itemId: string) => {
 | Popover ruim em mobile | Baixa | Médio | Navegação direta para /inbox no mobile |
 | Erros de concorrência | Baixa | Baixo | Tratamento específico + refetch automático |
 | Aulas em grupo não contadas corretamente | Média | Alto | Query considera class_participants |
+| RPCs vulneráveis a acesso não autorizado | Média | Alto | Validação `auth.uid()` em todas as RPCs |
+| Aulas antigas sem participantes | Baixa | Baixo | INNER JOIN exclui aulas órfãs |

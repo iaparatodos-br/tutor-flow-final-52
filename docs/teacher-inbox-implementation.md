@@ -121,6 +121,18 @@ export interface InboxCounts {
   total: number;
 }
 
+// Interface compatível com CalendarView.tsx para mapeamento de participantes
+export interface InboxClassParticipant {
+  id: string;                    // participant row id (obrigatório para CalendarClass)
+  student_id: string;
+  student_name: string;
+  student_email?: string;
+  dependent_id?: string | null;
+  dependent_name?: string | null;
+  responsible_name?: string;
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+}
+
 // Item individual do inbox
 export interface InboxItem {
   id: string;
@@ -492,6 +504,7 @@ BEGIN
 
     -- =============================================
     -- RELATÓRIOS PENDENTES
+    -- Retorna dados completos para mapeamento CalendarClass
     -- =============================================
     WHEN 'pending_reports' THEN
       SELECT json_agg(item ORDER BY date DESC) INTO v_result
@@ -510,7 +523,25 @@ BEGIN
           json_build_object(
             'service_id', c.service_id,
             'is_group_class', c.is_group_class,
-            'duration_minutes', c.duration_minutes  -- Para cálculo correto do end time no modal
+            'duration_minutes', c.duration_minutes,
+            'student_email', COALESCE(p.email, ''),
+            'pending_participants', (
+              SELECT json_agg(json_build_object(
+                'id', cp2.id,
+                'student_id', cp2.student_id,
+                'student_name', COALESCE(tsr2.student_name, p2.name, 'Aluno'),
+                'student_email', COALESCE(p2.email, ''),
+                'dependent_id', cp2.dependent_id,
+                'dependent_name', d2.name,
+                'status', cp2.status
+              ))
+              FROM class_participants cp2
+              LEFT JOIN teacher_student_relationships tsr2 
+                ON tsr2.teacher_id = c.teacher_id AND tsr2.student_id = cp2.student_id
+              LEFT JOIN profiles p2 ON p2.id = cp2.student_id
+              LEFT JOIN dependents d2 ON d2.id = cp2.dependent_id
+              WHERE cp2.class_id = c.id
+            )
           ) as metadata
         FROM classes c
         LEFT JOIN class_reports cr ON cr.class_id = c.id
@@ -843,16 +874,38 @@ export function NotificationBell() {
 
 **Arquivo:** `src/components/Layout.tsx`
 
+> ⚠️ **ATENÇÃO:** O código atual em Layout.tsx tem um bug na linha 71 onde apenas `{isAluno}` está renderizado sem condição.
+
 **Modificações necessárias:**
 
-1. Adicionar import no topo:
+1. **Adicionar import** no topo (após linha 8):
 ```typescript
 import { NotificationBell } from "@/components/NotificationBell";
 ```
 
-2. O componente já tem acesso a `isProfessor` via `useAuth()` (linha 21). **NÃO** é necessário importar `useProfile` novamente.
+2. **Modificar a desestruturação** do `useAuth()` (linha 17-21) para incluir `isProfessor`:
+```typescript
+const {
+  loading,
+  isAuthenticated,
+  isAluno,
+  isProfessor,  // ADICIONAR
+} = useAuth();
+```
 
-3. Corrigir o código bugado atual (linha ~71 que tem apenas `{isAluno}`), modificando para:
+**Nota:** `useAuth()` já exporta `isProfessor` no `AuthContext.tsx` (linha 481-482), então basta desestruturar.
+
+3. **Corrigir o código bugado** (substituir linhas 69-72):
+
+**Código atual (bugado):**
+```tsx
+<div className="ml-auto flex items-center gap-4">
+  {/* Teacher context switcher for students */}
+  {isAluno}
+</div>
+```
+
+**Código corrigido:**
 ```tsx
 <div className="ml-auto flex items-center gap-4">
   {isProfessor && <NotificationBell />}
@@ -1298,24 +1351,44 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
   };
 
   // Abre o ClassReportModal inline em vez de navegar
+  // NOTA: Mapeamento completo para CalendarClass incluindo campos obrigatórios (title, student)
   const handleCreateReport = () => {
     // Calcular end time usando duration_minutes do metadata (ou 60min como fallback)
     const startDate = new Date(item.date);
     const durationMinutes = (item.metadata.duration_minutes as number) || 60;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
     
+    // Mapear participantes com todos os campos obrigatórios
+    const participants = (item.metadata.pending_participants as any[])?.map(p => ({
+      id: p.id,
+      student_id: p.student_id,
+      student_name: p.student_name,
+      dependent_id: p.dependent_id || null,
+      dependent_name: p.dependent_name || null,
+      status: p.status || 'concluida',
+    })) || [{
+      id: '',
+      student_id: item.student_id,
+      student_name: item.student_name,
+      dependent_id: item.dependent_id || null,
+      dependent_name: item.dependent_name || null,
+      status: 'concluida' as const,
+    }];
+    
     // Construir dados compatíveis com CalendarClass esperado pelo modal
+    // Inclui campos obrigatórios: title, student (com email)
     const classData = {
       id: item.id,
+      title: item.title,  // Nome do serviço
       start: startDate,
       end: endDate,
       status: 'concluida' as const,
-      participants: item.metadata.pending_participants || [{
-        student_id: item.student_id,
-        dependent_id: item.dependent_id,
-        student_name: item.student_name,
-        dependent_name: item.dependent_name,
-      }],
+      student_id: item.student_id,
+      student: {
+        name: item.student_name,
+        email: (item.metadata.student_email as string) || '',
+      },
+      participants,
       service_id: item.metadata.service_id as string,
       is_group_class: item.metadata.is_group_class as boolean,
       notes: '',

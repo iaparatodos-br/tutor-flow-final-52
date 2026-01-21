@@ -269,23 +269,29 @@ BEGIN
 
   -- Aulas passadas pendentes (via class_participants)
   -- Conta AULAS distintas que têm pelo menos um participante pendente
+  -- FILTROS: Exclui aulas experimentais e templates
   SELECT COUNT(DISTINCT c.id) INTO v_pending_past_classes
   FROM classes c
   INNER JOIN class_participants cp ON cp.class_id = c.id
   WHERE c.teacher_id = p_teacher_id
     AND c.class_date < NOW()
     AND c.status = 'pendente'
-    AND cp.status = 'pendente';
+    AND cp.status = 'pendente'
+    AND c.is_experimental = false
+    AND (c.is_template IS NULL OR c.is_template = false);
 
   -- Cancelamentos elegíveis para anistia (últimos 30 dias)
   -- Nota: Aqui usamos classes diretamente pois é o status da AULA
+  -- FILTROS: Exclui aulas experimentais e templates
   SELECT COUNT(*) INTO v_amnesty_eligible
   FROM classes c
   WHERE c.teacher_id = p_teacher_id
     AND c.status = 'cancelada'
     AND c.charge_applied = true
     AND c.amnesty_granted = false
-    AND c.cancelled_at >= NOW() - INTERVAL '30 days';
+    AND c.cancelled_at >= NOW() - INTERVAL '30 days'
+    AND c.is_experimental = false
+    AND (c.is_template IS NULL OR c.is_template = false);
 
   -- Faturas atrasadas
   SELECT COUNT(*) INTO v_overdue_invoices
@@ -294,13 +300,16 @@ BEGIN
     AND i.status = 'atrasada';
 
   -- Aulas concluídas sem relatório (últimos 30 dias)
+  -- FILTROS: Exclui aulas experimentais e templates
   SELECT COUNT(*) INTO v_pending_reports
   FROM classes c
   LEFT JOIN class_reports cr ON cr.class_id = c.id
   WHERE c.teacher_id = p_teacher_id
     AND c.status = 'concluida'
     AND cr.id IS NULL
-    AND c.class_date >= NOW() - INTERVAL '30 days';
+    AND c.class_date >= NOW() - INTERVAL '30 days'
+    AND c.is_experimental = false
+    AND (c.is_template IS NULL OR c.is_template = false);
 
   RETURN json_build_object(
     'pending_past_classes', COALESCE(v_pending_past_classes, 0),
@@ -394,6 +403,8 @@ BEGIN
           AND c.class_date < NOW()
           AND c.status = 'pendente'
           AND cp.status = 'pendente'
+          AND c.is_experimental = false
+          AND (c.is_template IS NULL OR c.is_template = false)
         ORDER BY c.id, c.class_date ASC
         LIMIT p_limit OFFSET p_offset
       ) as item;
@@ -439,6 +450,8 @@ BEGIN
           AND c.charge_applied = true
           AND c.amnesty_granted = false
           AND c.cancelled_at >= NOW() - INTERVAL '30 days'
+          AND c.is_experimental = false
+          AND (c.is_template IS NULL OR c.is_template = false)
         ORDER BY c.cancelled_at DESC
         LIMIT p_limit OFFSET p_offset
       ) as item;
@@ -509,6 +522,8 @@ BEGIN
           AND c.status = 'concluida'
           AND cr.id IS NULL
           AND c.class_date >= NOW() - INTERVAL '30 days'
+          AND c.is_experimental = false
+          AND (c.is_template IS NULL OR c.is_template = false)
         ORDER BY c.id, c.class_date DESC
         LIMIT p_limit OFFSET p_offset
       ) as item;
@@ -560,14 +575,14 @@ ON teacher_student_relationships(teacher_id, student_id);
 **Arquivo:** `src/hooks/useInboxCounts.ts`
 
 ```typescript
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/contexts/ProfileContext';
 import type { InboxCounts, UseInboxCountsReturn } from '@/types/inbox';
 
 export function useInboxCounts(): UseInboxCountsReturn {
   const { profile, isProfessor } = useProfile();
-  const queryClient = useQueryClient();
+  // Nota: queryClient removido pois não é usado neste hook
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['inbox-counts', profile?.id],
@@ -603,7 +618,7 @@ export const INBOX_COUNTS_QUERY_KEY = ['inbox-counts'];
 **Arquivo:** `src/hooks/useInboxItems.ts`
 
 ```typescript
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfile } from '@/contexts/ProfileContext';
 import type { InboxCategory, InboxItem, UseInboxItemsReturn } from '@/types/inbox';
@@ -613,7 +628,7 @@ export function useInboxItems(
   options?: { limit?: number; offset?: number; enabled?: boolean }
 ): UseInboxItemsReturn {
   const { profile, isProfessor } = useProfile();
-  const queryClient = useQueryClient();
+  // Nota: queryClient removido pois não é usado neste hook
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
   const enabled = options?.enabled ?? true;
@@ -1156,6 +1171,9 @@ function CategorySection({ category, count }: CategorySectionProps) {
 
 **Arquivo:** `src/components/Inbox/InboxActionItem.tsx`
 
+> **NOTA:** Este componente integra o `ClassReportModal` existente para criar relatórios inline,
+> em vez de navegar para outra página. Isso mantém o usuário no contexto do Inbox.
+
 ```tsx
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -1169,9 +1187,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { InboxItem, URGENCY_STYLES } from "@/types/inbox";
 import { useInboxCacheInvalidation } from "@/utils/inbox-cache";
+import { ClassReportModal } from "@/components/ClassReportModal";
 import { cn } from "@/lib/utils";
 
 interface InboxActionItemProps {
@@ -1181,9 +1201,14 @@ interface InboxActionItemProps {
 export function InboxActionItem({ item }: InboxActionItemProps) {
   const { t } = useTranslation('inbox');
   const { toast } = useToast();
+  const { profile } = useProfile();
   const { invalidateAfterAction } = useInboxCacheInvalidation();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  
+  // Estados para integração com ClassReportModal
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [classDataForReport, setClassDataForReport] = useState<any>(null);
 
   const urgencyStyle = URGENCY_STYLES[item.urgency];
 
@@ -1221,18 +1246,32 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
     }
   };
 
+  // NOTA: Lógica alinhada com AmnestyButton existente (src/components/AmnestyButton.tsx)
   const handleGrantAmnesty = async () => {
     setIsProcessing(true);
     try {
-      const { error } = await supabase
+      // 1. Atualizar a aula com todos os campos necessários
+      const { error: classError } = await supabase
         .from('classes')
         .update({ 
           amnesty_granted: true, 
-          amnesty_granted_at: new Date().toISOString() 
+          amnesty_granted_at: new Date().toISOString(),
+          amnesty_granted_by: profile?.id,
+          charge_applied: false  // CRÍTICO: Reverter cobrança aplicada
         })
         .eq('id', item.id);
 
-      if (error) throw error;
+      if (classError) throw classError;
+
+      // 2. Cancelar fatura de cancelamento relacionada (se existir)
+      await supabase
+        .from('invoices')
+        .update({
+          status: 'cancelada',
+          description: '[ANISTIADA] Concedida via Central de Ações'
+        })
+        .eq('class_id', item.id)
+        .eq('invoice_type', 'cancellation');
 
       setIsHidden(true);
       invalidateAfterAction('grantAmnesty');
@@ -1256,9 +1295,36 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
     window.location.href = `/faturas?highlight=${item.id}`;
   };
 
+  // Abre o ClassReportModal inline em vez de navegar
   const handleCreateReport = () => {
-    // Navegar para a página de histórico com a aula selecionada
-    window.location.href = `/historico?report=${item.id}`;
+    // Construir dados mínimos necessários para o modal
+    const classData = {
+      id: item.id,
+      start: new Date(item.date),
+      end: new Date(new Date(item.date).getTime() + 60 * 60 * 1000), // estimativa 1h
+      status: 'concluida' as const,
+      participants: item.metadata.pending_participants || [{
+        student_id: item.student_id,
+        dependent_id: item.dependent_id,
+        student_name: item.student_name,
+        dependent_name: item.dependent_name,
+      }],
+      service_id: item.metadata.service_id,
+      is_group_class: item.metadata.is_group_class,
+    };
+    
+    setClassDataForReport(classData);
+    setReportModalOpen(true);
+  };
+  
+  const handleReportCreated = () => {
+    setReportModalOpen(false);
+    setClassDataForReport(null);
+    setIsHidden(true);
+    invalidateAfterAction('createReport');
+    toast({
+      description: t('toast.reportCreated'),
+    });
   };
 
   if (isHidden) {
@@ -1360,6 +1426,19 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
           </DropdownMenu>
         </div>
       </div>
+      
+      {/* Modal de Relatório (integração inline) */}
+      {classDataForReport && (
+        <ClassReportModal
+          isOpen={reportModalOpen}
+          onOpenChange={(open) => {
+            setReportModalOpen(open);
+            if (!open) setClassDataForReport(null);
+          }}
+          classData={classDataForReport}
+          onReportCreated={handleReportCreated}
+        />
+      )}
     </Card>
   );
 }
@@ -1540,6 +1619,50 @@ inbox: enInbox,
 ns: ['common', 'navigation', /* ... outros ... */, 'inbox'],
 ```
 
+#### Tarefa 1.12b: Adicionar Traduções Faltantes
+
+As seguintes traduções precisam ser adicionadas aos arquivos existentes:
+
+**Arquivo:** `src/i18n/locales/pt/common.json`
+
+Adicionar chave para suporte ao botão "Desfazer" no toast:
+
+```json
+{
+  "undo": "Desfazer"
+}
+```
+
+**Arquivo:** `src/i18n/locales/en/common.json`
+
+```json
+{
+  "undo": "Undo"
+}
+```
+
+**Arquivo:** `src/i18n/locales/pt/navigation.json`
+
+Adicionar chave para o sidebar:
+
+```json
+{
+  "sidebar": {
+    "inbox": "Central de Ações"
+  }
+}
+```
+
+**Arquivo:** `src/i18n/locales/en/navigation.json`
+
+```json
+{
+  "sidebar": {
+    "inbox": "Action Center"
+  }
+}
+```
+
 #### Tarefa 1.13: Customizações de Tailwind
 
 **Arquivo:** `tailwind.config.ts`
@@ -1686,6 +1809,7 @@ Adicionar à lista de itens de navegação do professor um novo item para o Inbo
 
 ```sql
 -- Conta aulas distintas com participantes pendentes
+-- NOTA: Inclui filtros de is_experimental e is_template
 SELECT DISTINCT c.id, c.class_date, c.service_id, c.is_group_class
 FROM classes c
 INNER JOIN class_participants cp ON cp.class_id = c.id
@@ -1693,12 +1817,15 @@ WHERE c.teacher_id = $1
   AND c.class_date < NOW()
   AND c.status = 'pendente'
   AND cp.status = 'pendente'
+  AND c.is_experimental = false
+  AND (c.is_template IS NULL OR c.is_template = false)
 ORDER BY c.class_date ASC;
 ```
 
 ### Cancelamentos Elegíveis para Anistia (30 dias)
 
 ```sql
+-- NOTA: Inclui filtros de is_experimental e is_template
 SELECT id, class_date, cancelled_at, cancellation_reason
 FROM classes
 WHERE teacher_id = $1
@@ -1706,6 +1833,8 @@ WHERE teacher_id = $1
   AND charge_applied = true
   AND amnesty_granted = false
   AND cancelled_at >= NOW() - INTERVAL '30 days'
+  AND is_experimental = false
+  AND (is_template IS NULL OR is_template = false)
 ORDER BY cancelled_at DESC;
 ```
 
@@ -1726,6 +1855,7 @@ ORDER BY i.due_date ASC;
 ### Aulas sem Relatório (30 dias)
 
 ```sql
+-- NOTA: Inclui filtros de is_experimental e is_template
 SELECT DISTINCT c.id, c.class_date, c.service_id
 FROM classes c
 LEFT JOIN class_reports cr ON cr.class_id = c.id
@@ -1734,6 +1864,8 @@ WHERE c.teacher_id = $1
   AND c.status = 'concluida'
   AND cr.id IS NULL
   AND c.class_date >= NOW() - INTERVAL '30 days'
+  AND c.is_experimental = false
+  AND (c.is_template IS NULL OR c.is_template = false)
 ORDER BY c.class_date DESC
 LIMIT 50;
 ```
@@ -2155,6 +2287,44 @@ const ignoreItem = (itemId: string) => {
 
 ---
 
+## Verificação de Pré-Requisitos
+
+Antes de implementar, verificar os seguintes itens:
+
+### 1. Status de Fatura Atrasada
+
+Confirmar que o edge function `check-overdue-invoices` atualiza o status para exatamente `'atrasada'`:
+
+```bash
+# Verificar no código
+supabase/functions/check-overdue-invoices/index.ts
+```
+
+Se o status for diferente (ex: `'overdue'`), ajustar a RPC `get_teacher_inbox_counts`.
+
+### 2. Traduções Existentes
+
+Verificar se `common.undo` existe antes de implementar:
+
+```bash
+cat src/i18n/locales/pt/common.json | grep -i undo
+```
+
+Se não existir, adicionar conforme Tarefa 1.12b.
+
+### 3. Componentes Reutilizáveis
+
+Verificar que os seguintes componentes existem e estão funcionando:
+- `src/components/AmnestyButton.tsx` - para lógica de anistia
+- `src/components/ClassReportModal.tsx` - para criação de relatórios
+- `src/hooks/use-mobile.tsx` - para detecção de dispositivo
+
+### 4. Cron Jobs
+
+Verificar no Supabase Dashboard > Scheduled Functions que o job `check-overdue-invoices` está ativo.
+
+---
+
 ## Dependências de Backend
 
 ### Cron Jobs Necessários
@@ -2173,33 +2343,51 @@ Se o job não existir, faturas não serão marcadas como atrasadas automaticamen
 
 ### Fase 1 (MVP)
 
+**Banco de Dados:**
 - [ ] RPC `get_teacher_inbox_counts` criada e funcionando
 - [ ] RPC `get_teacher_inbox_items` criada e funcionando
 - [ ] Validação de segurança (`auth.uid()`) nas RPCs
+- [ ] Filtros `is_experimental = false` e `is_template = false` nas queries
 - [ ] Índices de banco de dados criados para otimização
-- [ ] Hook `useInboxCounts` implementado
-- [ ] Hook `useInboxItems` implementado
+
+**Hooks e Utilitários:**
+- [ ] Hook `useInboxCounts` implementado (sem imports não utilizados)
+- [ ] Hook `useInboxItems` implementado (sem imports não utilizados)
 - [ ] Utilitário `useInboxCacheInvalidation` implementado
+
+**Componente NotificationBell:**
 - [ ] Sino aparece no header para professores
 - [ ] Badge mostra contagem total correta com `role="status"`
 - [ ] **Desktop**: Popover preview mostra categorias urgentes no hover
 - [ ] **Mobile**: Touch no sino navega diretamente para `/inbox`
 - [ ] Clique no link "Ver todas" navega para `/inbox`
+
+**Página Inbox:**
 - [ ] Rota `/inbox` criada no App.tsx
 - [ ] Proteção de rota (redirect se não for professor)
 - [ ] Link opcional no menu lateral com badge
 - [ ] Página lista todas as categorias de pendências
 - [ ] Hierarquia visual por urgência (bordas coloridas, backgrounds)
+
+**Ações Inline:**
 - [ ] Ações inline funcionam (confirmar, anistiar, etc.)
+- [ ] Lógica de anistia alinhada com `AmnestyButton` (inclui `charge_applied: false`)
+- [ ] `ClassReportModal` integrado inline (não navegação para outra página)
 - [ ] Micro-interações de feedback (animações, toasts)
 - [ ] Invalidação de cache funcionando após cada ação
-- [ ] Dependentes exibidos corretamente (nome + responsável)
 - [ ] Tratamento de erros de concorrência
+
+**UI/UX:**
+- [ ] Dependentes exibidos corretamente (nome + responsável)
 - [ ] Empty State elaborado com ilustração e CTA
 - [ ] Skeleton loading nos cards e lista
-- [ ] Animações customizadas configuradas no Tailwind
+- [ ] Animações `slide-up-fade` e `count-change` configuradas no Tailwind
+
+**Traduções:**
 - [ ] Namespace `inbox` registrado no i18n
-- [ ] Traduções PT/EN completas
+- [ ] Traduções PT/EN completas para inbox.json
+- [ ] Tradução `common.undo` adicionada (PT/EN)
+- [ ] Tradução `sidebar.inbox` adicionada em navigation.json (PT/EN)
 
 ### Fase 2
 

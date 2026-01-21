@@ -19,6 +19,49 @@ A Central de Ações é uma funcionalidade que centraliza todas as tarefas pende
 
 ---
 
+## Princípios de UX - Ações vs Navegação
+
+O Inbox segue o padrão do GitHub para interações:
+
+### 1. Ações Rápidas (Botões)
+- **Executam a ação imediatamente** + toast de feedback
+- **Não abrem modais** dentro do Inbox
+- **Não navegam** para outras telas
+- Feedback instantâneo via toast
+
+**Exemplos:**
+- "Marcar Concluída" → executa direto, toast de sucesso
+- "Conceder Anistia" → executa direto, toast de sucesso
+
+### 2. Click no Item (Card Inteiro) - Fase 2
+- **Navega para o contexto completo** (Agenda, Faturas)
+- Pode abrir o modal de detalhes automaticamente via query params
+- Permite ações mais complexas que requerem contexto
+
+**Exemplos:**
+- Click em aula → navega para `/agenda?date=...&classId=...`
+- Click em fatura → navega para `/faturas?highlight=...`
+
+### 3. Ação "Criar Relatório" (Exceção)
+- Como requer preenchimento de dados, navega para a Agenda com parâmetros
+- Não abre modal inline no Inbox
+- URL: `/agenda?date=${date}&classId=${id}&action=report`
+
+---
+
+## Regras de Negócio Importantes
+
+### Aulas Experimentais
+
+**REGRA CRÍTICA:** Aulas experimentais (`is_experimental = true`) **NUNCA** geram cobrança por cancelamento, independentemente do prazo ou política.
+
+Esta regra está implementada em:
+- `supabase/functions/process-cancellation/index.ts` - Verifica `is_experimental` antes de aplicar cobrança
+- `src/components/CancellationModal.tsx` - Não calcula/exibe valores para experimentais
+- RPCs do Inbox - Filtram `is_experimental = false` nas queries
+
+---
+
 ## Arquitetura
 
 ### Estrutura de Componentes

@@ -37,6 +37,10 @@
       "title": "Dependent's Class",
       "description": "You are canceling the class for {{dependentName}}.",
       "chargeToResponsible": "The charge will be directed to the responsible party ({{responsibleName}})."
+    },
+    "experimental": {
+      "title": "Experimental Class",
+      "noCharge": "Experimental classes are not subject to cancellation fees."
     }
   },
   "fields": {

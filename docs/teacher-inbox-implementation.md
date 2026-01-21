@@ -410,6 +410,7 @@ LIMIT 50;
 - ARIA labels em todos os elementos interativos
 - Focus management ao navegar
 - Suporte completo a teclado
+- Badge com `role="status"` e `aria-label="X pendências"`
 
 ### Cores por Urgência
 
@@ -420,25 +421,301 @@ LIMIT 50;
 
 ---
 
+## Hierarquia Visual por Urgência
+
+Para diferenciar visualmente os níveis de urgência, cada `InboxActionItem` deve aplicar estilos distintos:
+
+```tsx
+// Configuração de estilos por urgência
+const URGENCY_STYLES: Record<UrgencyLevel, {
+  border: string;
+  background: string;
+  iconAnimation?: string;
+}> = {
+  high: {
+    border: 'border-l-4 border-l-destructive',
+    background: 'bg-destructive/5',
+    iconAnimation: 'animate-pulse',
+  },
+  medium: {
+    border: 'border-l-4 border-l-warning',
+    background: 'bg-warning/5',
+  },
+  low: {
+    border: 'border-l-4 border-l-primary',
+    background: 'bg-primary/5',
+  },
+  info: {
+    border: 'border-l-4 border-l-muted',
+    background: 'bg-muted/5',
+  },
+};
+```
+
+---
+
+## Micro-interações e Feedback Visual
+
+### Ações Concluídas
+
+- **Animação de saída**: Item desliza para cima com fade-out (`animate-slide-up-fade`)
+- **Toast contextual**: "Aula confirmada ✓" ou "Anistia concedida"
+- **Atualização do contador**: Badge decrementa com transição suave
+
+### Estados de Loading
+
+- **Botão de ação**: Spinner inline substituindo texto
+- **Card afetado**: Opacidade reduzida (`opacity-70`)
+- **Outras ações**: Desabilitadas no mesmo item durante processamento
+
+### Transições de Estado
+
+- **Novas pendências**: Badge pisca sutilmente (`animate-pulse`) por 3s
+- **Contadores**: Transição numérica suave nos Summary Cards
+- **Categorias vazias**: Colapsam automaticamente com animação
+
+---
+
+## Comportamento do NotificationBell
+
+### Desktop (>768px)
+
+```
+┌─────────────────────────────────────┐
+│  Hover → Abre Popover               │
+│  ┌─────────────────────────────┐    │
+│  │ 🔴 2 Aulas não confirmadas  │    │
+│  │ 🟡 1 Anistia pendente       │    │
+│  │ 🔴 3 Faturas atrasadas      │    │
+│  │ ───────────────────────     │    │
+│  │ Ver todas (6) →             │    │
+│  └─────────────────────────────┘    │
+│  Click no link → Navega /inbox      │
+└─────────────────────────────────────┘
+```
+
+- **Hover**: Abre Popover com preview (máx. 3 categorias)
+- **Click no link "Ver todas"**: Navega para `/inbox`
+- **Click fora**: Fecha Popover
+- **Delay de fechamento**: 200ms para evitar fechamento acidental
+
+### Mobile (≤768px)
+
+```
+┌───────────────────────────┐
+│  Touch no 🔔 → Navega     │
+│  diretamente para /inbox  │
+└───────────────────────────┘
+```
+
+- **Touch**: Navegação direta para `/inbox` (sem Popover)
+- **Justificativa**: Popover em mobile tem usabilidade ruim; navegação direta é mais eficiente
+
+### Implementação
+
+```tsx
+// NotificationBell.tsx
+const isMobile = useIsMobile();
+const navigate = useNavigate();
+
+const handleClick = () => {
+  if (isMobile) {
+    navigate('/inbox');
+  }
+  // Desktop: Popover abre via onOpenChange
+};
+
+return (
+  <Popover>
+    <PopoverTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="relative"
+        onClick={handleClick}
+        aria-label={`${counts?.total || 0} pendências`}
+      >
+        <Bell className="h-5 w-5" />
+        {counts?.total > 0 && (
+          <Badge 
+            className="absolute -top-1 -right-1 h-5 min-w-5 px-1"
+            role="status"
+          >
+            {counts.total > 99 ? '99+' : counts.total}
+          </Badge>
+        )}
+      </Button>
+    </PopoverTrigger>
+    
+    {!isMobile && (
+      <PopoverContent>
+        {/* Preview das categorias */}
+      </PopoverContent>
+    )}
+  </Popover>
+);
+```
+
+---
+
+## Empty State Elaborado
+
+O componente `InboxEmptyState` deve transmitir uma sensação positiva de "missão cumprida":
+
+```tsx
+// InboxEmptyState.tsx
+<div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+  {/* Ilustração vetorial ou emoji grande */}
+  <div className="text-6xl mb-6">🎉</div>
+  
+  {/* Título positivo */}
+  <h3 className="text-xl font-semibold text-foreground mb-2">
+    {t('inbox.emptyState.title')}
+  </h3>
+  
+  {/* Subtítulo motivacional */}
+  <p className="text-muted-foreground max-w-sm mb-6">
+    {t('inbox.emptyState.description')}
+  </p>
+  
+  {/* CTA contextual */}
+  <Button variant="outline" asChild>
+    <Link to="/agenda">
+      <CalendarDays className="mr-2 h-4 w-4" />
+      {t('inbox.emptyState.cta')}
+    </Link>
+  </Button>
+  
+  {/* Timestamp opcional */}
+  <p className="text-xs text-muted-foreground mt-8">
+    {t('inbox.emptyState.lastChecked', { time: formatRelative(lastCheck) })}
+  </p>
+</div>
+```
+
+### Traduções
+
+```json
+// pt/inbox.json
+{
+  "emptyState": {
+    "title": "Tudo em dia!",
+    "description": "Você não tem nenhuma pendência no momento. Continue assim!",
+    "cta": "Ver agenda",
+    "lastChecked": "Última verificação: {{time}}"
+  }
+}
+```
+
+---
+
+## Skeleton Loading
+
+### InboxSummaryCards Skeleton
+
+```tsx
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  {[...Array(4)].map((_, i) => (
+    <Card key={i} className="p-4">
+      <Skeleton className="h-4 w-20 mb-2" />
+      <Skeleton className="h-8 w-12" />
+    </Card>
+  ))}
+</div>
+```
+
+### InboxActionList Skeleton
+
+```tsx
+<div className="space-y-4">
+  {[...Array(3)].map((_, i) => (
+    <Card key={i} className="p-4">
+      <div className="flex items-center gap-4">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="flex-1">
+          <Skeleton className="h-4 w-3/4 mb-2" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+        <Skeleton className="h-9 w-24" />
+      </div>
+    </Card>
+  ))}
+</div>
+```
+
+---
+
+## Ação "Ignorar" com Undo
+
+### Fluxo
+
+1. Professor clica em "Ignorar" no item
+2. Item desaparece com animação
+3. Toast aparece: "Item ignorado" + botão "Desfazer" (8 segundos)
+4. Se "Desfazer" clicado: item reaparece
+5. Se não: item vai para seção "Ignorados" (colapsada por padrão)
+
+### Implementação
+
+```tsx
+// useIgnoreItem.ts
+const { toast } = useToast();
+
+const ignoreItem = (itemId: string) => {
+  // Adiciona ao estado local de ignorados
+  setIgnoredItems(prev => [...prev, itemId]);
+  
+  toast({
+    description: t('inbox.itemIgnored'),
+    action: (
+      <ToastAction 
+        altText={t('common.undo')}
+        onClick={() => undoIgnore(itemId)}
+      >
+        {t('common.undo')}
+      </ToastAction>
+    ),
+    duration: 8000,
+  });
+  
+  // Persiste após timeout (ou imediatamente se preferir)
+  setTimeout(() => {
+    persistIgnoredItem(itemId);
+  }, 8000);
+};
+```
+
+### Armazenamento
+
+- **Fase 2 (MVP)**: `localStorage` com key `inbox_ignored_items`
+- **Fase 3 (Avançado)**: Tabela `inbox_dismissed` no banco
+
+---
+
 ## Critérios de Aceitação
 
 ### Fase 1 (MVP)
 
 - [ ] RPC `get_teacher_inbox_counts` criada e funcionando
 - [ ] Sino aparece no header para professores
-- [ ] Badge mostra contagem total correta
-- [ ] Popover preview mostra categorias urgentes
-- [ ] Clique no sino navega para /inbox
+- [ ] Badge mostra contagem total correta com `role="status"`
+- [ ] **Desktop**: Popover preview mostra categorias urgentes no hover
+- [ ] **Mobile**: Touch no sino navega diretamente para `/inbox`
+- [ ] Clique no link "Ver todas" navega para `/inbox`
 - [ ] Página lista todas as categorias de pendências
+- [ ] Hierarquia visual por urgência (bordas coloridas, backgrounds)
 - [ ] Ações inline funcionam (confirmar, anistiar, etc.)
-- [ ] Estado vazio exibido quando não há pendências
+- [ ] Micro-interações de feedback (animações, toasts)
+- [ ] Empty State elaborado com ilustração e CTA
+- [ ] Skeleton loading nos cards e lista
 - [ ] Traduções PT/EN completas
 
 ### Fase 2
 
 - [ ] Seleção múltipla funciona
 - [ ] Atualizações em tempo real
-- [ ] Estado "Ignorar" implementado
+- [ ] Estado "Ignorar" com Undo implementado
+- [ ] Seção "Ignorados" colapsável
 
 ---
 
@@ -448,6 +725,7 @@ LIMIT 50;
 - `@tanstack/react-query` (já instalado) - cache e fetch
 - `shadcn/ui` (já instalado) - componentes UI
 - Componente `AmnestyButton` existente para reutilização
+- Hook `useIsMobile` existente para detecção de dispositivo
 
 ---
 
@@ -459,3 +737,4 @@ LIMIT 50;
 | Conflito com outras features | Baixa | Médio | Componentes isolados, hooks independentes |
 | UX confusa com muitas categorias | Média | Médio | Priorização visual, collapse de categorias |
 | Notificações obsoletas | Baixa | Baixo | Polling + invalidação após ações |
+| Popover ruim em mobile | Baixa | Médio | Navegação direta para /inbox no mobile |

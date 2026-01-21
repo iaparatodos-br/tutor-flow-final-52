@@ -49,7 +49,8 @@ src/
 │       ├── InboxActionItem.tsx
 │       └── InboxEmptyState.tsx
 ├── hooks/
-│   └── useInboxCounts.ts
+│   ├── useInboxCounts.ts
+│   └── useInboxItems.ts
 ├── types/
 │   └── inbox.ts
 ├── pages/
@@ -93,10 +94,14 @@ export interface InboxItem {
   subtitle: string;
   date: string;
   urgency: UrgencyLevel;
+  student_id: string;
+  student_name: string;
+  dependent_id?: string;
+  dependent_name?: string;
   metadata: Record<string, unknown>;
 }
 
-// Props do hook
+// Props do hook useInboxCounts
 export interface UseInboxCountsReturn {
   counts: InboxCounts | null;
   isLoading: boolean;
@@ -104,31 +109,81 @@ export interface UseInboxCountsReturn {
   refetch: () => void;
 }
 
+// Props do hook useInboxItems
+export interface UseInboxItemsReturn {
+  items: InboxItem[];
+  isLoading: boolean;
+  error: Error | null;
+  refetch: () => void;
+  hasMore: boolean;
+  fetchMore: () => void;
+}
+
 // Mapeamento de categoria para configuração visual
 export const INBOX_CATEGORY_CONFIG: Record<InboxCategory, {
   icon: string;
   urgency: UrgencyLevel;
   colorClass: string;
+  borderClass: string;
+  bgClass: string;
+  labelKey: string;
 }> = {
   pending_past_classes: {
     icon: 'Clock',
     urgency: 'high',
     colorClass: 'text-destructive',
+    borderClass: 'border-l-destructive',
+    bgClass: 'bg-destructive/5',
+    labelKey: 'inbox.categories.pendingPastClasses',
   },
   amnesty_eligible: {
     icon: 'Gift',
     urgency: 'medium',
     colorClass: 'text-warning',
+    borderClass: 'border-l-warning',
+    bgClass: 'bg-warning/5',
+    labelKey: 'inbox.categories.amnestyEligible',
   },
   overdue_invoices: {
     icon: 'AlertCircle',
     urgency: 'high',
     colorClass: 'text-destructive',
+    borderClass: 'border-l-destructive',
+    bgClass: 'bg-destructive/5',
+    labelKey: 'inbox.categories.overdueInvoices',
   },
   pending_reports: {
     icon: 'FileText',
     urgency: 'low',
     colorClass: 'text-primary',
+    borderClass: 'border-l-primary',
+    bgClass: 'bg-primary/5',
+    labelKey: 'inbox.categories.pendingReports',
+  },
+};
+
+// Estilos por urgência
+export const URGENCY_STYLES: Record<UrgencyLevel, {
+  border: string;
+  background: string;
+  iconAnimation?: string;
+}> = {
+  high: {
+    border: 'border-l-4 border-l-destructive',
+    background: 'bg-destructive/5',
+    iconAnimation: 'animate-pulse',
+  },
+  medium: {
+    border: 'border-l-4 border-l-warning',
+    background: 'bg-warning/5',
+  },
+  low: {
+    border: 'border-l-4 border-l-primary',
+    background: 'bg-primary/5',
+  },
+  info: {
+    border: 'border-l-4 border-l-muted',
+    background: 'bg-muted/5',
   },
 };
 ```
@@ -150,11 +205,12 @@ export const INBOX_CATEGORY_CONFIG: Record<InboxCategory, {
 
 ### Fase 1: MVP (Fundação)
 
-#### Tarefa 1.0: Função RPC PostgreSQL
+#### Tarefa 1.0: Função RPC PostgreSQL - Contagens
 
 **Migração SQL:**
 
 ```sql
+-- RPC para contagens do inbox
 CREATE OR REPLACE FUNCTION get_teacher_inbox_counts(p_teacher_id UUID)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -167,12 +223,19 @@ DECLARE
   v_overdue_invoices INT;
   v_pending_reports INT;
 BEGIN
-  -- Aulas passadas pendentes
-  SELECT COUNT(*) INTO v_pending_past_classes
-  FROM classes
-  WHERE teacher_id = p_teacher_id
-    AND status = 'pendente'
-    AND class_date < NOW();
+  -- Aulas passadas pendentes (incluindo aulas em grupo)
+  SELECT COUNT(DISTINCT c.id) INTO v_pending_past_classes
+  FROM classes c
+  LEFT JOIN class_participants cp ON cp.class_id = c.id
+  WHERE c.teacher_id = p_teacher_id
+    AND c.class_date < NOW()
+    AND (
+      -- Aula individual pendente
+      (c.is_group_class = false AND c.status = 'pendente')
+      OR
+      -- Aula em grupo com algum participante pendente
+      (c.is_group_class = true AND cp.status = 'pendente')
+    );
 
   -- Cancelamentos elegíveis para anistia (últimos 30 dias)
   SELECT COUNT(*) INTO v_amnesty_eligible
@@ -189,7 +252,7 @@ BEGIN
   WHERE teacher_id = p_teacher_id
     AND status = 'atrasada';
 
-  -- Aulas concluídas sem relatório (últimas 50)
+  -- Aulas concluídas sem relatório (últimos 30 dias)
   SELECT COUNT(*) INTO v_pending_reports
   FROM classes c
   LEFT JOIN class_reports cr ON cr.class_id = c.id
@@ -209,7 +272,181 @@ END;
 $$;
 ```
 
-#### Tarefa 1.1: Hook useInboxCounts
+#### Tarefa 1.1: Função RPC PostgreSQL - Itens Detalhados
+
+**Migração SQL:**
+
+```sql
+-- RPC para itens detalhados do inbox por categoria
+CREATE OR REPLACE FUNCTION get_teacher_inbox_items(
+  p_teacher_id UUID,
+  p_category TEXT,
+  p_limit INT DEFAULT 20,
+  p_offset INT DEFAULT 0
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_result JSON;
+BEGIN
+  CASE p_category
+    WHEN 'pending_past_classes' THEN
+      SELECT json_agg(item) INTO v_result
+      FROM (
+        SELECT 
+          c.id,
+          'pending_past_classes' as category,
+          COALESCE(sv.name, 'Aula') as title,
+          to_char(c.class_date, 'DD/MM/YYYY HH24:MI') as subtitle,
+          c.class_date::text as date,
+          'high' as urgency,
+          c.student_id,
+          s.name as student_name,
+          c.dependent_id,
+          d.name as dependent_name,
+          json_build_object(
+            'service_id', c.service_id,
+            'is_group_class', c.is_group_class
+          ) as metadata
+        FROM classes c
+        LEFT JOIN students s ON s.id = c.student_id
+        LEFT JOIN dependents d ON d.id = c.dependent_id
+        LEFT JOIN services sv ON sv.id = c.service_id
+        LEFT JOIN class_participants cp ON cp.class_id = c.id
+        WHERE c.teacher_id = p_teacher_id
+          AND c.class_date < NOW()
+          AND (
+            (c.is_group_class = false AND c.status = 'pendente')
+            OR
+            (c.is_group_class = true AND cp.status = 'pendente')
+          )
+        GROUP BY c.id, sv.name, s.name, d.name
+        ORDER BY c.class_date ASC
+        LIMIT p_limit OFFSET p_offset
+      ) as item;
+
+    WHEN 'amnesty_eligible' THEN
+      SELECT json_agg(item) INTO v_result
+      FROM (
+        SELECT 
+          c.id,
+          'amnesty_eligible' as category,
+          COALESCE(sv.name, 'Aula cancelada') as title,
+          'Cancelado em ' || to_char(c.cancelled_at, 'DD/MM') as subtitle,
+          c.cancelled_at::text as date,
+          'medium' as urgency,
+          c.student_id,
+          s.name as student_name,
+          c.dependent_id,
+          d.name as dependent_name,
+          json_build_object(
+            'cancellation_reason', c.cancellation_reason,
+            'class_date', c.class_date
+          ) as metadata
+        FROM classes c
+        LEFT JOIN students s ON s.id = c.student_id
+        LEFT JOIN dependents d ON d.id = c.dependent_id
+        LEFT JOIN services sv ON sv.id = c.service_id
+        WHERE c.teacher_id = p_teacher_id
+          AND c.status = 'cancelada'
+          AND c.charge_applied = true
+          AND c.amnesty_granted = false
+          AND c.cancelled_at >= NOW() - INTERVAL '30 days'
+        ORDER BY c.cancelled_at DESC
+        LIMIT p_limit OFFSET p_offset
+      ) as item;
+
+    WHEN 'overdue_invoices' THEN
+      SELECT json_agg(item) INTO v_result
+      FROM (
+        SELECT 
+          i.id,
+          'overdue_invoices' as category,
+          'Fatura #' || i.id::text as title,
+          'Venceu em ' || to_char(i.due_date, 'DD/MM') as subtitle,
+          i.due_date::text as date,
+          'high' as urgency,
+          i.student_id,
+          s.name as student_name,
+          i.dependent_id,
+          d.name as dependent_name,
+          json_build_object(
+            'amount', i.amount,
+            'days_overdue', EXTRACT(DAY FROM NOW() - i.due_date)::INT
+          ) as metadata
+        FROM invoices i
+        LEFT JOIN students s ON s.id = i.student_id
+        LEFT JOIN dependents d ON d.id = i.dependent_id
+        WHERE i.teacher_id = p_teacher_id
+          AND i.status = 'atrasada'
+        ORDER BY i.due_date ASC
+        LIMIT p_limit OFFSET p_offset
+      ) as item;
+
+    WHEN 'pending_reports' THEN
+      SELECT json_agg(item) INTO v_result
+      FROM (
+        SELECT 
+          c.id,
+          'pending_reports' as category,
+          COALESCE(sv.name, 'Aula') as title,
+          'Realizada em ' || to_char(c.class_date, 'DD/MM') as subtitle,
+          c.class_date::text as date,
+          'low' as urgency,
+          c.student_id,
+          s.name as student_name,
+          c.dependent_id,
+          d.name as dependent_name,
+          json_build_object(
+            'service_id', c.service_id
+          ) as metadata
+        FROM classes c
+        LEFT JOIN class_reports cr ON cr.class_id = c.id
+        LEFT JOIN students s ON s.id = c.student_id
+        LEFT JOIN dependents d ON d.id = c.dependent_id
+        LEFT JOIN services sv ON sv.id = c.service_id
+        WHERE c.teacher_id = p_teacher_id
+          AND c.status = 'concluida'
+          AND cr.id IS NULL
+          AND c.class_date >= NOW() - INTERVAL '30 days'
+        ORDER BY c.class_date DESC
+        LIMIT p_limit OFFSET p_offset
+      ) as item;
+
+    ELSE
+      v_result := '[]'::json;
+  END CASE;
+
+  RETURN COALESCE(v_result, '[]'::json);
+END;
+$$;
+```
+
+#### Tarefa 1.2: Índices de Banco de Dados
+
+```sql
+-- Índices para otimização das queries do inbox
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_classes_teacher_status_date 
+ON classes(teacher_id, status, class_date);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_classes_teacher_cancelled 
+ON classes(teacher_id, status, charge_applied, amnesty_granted, cancelled_at)
+WHERE status = 'cancelada';
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_invoices_teacher_status 
+ON invoices(teacher_id, status);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_class_reports_class_id 
+ON class_reports(class_id);
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_class_participants_status 
+ON class_participants(class_id, status);
+```
+
+#### Tarefa 1.3: Hook useInboxCounts
 
 **Arquivo:** `src/hooks/useInboxCounts.ts`
 
@@ -220,7 +457,7 @@ import { useProfile } from '@/contexts/ProfileContext';
 import type { InboxCounts, UseInboxCountsReturn } from '@/types/inbox';
 
 export function useInboxCounts(): UseInboxCountsReturn {
-  const { profile } = useProfile();
+  const { profile, isProfessor } = useProfile();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['inbox-counts', profile?.id],
@@ -231,7 +468,7 @@ export function useInboxCounts(): UseInboxCountsReturn {
       if (error) throw error;
       return data as InboxCounts;
     },
-    enabled: !!profile?.id,
+    enabled: !!profile?.id && isProfessor,
     staleTime: 5 * 60 * 1000, // 5 minutos
     refetchInterval: 60 * 1000, // Polling a cada 1 minuto
     refetchIntervalInBackground: false, // Só quando tab ativa
@@ -246,20 +483,111 @@ export function useInboxCounts(): UseInboxCountsReturn {
 }
 ```
 
-#### Tarefa 1.2: Componente NotificationBell com Popover
+#### Tarefa 1.4: Hook useInboxItems
+
+**Arquivo:** `src/hooks/useInboxItems.ts`
+
+```typescript
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useProfile } from '@/contexts/ProfileContext';
+import type { InboxCategory, InboxItem, UseInboxItemsReturn } from '@/types/inbox';
+
+export function useInboxItems(
+  category: InboxCategory,
+  options?: { limit?: number; offset?: number }
+): UseInboxItemsReturn {
+  const { profile, isProfessor } = useProfile();
+  const limit = options?.limit ?? 20;
+  const offset = options?.offset ?? 0;
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['inbox-items', category, profile?.id, limit, offset],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .rpc('get_teacher_inbox_items', {
+          p_teacher_id: profile?.id,
+          p_category: category,
+          p_limit: limit,
+          p_offset: offset,
+        });
+      
+      if (error) throw error;
+      return (data as InboxItem[]) ?? [];
+    },
+    enabled: !!profile?.id && isProfessor,
+    staleTime: 2 * 60 * 1000, // 2 minutos
+  });
+
+  return {
+    items: data ?? [],
+    isLoading,
+    error: error as Error | null,
+    refetch,
+    hasMore: (data?.length ?? 0) === limit,
+    fetchMore: () => {
+      // Implementar paginação infinita se necessário
+    },
+  };
+}
+```
+
+#### Tarefa 1.5: Componente NotificationBell com Popover
 
 **Arquivo:** `src/components/NotificationBell.tsx`
 
 - Ícone `Bell` do Lucide React
 - Badge circular vermelho posicionado no canto superior direito
 - Mostrar "99+" quando total > 99
-- **Popover** no hover/click com:
-  - Preview das 3 categorias mais urgentes
-  - Contagem por categoria
-  - Link "Ver todas →" para `/inbox`
-- Clique no link navega para `/inbox`
+- **Desktop**: Popover no hover com preview das 3 categorias mais urgentes
+- **Mobile**: Touch navega diretamente para `/inbox`
+- Clique no link "Ver todas →" navega para `/inbox`
 
-#### Tarefa 1.3: Integração no Header
+```tsx
+// NotificationBell.tsx
+const isMobile = useIsMobile();
+const navigate = useNavigate();
+
+const handleClick = () => {
+  if (isMobile) {
+    navigate('/inbox');
+  }
+  // Desktop: Popover abre via onOpenChange
+};
+
+return (
+  <Popover>
+    <PopoverTrigger asChild>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="relative"
+        onClick={handleClick}
+        aria-label={`${counts?.total || 0} pendências`}
+      >
+        <Bell className="h-5 w-5" />
+        {counts?.total > 0 && (
+          <Badge 
+            className="absolute -top-1 -right-1 h-5 min-w-5 px-1"
+            role="status"
+            aria-label={`${counts.total} itens pendentes`}
+          >
+            {counts.total > 99 ? '99+' : counts.total}
+          </Badge>
+        )}
+      </Button>
+    </PopoverTrigger>
+    
+    {!isMobile && (
+      <PopoverContent>
+        {/* Preview das categorias */}
+      </PopoverContent>
+    )}
+  </Popover>
+);
+```
+
+#### Tarefa 1.6: Integração no Header
 
 **Arquivo:** `src/components/Layout.tsx`
 
@@ -267,7 +595,7 @@ export function useInboxCounts(): UseInboxCountsReturn {
 - Renderizar apenas para professores (`isProfessor`)
 - Posicionar antes do menu de usuário/logout
 
-#### Tarefa 1.4: Página Inbox
+#### Tarefa 1.7: Página Inbox
 
 **Arquivo:** `src/pages/Inbox.tsx`
 
@@ -278,24 +606,215 @@ Estrutura:
 3. **Action List**: Seções colapsáveis por categoria
 4. **Empty State**: Componente dedicado `InboxEmptyState`
 
-#### Tarefa 1.5: Componentes da Lista
+#### Tarefa 1.8: Componentes da Lista
 
 **Arquivos:** `src/components/Inbox/*.tsx`
 
 - `InboxSummaryCards`: Cards com ícone, contagem e cor por urgência
 - `InboxActionList`: Lista com Accordion por categoria
-- `InboxActionItem`: Card com dados + ações inline
+- `InboxActionItem`: Card com dados + ações inline + hierarquia visual
 - `InboxEmptyState`: Ilustração positiva "Tudo em dia! 🎉"
 
-#### Tarefa 1.6: Rota no App.tsx
+#### Tarefa 1.9: Rota no App.tsx
 
 ```tsx
+import Inbox from "./pages/Inbox";
+
+// Dentro do componente Routes, APENAS para professores
 <Route path="/inbox" element={<Inbox />} />
 ```
 
-#### Tarefa 1.7: Traduções i18n
+**Proteção de Rota (dentro de Inbox.tsx):**
+
+```tsx
+// Inbox.tsx - início do componente
+const { isProfessor } = useProfile();
+const navigate = useNavigate();
+
+// Redirecionar se não for professor
+useEffect(() => {
+  if (!isProfessor) {
+    navigate('/dashboard');
+  }
+}, [isProfessor, navigate]);
+```
+
+#### Tarefa 1.10: Link no AppSidebar (Opcional)
+
+```tsx
+// AppSidebar.tsx - Adicionar à lista de itens do professor
+{isProfessor && (
+  <li>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div 
+          onClick={() => handleNavigation("/inbox")} 
+          className={`flex items-center ${!isOpen ? 'justify-center w-12 h-10 px-3 py-2' : 'px-3 py-3'} rounded-lg min-h-[44px] w-full transition-all duration-200 cursor-pointer ${isActive("/inbox") ? 'bg-primary/20 text-primary font-semibold border border-primary/30 shadow-md backdrop-blur-sm' : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}`}
+        >
+          <Inbox className="h-4 w-4 flex-shrink-0 text-primary" />
+          {isOpen && (
+            <div className="flex items-center justify-between w-full ml-4">
+              <span>{t('navigation:sidebar.inbox')}</span>
+              {counts?.total > 0 && (
+                <Badge variant="destructive" className="h-5 min-w-5 px-1">
+                  {counts.total > 99 ? '99+' : counts.total}
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        <p>{t('navigation:sidebar.inbox')}</p>
+      </TooltipContent>
+    </Tooltip>
+  </li>
+)}
+```
+
+#### Tarefa 1.11: Traduções i18n
 
 **Arquivos:** `src/i18n/locales/{pt,en}/inbox.json`
+
+```json
+// pt/inbox.json
+{
+  "title": "Central de Ações",
+  "subtitle": "{{count}} pendências",
+  "subtitleSingular": "1 pendência",
+  "noItems": "Nenhuma pendência",
+  "refresh": "Atualizar",
+  "viewAll": "Ver todas ({{count}})",
+  "categories": {
+    "pendingPastClasses": "Aulas não confirmadas",
+    "amnestyEligible": "Anistias pendentes",
+    "overdueInvoices": "Faturas atrasadas",
+    "pendingReports": "Relatórios pendentes"
+  },
+  "actions": {
+    "markCompleted": "Concluída",
+    "grantAmnesty": "Conceder Anistia",
+    "viewInvoice": "Ver Fatura",
+    "createReport": "Criar Relatório",
+    "ignore": "Ignorar",
+    "sendReminder": "Enviar Lembrete",
+    "registerPayment": "Registrar Pagamento"
+  },
+  "emptyState": {
+    "title": "Tudo em dia!",
+    "description": "Você não tem nenhuma pendência no momento. Continue assim!",
+    "cta": "Ver agenda",
+    "lastChecked": "Última verificação: {{time}}"
+  },
+  "toast": {
+    "classCompleted": "Aula confirmada ✓",
+    "amnestyGranted": "Anistia concedida",
+    "reportCreated": "Relatório criado",
+    "itemIgnored": "Item ignorado",
+    "reminderSent": "Lembrete enviado",
+    "paymentRegistered": "Pagamento registrado",
+    "error": "Erro ao processar ação"
+  },
+  "dependent": {
+    "responsible": "Responsável: {{name}}"
+  }
+}
+```
+
+```json
+// en/inbox.json
+{
+  "title": "Action Center",
+  "subtitle": "{{count}} pending items",
+  "subtitleSingular": "1 pending item",
+  "noItems": "No pending items",
+  "refresh": "Refresh",
+  "viewAll": "View all ({{count}})",
+  "categories": {
+    "pendingPastClasses": "Unconfirmed classes",
+    "amnestyEligible": "Pending amnesty",
+    "overdueInvoices": "Overdue invoices",
+    "pendingReports": "Pending reports"
+  },
+  "actions": {
+    "markCompleted": "Mark Completed",
+    "grantAmnesty": "Grant Amnesty",
+    "viewInvoice": "View Invoice",
+    "createReport": "Create Report",
+    "ignore": "Ignore",
+    "sendReminder": "Send Reminder",
+    "registerPayment": "Register Payment"
+  },
+  "emptyState": {
+    "title": "All caught up!",
+    "description": "You have no pending items at the moment. Keep up the great work!",
+    "cta": "View schedule",
+    "lastChecked": "Last checked: {{time}}"
+  },
+  "toast": {
+    "classCompleted": "Class confirmed ✓",
+    "amnestyGranted": "Amnesty granted",
+    "reportCreated": "Report created",
+    "itemIgnored": "Item ignored",
+    "reminderSent": "Reminder sent",
+    "paymentRegistered": "Payment registered",
+    "error": "Error processing action"
+  },
+  "dependent": {
+    "responsible": "Responsible: {{name}}"
+  }
+}
+```
+
+#### Tarefa 1.12: Customizações de Tailwind
+
+**Arquivo:** `tailwind.config.ts`
+
+Adicionar ao `extend`:
+
+```javascript
+extend: {
+  colors: {
+    warning: {
+      DEFAULT: 'hsl(var(--warning))',
+      foreground: 'hsl(var(--warning-foreground))',
+    },
+  },
+  keyframes: {
+    'slide-up-fade': {
+      '0%': { opacity: '1', transform: 'translateY(0)' },
+      '100%': { opacity: '0', transform: 'translateY(-10px)' },
+    },
+    'count-change': {
+      '0%': { transform: 'scale(1)' },
+      '50%': { transform: 'scale(1.2)' },
+      '100%': { transform: 'scale(1)' },
+    },
+  },
+  animation: {
+    'slide-up-fade': 'slide-up-fade 0.3s ease-out forwards',
+    'count-change': 'count-change 0.3s ease-out',
+  },
+}
+```
+
+**Arquivo:** `src/index.css`
+
+Adicionar variáveis de cor:
+
+```css
+:root {
+  /* ... existing colors ... */
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+}
+
+.dark {
+  /* ... existing dark colors ... */
+  --warning: 38 92% 50%;
+  --warning-foreground: 0 0% 100%;
+}
+```
 
 ---
 
@@ -339,17 +858,23 @@ Estrutura:
 
 ## Queries de Banco de Dados
 
-> **Nota:** As queries individuais abaixo são para referência. Em produção, usar a RPC `get_teacher_inbox_counts` para performance.
+> **Nota:** As queries individuais abaixo são para referência. Em produção, usar as RPCs `get_teacher_inbox_counts` e `get_teacher_inbox_items` para performance.
 
 ### Aulas Passadas Pendentes
 
 ```sql
-SELECT id, class_date, student_id, service_id
-FROM classes
-WHERE teacher_id = $1
-  AND status = 'pendente'
-  AND class_date < NOW()
-ORDER BY class_date ASC;
+SELECT c.id, c.class_date, c.student_id, c.service_id, c.is_group_class
+FROM classes c
+LEFT JOIN class_participants cp ON cp.class_id = c.id
+WHERE c.teacher_id = $1
+  AND c.class_date < NOW()
+  AND (
+    (c.is_group_class = false AND c.status = 'pendente')
+    OR
+    (c.is_group_class = true AND cp.status = 'pendente')
+  )
+GROUP BY c.id
+ORDER BY c.class_date ASC;
 ```
 
 ### Cancelamentos Elegíveis para Anistia (30 dias)
@@ -391,6 +916,145 @@ LIMIT 50;
 
 ---
 
+## Estratégia de Invalidação de Cache
+
+Após cada ação no inbox, os seguintes query keys devem ser invalidados:
+
+| Ação | Query Keys a Invalidar |
+|------|------------------------|
+| Confirmar aula | `inbox-counts`, `inbox-items-pending_past_classes`, `classes` |
+| Conceder anistia | `inbox-counts`, `inbox-items-amnesty_eligible`, `classes`, `invoices` |
+| Ver/Pagar fatura | `inbox-counts`, `inbox-items-overdue_invoices`, `invoices` |
+| Criar relatório | `inbox-counts`, `inbox-items-pending_reports`, `class-reports` |
+| Enviar lembrete | Nenhum (ação não altera contagens) |
+| Registrar pagamento | `inbox-counts`, `inbox-items-overdue_invoices`, `invoices` |
+
+**Implementação:**
+
+```typescript
+// utils/inbox-cache.ts
+import { useQueryClient } from '@tanstack/react-query';
+
+export function useInboxCacheInvalidation() {
+  const queryClient = useQueryClient();
+
+  const invalidateAfterAction = (action: string) => {
+    const keysToInvalidate: Record<string, string[]> = {
+      confirmClass: ['inbox-counts', 'inbox-items-pending_past_classes', 'classes'],
+      grantAmnesty: ['inbox-counts', 'inbox-items-amnesty_eligible', 'classes', 'invoices'],
+      payInvoice: ['inbox-counts', 'inbox-items-overdue_invoices', 'invoices'],
+      createReport: ['inbox-counts', 'inbox-items-pending_reports', 'class-reports'],
+      registerPayment: ['inbox-counts', 'inbox-items-overdue_invoices', 'invoices'],
+    };
+
+    const keys = keysToInvalidate[action] ?? [];
+    keys.forEach(key => {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    });
+  };
+
+  return { invalidateAfterAction };
+}
+```
+
+---
+
+## Fluxos de Ação Detalhados
+
+### Marcar Aula como Concluída
+
+1. Professor clica em "Concluída" no `InboxActionItem`
+2. Botão mostra spinner inline
+3. Chamada para atualizar `classes.status = 'concluida'`
+4. Em caso de sucesso:
+   - Item desliza para cima com fade-out
+   - Toast: "Aula confirmada ✓" com opção "Adicionar Relatório"
+   - Cache invalidado
+5. Em caso de erro:
+   - Toast de erro com retry
+   - Item retorna ao estado normal
+
+### Conceder Anistia
+
+1. Professor clica em "Conceder Anistia"
+2. **Reutiliza componente `AmnestyButton` existente**
+3. Modal de confirmação (se houver)
+4. Em caso de sucesso:
+   - Item desliza para cima com fade-out
+   - Toast: "Anistia concedida"
+   - Cache invalidado
+
+### Ver Fatura (Sheet/Drawer)
+
+1. Professor clica em "Ver Fatura"
+2. Abre um `Sheet` lateral com:
+   - Detalhes da fatura (valor, vencimento, dias atrasados)
+   - Botões de ação:
+     - "Enviar Lembrete" → dispara email/notificação
+     - "Registrar Pagamento Manual" → abre modal de registro
+     - "Ver Recibo" → link para `/recibo/{invoiceId}`
+3. Link "Ver todas as faturas deste aluno" → `/faturas?student={id}`
+
+### Criar Relatório
+
+1. Professor clica em "Criar Relatório"
+2. Abre modal `ClassReportModal` existente
+3. Após salvar:
+   - Item desliza para cima com fade-out
+   - Toast: "Relatório criado"
+   - Cache invalidado
+
+---
+
+## Tratamento de Dependentes na UI
+
+Quando um item do inbox envolve um dependente:
+
+- **Título principal**: Nome do dependente (`dependent_name`)
+- **Subtítulo**: "Responsável: [nome do responsável]" (`student_name`)
+
+```tsx
+// InboxActionItem.tsx
+<div className="flex-1">
+  <p className="font-medium">
+    {item.dependent_name || item.student_name}
+  </p>
+  {item.dependent_name && (
+    <p className="text-sm text-muted-foreground">
+      {t('inbox.dependent.responsible', { name: item.student_name })}
+    </p>
+  )}
+  <p className="text-sm text-muted-foreground">
+    {item.subtitle}
+  </p>
+</div>
+```
+
+---
+
+## Tratamento de Erros de Concorrência
+
+Quando o professor tenta agir em um item que já foi resolvido (por outra aba ou outro usuário):
+
+```typescript
+// InboxActionItem.tsx
+const handleAction = async () => {
+  try {
+    await performAction();
+    // Sucesso normal
+  } catch (error) {
+    if (error.code === 'PGRST116') { // Not found
+      toast.info(t('inbox.toast.alreadyResolved'));
+      refetchItems();
+    } else {
+      toast.error(t('inbox.toast.error'));
+    }
+  }
+};
+```
+
+---
+
 ## Considerações de UX
 
 ### Estados
@@ -426,7 +1090,7 @@ LIMIT 50;
 Para diferenciar visualmente os níveis de urgência, cada `InboxActionItem` deve aplicar estilos distintos:
 
 ```tsx
-// Configuração de estilos por urgência
+// Configuração de estilos por urgência (já definida em src/types/inbox.ts)
 const URGENCY_STYLES: Record<UrgencyLevel, {
   border: string;
   background: string;
@@ -460,7 +1124,7 @@ const URGENCY_STYLES: Record<UrgencyLevel, {
 
 - **Animação de saída**: Item desliza para cima com fade-out (`animate-slide-up-fade`)
 - **Toast contextual**: "Aula confirmada ✓" ou "Anistia concedida"
-- **Atualização do contador**: Badge decrementa com transição suave
+- **Atualização do contador**: Badge decrementa com transição suave (`animate-count-change`)
 
 ### Estados de Loading
 
@@ -511,51 +1175,6 @@ const URGENCY_STYLES: Record<UrgencyLevel, {
 - **Touch**: Navegação direta para `/inbox` (sem Popover)
 - **Justificativa**: Popover em mobile tem usabilidade ruim; navegação direta é mais eficiente
 
-### Implementação
-
-```tsx
-// NotificationBell.tsx
-const isMobile = useIsMobile();
-const navigate = useNavigate();
-
-const handleClick = () => {
-  if (isMobile) {
-    navigate('/inbox');
-  }
-  // Desktop: Popover abre via onOpenChange
-};
-
-return (
-  <Popover>
-    <PopoverTrigger asChild>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="relative"
-        onClick={handleClick}
-        aria-label={`${counts?.total || 0} pendências`}
-      >
-        <Bell className="h-5 w-5" />
-        {counts?.total > 0 && (
-          <Badge 
-            className="absolute -top-1 -right-1 h-5 min-w-5 px-1"
-            role="status"
-          >
-            {counts.total > 99 ? '99+' : counts.total}
-          </Badge>
-        )}
-      </Button>
-    </PopoverTrigger>
-    
-    {!isMobile && (
-      <PopoverContent>
-        {/* Preview das categorias */}
-      </PopoverContent>
-    )}
-  </Popover>
-);
-```
-
 ---
 
 ## Empty State Elaborado
@@ -591,20 +1210,6 @@ O componente `InboxEmptyState` deve transmitir uma sensação positiva de "miss�
     {t('inbox.emptyState.lastChecked', { time: formatRelative(lastCheck) })}
   </p>
 </div>
-```
-
-### Traduções
-
-```json
-// pt/inbox.json
-{
-  "emptyState": {
-    "title": "Tudo em dia!",
-    "description": "Você não tem nenhuma pendência no momento. Continue assim!",
-    "cta": "Ver agenda",
-    "lastChecked": "Última verificação: {{time}}"
-  }
-}
 ```
 
 ---
@@ -666,7 +1271,7 @@ const ignoreItem = (itemId: string) => {
   setIgnoredItems(prev => [...prev, itemId]);
   
   toast({
-    description: t('inbox.itemIgnored'),
+    description: t('inbox.toast.itemIgnored'),
     action: (
       <ToastAction 
         altText={t('common.undo')}
@@ -697,17 +1302,28 @@ const ignoreItem = (itemId: string) => {
 ### Fase 1 (MVP)
 
 - [ ] RPC `get_teacher_inbox_counts` criada e funcionando
+- [ ] RPC `get_teacher_inbox_items` criada e funcionando
+- [ ] Índices de banco de dados criados para otimização
+- [ ] Hook `useInboxCounts` implementado
+- [ ] Hook `useInboxItems` implementado
 - [ ] Sino aparece no header para professores
 - [ ] Badge mostra contagem total correta com `role="status"`
 - [ ] **Desktop**: Popover preview mostra categorias urgentes no hover
 - [ ] **Mobile**: Touch no sino navega diretamente para `/inbox`
 - [ ] Clique no link "Ver todas" navega para `/inbox`
+- [ ] Rota `/inbox` protegida para professores apenas
+- [ ] Link opcional no menu lateral com badge
 - [ ] Página lista todas as categorias de pendências
 - [ ] Hierarquia visual por urgência (bordas coloridas, backgrounds)
 - [ ] Ações inline funcionam (confirmar, anistiar, etc.)
 - [ ] Micro-interações de feedback (animações, toasts)
+- [ ] Invalidação de cache funcionando após cada ação
+- [ ] Dependentes exibidos corretamente (nome + responsável)
+- [ ] Tratamento de erros de concorrência
 - [ ] Empty State elaborado com ilustração e CTA
 - [ ] Skeleton loading nos cards e lista
+- [ ] Cores `warning` configuradas no Tailwind
+- [ ] Animações customizadas configuradas no Tailwind
 - [ ] Traduções PT/EN completas
 
 ### Fase 2
@@ -716,6 +1332,7 @@ const ignoreItem = (itemId: string) => {
 - [ ] Atualizações em tempo real
 - [ ] Estado "Ignorar" com Undo implementado
 - [ ] Seção "Ignorados" colapsável
+- [ ] Sheet/Drawer para detalhes de fatura
 
 ---
 
@@ -725,7 +1342,8 @@ const ignoreItem = (itemId: string) => {
 - `@tanstack/react-query` (já instalado) - cache e fetch
 - `shadcn/ui` (já instalado) - componentes UI
 - Componente `AmnestyButton` existente para reutilização
-- Hook `useIsMobile` existente para detecção de dispositivo
+- Hook `useIsMobile` existente para detecção de dispositivo (`src/hooks/use-mobile.tsx`)
+- Componente `ClassReportModal` existente para criar relatórios
 
 ---
 
@@ -738,3 +1356,5 @@ const ignoreItem = (itemId: string) => {
 | UX confusa com muitas categorias | Média | Médio | Priorização visual, collapse de categorias |
 | Notificações obsoletas | Baixa | Baixo | Polling + invalidação após ações |
 | Popover ruim em mobile | Baixa | Médio | Navegação direta para /inbox no mobile |
+| Erros de concorrência | Baixa | Baixo | Tratamento específico + refetch automático |
+| Aulas em grupo não contadas corretamente | Média | Alto | Query considera class_participants |

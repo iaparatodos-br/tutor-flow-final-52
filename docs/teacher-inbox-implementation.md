@@ -231,7 +231,7 @@ export const URGENCY_STYLES: Record<UrgencyLevel, {
 |-----------|-----------|----------|----------------|
 | Aulas Passadas | Aulas com status 'pendente' e data < hoje | 🔴 Alta | Marcar Concluída |
 | Anistias Pendentes | Cancelamentos com cobrança (últimos 30 dias) | 🟡 Média | Conceder Anistia |
-| Faturas Atrasadas | Invoices com status 'atrasada' | 🔴 Alta | Ver Fatura |
+| Faturas Atrasadas | Invoices com status 'overdue' | 🔴 Alta | Ver Fatura |
 | Relatórios Pendentes | Aulas concluídas sem class_report | 🔵 Baixa | Criar Relatório |
 
 ---
@@ -294,10 +294,11 @@ BEGIN
     AND (c.is_template IS NULL OR c.is_template = false);
 
   -- Faturas atrasadas
+  -- NOTA: Status 'overdue' é definido pelo edge function check-overdue-invoices
   SELECT COUNT(*) INTO v_overdue_invoices
   FROM invoices i
   WHERE i.teacher_id = p_teacher_id
-    AND i.status = 'atrasada';
+    AND i.status = 'overdue';
 
   -- Aulas concluídas sem relatório (últimos 30 dias)
   -- FILTROS: Exclui aulas experimentais e templates
@@ -484,7 +485,7 @@ BEGIN
           ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
         LEFT JOIN profiles p ON p.id = i.student_id
         WHERE i.teacher_id = p_teacher_id
-          AND i.status = 'atrasada'
+          AND i.status = 'overdue'  -- Status definido pelo edge function check-overdue-invoices
         ORDER BY i.due_date ASC
         LIMIT p_limit OFFSET p_offset
       ) as item;
@@ -508,7 +509,8 @@ BEGIN
           d.name as dependent_name,
           json_build_object(
             'service_id', c.service_id,
-            'is_group_class', c.is_group_class
+            'is_group_class', c.is_group_class,
+            'duration_minutes', c.duration_minutes  -- Para cálculo correto do end time no modal
           ) as metadata
         FROM classes c
         LEFT JOIN class_reports cr ON cr.class_id = c.id
@@ -846,15 +848,11 @@ export function NotificationBell() {
 1. Adicionar import no topo:
 ```typescript
 import { NotificationBell } from "@/components/NotificationBell";
-import { useProfile } from "@/contexts/ProfileContext";
 ```
 
-2. Dentro do componente, após os hooks existentes:
-```typescript
-const { isProfessor } = useProfile();
-```
+2. O componente já tem acesso a `isProfessor` via `useAuth()` (linha 21). **NÃO** é necessário importar `useProfile` novamente.
 
-3. No header (linha ~69), modificar o bloco:
+3. Corrigir o código bugado atual (linha ~71 que tem apenas `{isAluno}`), modificando para:
 ```tsx
 <div className="ml-auto flex items-center gap-4">
   {isProfessor && <NotificationBell />}
@@ -1187,6 +1185,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { InboxItem, URGENCY_STYLES } from "@/types/inbox";
@@ -1205,6 +1204,9 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
   const { invalidateAfterAction } = useInboxCacheInvalidation();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  
+  // Estados para ação "Ignorar" com Undo
+  const [ignoreTimeoutId, setIgnoreTimeoutId] = useState<number | null>(null);
   
   // Estados para integração com ClassReportModal
   const [reportModalOpen, setReportModalOpen] = useState(false);
@@ -1297,11 +1299,16 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
 
   // Abre o ClassReportModal inline em vez de navegar
   const handleCreateReport = () => {
-    // Construir dados mínimos necessários para o modal
+    // Calcular end time usando duration_minutes do metadata (ou 60min como fallback)
+    const startDate = new Date(item.date);
+    const durationMinutes = (item.metadata.duration_minutes as number) || 60;
+    const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
+    
+    // Construir dados compatíveis com CalendarClass esperado pelo modal
     const classData = {
       id: item.id,
-      start: new Date(item.date),
-      end: new Date(new Date(item.date).getTime() + 60 * 60 * 1000), // estimativa 1h
+      start: startDate,
+      end: endDate,
       status: 'concluida' as const,
       participants: item.metadata.pending_participants || [{
         student_id: item.student_id,
@@ -1309,12 +1316,44 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
         student_name: item.student_name,
         dependent_name: item.dependent_name,
       }],
-      service_id: item.metadata.service_id,
-      is_group_class: item.metadata.is_group_class,
+      service_id: item.metadata.service_id as string,
+      is_group_class: item.metadata.is_group_class as boolean,
+      notes: '',
+      is_experimental: false,
     };
     
     setClassDataForReport(classData);
     setReportModalOpen(true);
+  };
+  // Handler para ação "Ignorar" com Undo
+  const handleIgnore = () => {
+    setIsHidden(true);
+    
+    // Agendar persistência após 8 segundos (permite undo)
+    const timeoutId = window.setTimeout(() => {
+      // Persistir no localStorage
+      const ignored = JSON.parse(localStorage.getItem('inbox_ignored_items') || '[]');
+      localStorage.setItem('inbox_ignored_items', JSON.stringify([...ignored, item.id]));
+    }, 8000);
+    
+    setIgnoreTimeoutId(timeoutId);
+    
+    toast({
+      description: t('toast.itemIgnored'),
+      action: (
+        <ToastAction 
+          altText={t('common:undo')}
+          onClick={() => {
+            // Cancelar timeout e restaurar item
+            if (ignoreTimeoutId) clearTimeout(ignoreTimeoutId);
+            setIsHidden(false);
+          }}
+        >
+          {t('common:undo')}
+        </ToastAction>
+      ),
+      duration: 8000,
+    });
   };
   
   const handleReportCreated = () => {
@@ -1419,13 +1458,15 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleIgnore}>
                 {t('actions.ignore')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Handler para ação "Ignorar" - adicionar antes do return */}
       
       {/* Modal de Relatório (integração inline) */}
       {classDataForReport && (
@@ -1775,12 +1816,14 @@ Adicionar à lista de itens de navegação do professor um novo item para o Inbo
 - Atualizar badge automaticamente
 - Toast opcional para novas pendências
 
-#### Tarefa 2.4: Estado "Ignorar" com Undo
+#### Tarefa 2.4: Seção "Ignorados" Colapsável
 
-- Permitir professor dispensar item sem resolver
-- Toast com botão "Desfazer" (8 segundos)
-- Armazenar em `localStorage` (Fase 2) ou tabela `inbox_dismissed` (Fase 3)
-- Opção para "Mostrar ignorados"
+> **Nota:** O handler básico de "Ignorar" com localStorage já está implementado na Fase 1 (`handleIgnore` em `InboxActionItem.tsx`).
+
+- Adicionar seção colapsada "Mostrar itens ignorados" na página Inbox
+- Carregar itens ignorados do `localStorage`
+- Opção para restaurar itens ignorados
+- Migração para tabela `inbox_dismissed` no banco (Fase 3)
 
 #### Tarefa 2.5: Sheet/Drawer para Detalhes de Fatura
 
@@ -1788,6 +1831,36 @@ Adicionar à lista de itens de navegação do professor um novo item para o Inbo
 - Mostra: valor, vencimento, dias atrasados, itens
 - Botões: "Enviar Lembrete", "Registrar Pagamento Manual", "Ver Recibo"
 - Link: "Ver todas as faturas deste aluno"
+
+#### Tarefa 2.6: Handlers de Ação para Faturas
+
+> **Nota:** Esses handlers estão listados nas traduções mas NÃO são implementados na Fase 1.
+
+**handleSendReminder:**
+```typescript
+const handleSendReminder = async () => {
+  setIsProcessing(true);
+  try {
+    await supabase.functions.invoke('send-invoice-notification', {
+      body: { 
+        invoice_id: item.id, 
+        notification_type: 'invoice_payment_reminder' 
+      }
+    });
+    toast({ description: t('toast.reminderSent') });
+    // Não esconde o item - apenas envia lembrete
+  } catch (error) {
+    toast({ variant: "destructive", description: t('toast.error') });
+  } finally {
+    setIsProcessing(false);
+  }
+};
+```
+
+**handleRegisterPayment:**
+- Abre modal de registro de pagamento manual
+- Integra com fluxo existente de faturas
+- Atualiza status da fatura para 'pago'
 
 ---
 
@@ -1848,7 +1921,7 @@ LEFT JOIN teacher_student_relationships tsr
   ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
 LEFT JOIN profiles p ON p.id = i.student_id
 WHERE i.teacher_id = $1
-  AND i.status = 'atrasada'
+  AND i.status = 'overdue'  -- Status definido pelo edge function check-overdue-invoices
 ORDER BY i.due_date ASC;
 ```
 
@@ -2291,16 +2364,16 @@ const ignoreItem = (itemId: string) => {
 
 Antes de implementar, verificar os seguintes itens:
 
-### 1. Status de Fatura Atrasada
+### 1. Status de Fatura Atrasada ✅
 
-Confirmar que o edge function `check-overdue-invoices` atualiza o status para exatamente `'atrasada'`:
+O edge function `check-overdue-invoices` (linha 58) atualiza o status para `'overdue'`:
 
-```bash
-# Verificar no código
-supabase/functions/check-overdue-invoices/index.ts
+```typescript
+// supabase/functions/check-overdue-invoices/index.ts linha 58
+.update({ status: "overdue" })
 ```
 
-Se o status for diferente (ex: `'overdue'`), ajustar a RPC `get_teacher_inbox_counts`.
+**As RPCs neste documento já usam `status = 'overdue'`** para alinhar com a implementação real.
 
 ### 2. Traduções Existentes
 
@@ -2333,7 +2406,7 @@ Para que o inbox funcione corretamente, verificar que os seguintes cron jobs est
 
 | Job | Função | Verificação |
 |-----|--------|-------------|
-| `check-overdue-invoices` | Atualiza `status` de faturas para `atrasada` | Verificar em Supabase Dashboard > Scheduled Functions |
+| `check-overdue-invoices` | Atualiza `status` de faturas para `overdue` | Verificar em Supabase Dashboard > Scheduled Functions |
 
 Se o job não existir, faturas não serão marcadas como atrasadas automaticamente e não aparecerão no inbox.
 
@@ -2348,6 +2421,8 @@ Se o job não existir, faturas não serão marcadas como atrasadas automaticamen
 - [ ] RPC `get_teacher_inbox_items` criada e funcionando
 - [ ] Validação de segurança (`auth.uid()`) nas RPCs
 - [ ] Filtros `is_experimental = false` e `is_template = false` nas queries
+- [ ] Status de fatura usa `'overdue'` (alinhado com edge function `check-overdue-invoices`)
+- [ ] Campo `duration_minutes` incluído no metadata de `pending_reports`
 - [ ] Índices de banco de dados criados para otimização
 
 **Hooks e Utilitários:**
@@ -2371,8 +2446,10 @@ Se o job não existir, faturas não serão marcadas como atrasadas automaticamen
 
 **Ações Inline:**
 - [ ] Ações inline funcionam (confirmar, anistiar, etc.)
-- [ ] Lógica de anistia alinhada com `AmnestyButton` (inclui `charge_applied: false`)
+- [ ] Lógica de anistia alinhada com `AmnestyButton` (inclui `charge_applied: false` e cancela invoice)
 - [ ] `ClassReportModal` integrado inline (não navegação para outra página)
+- [ ] Mapeamento `InboxItem → CalendarClass` usa `duration_minutes` corretamente
+- [ ] Handler `handleIgnore` implementado com localStorage e Toast Undo
 - [ ] Micro-interações de feedback (animações, toasts)
 - [ ] Invalidação de cache funcionando após cada ação
 - [ ] Tratamento de erros de concorrência
@@ -2393,8 +2470,8 @@ Se o job não existir, faturas não serão marcadas como atrasadas automaticamen
 
 - [ ] Seleção múltipla funciona
 - [ ] Atualizações em tempo real
-- [ ] Estado "Ignorar" com Undo implementado
-- [ ] Seção "Ignorados" colapsável
+- [ ] Seção "Ignorados" colapsável com opção "Mostrar ignorados"
+- [ ] Handlers `handleSendReminder` e `handleRegisterPayment` implementados
 - [ ] Sheet/Drawer para detalhes de fatura
 
 ---

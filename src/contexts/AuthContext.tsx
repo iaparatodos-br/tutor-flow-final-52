@@ -342,25 +342,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'Este e-mail já está sendo usado por outro usuário. Por favor, use um e-mail diferente para criar sua conta.' };
       }
 
-      const redirectUrl = `${window.location.origin}/`;
-      
-      // Mesclar metadados de termos com dados do usuário
-      const userData = {
-        name,
-        role,
-        ...(termsMetadata || {})
-      };
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: userData
+      // Use edge function to create user (sends email via AWS SES)
+      const { data, error } = await supabase.functions.invoke('create-teacher', {
+        body: { 
+          email, 
+          password, 
+          name, 
+          termsMetadata 
         }
       });
+
+      if (error) {
+        console.error('Create teacher invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      if (!data.success) {
+        return { error: data.error || 'Erro ao criar conta' };
+      }
+
+      // Check if email was sent
+      if (data.warning) {
+        console.warn('Signup warning:', data.warning);
+      }
+
+      // Return success - user needs to confirm email
+      return { error: null };
       
-      return { error: error?.message };
     } catch (error) {
       console.error('Signup error:', error);
       return { error: 'Erro inesperado durante o cadastro' };

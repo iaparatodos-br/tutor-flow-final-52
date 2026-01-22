@@ -165,16 +165,74 @@ export interface InboxCounts {
 }
 
 // Interface compatível com CalendarView.tsx para mapeamento de participantes
+// IMPORTANTE: Esta interface deve espelhar ClassParticipant de CalendarView.tsx
 export interface InboxClassParticipant {
   id: string;                    // participant row id (obrigatório para CalendarClass)
   student_id: string;
-  student_name: string;
-  student_email?: string;
-  dependent_id?: string | null;
+  dependent_id: string | null;   // OBRIGATÓRIO mesmo que null (não opcional)
   dependent_name?: string | null;
-  responsible_name?: string;
   status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  // Estrutura 'student' requerida por ClassReportModal
+  student: {
+    name: string;
+    email: string;
+  };
+  // Alias para profiles (usado em alguns contextos)
+  profiles?: {
+    name: string;
+    email: string;
+  };
 }
+
+// Metadata específico por categoria (para type-safety)
+export interface PendingPastClassMetadata {
+  service_id: string;
+  is_group_class: boolean;
+  pending_participants: {
+    participant_id: string;
+    student_id: string;
+    student_name: string;
+    student_email?: string;
+    dependent_id?: string;
+    dependent_name?: string;
+  }[];
+}
+
+export interface AmnestyEligibleMetadata {
+  cancellation_reason: string;
+  class_date: string;
+  cancelled_by: string;
+}
+
+export interface OverdueInvoiceMetadata {
+  amount: number;
+  days_overdue: number;
+  invoice_type: string;
+  payment_method: string;
+}
+
+export interface PendingReportMetadata {
+  service_id: string;
+  is_group_class: boolean;
+  duration_minutes: number;
+  student_email: string;
+  pending_participants: {
+    id: string;
+    student_id: string;
+    student_name: string;
+    student_email: string;
+    dependent_id?: string;
+    dependent_name?: string;
+    status: string;
+  }[];
+}
+
+// Union type para metadata (para uso com generics)
+export type InboxItemMetadata = 
+  | PendingPastClassMetadata 
+  | AmnestyEligibleMetadata 
+  | OverdueInvoiceMetadata 
+  | PendingReportMetadata;
 
 // Item individual do inbox
 export interface InboxItem {
@@ -188,7 +246,7 @@ export interface InboxItem {
   student_name: string;
   dependent_id?: string;
   dependent_name?: string;
-  metadata: Record<string, unknown>;
+  metadata: InboxItemMetadata; // Tipado fortemente em vez de Record<string, unknown>
 }
 
 // Props do hook useInboxCounts
@@ -350,10 +408,14 @@ BEGIN
 
   -- Faturas atrasadas
   -- NOTA: Status 'overdue' é definido pelo edge function check-overdue-invoices
+  -- FALLBACK: Também inclui faturas pendentes com due_date passado (caso cron não tenha rodado)
   SELECT COUNT(*) INTO v_overdue_invoices
   FROM invoices i
   WHERE i.teacher_id = p_teacher_id
-    AND i.status = 'overdue';
+    AND (
+      i.status = 'overdue' 
+      OR (i.status = 'pendente' AND i.due_date < NOW())
+    );
 
   -- Aulas concluídas sem relatório (últimos 30 dias)
   -- FILTROS: Exclui aulas experimentais e templates
@@ -540,7 +602,7 @@ BEGIN
           ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
         LEFT JOIN profiles p ON p.id = i.student_id
         WHERE i.teacher_id = p_teacher_id
-          AND i.status = 'overdue'  -- Status definido pelo edge function check-overdue-invoices
+          AND (i.status = 'overdue' OR (i.status = 'pendente' AND i.due_date < NOW()))  -- Fallback para cron
         ORDER BY i.due_date ASC
         LIMIT p_limit OFFSET p_offset
       ) as item;
@@ -1284,7 +1346,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
-import { InboxItem, URGENCY_STYLES } from "@/types/inbox";
+import { InboxItem, URGENCY_STYLES, PendingReportMetadata } from "@/types/inbox";
 import { useInboxCacheInvalidation } from "@/utils/inbox-cache";
 import { ClassReportModal } from "@/components/ClassReportModal";
 import { cn } from "@/lib/utils";
@@ -1394,32 +1456,53 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
   };
 
   // Abre o ClassReportModal inline em vez de navegar
-  // NOTA: Mapeamento completo para CalendarClass incluindo campos obrigatórios (title, student)
+  // NOTA: Mapeamento COMPLETO para CalendarClass incluindo todos os campos obrigatórios
+  // IMPORTANTE: A interface ClassParticipant de CalendarView.tsx exige 'student' com {name, email}
   const handleCreateReport = () => {
+    // Tipar metadata corretamente
+    const reportMetadata = item.metadata as PendingReportMetadata;
+    
     // Calcular end time usando duration_minutes do metadata (ou 60min como fallback)
     const startDate = new Date(item.date);
-    const durationMinutes = (item.metadata.duration_minutes as number) || 60;
+    const durationMinutes = reportMetadata.duration_minutes || 60;
     const endDate = new Date(startDate.getTime() + durationMinutes * 60 * 1000);
     
-    // Mapear participantes com todos os campos obrigatórios
-    const participants = (item.metadata.pending_participants as any[])?.map(p => ({
-      id: p.id,
+    // Mapear participantes com TODOS os campos obrigatórios da interface ClassParticipant
+    // CRÍTICO: Incluir 'student' objeto com name/email para compatibilidade com ClassReportModal
+    const participants = reportMetadata.pending_participants?.map(p => ({
+      id: p.id,                                  // Obrigatório (não opcional)
       student_id: p.student_id,
-      student_name: p.student_name,
-      dependent_id: p.dependent_id || null,
+      dependent_id: p.dependent_id || null,      // Deve ser null, não undefined
       dependent_name: p.dependent_name || null,
-      status: p.status || 'concluida',
+      status: (p.status || 'concluida') as 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida',
+      // OBRIGATÓRIO: objeto 'student' com name e email
+      student: {
+        name: p.student_name,
+        email: p.student_email || '',
+      },
+      // Alias para profiles (alguns componentes usam isso)
+      profiles: {
+        name: p.student_name,
+        email: p.student_email || '',
+      },
     })) || [{
       id: '',
       student_id: item.student_id,
-      student_name: item.student_name,
       dependent_id: item.dependent_id || null,
       dependent_name: item.dependent_name || null,
       status: 'concluida' as const,
+      student: {
+        name: item.student_name,
+        email: reportMetadata.student_email || '',
+      },
+      profiles: {
+        name: item.student_name,
+        email: reportMetadata.student_email || '',
+      },
     }];
     
     // Construir dados compatíveis com CalendarClass esperado pelo modal
-    // Inclui campos obrigatórios: title, student (com email)
+    // Inclui TODOS os campos obrigatórios da interface CalendarClass
     const classData = {
       id: item.id,
       title: item.title,  // Nome do serviço
@@ -1427,13 +1510,14 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
       end: endDate,
       status: 'concluida' as const,
       student_id: item.student_id,
+      // OBRIGATÓRIO: objeto student de nível superior
       student: {
         name: item.student_name,
-        email: (item.metadata.student_email as string) || '',
+        email: reportMetadata.student_email || '',
       },
       participants,
-      service_id: item.metadata.service_id as string,
-      is_group_class: item.metadata.is_group_class as boolean,
+      service_id: reportMetadata.service_id,
+      is_group_class: reportMetadata.is_group_class,
       notes: '',
       is_experimental: false,
     };
@@ -1482,21 +1566,25 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
     });
   };
 
+  // Estado isHidden agora retorna Fragment para manter consistência
   if (isHidden) {
     return (
-      <Card className={cn(
-        "p-4 animate-slide-up-fade",
-        urgencyStyle.border,
-        urgencyStyle.background
-      )}>
-        <p className="text-sm text-muted-foreground text-center">
-          ✓ {t('toast.classCompleted')}
-        </p>
-      </Card>
+      <>
+        <Card className={cn(
+          "p-4 animate-slide-up-fade",
+          urgencyStyle.border,
+          urgencyStyle.background
+        )}>
+          <p className="text-sm text-muted-foreground text-center">
+            ✓ {t('toast.classCompleted')}
+          </p>
+        </Card>
+      </>
     );
   }
 
   return (
+    <>
     <Card className={cn(
       "p-4 transition-all",
       urgencyStyle.border,
@@ -1581,24 +1669,26 @@ export function InboxActionItem({ item }: InboxActionItemProps) {
           </DropdownMenu>
         </div>
       </div>
-
-      {/* Handler para ação "Ignorar" - adicionar antes do return */}
-      
-      {/* Modal de Relatório (integração inline) */}
-      {classDataForReport && (
-        <ClassReportModal
-          isOpen={reportModalOpen}
-          onOpenChange={(open) => {
-            setReportModalOpen(open);
-            if (!open) setClassDataForReport(null);
-          }}
-          classData={classDataForReport}
-          onReportCreated={handleReportCreated}
-        />
-      )}
     </Card>
+
+    {/* IMPORTANTE: Modal renderizado FORA do Card para evitar problemas de layout/z-index */}
+    {classDataForReport && (
+      <ClassReportModal
+        isOpen={reportModalOpen}
+        onOpenChange={(open) => {
+          setReportModalOpen(open);
+          if (!open) setClassDataForReport(null);
+        }}
+        classData={classDataForReport}
+        onReportCreated={handleReportCreated}
+      />
+    )}
+  </>
   );
 }
+
+// NOTA: O componente agora retorna um Fragment (<> </>) em vez de um único Card
+// Isso evita problemas de aninhamento do Dialog dentro do Card
 ```
 
 **Arquivo:** `src/components/Inbox/InboxEmptyState.tsx`
@@ -2616,3 +2706,216 @@ Se o job não existir, faturas não serão marcadas como atrasadas automaticamen
 | Aulas em grupo não contadas corretamente | Média | Alto | Query considera class_participants |
 | RPCs vulneráveis a acesso não autorizado | Média | Alto | Validação `auth.uid()` em todas as RPCs |
 | Aulas antigas sem participantes | Baixa | Baixo | INNER JOIN exclui aulas órfãs |
+
+---
+
+## Tratamento de Aulas Virtuais (Recorrências)
+
+> ⚠️ **IMPORTANTE:** Esta seção documenta um comportamento esperado que NÃO é um bug.
+
+### O que são Aulas Virtuais?
+
+Aulas virtuais são instâncias geradas em runtime pelo frontend a partir de templates de recorrência (`is_template = true`). Elas:
+
+- **NÃO existem na tabela `classes`** até serem materializadas
+- São identificadas por IDs contendo `_virtual_` (ex: `template-id_virtual_2024-01-15`)
+- São renderizadas apenas no calendário (`Agenda.tsx`)
+- São criadas dinamicamente pela função `generateVirtualInstances()`
+
+### Impacto no Inbox
+
+| Comportamento | Explicação |
+|---------------|------------|
+| Aulas virtuais **NÃO aparecem** em "Aulas Passadas Pendentes" | Correto - elas não existem no banco |
+| Aulas virtuais **NÃO aparecem** em "Relatórios Pendentes" | Correto - elas não existem no banco |
+| Templates (`is_template = true`) são **excluídos** das queries | Filtro `is_template = false` aplicado |
+
+### Quando uma Aula Virtual é Materializada?
+
+A materialização ocorre quando há interação direta com a aula virtual:
+1. Professor confirma a aula → `materializeVirtualClass()` é chamado
+2. Professor cancela a aula → `materializeVirtualClass()` é chamado
+3. Professor marca como concluída → `materializeVirtualClass()` é chamado
+
+Após materialização, a aula passa a existir no banco e **PODE** aparecer no Inbox.
+
+### Ação Necessária
+
+**Nenhuma** - as queries do inbox já filtram templates e só retornam aulas que existem no banco. O comportamento é intencional.
+
+---
+
+## Pré-requisito: Suporte a Highlight na Página /faturas
+
+> ⚠️ **VERIFICAÇÃO NECESSÁRIA ANTES DA IMPLEMENTAÇÃO**
+
+A ação "Ver Fatura" (`handleViewInvoice`) navega para `/faturas?highlight={invoiceId}`.
+
+### Verificar se a Página Suporta o Parâmetro
+
+```typescript
+// Em src/pages/Faturas.tsx, verificar se existe:
+const searchParams = useSearchParams();
+const highlightId = searchParams.get('highlight');
+
+// Se existir, deve:
+// 1. Fazer scroll até a fatura com esse ID
+// 2. Aplicar estilo de destaque (ex: border pulsante)
+```
+
+### Se Não Existir, Implementar:
+
+```tsx
+// Adicionar ao Faturas.tsx
+import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+
+// Dentro do componente:
+const [searchParams] = useSearchParams();
+const highlightId = searchParams.get('highlight');
+const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+
+useEffect(() => {
+  if (highlightId && rowRefs.current[highlightId]) {
+    rowRefs.current[highlightId]?.scrollIntoView({ 
+      behavior: 'smooth', 
+      block: 'center' 
+    });
+    // Adicionar classe de highlight temporária
+    rowRefs.current[highlightId]?.classList.add('ring-2', 'ring-primary', 'animate-pulse');
+    setTimeout(() => {
+      rowRefs.current[highlightId]?.classList.remove('animate-pulse');
+    }, 2000);
+  }
+}, [highlightId, invoices]);
+
+// No TableRow:
+<TableRow 
+  key={invoice.id}
+  ref={(el) => { rowRefs.current[invoice.id] = el; }}
+  className={cn(highlightId === invoice.id && 'ring-2 ring-primary')}
+>
+```
+
+---
+
+## Diagrama de Fluxo das Ações
+
+```mermaid
+sequenceDiagram
+    participant U as Professor
+    participant I as InboxPage
+    participant H as Hook (useInboxItems)
+    participant R as RPC (Supabase)
+    participant D as Database
+    participant C as Cache (React Query)
+
+    U->>I: Clica em "Concluída"
+    I->>D: UPDATE classes SET status = 'concluida'
+    D-->>I: Success
+    I->>D: UPDATE class_participants SET status = 'concluida'
+    D-->>I: Success
+    I->>C: invalidateQueries(['inbox-counts'])
+    I->>C: invalidateQueries(['inbox-items'])
+    C->>R: rpc('get_teacher_inbox_counts')
+    R->>D: SELECT...
+    D-->>R: Contagens atualizadas
+    R-->>C: Nova data
+    C-->>I: Re-render com novos dados
+    I->>U: Toast "Aula confirmada ✓"
+```
+
+### Fluxo de Anistia
+
+```mermaid
+sequenceDiagram
+    participant U as Professor
+    participant I as InboxActionItem
+    participant D as Database
+
+    U->>I: Clica em "Conceder Anistia"
+    I->>D: UPDATE classes SET amnesty_granted=true, charge_applied=false
+    D-->>I: Success
+    I->>D: UPDATE invoices SET status='cancelada' WHERE class_id=X AND invoice_type='cancellation'
+    D-->>I: Success
+    I->>I: setIsHidden(true) + invalidateCache()
+    I->>U: Toast "Anistia concedida"
+```
+
+---
+
+## Checklist Pré-Implementação
+
+Antes de começar a implementação, verificar todos os itens:
+
+### Banco de Dados
+- [ ] Edge function `check-overdue-invoices` está ativa no Dashboard (Scheduled Functions)
+- [ ] Colunas `is_experimental` e `is_template` existem na tabela `classes`
+- [ ] Coluna `amnesty_granted_by` existe na tabela `classes`
+
+### Frontend - Componentes Existentes
+- [ ] `src/components/AmnestyButton.tsx` existe e funciona
+- [ ] `src/components/ClassReportModal.tsx` existe e aceita `CalendarClass` como prop
+- [ ] `src/hooks/use-mobile.tsx` existe e exporta `useIsMobile`
+
+### Frontend - Traduções
+- [ ] Tradução `common.undo` existe em `src/i18n/locales/pt/common.json`
+- [ ] Tradução `common.undo` existe em `src/i18n/locales/en/common.json`
+
+### Frontend - Estilos
+- [ ] Variáveis CSS `--warning` existem em `src/index.css` (light e dark mode)
+- [ ] Configuração de animações não conflita com as existentes em `tailwind.config.ts`
+
+### Layout
+- [ ] `Layout.tsx` importa `TeacherContextSwitcher` corretamente
+- [ ] `useAuth()` exporta `isProfessor` (verificar em `AuthContext.tsx`)
+
+### Página Faturas
+- [ ] Verificar se `/faturas` suporta query param `?highlight=` (implementar se não existir)
+
+---
+
+## Estrutura de Arquivos Final
+
+```
+src/
+├── components/
+│   ├── NotificationBell.tsx           ← NOVO
+│   └── Inbox/
+│       ├── InboxSummaryCards.tsx      ← NOVO
+│       ├── InboxActionList.tsx        ← NOVO
+│       ├── InboxActionItem.tsx        ← NOVO
+│       └── InboxEmptyState.tsx        ← NOVO
+├── hooks/
+│   ├── useInboxCounts.ts              ← NOVO
+│   └── useInboxItems.ts               ← NOVO
+├── types/
+│   └── inbox.ts                       ← NOVO
+├── utils/
+│   └── inbox-cache.ts                 ← NOVO
+├── pages/
+│   └── Inbox.tsx                      ← NOVO
+└── i18n/locales/
+    ├── pt/inbox.json                  ← NOVO
+    └── en/inbox.json                  ← NOVO
+
+supabase/
+└── migrations/
+    └── XXXXXX_create_inbox_rpcs.sql   ← NOVO (RPCs + índices)
+```
+
+---
+
+## Histórico de Revisões
+
+| Data | Versão | Mudanças |
+|------|--------|----------|
+| 2024-XX-XX | 1.0 | Documento inicial |
+| 2024-XX-XX | 1.1 | Correção do mapeamento CalendarClass/ClassParticipant |
+| 2024-XX-XX | 1.1 | Adição de tipagem forte para metadata por categoria |
+| 2024-XX-XX | 1.1 | Fallback para faturas atrasadas (caso cron não rode) |
+| 2024-XX-XX | 1.1 | Documentação sobre aulas virtuais |
+| 2024-XX-XX | 1.1 | Checklist de pré-implementação |
+| 2024-XX-XX | 1.1 | ClassReportModal movido para fora do Card |
+| 2024-XX-XX | 1.1 | Diagramas de sequência adicionados |
+| 2024-XX-XX | 1.1 | Pré-requisito para página /faturas com highlight |

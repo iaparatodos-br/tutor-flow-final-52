@@ -45,38 +45,9 @@ serve(async (req) => {
       }
     );
 
-    // Check if user exists (but don't reveal this to prevent enumeration attacks)
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.listUsers();
-    
-    if (userError) {
-      console.error('[SEND-PASSWORD-RESET] Error listing users:', userError);
-      // Return success anyway to prevent enumeration
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Se o email existir, um link de recuperação foi enviado'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log('[SEND-PASSWORD-RESET] Attempting to generate recovery link directly');
 
-    const user = userData.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-
-    // SECURITY: Don't reveal if email exists - return success even if user not found
-    if (!user) {
-      console.log('[SEND-PASSWORD-RESET] User not found, returning success for security');
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Se o email existir, um link de recuperação foi enviado'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('[SEND-PASSWORD-RESET] User found, generating recovery link');
-
-    // Generate recovery link
+    // Generate recovery link directly - bypasses listUsers() bug with NULL confirmation_token
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: email,
@@ -85,20 +56,33 @@ serve(async (req) => {
       }
     });
 
-    if (linkError || !linkData?.properties?.action_link) {
-      console.error('[SEND-PASSWORD-RESET] Error generating link:', linkError);
+    // Handle errors silently to prevent email enumeration
+    if (linkError) {
+      console.log('[SEND-PASSWORD-RESET] Link generation failed (user may not exist):', linkError.message);
+      
+      // Return success for anti-enumeration security
       return new Response(
         JSON.stringify({ 
-          success: false, 
-          error: 'Erro ao gerar link de recuperação',
-          code: 'failed_to_generate'
+          success: true, 
+          message: 'Se o email existir, um link de recuperação foi enviado'
         }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!linkData?.properties?.action_link) {
+      console.error('[SEND-PASSWORD-RESET] No action_link in response');
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Se o email existir, um link de recuperação foi enviado'
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const recoveryLink = linkData.properties.action_link;
-    const userName = user.user_metadata?.name || email.split('@')[0];
+    const userName = linkData.user?.user_metadata?.name || email.split('@')[0];
 
     console.log('[SEND-PASSWORD-RESET] Link generated, preparing email');
 

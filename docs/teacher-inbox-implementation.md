@@ -190,6 +190,10 @@ ON teacher_notifications(source_type, source_id);
 
 CREATE INDEX idx_teacher_notifications_created 
 ON teacher_notifications(created_at DESC);
+
+-- Índice composto para query principal (performance crítica)
+CREATE INDEX idx_teacher_notifications_main_query
+ON teacher_notifications(teacher_id, status, is_read, created_at DESC);
 ```
 
 ### RLS Policies
@@ -207,11 +211,16 @@ CREATE POLICY "Teachers can update own notifications"
 ON teacher_notifications FOR UPDATE
 USING (teacher_id = auth.uid());
 
--- Insert/Delete será feito via triggers ou RPCs com SECURITY DEFINER
-CREATE POLICY "System can manage notifications"
-ON teacher_notifications FOR ALL
-USING (true)
-WITH CHECK (true);
+-- IMPORTANTE: NÃO usar policy permissiva para INSERT/DELETE
+-- INSERT e DELETE devem ser feitos EXCLUSIVAMENTE via:
+-- 1. Triggers com SECURITY DEFINER (auto-remoção quando pendência é resolvida)
+-- 2. Edge Functions com service_role key (varredura diária)
+-- 3. RPCs com SECURITY DEFINER (se necessário no futuro)
+--
+-- Isso garante que:
+-- - Usuários não podem criar notificações falsas
+-- - Usuários não podem deletar notificações indevidamente
+-- - Sistema mantém integridade dos dados
 ```
 
 ### Tabelas de Referência
@@ -528,7 +537,7 @@ BEGIN
               'service_name', cs.name,
               'is_group_class', c.is_group_class,
               'cancellation_reason', c.cancellation_reason,
-              'charge_amount', COALESCE(cs.cancellation_fee, 0)
+              'charge_amount', COALESCE(cs.price, 0)
             )
           )
           FROM classes c
@@ -539,6 +548,7 @@ BEGIN
             ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
           LEFT JOIN dependents dep ON dep.id = cp.dependent_id
           WHERE c.id = tn.source_id
+            AND c.is_experimental = false  -- IMPORTANTE: Filtrar aulas experimentais
           LIMIT 1
         )
         WHEN 'invoice' THEN (
@@ -561,6 +571,30 @@ BEGIN
           LEFT JOIN teacher_student_relationships tsr 
             ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
           WHERE i.id = tn.source_id
+        )
+        WHEN 'class_report' THEN (
+          SELECT json_build_object(
+            'title', 'Relatório pendente',
+            'subtitle', to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI'),
+            'student_name', COALESCE(tsr.student_name, p.name, 'Aluno'),
+            'dependent_name', dep.name,
+            'navigation_url', '/agenda?date=' || c.class_date::date || '&classId=' || c.id || '&action=report',
+            'metadata', json_build_object(
+              'class_date', c.class_date,
+              'service_name', cs.name,
+              'completed_at', c.updated_at
+            )
+          )
+          FROM classes c
+          LEFT JOIN class_services cs ON cs.id = c.service_id
+          LEFT JOIN class_participants cp ON cp.class_id = c.id
+          LEFT JOIN profiles p ON p.id = cp.student_id
+          LEFT JOIN teacher_student_relationships tsr 
+            ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
+          LEFT JOIN dependents dep ON dep.id = cp.dependent_id
+          WHERE c.id = tn.source_id
+            AND c.is_experimental = false  -- IMPORTANTE: Filtrar aulas experimentais
+          LIMIT 1
         )
       END as enriched_data
     FROM teacher_notifications tn
@@ -668,7 +702,7 @@ $$;
 
 **Arquivo:** `supabase/functions/generate-teacher-notifications/index.ts`
 
-Esta função roda via cron job 1x/dia e:
+Esta função roda via cron job 1x/dia (06:00 UTC) e:
 
 1. Varre aulas pendentes passadas → cria notificações `pending_past_classes`
 2. Varre cancelamentos com cobrança → cria notificações `amnesty_eligible`
@@ -676,29 +710,174 @@ Esta função roda via cron job 1x/dia e:
 4. Varre aulas concluídas sem relatório → cria notificações `pending_reports`
 
 ```typescript
-// Pseudocódigo
-async function generateNotifications() {
-  // 1. Aulas pendentes passadas
-  const pendingClasses = await supabase
-    .from('classes')
-    .select('id, teacher_id')
-    .eq('status', 'pendente')
-    .lt('class_date', new Date().toISOString())
-    .eq('is_experimental', false);
-  
-  for (const cls of pendingClasses) {
-    await supabase
-      .from('teacher_notifications')
-      .upsert({
-        teacher_id: cls.teacher_id,
-        source_type: 'class',
-        source_id: cls.id,
-        category: 'pending_past_classes',
-      }, { onConflict: 'teacher_id,source_type,source_id,category' });
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
-  
-  // ... similar para outras categorias
-}
+
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    const now = new Date().toISOString();
+    let created = 0;
+    let errors: string[] = [];
+
+    // 1. Aulas pendentes passadas (não experimentais, não templates)
+    const { data: pendingClasses, error: pendingError } = await supabase
+      .from("classes")
+      .select("id, teacher_id")
+      .eq("status", "pendente")
+      .eq("is_experimental", false)
+      .eq("is_template", false)
+      .lt("class_date", now);
+
+    if (pendingError) {
+      errors.push(`pendingClasses: ${pendingError.message}`);
+    } else {
+      for (const cls of pendingClasses || []) {
+        const { error } = await supabase
+          .from("teacher_notifications")
+          .upsert({
+            teacher_id: cls.teacher_id,
+            source_type: "class",
+            source_id: cls.id,
+            category: "pending_past_classes",
+          }, { onConflict: "teacher_id,source_type,source_id,category" });
+        
+        if (!error) created++;
+      }
+    }
+
+    // 2. Cancelamentos com cobrança (elegíveis para anistia)
+    const { data: chargedCancellations, error: chargedError } = await supabase
+      .from("classes")
+      .select("id, teacher_id")
+      .eq("status", "cancelada")
+      .eq("charge_applied", true)
+      .eq("amnesty_granted", false)
+      .eq("is_experimental", false);
+
+    if (chargedError) {
+      errors.push(`chargedCancellations: ${chargedError.message}`);
+    } else {
+      for (const cls of chargedCancellations || []) {
+        const { error } = await supabase
+          .from("teacher_notifications")
+          .upsert({
+            teacher_id: cls.teacher_id,
+            source_type: "class",
+            source_id: cls.id,
+            category: "amnesty_eligible",
+          }, { onConflict: "teacher_id,source_type,source_id,category" });
+        
+        if (!error) created++;
+      }
+    }
+
+    // 3. Faturas atrasadas
+    const { data: overdueInvoices, error: overdueError } = await supabase
+      .from("invoices")
+      .select("id, teacher_id")
+      .in("status", ["overdue", "vencida", "pending"])
+      .lt("due_date", now);
+
+    if (overdueError) {
+      errors.push(`overdueInvoices: ${overdueError.message}`);
+    } else {
+      for (const inv of overdueInvoices || []) {
+        const { error } = await supabase
+          .from("teacher_notifications")
+          .upsert({
+            teacher_id: inv.teacher_id,
+            source_type: "invoice",
+            source_id: inv.id,
+            category: "overdue_invoices",
+          }, { onConflict: "teacher_id,source_type,source_id,category" });
+        
+        if (!error) created++;
+      }
+    }
+
+    // 4. Aulas concluídas sem relatório
+    // Buscar aulas concluídas que NÃO têm relatório associado
+    const { data: completedClasses, error: completedError } = await supabase
+      .from("classes")
+      .select(`
+        id, 
+        teacher_id,
+        class_reports!left(id)
+      `)
+      .eq("status", "concluida")
+      .eq("is_experimental", false)
+      .is("class_reports.id", null);
+
+    if (completedError) {
+      errors.push(`completedClasses: ${completedError.message}`);
+    } else {
+      for (const cls of completedClasses || []) {
+        // Verificar se realmente não tem relatório (class_reports é null)
+        if (!cls.class_reports || cls.class_reports.length === 0) {
+          const { error } = await supabase
+            .from("teacher_notifications")
+            .upsert({
+              teacher_id: cls.teacher_id,
+              source_type: "class",
+              source_id: cls.id,
+              category: "pending_reports",
+            }, { onConflict: "teacher_id,source_type,source_id,category" });
+          
+          if (!error) created++;
+        }
+      }
+    }
+
+    console.log(`Generated ${created} notifications`);
+    if (errors.length > 0) {
+      console.error("Errors:", errors);
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        notifications_created: created,
+        errors: errors.length > 0 ? errors : undefined 
+      }),
+      { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200 
+      }
+    );
+  } catch (error) {
+    console.error("Error generating notifications:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { 
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500 
+      }
+    );
+  }
+});
+```
+
+### Configuração do Cron Job
+
+Configurar no Supabase Dashboard ou via `supabase/config.toml`:
+
+```toml
+[functions.generate-teacher-notifications]
+schedule = "0 6 * * *"  # Executa todos os dias às 06:00 UTC
 ```
 
 ### Trigger: Auto-remoção quando Pendência é Resolvida
@@ -1458,15 +1637,21 @@ export default function Inbox() {
 
 ### Layout.tsx - NotificationBell no Header
 
+**IMPORTANTE:** Existe um bug atual no Layout.tsx (linha ~71) onde `{isAluno}` é renderizado como boolean em vez de componente. Isso deve ser corrigido durante a integração.
+
 ```tsx
-// Em Layout.tsx, adicionar no header (ao lado do ThemeToggle):
+// Em Layout.tsx, adicionar no header:
 import { NotificationBell } from '@/components/NotificationBell';
 import { useAuth } from '@/hooks/useAuth';
 
-// Dentro do header, para professores:
-const { isProfessor } = useAuth();
+// Dentro do header:
+const { isProfessor, isAluno } = useAuth();
 
-{isProfessor && <NotificationBell />}
+<div className="ml-auto flex items-center gap-4">
+  {/* CORRIGIR BUG: isAluno era renderizado como boolean */}
+  {isAluno && <TeacherContextSwitcher />}
+  {isProfessor && <NotificationBell />}
+</div>
 ```
 
 ### App.tsx - Rota /inbox
@@ -1491,20 +1676,154 @@ import Inbox from '@/pages/Inbox';
 
 ---
 
+## Implementação das Páginas de Destino
+
+### /agenda - Query Params Handler
+
+As páginas de destino precisam processar os query params enviados pelas notificações:
+
+**Arquivo:** `src/pages/Agenda.tsx` - Adicionar lógica de processamento:
+
+```tsx
+import { useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
+
+// Dentro do componente Agenda:
+const [searchParams, setSearchParams] = useSearchParams();
+
+// Processar query params vindos do Inbox
+useEffect(() => {
+  const classId = searchParams.get('classId');
+  const action = searchParams.get('action');
+  const dateParam = searchParams.get('date');
+  
+  // Se nenhum param relevante, não fazer nada
+  if (!classId && !action && !dateParam) return;
+  
+  // 1. Navegar para a data especificada
+  if (dateParam) {
+    const targetDate = new Date(dateParam);
+    // Atualizar o range visível do calendário para incluir a data
+    setVisibleRange(prev => {
+      const newStart = startOfWeek(targetDate, { weekStartsOn: 0 });
+      const newEnd = endOfWeek(targetDate, { weekStartsOn: 0 });
+      return { start: newStart, end: newEnd };
+    });
+    // Ou usar a data diretamente se for um calendário mensal
+    setSelectedDate(targetDate);
+  }
+  
+  // 2. Buscar e processar a aula específica
+  if (classId && calendarClasses.length > 0) {
+    const targetClass = calendarClasses.find(c => c.id === classId);
+    
+    if (targetClass) {
+      // Dependendo da action, abrir o modal correspondente
+      if (action === 'report') {
+        // Abrir modal de relatório
+        setReportModal({
+          isOpen: true,
+          classData: {
+            id: targetClass.id,
+            class_date: targetClass.class_date,
+            participants: targetClass.participants,
+            service_name: targetClass.service?.name,
+            // ... outros dados necessários
+          }
+        });
+      } else if (action === 'amnesty') {
+        // Abrir modal de anistia (a ser implementado)
+        // setAmnestyModal({ isOpen: true, classData: targetClass });
+        console.log('TODO: Implementar modal de anistia para:', targetClass);
+      } else {
+        // Apenas destacar/selecionar a aula
+        setSelectedClass(targetClass);
+      }
+    }
+  }
+  
+  // 3. Limpar params após processar (evita reprocessamento)
+  if (classId || action || dateParam) {
+    setSearchParams({}, { replace: true });
+  }
+}, [calendarClasses, searchParams, setSearchParams]);
+```
+
+### /faturas - Highlight Handler
+
+**Arquivo:** `src/pages/Faturas.tsx` - Adicionar lógica de highlight:
+
+```tsx
+import { useSearchParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { cn } from '@/lib/utils';
+
+// Dentro do componente Faturas:
+const [searchParams, setSearchParams] = useSearchParams();
+const highlightRef = useRef<HTMLTableRowElement>(null);
+
+// ID da fatura a ser destacada
+const highlightId = searchParams.get('highlight');
+
+// Scroll para a fatura destacada quando os dados carregarem
+useEffect(() => {
+  if (highlightId && highlightRef.current && invoices && invoices.length > 0) {
+    // Verificar se a fatura existe na lista
+    const invoiceExists = invoices.some(inv => inv.id === highlightId);
+    
+    if (invoiceExists) {
+      // Scroll suave para a fatura
+      highlightRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'center' 
+      });
+      
+      // Limpar param após scroll (com delay para animação)
+      setTimeout(() => {
+        setSearchParams({}, { replace: true });
+      }, 2000); // 2 segundos para o usuário ver o highlight
+    }
+  }
+}, [highlightId, invoices, setSearchParams]);
+
+// Na renderização da TableRow:
+{invoices.map((invoice) => (
+  <TableRow 
+    key={invoice.id}
+    ref={invoice.id === highlightId ? highlightRef : undefined}
+    className={cn(
+      // Highlight visual: borda e animação de pulse
+      invoice.id === highlightId && [
+        'ring-2 ring-primary ring-offset-2',
+        'animate-pulse',
+        'bg-primary/5'
+      ]
+    )}
+  >
+    {/* ... conteúdo da row ... */}
+  </TableRow>
+))}
+```
+
+---
+
 ## Pré-requisitos
 
-### Páginas de Destino
+### Query Params Suportados
 
-As páginas que recebem navegação do Inbox devem suportar query params:
+As páginas de destino devem suportar os seguintes query params:
 
 #### /agenda
-- `?date=YYYY-MM-DD` - Data a ser exibida
-- `?classId=UUID` - Aula a ser destacada/aberta
-- `?action=report` - Abrir modal de relatório
-- `?action=amnesty` - Abrir modal de anistia
+| Param | Tipo | Descrição |
+|-------|------|-----------|
+| `date` | YYYY-MM-DD | Data a ser exibida no calendário |
+| `classId` | UUID | ID da aula a ser destacada/aberta |
+| `action` | string | Ação a ser executada: `report`, `amnesty` |
 
 #### /faturas
-- `?highlight=UUID` - Fatura a ser destacada
+| Param | Tipo | Descrição |
+|-------|------|-----------|
+| `highlight` | UUID | ID da fatura a ser destacada |
 
 ---
 
@@ -1557,7 +1876,68 @@ As páginas que recebem navegação do Inbox devem suportar query params:
 
 | Risco | Mitigação |
 |-------|-----------|
-| Queries lentas com muitos dados | Índices + LIMIT + paginação |
-| Notificações órfãs (item excluído) | Triggers de auto-remoção |
-| Concorrência (2 abas) | React Query invalidation |
-| Confusão UX (Done ≠ Resolvido) | Messaging claro na UI |
+| Queries lentas com muitos dados | Índices compostos + LIMIT + paginação |
+| Notificações órfãs (item excluído) | Triggers de auto-remoção com SECURITY DEFINER |
+| Concorrência (2 abas) | React Query invalidation automática |
+| Confusão UX (Done ≠ Resolvido) | Messaging claro na UI + tooltip explicativo |
+| Aulas experimentais gerando notificações | Filtro `is_experimental = false` em todas queries |
+| RLS bypass para INSERT/DELETE | Triggers e Edge Functions com service_role apenas |
+
+---
+
+## Notas Técnicas
+
+### Múltiplas Categorias por Aula
+
+Uma mesma aula pode gerar múltiplas notificações (ex: `pending_past_classes` + `pending_reports`). 
+
+A constraint UNIQUE inclui `category`, permitindo isso:
+```sql
+UNIQUE(teacher_id, source_type, source_id, category)
+```
+
+Quando uma ação resolve a pendência (ex: aula confirmada), o trigger remove **APENAS** a notificação daquela categoria específica.
+
+### Contagem do Badge
+
+O badge no `NotificationBell` mostra o total de notificações na aba **Inbox** (não lidas + lidas).
+
+Para mostrar apenas não lidas, alterar a query em `useNotificationCounts`:
+```sql
+SELECT COUNT(*) FILTER (WHERE status = 'inbox' AND is_read = false)
+```
+
+### Performance
+
+Para garantir performance com muitos professores:
+- Índice composto `idx_teacher_notifications_main_query` cobre a query principal
+- LIMIT de 50 por página com paginação
+- Edge function roda às 06:00 UTC (horário de baixo tráfego)
+- Triggers são leves (apenas DELETE simples)
+
+---
+
+## Checklist Pré-Implementação
+
+### Backend
+- [ ] Criar tabela `teacher_notifications` com constraints
+- [ ] Criar RLS policies (SELECT e UPDATE apenas)
+- [ ] Criar RPCs com SECURITY DEFINER
+- [ ] Criar triggers de auto-remoção
+- [ ] Criar edge function `generate-teacher-notifications`
+- [ ] Configurar cron job (06:00 UTC)
+- [ ] Adicionar índices de performance
+
+### Frontend
+- [ ] Corrigir bug no Layout.tsx (`{isAluno}` → `{isAluno && <...>}`)
+- [ ] Criar types em `src/types/inbox.ts`
+- [ ] Criar hooks `useTeacherNotifications` e `useNotificationActions`
+- [ ] Criar componente `NotificationBell`
+- [ ] Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
+- [ ] Criar página `/inbox`
+- [ ] Adicionar traduções i18n (pt e en)
+- [ ] Integrar NotificationBell no Layout
+- [ ] Adicionar rota no App.tsx
+- [ ] Implementar query params em `/agenda`
+- [ ] Implementar highlight em `/faturas`
+- [ ] Testar fluxos completos

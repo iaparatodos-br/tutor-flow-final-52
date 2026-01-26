@@ -590,30 +590,9 @@ BEGIN
             ON tsr.teacher_id = i.teacher_id AND tsr.student_id = i.student_id
           WHERE i.id = tn.source_id
         )
-        WHEN 'class_report' THEN (
-          SELECT json_build_object(
-            'title', 'Relatório pendente',
-            'subtitle', to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI'),
-            'student_name', COALESCE(tsr.student_name, p.name, 'Aluno'),
-            'dependent_name', dep.name,
-            'navigation_url', '/agenda?date=' || c.class_date::date || '&classId=' || c.id || '&action=report',
-            'metadata', json_build_object(
-              'class_date', c.class_date,
-              'service_name', cs.name,
-              'completed_at', c.updated_at
-            )
-          )
-          FROM classes c
-          LEFT JOIN class_services cs ON cs.id = c.service_id
-          LEFT JOIN class_participants cp ON cp.class_id = c.id
-          LEFT JOIN profiles p ON p.id = cp.student_id
-          LEFT JOIN teacher_student_relationships tsr 
-            ON tsr.teacher_id = c.teacher_id AND tsr.student_id = cp.student_id
-          LEFT JOIN dependents dep ON dep.id = cp.dependent_id
-          WHERE c.id = tn.source_id
-            AND c.is_experimental = false  -- IMPORTANTE: Filtrar aulas experimentais
-          LIMIT 1
-        )
+        -- NOTA: 'class_report' foi REMOVIDO como source_type
+        -- A categoria 'pending_reports' usa source_type = 'class' 
+        -- (já tratado no WHEN 'class' acima, via category = 'pending_reports')
       END as enriched_data
     FROM teacher_notifications tn
     WHERE tn.teacher_id = p_teacher_id
@@ -872,27 +851,34 @@ serve(async (req) => {
     // FILTRO: Apenas últimos 30 dias
     // ===========================================
     
-    // Primeiro, buscar professores com a feature class_reports ativa
-    // (isso é determinado pelo plano de assinatura do professor)
+    // CORREÇÃO CRÍTICA: Buscar professores com assinatura ATIVA que inclui class_reports
+    // A query anterior usava profiles.current_plan_id, mas o correto é verificar
+    // via user_subscriptions (tabela que rastreia status de assinatura ativa)
+    // 
+    // NOTA: Se a tabela user_subscriptions não existir, usar profiles.subscription_status
+    // como fallback para verificar se o professor tem plano ativo
     const { data: teachersWithReports, error: teacherFeatError } = await supabase
       .from("profiles")
       .select(`
         id,
         current_plan_id,
-        subscription_plans!inner(features)
+        subscription_status,
+        subscription_plans!profiles_current_plan_id_fkey(features)
       `)
       .eq("role", "professor")
-      .not("current_plan_id", "is", null);
+      .not("current_plan_id", "is", null)
+      .eq("subscription_status", "active"); // Verificar status ativo
 
     if (teacherFeatError) {
       errors.push(`teacherFeatures: ${teacherFeatError.message}`);
     }
 
-    // Filtrar apenas professores com class_reports habilitado
+    // Filtrar apenas professores com class_reports habilitado E assinatura ativa
     const teachersWithClassReports = new Set<string>();
     if (teachersWithReports) {
       for (const teacher of teachersWithReports) {
         const plan = teacher.subscription_plans as any;
+        // Verificar se o plano tem a feature class_reports
         if (plan?.features?.class_reports === true) {
           teachersWithClassReports.add(teacher.id);
         }
@@ -2138,9 +2124,11 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 ### Backend
 - [ ] Criar tabela `teacher_notifications` com constraints (source_type: 'class' | 'invoice')
 - [ ] Criar RLS policies (SELECT e UPDATE apenas)
-- [ ] Criar RPCs com SECURITY DEFINER
+- [ ] Criar RPCs com SECURITY DEFINER (sem CASE 'class_report' - removido)
 - [ ] Criar triggers de auto-remoção
+- [ ] **CRIAR PASTA E ARQUIVO:** `supabase/functions/generate-teacher-notifications/index.ts`
 - [ ] Criar edge function `generate-teacher-notifications` (com filtro temporal e cleanup)
+- [ ] Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
 - [ ] Configurar cron job via pg_cron (06:00 UTC)
 - [ ] Adicionar índices de performance
 
@@ -2148,22 +2136,23 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 - [ ] Corrigir bug no Layout.tsx (`{isAluno}` → `{isAluno && <...>}`) ✅ JÁ CORRIGIDO
 - [ ] Criar types em `src/types/inbox.ts` (NotificationSourceType: 'class' | 'invoice')
 - [ ] Criar hooks `useTeacherNotifications` e `useNotificationActions`
-- [ ] Criar componente `NotificationBell`
+- [ ] Criar componente `NotificationBell` (restrito a `isProfessor` no Layout)
 - [ ] Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
 - [ ] Criar página `/inbox`
 - [ ] Adicionar traduções i18n (pt e en) - inbox.json e navigation.json
-- [ ] Integrar NotificationBell no Layout (apenas para isProfessor)
-- [ ] Adicionar rota `/inbox` no App.tsx
-- [ ] Adicionar item "Notificações" no AppSidebar.tsx
-- [ ] Implementar query params em `/agenda` (useSearchParams)
-- [ ] Implementar highlight em `/faturas` (useSearchParams)
+- [ ] Integrar NotificationBell no Layout (verificar `isProfessor` antes de renderizar)
+- [ ] Adicionar rota `/inbox` no App.tsx (protegida para professores)
+- [ ] Adicionar item "Notificações" no AppSidebar.tsx (apenas para professores)
+- [ ] **NOVA IMPLEMENTAÇÃO:** Adicionar `useSearchParams` em `/agenda` (não existe atualmente)
+- [ ] **NOVA IMPLEMENTAÇÃO:** Adicionar `useSearchParams` em `/faturas` (não existe atualmente)
+- [ ] Implementar lógica de processamento de query params vindos do Inbox
 - [ ] Testar fluxos completos
 
 ---
 
 ## Validação Final do Documento
 
-### Correções Aplicadas (11 itens):
+### Correções Aplicadas (17 itens):
 
 1. ✅ **TeacherContext alignment** - Hooks usam `selectedTeacherId` + `isProfessor ? user.id : selectedTeacherId`
 2. ✅ **Invoice status normalization** - Status real é 'pendente', 'overdue' é calculado
@@ -2176,6 +2165,12 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 9. ✅ **Filtro temporal 30 dias** - Edge Function filtra pendências antigas
 10. ✅ **Cleanup de Done antigos** - Remoção automática após 30 dias
 11. ✅ **Amnesty handling documentado** - Explicação sobre Dialog interno vs modal global
+12. ✅ **CASE 'class_report' REMOVIDO da RPC** - A RPC get_teacher_notifications não contém mais o case para 'class_report'
+13. ✅ **Query de features CORRIGIDA** - Usa subscription_status = 'active' ao invés de apenas current_plan_id
+14. ✅ **Criação da pasta edge function** - Checklist inclui criação de `supabase/functions/generate-teacher-notifications/index.ts`
+15. ✅ **useSearchParams clarificado** - Marcado como NOVA IMPLEMENTAÇÃO (não existe em Agenda.tsx nem Faturas.tsx)
+16. ✅ **NotificationBell restrito** - Documentado que deve verificar `isProfessor` antes de renderizar
+17. ✅ **Config.toml documentado** - Checklist inclui adicionar entry para a edge function
 
 ### Fluxo Completo Validado:
 

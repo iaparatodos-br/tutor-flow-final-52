@@ -156,7 +156,10 @@ CREATE TABLE teacher_notifications (
   teacher_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   
   -- Referência ao item original
-  source_type TEXT NOT NULL CHECK (source_type IN ('class', 'invoice', 'class_report')),
+  -- NOTA: source_type 'class' é usado para pending_past_classes, amnesty_eligible e pending_reports
+  --       source_type 'invoice' é usado para overdue_invoices
+  --       Não usamos 'class_report' como source_type - relatórios são referenciados via classe
+  source_type TEXT NOT NULL CHECK (source_type IN ('class', 'invoice')),
   source_id UUID NOT NULL,
   category TEXT NOT NULL CHECK (category IN (
     'pending_past_classes', 
@@ -260,7 +263,8 @@ export type NotificationCategory =
 export type UrgencyLevel = 'high' | 'medium' | 'low';
 
 // Tipo de fonte da notificação
-export type NotificationSourceType = 'class' | 'invoice' | 'class_report';
+// CORREÇÃO: Removido 'class_report' - relatórios são referenciados via classe
+export type NotificationSourceType = 'class' | 'invoice';
 
 // Contagens por status
 export interface NotificationCounts {
@@ -523,9 +527,22 @@ BEGIN
         WHEN 'class' THEN (
           SELECT json_build_object(
             'title', COALESCE(cs.name, 'Aula'),
-            'subtitle', to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI'),
-            'student_name', COALESCE(tsr.student_name, p.name, 'Aluno'),
-            'dependent_name', dep.name,
+            -- CORREÇÃO: Subtitle diferente para aulas em grupo
+            'subtitle', 
+              CASE 
+                WHEN c.is_group_class THEN 
+                  to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI') || 
+                  ' • Turma (' || (SELECT COUNT(*) FROM class_participants WHERE class_id = c.id) || ' alunos)'
+                ELSE 
+                  to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI')
+              END,
+            'student_name', 
+              CASE 
+                WHEN c.is_group_class THEN 'Aula em Grupo'
+                ELSE COALESCE(tsr.student_name, p.name, 'Aluno')
+              END,
+            'dependent_name', 
+              CASE WHEN c.is_group_class THEN NULL ELSE dep.name END,
             'navigation_url', 
               CASE tn.category
                 WHEN 'pending_past_classes' THEN '/agenda?date=' || c.class_date::date || '&classId=' || c.id
@@ -536,6 +553,7 @@ BEGIN
               'class_date', c.class_date,
               'service_name', cs.name,
               'is_group_class', c.is_group_class,
+              'participant_count', (SELECT COUNT(*) FROM class_participants WHERE class_id = c.id),
               'cancellation_reason', c.cancellation_reason,
               'charge_amount', COALESCE(cs.price, 0)
             )
@@ -700,6 +718,12 @@ $$;
 
 ### Edge Function: Varredura Diária
 
+> **CORREÇÕES IMPLEMENTADAS:**
+> 1. **Filtro temporal de 30 dias** - Evita processar pendências antigas/legadas
+> 2. **Verificação de features do professor** - Só gera `pending_reports` se professor tiver feature `class_reports`
+> 3. **Filtro `is_experimental = false`** - Aplicado em TODAS as queries
+> 4. **Cleanup de Done antigos** - Remoção automática de notificações Done com mais de 30 dias
+
 **Arquivo:** `supabase/functions/generate-teacher-notifications/index.ts`
 
 Esta função roda via cron job 1x/dia (06:00 UTC) e:
@@ -730,17 +754,41 @@ serve(async (req) => {
     );
 
     const now = new Date().toISOString();
+    // CORREÇÃO: Filtro temporal de 30 dias para evitar processar pendências antigas
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
     let created = 0;
+    let cleaned = 0;
     let errors: string[] = [];
 
+    // ===========================================
+    // CLEANUP: Remover notificações Done antigas (mais de 30 dias)
+    // ===========================================
+    const { data: deletedDone, error: deleteError } = await supabase
+      .from("teacher_notifications")
+      .delete()
+      .eq("status", "done")
+      .lt("status_changed_at", thirtyDaysAgo)
+      .select("id");
+    
+    if (deleteError) {
+      errors.push(`cleanup: ${deleteError.message}`);
+    } else {
+      cleaned = deletedDone?.length || 0;
+    }
+
+    // ===========================================
     // 1. Aulas pendentes passadas (não experimentais, não templates)
+    // FILTRO: Apenas últimos 30 dias
+    // ===========================================
     const { data: pendingClasses, error: pendingError } = await supabase
       .from("classes")
       .select("id, teacher_id")
       .eq("status", "pendente")
       .eq("is_experimental", false)
       .eq("is_template", false)
-      .lt("class_date", now);
+      .lt("class_date", now)
+      .gte("class_date", thirtyDaysAgo); // Filtro temporal
 
     if (pendingError) {
       errors.push(`pendingClasses: ${pendingError.message}`);
@@ -759,14 +807,18 @@ serve(async (req) => {
       }
     }
 
+    // ===========================================
     // 2. Cancelamentos com cobrança (elegíveis para anistia)
+    // FILTRO: Apenas últimos 30 dias
+    // ===========================================
     const { data: chargedCancellations, error: chargedError } = await supabase
       .from("classes")
-      .select("id, teacher_id")
+      .select("id, teacher_id, cancelled_at")
       .eq("status", "cancelada")
       .eq("charge_applied", true)
       .eq("amnesty_granted", false)
-      .eq("is_experimental", false);
+      .eq("is_experimental", false)
+      .gte("cancelled_at", thirtyDaysAgo); // Filtro temporal
 
     if (chargedError) {
       errors.push(`chargedCancellations: ${chargedError.message}`);
@@ -785,18 +837,17 @@ serve(async (req) => {
       }
     }
 
+    // ===========================================
     // 3. Faturas atrasadas
-    // NOTA: Os status de faturas no banco são:
-    // - 'pendente' (invoice criada, aguardando pagamento)
-    // - 'pago' (pagamento confirmado)
-    // - 'cancelado' (invoice cancelada)
-    // - 'overdue' é calculado dinamicamente quando due_date < now() e status = 'pendente'
-    // Portanto, buscamos faturas com status 'pendente' que já venceram
+    // NOTA: Status 'pendente' + due_date < now = overdue (calculado)
+    // FILTRO: Apenas últimos 30 dias
+    // ===========================================
     const { data: overdueInvoices, error: overdueError } = await supabase
       .from("invoices")
       .select("id, teacher_id")
-      .eq("status", "pendente")  // Status normalizado: apenas 'pendente'
-      .lt("due_date", now);      // Vencidas = due_date no passado
+      .eq("status", "pendente")
+      .lt("due_date", now)
+      .gte("due_date", thirtyDaysAgo); // Filtro temporal
 
     if (overdueError) {
       errors.push(`overdueInvoices: ${overdueError.message}`);
@@ -815,24 +866,64 @@ serve(async (req) => {
       }
     }
 
+    // ===========================================
     // 4. Aulas concluídas sem relatório
+    // CORREÇÃO: Verificar se professor tem feature class_reports
+    // FILTRO: Apenas últimos 30 dias
+    // ===========================================
+    
+    // Primeiro, buscar professores com a feature class_reports ativa
+    // (isso é determinado pelo plano de assinatura do professor)
+    const { data: teachersWithReports, error: teacherFeatError } = await supabase
+      .from("profiles")
+      .select(`
+        id,
+        current_plan_id,
+        subscription_plans!inner(features)
+      `)
+      .eq("role", "professor")
+      .not("current_plan_id", "is", null);
+
+    if (teacherFeatError) {
+      errors.push(`teacherFeatures: ${teacherFeatError.message}`);
+    }
+
+    // Filtrar apenas professores com class_reports habilitado
+    const teachersWithClassReports = new Set<string>();
+    if (teachersWithReports) {
+      for (const teacher of teachersWithReports) {
+        const plan = teacher.subscription_plans as any;
+        if (plan?.features?.class_reports === true) {
+          teachersWithClassReports.add(teacher.id);
+        }
+      }
+    }
+
     // Buscar aulas concluídas que NÃO têm relatório associado
     const { data: completedClasses, error: completedError } = await supabase
       .from("classes")
       .select(`
         id, 
         teacher_id,
+        class_date,
         class_reports!left(id)
       `)
       .eq("status", "concluida")
       .eq("is_experimental", false)
-      .is("class_reports.id", null);
+      .eq("is_template", false)
+      .is("class_reports.id", null)
+      .gte("class_date", thirtyDaysAgo); // Filtro temporal
 
     if (completedError) {
       errors.push(`completedClasses: ${completedError.message}`);
     } else {
       for (const cls of completedClasses || []) {
-        // Verificar se realmente não tem relatório (class_reports é null)
+        // CORREÇÃO: Verificar se professor tem feature class_reports
+        if (!teachersWithClassReports.has(cls.teacher_id)) {
+          continue; // Pular professor sem a feature
+        }
+        
+        // Verificar se realmente não tem relatório
         if (!cls.class_reports || cls.class_reports.length === 0) {
           const { error } = await supabase
             .from("teacher_notifications")
@@ -848,7 +939,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`Generated ${created} notifications`);
+    console.log(`Generated ${created} notifications, cleaned ${cleaned} old Done items`);
     if (errors.length > 0) {
       console.error("Errors:", errors);
     }
@@ -857,6 +948,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         notifications_created: created,
+        done_items_cleaned: cleaned,
         errors: errors.length > 0 ? errors : undefined 
       }),
       { 
@@ -1710,21 +1802,54 @@ const { isProfessor, isAluno } = useAuth();
 
 ### App.tsx - Rota /inbox
 
+**OBRIGATÓRIO:** A rota `/inbox` deve ser adicionada ao App.tsx para que a página seja acessível.
+
 ```tsx
-// Adicionar rota:
+// Adicionar import:
 import Inbox from '@/pages/Inbox';
 
+// Adicionar rota ANTES do catch-all "*":
 <Route path="/inbox" element={<Inbox />} />
 ```
 
-### AppSidebar.tsx - Link (Opcional)
+### AppSidebar.tsx - Link no Menu
+
+**OBRIGATÓRIO:** Adicionar item no menu de navegação para professores:
 
 ```tsx
-// Adicionar item no menu:
+// Adicionar import:
+import { Bell } from 'lucide-react';
+
+// Adicionar item no menuItems (apenas para professores):
 {
-  title: t('navigation.inbox'),
+  title: t('navigation:sidebar.inbox'),
   url: '/inbox',
   icon: Bell,
+  showFor: 'professor', // ou usar lógica condicional existente
+}
+```
+
+### navigation.json - Traduções da Sidebar
+
+**OBRIGATÓRIO:** Adicionar chave de tradução nos arquivos de navegação:
+
+**`src/i18n/locales/pt/navigation.json`:**
+```json
+{
+  "sidebar": {
+    // ... outras chaves existentes ...
+    "inbox": "Notificações"
+  }
+}
+```
+
+**`src/i18n/locales/en/navigation.json`:**
+```json
+{
+  "sidebar": {
+    // ... outras chaves existentes ...
+    "inbox": "Notifications"
+  }
 }
 ```
 
@@ -1786,9 +1911,16 @@ useEffect(() => {
           }
         });
       } else if (action === 'amnesty') {
-        // Abrir modal de anistia (a ser implementado)
-        // setAmnestyModal({ isOpen: true, classData: targetClass });
-        console.log('TODO: Implementar modal de anistia para:', targetClass);
+        // NOTA IMPORTANTE: AmnestyButton usa Dialog interno, não um modal global
+        // Para action=amnesty, devemos:
+        // 1. Selecionar a aula no calendário
+        // 2. O usuário clicará no AmnestyButton dentro do card da aula
+        // 
+        // Alternativa futura: criar um modal global de anistia que pode ser
+        // acionado programaticamente via context ou URL params
+        setSelectedClass(targetClass);
+        // Toast informativo para guiar o usuário
+        toast.info('Selecione "Conceder Anistia" no menu da aula destacada');
       } else {
         // Apenas destacar/selecionar a aula
         setSelectedClass(targetClass);
@@ -1936,6 +2068,8 @@ As páginas de destino devem suportar os seguintes query params:
 | Confusão UX (Done ≠ Resolvido) | Messaging claro na UI + tooltip explicativo |
 | Aulas experimentais gerando notificações | Filtro `is_experimental = false` em todas queries |
 | RLS bypass para INSERT/DELETE | Triggers e Edge Functions com service_role apenas |
+| Pendências antigas poluindo inbox | Filtro temporal de 30 dias na varredura |
+| Acúmulo de Done antigos | Cleanup automático de Done > 30 dias |
 
 ---
 
@@ -1969,29 +2103,100 @@ Para garantir performance com muitos professores:
 - Edge function roda às 06:00 UTC (horário de baixo tráfego)
 - Triggers são leves (apenas DELETE simples)
 
+### Política de Cleanup
+
+**Notificações Done antigas são removidas automaticamente:**
+
+- A Edge Function `generate-teacher-notifications` remove notificações Done com mais de 30 dias
+- Isso previne acúmulo infinito de dados históricos
+- O cleanup roda junto com a varredura diária (06:00 UTC)
+
+**Pendências antigas não são processadas:**
+
+- A varredura ignora pendências com mais de 30 dias
+- Isso evita que dados legados poluam o inbox de professores
+- Se necessário, o período pode ser ajustado na Edge Function
+
+### AmnestyButton - Comportamento Atual
+
+O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` interno, não um modal global controlado por context.
+
+**Implicação para `action=amnesty`:**
+- Não é possível abrir o dialog de anistia programaticamente via URL
+- A navegação `/agenda?action=amnesty&classId=...` deve:
+  1. Navegar para a data e selecionar/destacar a aula
+  2. Mostrar um toast guiando o usuário a clicar no botão de anistia
+
+**Alternativa futura:**
+- Refatorar `AmnestyButton` para usar um context global
+- Ou criar um modal de anistia separado que pode ser acionado via URL
+
 ---
 
 ## Checklist Pré-Implementação
 
 ### Backend
-- [ ] Criar tabela `teacher_notifications` com constraints
+- [ ] Criar tabela `teacher_notifications` com constraints (source_type: 'class' | 'invoice')
 - [ ] Criar RLS policies (SELECT e UPDATE apenas)
 - [ ] Criar RPCs com SECURITY DEFINER
 - [ ] Criar triggers de auto-remoção
-- [ ] Criar edge function `generate-teacher-notifications`
-- [ ] Configurar cron job (06:00 UTC)
+- [ ] Criar edge function `generate-teacher-notifications` (com filtro temporal e cleanup)
+- [ ] Configurar cron job via pg_cron (06:00 UTC)
 - [ ] Adicionar índices de performance
 
 ### Frontend
-- [ ] Corrigir bug no Layout.tsx (`{isAluno}` → `{isAluno && <...>}`)
-- [ ] Criar types em `src/types/inbox.ts`
+- [ ] Corrigir bug no Layout.tsx (`{isAluno}` → `{isAluno && <...>}`) ✅ JÁ CORRIGIDO
+- [ ] Criar types em `src/types/inbox.ts` (NotificationSourceType: 'class' | 'invoice')
 - [ ] Criar hooks `useTeacherNotifications` e `useNotificationActions`
 - [ ] Criar componente `NotificationBell`
 - [ ] Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
 - [ ] Criar página `/inbox`
-- [ ] Adicionar traduções i18n (pt e en)
-- [ ] Integrar NotificationBell no Layout
-- [ ] Adicionar rota no App.tsx
-- [ ] Implementar query params em `/agenda`
-- [ ] Implementar highlight em `/faturas`
+- [ ] Adicionar traduções i18n (pt e en) - inbox.json e navigation.json
+- [ ] Integrar NotificationBell no Layout (apenas para isProfessor)
+- [ ] Adicionar rota `/inbox` no App.tsx
+- [ ] Adicionar item "Notificações" no AppSidebar.tsx
+- [ ] Implementar query params em `/agenda` (useSearchParams)
+- [ ] Implementar highlight em `/faturas` (useSearchParams)
 - [ ] Testar fluxos completos
+
+---
+
+## Validação Final do Documento
+
+### Correções Aplicadas (11 itens):
+
+1. ✅ **TeacherContext alignment** - Hooks usam `selectedTeacherId` + `isProfessor ? user.id : selectedTeacherId`
+2. ✅ **Invoice status normalization** - Status real é 'pendente', 'overdue' é calculado
+3. ✅ **Cron job via pg_cron** - SQL completo com pg_cron e pg_net
+4. ✅ **Layout.tsx bug fix** - Documentado e já corrigido no código
+5. ✅ **source_type simplificado** - Removido 'class_report', usa apenas 'class' | 'invoice'
+6. ✅ **Rota /inbox obrigatória** - Adicionada na seção de integração
+7. ✅ **AppSidebar obrigatório** - Item de menu com traduções
+8. ✅ **navigation.json traduções** - Chaves pt e en documentadas
+9. ✅ **Filtro temporal 30 dias** - Edge Function filtra pendências antigas
+10. ✅ **Cleanup de Done antigos** - Remoção automática após 30 dias
+11. ✅ **Amnesty handling documentado** - Explicação sobre Dialog interno vs modal global
+
+### Fluxo Completo Validado:
+
+```
+[Cron 06:00 UTC]
+    ↓
+[Edge Function: varredura + cleanup]
+    ↓ (filtra últimos 30 dias, verifica features)
+[teacher_notifications: INSERT via upsert]
+    ↓
+[NotificationBell: badge com contagem]
+    ↓ (clique)
+[/inbox: triagem Inbox/Saved/Done]
+    ↓ (clique na notificação)
+[mark_notification_read + navigate]
+    ↓
+[/agenda ou /faturas com query params]
+    ↓
+[Resolução da pendência (confirmar, pagar, etc)]
+    ↓ (trigger AFTER UPDATE)
+[teacher_notifications: DELETE automático]
+```
+
+**Documento pronto para implementação.**

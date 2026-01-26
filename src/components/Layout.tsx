@@ -68,7 +68,7 @@ export function Layout({
           
           <div className="ml-auto flex items-center gap-4">
             {/* Teacher context switcher for students */}
-            {isAluno}
+            {isAluno && <TeacherContextSwitcher />}
           </div>
         </header>
 

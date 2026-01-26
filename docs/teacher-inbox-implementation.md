@@ -786,11 +786,17 @@ serve(async (req) => {
     }
 
     // 3. Faturas atrasadas
+    // NOTA: Os status de faturas no banco são:
+    // - 'pendente' (invoice criada, aguardando pagamento)
+    // - 'pago' (pagamento confirmado)
+    // - 'cancelado' (invoice cancelada)
+    // - 'overdue' é calculado dinamicamente quando due_date < now() e status = 'pendente'
+    // Portanto, buscamos faturas com status 'pendente' que já venceram
     const { data: overdueInvoices, error: overdueError } = await supabase
       .from("invoices")
       .select("id, teacher_id")
-      .in("status", ["overdue", "vencida", "pending"])
-      .lt("due_date", now);
+      .eq("status", "pendente")  // Status normalizado: apenas 'pendente'
+      .lt("due_date", now);      // Vencidas = due_date no passado
 
     if (overdueError) {
       errors.push(`overdueInvoices: ${overdueError.message}`);
@@ -873,11 +879,46 @@ serve(async (req) => {
 
 ### Configuração do Cron Job
 
-Configurar no Supabase Dashboard ou via `supabase/config.toml`:
+> **IMPORTANTE:** O `config.toml` NÃO suporta a propriedade `schedule` para cron jobs.
+> Cron jobs devem ser configurados via **pg_cron** no SQL Editor do Supabase.
+
+**Executar no SQL Editor do Supabase:**
+
+```sql
+-- Habilitar extensões necessárias (se ainda não habilitadas)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- Remover job existente (se houver)
+SELECT cron.unschedule('generate-teacher-notifications-daily');
+
+-- Criar cron job para rodar às 06:00 UTC (03:00 BRT)
+SELECT cron.schedule(
+  'generate-teacher-notifications-daily',
+  '0 6 * * *',  -- Cron expression: todo dia às 06:00 UTC
+  $$
+  SELECT net.http_post(
+    url := 'https://nwgomximjevgczwuyqcx.supabase.co/functions/v1/generate-teacher-notifications',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key')
+    ),
+    body := '{}'::jsonb
+  ) as request_id;
+  $$
+);
+
+-- Verificar se o job foi criado
+SELECT jobid, jobname, schedule, command 
+FROM cron.job 
+WHERE jobname = 'generate-teacher-notifications-daily';
+```
+
+**Configurar em `supabase/config.toml`** (apenas para desabilitar JWT verification):
 
 ```toml
 [functions.generate-teacher-notifications]
-schedule = "0 6 * * *"  # Executa todos os dias às 06:00 UTC
+verify_jwt = false
 ```
 
 ### Trigger: Auto-remoção quando Pendência é Resolvida
@@ -913,12 +954,15 @@ AFTER UPDATE ON classes
 FOR EACH ROW
 EXECUTE FUNCTION remove_notification_on_class_resolution();
 
--- Remove notificação quando fatura é paga
+-- Remove notificação quando fatura é paga ou cancelada
+-- NOTA: Status de faturas no banco são 'pendente', 'pago', 'cancelado'
+-- 'overdue' NÃO é um status real - é calculado quando due_date < now()
 CREATE OR REPLACE FUNCTION remove_notification_on_invoice_paid()
 RETURNS TRIGGER AS $$
 BEGIN
+  -- Quando status muda de 'pendente' para 'pago' ou 'cancelado'
   IF NEW.status IN ('pago', 'cancelado') 
-     AND OLD.status IN ('pendente', 'overdue') THEN
+     AND OLD.status = 'pendente' THEN
     DELETE FROM teacher_notifications 
     WHERE source_id = NEW.id 
       AND source_type = 'invoice';
@@ -960,10 +1004,13 @@ EXECUTE FUNCTION remove_notification_on_report_created();
 
 **Arquivo:** `src/hooks/useTeacherNotifications.ts`
 
+> **IMPORTANTE:** O `TeacherContext` exporta `selectedTeacherId` (string | null), NÃO `selectedTeacher.id`.
+
 ```typescript
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useTeacherContext } from '@/contexts/TeacherContext';
+import { useAuth } from '@/contexts/AuthContext';
 import type { 
   TeacherNotification, 
   NotificationStatus, 
@@ -978,8 +1025,12 @@ interface UseTeacherNotificationsOptions {
 }
 
 export function useTeacherNotifications(options: UseTeacherNotificationsOptions) {
-  const { selectedTeacher } = useTeacherContext();
-  const teacherId = selectedTeacher?.id;
+  // CORREÇÃO: usar selectedTeacherId diretamente (para alunos) ou userId (para professores)
+  const { selectedTeacherId } = useTeacherContext();
+  const { user, isProfessor } = useAuth();
+  
+  // Professores usam seu próprio ID, alunos usam o ID do professor selecionado
+  const teacherId = isProfessor ? user?.id : selectedTeacherId;
   
   return useQuery({
     queryKey: ['teacher-notifications', teacherId, options.status, options.filters],
@@ -1003,8 +1054,12 @@ export function useTeacherNotifications(options: UseTeacherNotificationsOptions)
 }
 
 export function useNotificationCounts() {
-  const { selectedTeacher } = useTeacherContext();
-  const teacherId = selectedTeacher?.id;
+  // CORREÇÃO: usar selectedTeacherId diretamente (para alunos) ou userId (para professores)
+  const { selectedTeacherId } = useTeacherContext();
+  const { user, isProfessor } = useAuth();
+  
+  // Professores usam seu próprio ID, alunos usam o ID do professor selecionado
+  const teacherId = isProfessor ? user?.id : selectedTeacherId;
   
   return useQuery({
     queryKey: ['notification-counts', teacherId],
@@ -1031,14 +1086,13 @@ export function useNotificationCounts() {
 ```typescript
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTeacherContext } from '@/contexts/TeacherContext';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
 export function useNotificationActions() {
   const { t } = useTranslation('inbox');
-  const { selectedTeacher } = useTeacherContext();
   const queryClient = useQueryClient();
+  // Não precisa de TeacherContext aqui - as mutations usam o ID da notificação
 
   const invalidateQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['teacher-notifications'] });

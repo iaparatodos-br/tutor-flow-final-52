@@ -536,10 +536,11 @@ BEGIN
                 ELSE 
                   to_char(c.class_date AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY HH24:MI')
               END,
+            -- CORREÇÃO: Fallback adicional para student_name NULL (registros legados)
             'student_name', 
               CASE 
                 WHEN c.is_group_class THEN 'Aula em Grupo'
-                ELSE COALESCE(tsr.student_name, p.name, 'Aluno')
+                ELSE COALESCE(tsr.student_name, p.name, 'Aluno não identificado')
               END,
             'dependent_name', 
               CASE WHEN c.is_group_class THEN NULL ELSE dep.name END,
@@ -574,7 +575,8 @@ BEGIN
             'title', 'Fatura atrasada',
             'subtitle', 'R$ ' || i.amount::text || ' - Vencida há ' || 
               EXTRACT(DAY FROM NOW() - i.due_date)::int || ' dias',
-            'student_name', COALESCE(tsr.student_name, p.name, 'Aluno'),
+            -- CORREÇÃO: Fallback para student_name NULL (registros legados)
+            'student_name', COALESCE(tsr.student_name, p.name, 'Aluno não identificado'),
             'dependent_name', NULL,
             'navigation_url', '/faturas?highlight=' || i.id,
             'metadata', json_build_object(
@@ -820,18 +822,39 @@ serve(async (req) => {
     // 3. Faturas atrasadas
     // NOTA: Status 'pendente' + due_date < now = overdue (calculado)
     // FILTRO: Apenas últimos 30 dias
+    // CORREÇÃO: Apenas faturas de professores com business_profile configurado
     // ===========================================
+    
+    // Primeiro, buscar professores que têm business_profile ativo
+    const { data: teachersWithBP, error: bpError } = await supabase
+      .from("business_profiles")
+      .select("user_id")
+      .not("stripe_connect_id", "is", null);
+    
+    if (bpError) {
+      errors.push(`businessProfiles: ${bpError.message}`);
+    }
+    
+    const teacherIdsWithBP = new Set(teachersWithBP?.map(bp => bp.user_id) || []);
+    
+    // Buscar faturas atrasadas COM validação de business_profile
     const { data: overdueInvoices, error: overdueError } = await supabase
       .from("invoices")
-      .select("id, teacher_id")
+      .select("id, teacher_id, business_profile_id")
       .eq("status", "pendente")
       .lt("due_date", now)
-      .gte("due_date", thirtyDaysAgo); // Filtro temporal
+      .gte("due_date", thirtyDaysAgo)
+      .not("business_profile_id", "is", null); // Apenas faturas com business_profile
 
     if (overdueError) {
       errors.push(`overdueInvoices: ${overdueError.message}`);
     } else {
       for (const inv of overdueInvoices || []) {
+        // CORREÇÃO: Verificar se professor tem business_profile ativo
+        if (!teacherIdsWithBP.has(inv.teacher_id)) {
+          continue; // Pular faturas de professores sem BP ativo
+        }
+        
         const { error } = await supabase
           .from("teacher_notifications")
           .upsert({
@@ -1073,6 +1096,69 @@ AFTER INSERT ON class_reports
 FOR EACH ROW
 EXECUTE FUNCTION remove_notification_on_report_created();
 ```
+
+---
+
+## Fase 4 (Opcional): Triggers de Criação em Tempo Real
+
+> **NOTA:** Esta seção documenta uma melhoria opcional para criar notificações em TEMPO REAL, 
+> além do cron job diário. Não é obrigatória para o MVP.
+
+### Problema Identificado
+
+O documento principal descreve apenas triggers de **REMOÇÃO** de notificações. 
+Não há triggers para **CRIAÇÃO** em tempo real quando:
+- Uma aula passa da data sem ser confirmada
+- Uma fatura vence sem ser paga
+
+### Solução Atual (MVP)
+
+O cron job diário (06:00 UTC) varre todas as pendências e cria notificações.
+Isso significa que uma aula que passa das 23:00 só gerará notificação no dia seguinte às 06:00.
+
+### Melhoria Opcional: Trigger para Aulas
+
+```sql
+-- OPCIONAL: Trigger para criar notificação quando aula passa da data
+-- ATENÇÃO: Este trigger rodaria em EVERY update na tabela classes
+-- Pode ter impacto de performance em sistemas com muitas aulas
+
+CREATE OR REPLACE FUNCTION create_notification_on_class_overdue()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Se status ainda é 'pendente' e class_date passou
+  IF NEW.status = 'pendente' 
+     AND NEW.class_date < NOW() 
+     AND NEW.is_experimental = false 
+     AND NEW.is_template = false THEN
+    
+    INSERT INTO teacher_notifications (teacher_id, source_type, source_id, category)
+    VALUES (NEW.teacher_id, 'class', NEW.id, 'pending_past_classes')
+    ON CONFLICT (teacher_id, source_type, source_id, category) DO NOTHING;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- CUIDADO: Avaliar impacto de performance antes de ativar
+-- CREATE TRIGGER trg_create_notification_on_class_overdue
+-- AFTER UPDATE ON classes
+-- FOR EACH ROW
+-- EXECUTE FUNCTION create_notification_on_class_overdue();
+```
+
+### Trade-offs
+
+| Abordagem | Prós | Contras |
+|-----------|------|---------|
+| **Cron Job (atual)** | Simples, previsível, baixo overhead | Delay de até 24h para novas notificações |
+| **Trigger em tempo real** | Notificação imediata | Overhead em cada UPDATE, complexidade |
+
+### Recomendação
+
+Para o MVP, usar apenas o **cron job diário**. 
+A melhoria com triggers pode ser implementada posteriormente se houver demanda por notificações em tempo real.
 
 ---
 
@@ -1633,6 +1719,157 @@ export default function Inbox() {
 
 ---
 
+## Paginação e Performance
+
+### Hook com Paginação
+
+Para listas grandes, implementar "Carregar Mais" (Load More) pattern:
+
+**Arquivo:** `src/hooks/useTeacherNotifications.ts` (versão com paginação)
+
+```typescript
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useTeacherContext } from '@/contexts/TeacherContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useState, useCallback } from 'react';
+import type { 
+  TeacherNotification, 
+  NotificationStatus, 
+  NotificationFilters,
+  NotificationCounts 
+} from '@/types/inbox';
+
+interface UseTeacherNotificationsOptions {
+  status: NotificationStatus;
+  filters?: NotificationFilters;
+  limit?: number;
+}
+
+export function useTeacherNotifications(options: UseTeacherNotificationsOptions) {
+  const { status, filters, limit = 50 } = options;
+  const [offset, setOffset] = useState(0);
+  
+  // CORREÇÃO: usar selectedTeacherId diretamente (para alunos) ou userId (para professores)
+  const { selectedTeacherId } = useTeacherContext();
+  const { user, isProfessor } = useAuth();
+  
+  // Professores usam seu próprio ID, alunos usam o ID do professor selecionado
+  const teacherId = isProfessor ? user?.id : selectedTeacherId;
+  
+  const query = useQuery({
+    queryKey: ['teacher-notifications', teacherId, status, filters, offset],
+    queryFn: async () => {
+      if (!teacherId) return [];
+      
+      const { data, error } = await supabase.rpc('get_teacher_notifications', {
+        p_teacher_id: teacherId,
+        p_status: status,
+        p_urgency: filters?.urgency ?? null,
+        p_is_read: filters?.isRead ?? null,
+        p_limit: limit,
+        p_offset: offset,
+      });
+      
+      if (error) throw error;
+      return (data ?? []) as TeacherNotification[];
+    },
+    enabled: !!teacherId,
+  });
+
+  // Função para carregar mais
+  const loadMore = useCallback(() => {
+    setOffset(prev => prev + limit);
+  }, [limit]);
+  
+  // Verificar se há mais itens para carregar
+  const hasMore = (query.data?.length ?? 0) === limit;
+  
+  // Reset offset quando filtros mudam
+  const resetPagination = useCallback(() => {
+    setOffset(0);
+  }, []);
+
+  return { 
+    ...query, 
+    loadMore, 
+    hasMore,
+    resetPagination,
+    currentOffset: offset 
+  };
+}
+```
+
+### UI com "Carregar Mais"
+
+**Adicionar no final da `InboxPage`:**
+
+```tsx
+// Dentro do componente Inbox, após a lista de notificações:
+import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+
+// Na query:
+const { 
+  data: notifications, 
+  isLoading: notificationsLoading,
+  isFetching,
+  loadMore,
+  hasMore 
+} = useTeacherNotifications({
+  status: activeTab,
+  filters,
+});
+
+// No JSX, após a lista:
+{hasMore && !isLoading && (
+  <div className="flex justify-center pt-4">
+    <Button 
+      variant="outline" 
+      onClick={loadMore} 
+      disabled={isFetching}
+      className="gap-2"
+    >
+      {isFetching && <Loader2 className="h-4 w-4 animate-spin" />}
+      {t('pagination.loadMore')}
+    </Button>
+  </div>
+)}
+```
+
+### Traduções para Paginação
+
+**`src/i18n/locales/pt/inbox.json`:**
+```json
+{
+  "pagination": {
+    "loadMore": "Carregar mais"
+  }
+}
+```
+
+**`src/i18n/locales/en/inbox.json`:**
+```json
+{
+  "pagination": {
+    "loadMore": "Load more"
+  }
+}
+```
+
+### Fallback no Frontend para student_name NULL
+
+**No componente `NotificationItem.tsx`:**
+
+```tsx
+// Garantir fallback na renderização
+<div className="text-sm text-muted-foreground truncate">
+  {notification.student_name || 'Aluno'} • {notification.subtitle}
+</div>
+```
+
+---
+
 ## i18n
 
 ### Português
@@ -2124,10 +2361,10 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 ### Backend
 - [ ] Criar tabela `teacher_notifications` com constraints (source_type: 'class' | 'invoice')
 - [ ] Criar RLS policies (SELECT e UPDATE apenas)
-- [ ] Criar RPCs com SECURITY DEFINER (sem CASE 'class_report' - removido)
+- [ ] Criar RPCs com SECURITY DEFINER (com fallback 'Aluno não identificado' para student_name)
 - [ ] Criar triggers de auto-remoção
 - [ ] **CRIAR PASTA E ARQUIVO:** `supabase/functions/generate-teacher-notifications/index.ts`
-- [ ] Criar edge function `generate-teacher-notifications` (com filtro temporal e cleanup)
+- [ ] Criar edge function `generate-teacher-notifications` (com filtro temporal, cleanup e validação de business_profile)
 - [ ] Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
 - [ ] Configurar cron job via pg_cron (06:00 UTC)
 - [ ] Adicionar índices de performance
@@ -2135,11 +2372,12 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 ### Frontend
 - [ ] Corrigir bug no Layout.tsx (`{isAluno}` → `{isAluno && <...>}`) ✅ JÁ CORRIGIDO
 - [ ] Criar types em `src/types/inbox.ts` (NotificationSourceType: 'class' | 'invoice')
-- [ ] Criar hooks `useTeacherNotifications` e `useNotificationActions`
+- [ ] Criar hooks `useTeacherNotifications` (com suporte a paginação) e `useNotificationActions`
 - [ ] Criar componente `NotificationBell` (restrito a `isProfessor` no Layout)
 - [ ] Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
-- [ ] Criar página `/inbox`
-- [ ] Adicionar traduções i18n (pt e en) - inbox.json e navigation.json
+- [ ] Criar página `/inbox` (com botão "Carregar Mais")
+- [ ] Garantir fallback `|| 'Aluno'` na renderização de `student_name` em NotificationItem
+- [ ] Adicionar traduções i18n (pt e en) - inbox.json e navigation.json (incluir `pagination.loadMore`)
 - [ ] Integrar NotificationBell no Layout (verificar `isProfessor` antes de renderizar)
 - [ ] Adicionar rota `/inbox` no App.tsx (protegida para professores)
 - [ ] Adicionar item "Notificações" no AppSidebar.tsx (apenas para professores)
@@ -2148,11 +2386,14 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 - [ ] Implementar lógica de processamento de query params vindos do Inbox
 - [ ] Testar fluxos completos
 
+### Fase 4 (Opcional)
+- [ ] Implementar triggers de criação de notificações em tempo real (ver seção "Triggers de Criação em Tempo Real")
+
 ---
 
 ## Validação Final do Documento
 
-### Correções Aplicadas (17 itens):
+### Correções Aplicadas (22 itens):
 
 1. ✅ **TeacherContext alignment** - Hooks usam `selectedTeacherId` + `isProfessor ? user.id : selectedTeacherId`
 2. ✅ **Invoice status normalization** - Status real é 'pendente', 'overdue' é calculado
@@ -2171,6 +2412,11 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 15. ✅ **useSearchParams clarificado** - Marcado como NOVA IMPLEMENTAÇÃO (não existe em Agenda.tsx nem Faturas.tsx)
 16. ✅ **NotificationBell restrito** - Documentado que deve verificar `isProfessor` antes de renderizar
 17. ✅ **Config.toml documentado** - Checklist inclui adicionar entry para a edge function
+18. ✅ **student_name NULL fallback** - RPC usa COALESCE com 'Aluno não identificado' como fallback final
+19. ✅ **Triggers de criação em tempo real** - Documentado como melhoria OPCIONAL para Fase 4
+20. ✅ **Paginação e Performance** - Seção completa com hook, UI "Carregar Mais" e traduções
+21. ✅ **business_profile_id validação** - Edge Function valida BP antes de criar alertas de faturas
+22. ✅ **Frontend fallback student_name** - Componente NotificationItem usa `|| 'Aluno'` como fallback
 
 ### Fluxo Completo Validado:
 
@@ -2178,12 +2424,12 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 [Cron 06:00 UTC]
     ↓
 [Edge Function: varredura + cleanup]
-    ↓ (filtra últimos 30 dias, verifica features)
+    ↓ (filtra últimos 30 dias, verifica features, valida business_profile)
 [teacher_notifications: INSERT via upsert]
     ↓
 [NotificationBell: badge com contagem]
     ↓ (clique)
-[/inbox: triagem Inbox/Saved/Done]
+[/inbox: triagem Inbox/Saved/Done + paginação]
     ↓ (clique na notificação)
 [mark_notification_read + navigate]
     ↓
@@ -2194,4 +2440,10 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 [teacher_notifications: DELETE automático]
 ```
 
-**Documento pronto para implementação.**
+### Opções Documentadas para Fases Futuras:
+
+- **Fase 4 (Opcional)**: Triggers de criação em tempo real (trade-offs documentados)
+- **Paginação**: Hook com offset + "Carregar Mais" pattern implementado
+- **Infinite Scroll**: Pode substituir "Carregar Mais" futuramente
+
+**Documento pronto para implementação. Total de 22 correções validadas.**

@@ -2710,14 +2710,310 @@ EXECUTE FUNCTION remove_notifications_on_invoice_delete();
 
 ---
 
+## Lacunas Adicionais Identificadas (Revisão 2)
+
+### Lacuna 16: Validação de `subscription_status` na Edge Function
+
+**Problema:** O código da Edge Function não valida explicitamente o `subscription_status` do professor.
+
+**Solução:** Adicionar filtro `.in('subscription_status', ['active', 'trialing'])` na query de professores.
+
+```typescript
+// Na varredura de professores
+const { data: teachers } = await supabase
+  .from("profiles")
+  .select("id, current_plan_id, subscription_status")
+  .eq("role", "professor")
+  .in("subscription_status", ["active", "trialing"]); // CRÍTICO
+```
+
+### Lacuna 17: Inconsistência de Status de Cancelamento
+
+**Problema:** O documento usa `status = 'cancelado'` em alguns trechos, mas o banco usa `'cancelada'` (feminino).
+
+**Solução:** Padronizar para `'cancelada'` conforme schema real.
+
+```sql
+-- INCORRETO
+AND cp.status != 'cancelado'
+
+-- CORRETO
+AND cp.status != 'cancelada'
+```
+
+**Arquivos afetados:**
+- Triggers de auto-remoção
+- RPCs de notificações
+- Edge Function de varredura
+
+### Lacuna 18: Exception Handling nas RPCs
+
+**Problema:** As RPCs não possuem `EXCEPTION` handling para dados corrompidos.
+
+**Solução:** Adicionar bloco de tratamento de exceções.
+
+```sql
+CREATE OR REPLACE FUNCTION get_teacher_notifications(
+  p_teacher_id UUID,
+  p_status TEXT DEFAULT 'inbox',
+  p_limit INT DEFAULT 20,
+  p_offset INT DEFAULT 0
+)
+RETURNS SETOF teacher_notification_view
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT /* ... query existente ... */;
+  
+EXCEPTION
+  WHEN others THEN
+    -- Log do erro (opcional)
+    RAISE WARNING 'Erro em get_teacher_notifications: %', SQLERRM;
+    -- Retorna conjunto vazio em caso de erro
+    RETURN;
+END;
+$$;
+```
+
+### Lacuna 19: Componente InboxSkeleton
+
+**Problema:** Não há componente de skeleton loading dedicado para o Inbox.
+
+**Solução:** Criar `InboxSkeleton.tsx` para loading state.
+
+```tsx
+// src/components/Inbox/InboxSkeleton.tsx
+import { Skeleton } from "@/components/ui/skeleton";
+
+export function InboxSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="p-4 border rounded-lg">
+          <div className="flex items-start gap-3">
+            <Skeleton className="h-10 w-10 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-3 w-1/4" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-8 w-16" />
+              <Skeleton className="h-8 w-16" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**Atualizar estrutura de arquivos:**
+
+```
+src/components/Inbox/
+├── InboxTabs.tsx
+├── InboxFilters.tsx
+├── NotificationList.tsx
+├── NotificationItem.tsx
+├── InboxEmptyState.tsx
+└── InboxSkeleton.tsx     # NOVO
+```
+
+### Lacuna 20: Deep-Linking não implementado em Agenda/Faturas
+
+**Problema:** Confirmado que `Agenda.tsx` e `Faturas.tsx` não utilizam `useSearchParams`.
+
+**Solução:** Implementar lógica de processamento de query params.
+
+```tsx
+// Em Agenda.tsx
+import { useSearchParams } from 'react-router-dom';
+import { useEffect } from 'react';
+
+export default function Agenda() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  useEffect(() => {
+    const date = searchParams.get('date');
+    const classId = searchParams.get('classId');
+    const action = searchParams.get('action');
+    
+    if (date) {
+      // Navegar para a data especificada
+      setSelectedDate(new Date(date));
+    }
+    
+    if (classId) {
+      // Destacar ou abrir modal da aula
+      setHighlightedClassId(classId);
+      
+      if (action === 'confirm') {
+        // Abrir modal de confirmação
+        openConfirmModal(classId);
+      } else if (action === 'amnesty') {
+        // Mostrar toast guiando para o botão de anistia
+        toast({
+          title: t('inbox.amnestyGuide'),
+          description: t('inbox.amnestyGuideDescription'),
+        });
+      }
+    }
+    
+    // Limpar params após processar
+    if (date || classId || action) {
+      setSearchParams({});
+    }
+  }, [searchParams]);
+  
+  // ... resto do componente
+}
+```
+
+```tsx
+// Em Faturas.tsx (similar)
+import { useSearchParams } from 'react-router-dom';
+
+export default function Faturas() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  useEffect(() => {
+    const invoiceId = searchParams.get('invoiceId');
+    const highlight = searchParams.get('highlight');
+    
+    if (invoiceId && highlight === 'true') {
+      // Scroll para a fatura e destacar
+      const element = document.getElementById(`invoice-${invoiceId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+        
+        // Remover destaque após 3 segundos
+        setTimeout(() => {
+          element.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
+        }, 3000);
+      }
+    }
+    
+    // Limpar params
+    if (invoiceId || highlight) {
+      setSearchParams({});
+    }
+  }, [searchParams]);
+}
+```
+
+---
+
+## Checklist Atualizado com Lacunas (Revisão 2)
+
+### Fase 1: Infraestrutura (Backend) - ATUALIZADO
+
+1. ⬜ Criar tabela `teacher_notifications` com constraints (source_type: 'class' | 'invoice')
+2. ⬜ **NOVO:** Adicionar índice `idx_teacher_notifications_category`
+3. ⬜ **NOVO:** Adicionar índice `idx_teacher_notifications_cleanup`
+4. ⬜ Criar RLS policies (SELECT e UPDATE apenas)
+5. ⬜ Criar RPCs com SECURITY DEFINER (com fallback 'Aluno não identificado' para student_name)
+6. ⬜ **CRÍTICO:** Adicionar filtro `c.is_template = false` na RPC `get_teacher_notifications`
+7. ⬜ **NOVO (Lacuna 18):** Adicionar EXCEPTION handling nas RPCs
+8. ⬜ Criar triggers de auto-remoção (classes e invoices)
+9. ⬜ **NOVO:** Criar triggers de remoção de órfãos (ON DELETE)
+10. ⬜ **CRIAR PASTA E ARQUIVO:** `supabase/functions/generate-teacher-notifications/index.ts`
+11. ⬜ Criar edge function `generate-teacher-notifications` (com filtro temporal, cleanup e validação de business_profile)
+12. ⬜ **CRÍTICO:** Usar proxy de nome do plano para `class_reports` (não existe em features)
+13. ⬜ **NOVO (Lacuna 16):** Filtrar professores com `subscription_status IN ('active', 'trialing')` na varredura
+14. ⬜ **NOVO (Lacuna 17):** Usar `'cancelada'` (não `'cancelado'`) nos status de cancelamento
+15. ⬜ Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
+16. ⬜ Configurar cron job via pg_cron (06:00 UTC) - **REQUER EXECUÇÃO MANUAL NO SQL EDITOR**
+
+### Fase 2: UI Base (Frontend) - ATUALIZADO
+
+1. ⬜ Criar types em `src/types/inbox.ts` (NotificationSourceType: 'class' | 'invoice')
+2. ⬜ Criar hooks `useTeacherNotifications` (com suporte a paginação) e `useNotificationActions`
+3. ⬜ Criar componente `NotificationBell` (restrito a `isProfessor` no Layout)
+4. ⬜ Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
+5. ⬜ **NOVO (Lacuna 19):** Criar componente `InboxSkeleton.tsx`
+6. ⬜ Criar página `/inbox` (com botão "Carregar Mais")
+7. ⬜ Garantir fallback `|| 'Aluno'` na renderização de `student_name` em NotificationItem
+8. ⬜ **CRIAR:** `src/i18n/locales/pt/inbox.json` conforme seção i18n
+9. ⬜ **CRIAR:** `src/i18n/locales/en/inbox.json` conforme seção i18n
+10. ⬜ **ATUALIZAR:** `src/i18n/locales/pt/navigation.json` com chave `sidebar.inbox`
+11. ⬜ **ATUALIZAR:** `src/i18n/locales/en/navigation.json` com chave `sidebar.inbox`
+
+### Fase 3: Integração - ATUALIZADO
+
+1. ⬜ Integrar NotificationBell no Layout (verificar `isProfessor` antes de renderizar)
+2. ⬜ **CRÍTICO:** Adicionar rota `/inbox` no App.tsx (protegida para professores)
+3. ⬜ Adicionar item "Notificações" no AppSidebar.tsx (apenas para professores)
+4. ⬜ **CRÍTICO (Lacuna 20):** Implementar `useSearchParams` em `Agenda.tsx`
+5. ⬜ **CRÍTICO (Lacuna 20):** Implementar `useSearchParams` em `Faturas.tsx`
+6. ⬜ Implementar lógica de processamento de query params vindos do Inbox
+7. ⬜ **DOCUMENTADO:** `action=amnesty` mostra toast guiando usuário (AmnestyButton usa Dialog interno)
+8. ⬜ Testar fluxos completos
+
+### Fase 4: Refinamentos (Opcional)
+
+1. ⬜ Realtime updates (Supabase Realtime)
+2. ⬜ Animações de transição
+3. ⬜ ~~Skeleton loading~~ → Movido para Fase 2 (Lacuna 19)
+4. ⬜ Tratamento de erros
+5. ⬜ **FUTURO:** Refatorar AmnestyButton para context global (permitir abertura via URL)
+6. ⬜ **FUTURO:** Triggers de criação de notificações em tempo real
+
+---
+
+## Fluxo Completo Validado (Atualizado)
+
+```
+[Cron 06:00 UTC]
+    ↓
+[Edge Function: varredura + cleanup]
+    ↓ (filtra últimos 30 dias, verifica features via nome do plano, valida business_profile)
+    ↓ (filtra is_experimental = false, is_template = false)
+    ↓ (apenas professores com subscription_status IN ('active', 'trialing'))
+    ↓ (usa status 'cancelada' não 'cancelado')
+[teacher_notifications: INSERT via upsert]
+    ↓
+[NotificationBell: badge com contagem]
+    ↓ (clique)
+[/inbox: triagem Inbox/Saved/Done + paginação + InboxSkeleton]
+    ↓ (clique na notificação)
+[mark_notification_read + navigate]
+    ↓
+[/agenda ou /faturas com query params]
+    ↓ (useSearchParams processa params)
+[Resolução da pendência (confirmar, pagar, etc)]
+    ↓ (trigger AFTER UPDATE)
+[teacher_notifications: DELETE automático]
+    ↓ (se item for deletado)
+[trigger BEFORE DELETE: remove órfãos]
+```
+
+---
+
 ## Resumo da Revisão
 
 | Categoria | Quantidade | Status |
 |-----------|------------|--------|
 | Correções já aplicadas | 22 | ✅ Documentadas |
-| Lacunas críticas | 4 | ⬜ Requer implementação |
-| Lacunas importantes | 5 | ⬜ Requer implementação |
-| Lacunas menores | 6 | ⬜/⚠️ Parcialmente documentadas |
-| **TOTAL** | **37 itens** | **Pronto para implementação** |
+| Lacunas críticas (Revisão 1) | 4 | ⬜ Requer implementação |
+| Lacunas importantes (Revisão 1) | 5 | ⬜ Requer implementação |
+| Lacunas menores (Revisão 1) | 6 | ⬜/⚠️ Parcialmente documentadas |
+| **Lacunas adicionais (Revisão 2)** | **5** | ⬜ Requer implementação |
+| **TOTAL** | **42 itens** | **Pronto para implementação** |
 
-**Documento atualizado com 15 lacunas identificadas e soluções documentadas.**
+### Detalhamento das 5 Novas Lacunas
+
+| # | Lacuna | Severidade | Solução |
+|---|--------|------------|---------|
+| 16 | Validação `subscription_status` na Edge Function | Alta | Filtrar `IN ('active', 'trialing')` |
+| 17 | Inconsistência status `'cancelado'` vs `'cancelada'` | Média | Padronizar para `'cancelada'` |
+| 18 | Exception handling nas RPCs | Média | Adicionar bloco `EXCEPTION` |
+| 19 | Componente InboxSkeleton | Baixa | Criar `InboxSkeleton.tsx` |
+| 20 | Deep-linking não implementado | Alta | Implementar `useSearchParams` |
+
+**Documento atualizado com 20 lacunas identificadas e soluções documentadas.**

@@ -10,6 +10,7 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { toast } from "sonner";
 import { Search, FileText, Download, Calendar, User, Baby } from "lucide-react";
+import { useCapacitor } from "@/hooks/useCapacitor";
 
 interface MaterialCategory {
   id: string;
@@ -53,6 +54,7 @@ export default function MeusMateriais() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<string>("self");
+  const { isNativeApp } = useCapacitor();
 
   useEffect(() => {
     if (profile?.role === 'aluno') {
@@ -158,10 +160,31 @@ export default function MeusMateriais() {
 
   const handleDownload = async (material: Material) => {
     try {
+      // No app nativo, usar URL assinada para download
+      if (isNativeApp) {
+        const { data: signedUrlData, error: signedError } = await supabase.storage
+          .from('teaching-materials')
+          .createSignedUrl(material.file_path, 300);
+
+        if (signedError) throw signedError;
+        
+        if (signedUrlData?.signedUrl) {
+          const { Browser } = await import('@capacitor/browser');
+          await Browser.open({ 
+            url: signedUrlData.signedUrl,
+            presentationStyle: 'popover'
+          });
+          toast.success("Abrindo download...");
+          return;
+        }
+      }
+
+      // Fallback: download tradicional (web)
       const { data, error } = await supabase.storage
         .from('teaching-materials')
         .download(material.file_path);
       if (error) throw error;
+      
       const url = URL.createObjectURL(data);
       const link = document.createElement('a');
       link.href = url;

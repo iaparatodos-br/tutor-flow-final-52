@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
+import { openExternalUrl, onBrowserClosed } from '@/utils/browser';
 
 interface Invoice {
   id: string;
@@ -110,19 +111,31 @@ export default function Faturas() {
     enabled: !!selectedTeacherId && !!user?.id,
   });
 
-  const handlePayNow = (invoice: Invoice) => {
+  const handlePayNow = async (invoice: Invoice) => {
+    // Configurar callback para quando browser fechar (atualizar dados)
+    await onBrowserClosed(() => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
+    });
+
     // Se tem método de pagamento definido, abrir URL correspondente
     if (invoice.payment_method === 'boleto' && invoice.boleto_url) {
-      window.open(invoice.boleto_url, '_blank');
+      await openExternalUrl(invoice.boleto_url);
     } else if (invoice.stripe_hosted_invoice_url) {
-      window.open(invoice.stripe_hosted_invoice_url, '_blank');
+      await openExternalUrl(invoice.stripe_hosted_invoice_url);
     }
   };
 
-  const handleChoosePaymentMethod = (invoice: Invoice) => {
+  const handleChoosePaymentMethod = async (invoice: Invoice) => {
+    // Configurar callback para quando browser fechar
+    await onBrowserClosed(() => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
+    });
+
     // Abrir modal ou página de escolha de método
     if (invoice.stripe_hosted_invoice_url) {
-      window.open(invoice.stripe_hosted_invoice_url, '_blank');
+      await openExternalUrl(invoice.stripe_hosted_invoice_url);
     }
   };
 

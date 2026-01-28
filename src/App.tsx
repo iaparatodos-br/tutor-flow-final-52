@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
 import { PaymentFailureGuard } from "@/components/PaymentFailureGuard";
 import { PendingBoletoGuard } from "@/components/PendingBoletoGuard";
+import { useStatusBar } from "@/hooks/useStatusBar";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
@@ -46,6 +47,9 @@ const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
   const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
+  
+  // Sincronizar status bar com tema (apenas no app nativo)
+  useStatusBar();
   
   // Aguardar o carregamento completo do auth e profile
   if (loading) {

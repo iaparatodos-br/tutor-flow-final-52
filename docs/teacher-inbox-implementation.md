@@ -2995,6 +2995,147 @@ export default function Faturas() {
 
 ---
 
+## Lacunas Adicionais Identificadas (Revisão 3)
+
+### Lacuna 21: Coluna `class_reports` ausente em `subscription_plans.features`
+
+**Problema:** O campo `features` da tabela `subscription_plans` não possui a chave `class_reports`, impossibilitando verificação direta via feature flag.
+
+**Status:** Verificação via query no banco confirmou ausência da coluna.
+
+**Solução já documentada:** Usar proxy baseado no nome do plano ('professional', 'premium') conforme Lacuna 12.
+
+```typescript
+// Edge Function - verificação via proxy
+const hasReportsFeature = planSlug === 'professional' || planSlug === 'premium';
+```
+
+### Lacuna 22: Tabela `teacher_notifications` não existe
+
+**Problema:** A tabela principal do sistema de notificações ainda não foi criada no banco de dados.
+
+**Verificação:**
+```sql
+SELECT * FROM information_schema.tables 
+WHERE table_name = 'teacher_notifications';
+-- Resultado: 0 linhas
+```
+
+**Itens pendentes:**
+- Criar tabela conforme schema documentado
+- Criar todos os 5 índices de performance
+- Criar RLS policies (SELECT e UPDATE)
+- Criar RPCs (get_teacher_notification_counts, get_teacher_notifications, etc.)
+- Criar triggers de auto-remoção
+
+### Lacuna 23: Edge Function `generate-teacher-notifications` não existe
+
+**Problema:** A função de varredura diária não foi criada no sistema de arquivos.
+
+**Verificação:**
+```
+supabase/functions/generate-teacher-notifications/ → NÃO EXISTE
+```
+
+**Itens pendentes:**
+- Criar diretório `supabase/functions/generate-teacher-notifications/`
+- Criar arquivo `index.ts` com lógica de varredura
+- Implementar todas as validações documentadas (is_template, is_experimental, etc.)
+
+### Lacuna 24: Configuração ausente em `supabase/config.toml`
+
+**Problema:** A Edge Function não está registrada no arquivo de configuração.
+
+**Verificação:** Arquivo `supabase/config.toml` não contém seção `[functions.generate-teacher-notifications]`.
+
+**Solução:**
+```toml
+# Adicionar ao supabase/config.toml
+[functions.generate-teacher-notifications]
+verify_jwt = false
+```
+
+### Lacuna 25: Rota `/inbox` não registrada em App.tsx
+
+**Problema:** A rota da página de Inbox não existe no roteador da aplicação.
+
+**Verificação:** `App.tsx` não contém referência a `/inbox` ou componente `Inbox`.
+
+**Solução:**
+```tsx
+// Em App.tsx, adicionar:
+import Inbox from './pages/Inbox';
+
+// Na definição de rotas:
+<Route path="/inbox" element={<Inbox />} />
+```
+
+### Lacuna 26: Diretório `src/components/Inbox/` vazio/inexistente
+
+**Problema:** Nenhum dos componentes UI planejados foi criado.
+
+**Verificação:**
+```
+src/components/Inbox/ → NÃO EXISTE
+src/components/NotificationBell.tsx → NÃO EXISTE
+src/pages/Inbox.tsx → NÃO EXISTE
+src/hooks/useTeacherNotifications.ts → NÃO EXISTE
+src/types/inbox.ts → NÃO EXISTE
+src/i18n/locales/pt/inbox.json → NÃO EXISTE
+src/i18n/locales/en/inbox.json → NÃO EXISTE
+```
+
+**Componentes pendentes:**
+- `NotificationBell.tsx`
+- `Inbox/InboxTabs.tsx`
+- `Inbox/InboxFilters.tsx`
+- `Inbox/NotificationList.tsx`
+- `Inbox/NotificationItem.tsx`
+- `Inbox/InboxEmptyState.tsx`
+- `Inbox/InboxSkeleton.tsx`
+
+---
+
+## Status Atual da Implementação
+
+### Progresso Geral
+
+| Fase | Status | Progresso |
+|------|--------|-----------|
+| Fase 1: Infraestrutura (Backend) | ❌ Não iniciada | 0% |
+| Fase 2: UI Base (Frontend) | ❌ Não iniciada | 0% |
+| Fase 3: Integração | ❌ Não iniciada | 0% |
+| Fase 4: Refinamentos | ❌ Não iniciada | 0% |
+| **TOTAL** | **❌ Não iniciada** | **0%** |
+
+### Itens Criados vs Pendentes
+
+| Componente | Status |
+|------------|--------|
+| Tabela `teacher_notifications` | ❌ Não criada |
+| RLS Policies | ❌ Não criadas |
+| RPCs PostgreSQL | ❌ Não criadas |
+| Triggers de auto-remoção | ❌ Não criados |
+| Edge Function `generate-teacher-notifications` | ❌ Não criada |
+| Configuração cron job (pg_cron) | ❌ Não configurado |
+| `src/types/inbox.ts` | ❌ Não criado |
+| `src/hooks/useTeacherNotifications.ts` | ❌ Não criado |
+| `src/hooks/useNotificationActions.ts` | ❌ Não criado |
+| `src/components/NotificationBell.tsx` | ❌ Não criado |
+| `src/components/Inbox/*` (7 componentes) | ❌ Não criados |
+| `src/pages/Inbox.tsx` | ❌ Não criada |
+| Rota `/inbox` em `App.tsx` | ❌ Não adicionada |
+| `src/i18n/locales/*/inbox.json` | ❌ Não criados |
+| Deep-linking em `Agenda.tsx` | ❌ Não implementado |
+| Deep-linking em `Faturas.tsx` | ❌ Não implementado |
+
+### Bloqueadores
+
+1. **Migração de banco de dados necessária** - Tabela e triggers precisam ser criados via migration
+2. **Documentação completa** - Este documento está 100% pronto para guiar a implementação
+
+---
+
 ## Resumo da Revisão
 
 | Categoria | Quantidade | Status |
@@ -3003,10 +3144,11 @@ export default function Faturas() {
 | Lacunas críticas (Revisão 1) | 4 | ⬜ Requer implementação |
 | Lacunas importantes (Revisão 1) | 5 | ⬜ Requer implementação |
 | Lacunas menores (Revisão 1) | 6 | ⬜/⚠️ Parcialmente documentadas |
-| **Lacunas adicionais (Revisão 2)** | **5** | ⬜ Requer implementação |
-| **TOTAL** | **42 itens** | **Pronto para implementação** |
+| Lacunas adicionais (Revisão 2) | 5 | ⬜ Requer implementação |
+| **Lacunas adicionais (Revisão 3)** | **6** | ⬜ Requer implementação |
+| **TOTAL** | **48 itens** | **Pronto para implementação** |
 
-### Detalhamento das 5 Novas Lacunas
+### Detalhamento das Lacunas (Revisões 2 e 3)
 
 | # | Lacuna | Severidade | Solução |
 |---|--------|------------|---------|
@@ -3015,5 +3157,49 @@ export default function Faturas() {
 | 18 | Exception handling nas RPCs | Média | Adicionar bloco `EXCEPTION` |
 | 19 | Componente InboxSkeleton | Baixa | Criar `InboxSkeleton.tsx` |
 | 20 | Deep-linking não implementado | Alta | Implementar `useSearchParams` |
+| **21** | **Coluna `class_reports` ausente em features** | **Média** | **Usar proxy via nome do plano** |
+| **22** | **Tabela `teacher_notifications` não existe** | **Crítica** | **Criar via migration** |
+| **23** | **Edge Function não existe no filesystem** | **Crítica** | **Criar `index.ts`** |
+| **24** | **Config ausente em `config.toml`** | **Alta** | **Adicionar seção da função** |
+| **25** | **Rota `/inbox` não registrada** | **Alta** | **Adicionar em `App.tsx`** |
+| **26** | **Diretório `Inbox/` e componentes ausentes** | **Crítica** | **Criar todos os arquivos** |
 
-**Documento atualizado com 20 lacunas identificadas e soluções documentadas.**
+---
+
+## Próximos Passos Recomendados
+
+### Ordem de Implementação
+
+1. **Fase 1A - Banco de Dados (Migration)**
+   - Criar tabela `teacher_notifications`
+   - Criar índices de performance
+   - Criar RLS policies
+   - Criar RPCs
+   - Criar triggers
+
+2. **Fase 1B - Edge Function**
+   - Criar diretório e arquivo `index.ts`
+   - Adicionar configuração em `config.toml`
+   - Testar varredura localmente
+
+3. **Fase 2 - UI Frontend**
+   - Criar types em `src/types/inbox.ts`
+   - Criar hooks
+   - Criar componentes
+   - Criar página
+
+4. **Fase 3 - Integração**
+   - Adicionar rota em `App.tsx`
+   - Integrar `NotificationBell` no Layout
+   - Implementar deep-linking em `Agenda.tsx` e `Faturas.tsx`
+
+5. **Fase 4 - Testes e Refinamentos**
+   - Testar fluxos completos
+   - Adicionar realtime (opcional)
+   - Animações e polish
+
+---
+
+**Documento atualizado com 26 lacunas identificadas (Revisões 1, 2 e 3), status atual de implementação (0%) e próximos passos recomendados.**
+
+**Última atualização:** Revisão 3 - Validação completa de implementação

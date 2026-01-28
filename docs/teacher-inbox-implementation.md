@@ -3094,6 +3094,59 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
 - `Inbox/InboxEmptyState.tsx`
 - `Inbox/InboxSkeleton.tsx`
 
+### Lacuna 27: Integração do NotificationBell no Header (Layout.tsx)
+
+**Problema:** O componente `Layout.tsx` atualmente renderiza apenas `TeacherContextSwitcher` para alunos. Não há código para renderizar `NotificationBell` para professores.
+
+**Código atual (Layout.tsx linhas 69-72):**
+```tsx
+<div className="ml-auto flex items-center gap-4">
+  {/* Teacher context switcher for students */}
+  {isAluno && <TeacherContextSwitcher />}
+</div>
+```
+
+**Solução:**
+```tsx
+import { NotificationBell } from '@/components/NotificationBell';
+
+// Dentro do header (linha ~69):
+<div className="ml-auto flex items-center gap-4">
+  {isAluno && <TeacherContextSwitcher />}
+  {isProfessor && <NotificationBell />}  {/* NOVO */}
+</div>
+```
+
+**Nota:** O `isProfessor` já está disponível via `useAuth()` no componente Layout.
+
+### Lacuna 28: Chave `sidebar.inbox` ausente em navigation.json
+
+**Problema:** Os arquivos de tradução `navigation.json` (PT e EN) não contêm a chave `inbox` para o menu lateral.
+
+**Verificação:**
+- `src/i18n/locales/pt/navigation.json` → Chave `sidebar.inbox` ausente
+- `src/i18n/locales/en/navigation.json` → Chave `sidebar.inbox` ausente
+
+**Solução:**
+
+```json
+// src/i18n/locales/pt/navigation.json
+{
+  "sidebar": {
+    // ... chaves existentes ...
+    "inbox": "Notificações"
+  }
+}
+
+// src/i18n/locales/en/navigation.json
+{
+  "sidebar": {
+    // ... chaves existentes ...
+    "inbox": "Notifications"
+  }
+}
+```
+
 ---
 
 ## Status Atual da Implementação
@@ -3126,6 +3179,8 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
 | `src/pages/Inbox.tsx` | ❌ Não criada |
 | Rota `/inbox` em `App.tsx` | ❌ Não adicionada |
 | `src/i18n/locales/*/inbox.json` | ❌ Não criados |
+| Chave `sidebar.inbox` em `navigation.json` | ❌ Não adicionada |
+| Integração `NotificationBell` no `Layout.tsx` | ❌ Não implementada |
 | Deep-linking em `Agenda.tsx` | ❌ Não implementado |
 | Deep-linking em `Faturas.tsx` | ❌ Não implementado |
 
@@ -3145,10 +3200,11 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
 | Lacunas importantes (Revisão 1) | 5 | ⬜ Requer implementação |
 | Lacunas menores (Revisão 1) | 6 | ⬜/⚠️ Parcialmente documentadas |
 | Lacunas adicionais (Revisão 2) | 5 | ⬜ Requer implementação |
-| **Lacunas adicionais (Revisão 3)** | **6** | ⬜ Requer implementação |
-| **TOTAL** | **48 itens** | **Pronto para implementação** |
+| Lacunas adicionais (Revisão 3) | 6 | ⬜ Requer implementação |
+| **Lacunas adicionais (Revisão 4)** | **2** | ⬜ Requer implementação |
+| **TOTAL** | **50 itens** | **Pronto para implementação** |
 
-### Detalhamento das Lacunas (Revisões 2 e 3)
+### Detalhamento das Lacunas (Revisões 2, 3 e 4)
 
 | # | Lacuna | Severidade | Solução |
 |---|--------|------------|---------|
@@ -3157,12 +3213,14 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
 | 18 | Exception handling nas RPCs | Média | Adicionar bloco `EXCEPTION` |
 | 19 | Componente InboxSkeleton | Baixa | Criar `InboxSkeleton.tsx` |
 | 20 | Deep-linking não implementado | Alta | Implementar `useSearchParams` |
-| **21** | **Coluna `class_reports` ausente em features** | **Média** | **Usar proxy via nome do plano** |
-| **22** | **Tabela `teacher_notifications` não existe** | **Crítica** | **Criar via migration** |
-| **23** | **Edge Function não existe no filesystem** | **Crítica** | **Criar `index.ts`** |
-| **24** | **Config ausente em `config.toml`** | **Alta** | **Adicionar seção da função** |
-| **25** | **Rota `/inbox` não registrada** | **Alta** | **Adicionar em `App.tsx`** |
-| **26** | **Diretório `Inbox/` e componentes ausentes** | **Crítica** | **Criar todos os arquivos** |
+| 21 | Coluna `class_reports` ausente em features | Média | Usar proxy via nome do plano |
+| 22 | Tabela `teacher_notifications` não existe | Crítica | Criar via migration |
+| 23 | Edge Function não existe no filesystem | Crítica | Criar `index.ts` |
+| 24 | Config ausente em `config.toml` | Alta | Adicionar seção da função |
+| 25 | Rota `/inbox` não registrada | Alta | Adicionar em `App.tsx` |
+| 26 | Diretório `Inbox/` e componentes ausentes | Crítica | Criar todos os arquivos |
+| **27** | **Integração `NotificationBell` no Layout.tsx** | **Alta** | **Renderizar para professores** |
+| **28** | **Chave `sidebar.inbox` ausente** | **Baixa** | **Adicionar em navigation.json** |
 
 ---
 
@@ -3187,10 +3245,11 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
    - Criar hooks
    - Criar componentes
    - Criar página
+   - **Adicionar chave `sidebar.inbox` em navigation.json (Lacuna 28)**
 
 4. **Fase 3 - Integração**
    - Adicionar rota em `App.tsx`
-   - Integrar `NotificationBell` no Layout
+   - **Integrar `NotificationBell` no Layout.tsx (Lacuna 27)**
    - Implementar deep-linking em `Agenda.tsx` e `Faturas.tsx`
 
 5. **Fase 4 - Testes e Refinamentos**
@@ -3200,6 +3259,6 @@ src/i18n/locales/en/inbox.json → NÃO EXISTE
 
 ---
 
-**Documento atualizado com 26 lacunas identificadas (Revisões 1, 2 e 3), status atual de implementação (0%) e próximos passos recomendados.**
+**Documento atualizado com 28 lacunas identificadas (Revisões 1, 2, 3 e 4), status atual de implementação (0%) e próximos passos recomendados.**
 
-**Última atualização:** Revisão 3 - Validação completa de implementação
+**Última atualização:** Revisão 4 - Identificadas lacunas de integração (Layout.tsx) e i18n (navigation.json)

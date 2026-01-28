@@ -2418,13 +2418,270 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 21. ✅ **business_profile_id validação** - Edge Function valida BP antes de criar alertas de faturas
 22. ✅ **Frontend fallback student_name** - Componente NotificationItem usa `|| 'Aluno'` como fallback
 
-### Fluxo Completo Validado:
+---
+
+## Lacunas Identificadas na Revisão (15 itens)
+
+### CRÍTICO: Issues que impedem funcionamento correto
+
+| # | Lacuna | Impacto | Solução | Status |
+|---|--------|---------|---------|--------|
+| 1 | **Feature `class_reports` não existe em `subscription_plans`** | Edge Function falhará ao verificar features do professor para `pending_reports` | Adicionar coluna `class_reports: boolean` na tabela `subscription_plans.features` OU usar proxy via plano name ('professional'/'premium') | ⬜ PENDENTE |
+| 2 | **Filtro `is_template = false` ausente na RPC** | Aulas template (recorrentes) podem aparecer no inbox como pendentes | Adicionar `AND c.is_template = false` na query `get_teacher_notifications` ao buscar classes | ⬜ PENDENTE |
+| 3 | **Tabela `teacher_notifications` não existe** | Toda a funcionalidade depende desta tabela | Executar migration para criar tabela com RLS | ⬜ PENDENTE |
+| 4 | **Edge Function `generate-teacher-notifications` não existe** | Notificações não serão geradas automaticamente | Criar pasta e arquivo conforme documentado | ⬜ PENDENTE |
+
+### IMPORTANTE: Issues que afetam UX/completude
+
+| # | Lacuna | Impacto | Solução | Status |
+|---|--------|---------|---------|--------|
+| 5 | **`Agenda.tsx` não usa `useSearchParams`** | Deep-linking do inbox não funcionará (scroll, highlight, action) | Implementar lógica de processamento de query params conforme seção 2082-2159 | ⬜ PENDENTE |
+| 6 | **`Faturas.tsx` não usa `useSearchParams`** | Highlight de fatura vinda do inbox não funcionará | Implementar lógica de highlight conforme seção 2165-2214 | ⬜ PENDENTE |
+| 7 | **Rota `/inbox` não existe em `App.tsx`** | Página não será acessível | Adicionar `<Route path="/inbox" element={<Inbox />} />` | ⬜ PENDENTE |
+| 8 | **`NotificationBell` não existe** | Ícone de sino não aparecerá no header | Criar componente conforme seção 1324-1361 | ⬜ PENDENTE |
+| 9 | **Índice para `category` ausente** | Queries filtradas por categoria serão lentas | Adicionar `CREATE INDEX idx_teacher_notifications_category ON teacher_notifications(category);` | ⬜ PENDENTE |
+
+### MENOR: Issues de edge cases e manutenção
+
+| # | Lacuna | Impacto | Solução | Status |
+|---|--------|---------|---------|--------|
+| 10 | **Notificações órfãs (item excluído)** | Se uma aula/fatura for deletada, a notificação permanece | Adicionar lógica de cleanup na Edge Function ou trigger ON DELETE CASCADE | ⬜ PENDENTE |
+| 11 | **Professores inativos recebem varredura** | Edge Function processa professores com `subscription_status != 'active'` | Adicionar filtro `subscription_status = 'active'` na varredura de faturas/relatórios | ⬜ PENDENTE |
+| 12 | **Duplicação em aulas em grupo (`pending_reports`)** | Uma aula em grupo pode gerar múltiplas notificações (uma por participante) | A lógica já usa DISTINCT na query, mas verificar constraint UNIQUE funciona | ⚠️ VERIFICAR |
+| 13 | **`AmnestyButton` não suporta abertura via URL** | `action=amnesty` não abre modal automaticamente | Refatorar para usar context global OU mostrar toast guiando usuário | ⚠️ DOCUMENTADO |
+| 14 | **Traduções `inbox.json` não existem** | i18n falhará ao carregar página | Criar arquivos `src/i18n/locales/pt/inbox.json` e `en/inbox.json` | ⬜ PENDENTE |
+| 15 | **cron job `pg_cron` não está ativo** | Edge Function não será executada diariamente | Executar SQL de configuração do pg_cron no Supabase SQL Editor | ⬜ MANUAL |
+
+---
+
+## Correções Específicas para Lacunas Críticas
+
+### 1. Feature `class_reports` - Solução Alternativa
+
+**Problema:** A tabela `subscription_plans` não possui `features.class_reports`.
+
+**Solução A (Recomendada):** Usar o nome do plano como proxy:
+
+```typescript
+// Na Edge Function generate-teacher-notifications:
+// Substituir a query que busca teachersWithClassReports por:
+
+const { data: teachersWithReports, error: teacherFeatError } = await supabase
+  .from("profiles")
+  .select(`
+    id,
+    current_plan_id,
+    subscription_status,
+    subscription_plans!profiles_current_plan_id_fkey(name)
+  `)
+  .eq("role", "professor")
+  .not("current_plan_id", "is", null)
+  .eq("subscription_status", "active");
+
+// Filtrar por nome do plano (professional ou premium têm relatórios)
+const teachersWithClassReports = new Set<string>();
+if (teachersWithReports) {
+  for (const teacher of teachersWithReports) {
+    const plan = teacher.subscription_plans as any;
+    const planName = plan?.name?.toLowerCase() || '';
+    // Planos professional e premium incluem relatórios
+    if (planName.includes('professional') || planName.includes('premium')) {
+      teachersWithClassReports.add(teacher.id);
+    }
+  }
+}
+```
+
+**Solução B (Ideal, requer migration):** Adicionar campo `class_reports` em subscription_plans:
+
+```sql
+-- Adicionar campo features.class_reports (se a coluna features for JSONB)
+UPDATE subscription_plans
+SET features = features || '{"class_reports": true}'::jsonb
+WHERE name ILIKE '%professional%' OR name ILIKE '%premium%';
+
+UPDATE subscription_plans
+SET features = features || '{"class_reports": false}'::jsonb
+WHERE name ILIKE '%free%' OR name ILIKE '%basic%';
+```
+
+### 2. Filtro `is_template = false` na RPC
+
+**Adicionar à RPC `get_teacher_notifications`:**
+
+Na CTE `enriched_notifications`, dentro do CASE `WHEN 'class' THEN`, antes do `LIMIT 1`:
+
+```sql
+-- ANTES (linha 569-571):
+WHERE c.id = tn.source_id
+  AND c.is_experimental = false  -- IMPORTANTE: Filtrar aulas experimentais
+LIMIT 1
+
+-- DEPOIS:
+WHERE c.id = tn.source_id
+  AND c.is_experimental = false  -- IMPORTANTE: Filtrar aulas experimentais
+  AND c.is_template = false      -- CRÍTICO: Excluir templates de aulas recorrentes
+LIMIT 1
+```
+
+### 3. Índice para `category`
+
+**Adicionar após criar a tabela:**
+
+```sql
+-- Índice para queries filtradas por categoria
+CREATE INDEX idx_teacher_notifications_category 
+ON teacher_notifications(category);
+
+-- Índice composto para varredura de limpeza
+CREATE INDEX idx_teacher_notifications_cleanup
+ON teacher_notifications(status, status_changed_at)
+WHERE status = 'done';
+```
+
+### 4. Tratamento de Registros Órfãos
+
+**Opção A - Cleanup na Edge Function:**
+
+Adicionar no início da Edge Function, após o cleanup de Done antigos:
+
+```typescript
+// Cleanup de notificações órfãs (aulas deletadas)
+const { data: orphanClassNotifs } = await supabase
+  .from("teacher_notifications")
+  .select("id, source_id")
+  .eq("source_type", "class");
+
+if (orphanClassNotifs) {
+  for (const notif of orphanClassNotifs) {
+    const { data: classExists } = await supabase
+      .from("classes")
+      .select("id")
+      .eq("id", notif.source_id)
+      .single();
+    
+    if (!classExists) {
+      await supabase
+        .from("teacher_notifications")
+        .delete()
+        .eq("id", notif.id);
+      cleaned++;
+    }
+  }
+}
+
+// Repetir para invoices...
+```
+
+**Opção B - Trigger ON DELETE (mais eficiente):**
+
+```sql
+-- Trigger para remover notificações quando aula é deletada
+CREATE OR REPLACE FUNCTION remove_notifications_on_class_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM teacher_notifications
+  WHERE source_type = 'class'
+    AND source_id = OLD.id;
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER trg_class_delete_notifications
+BEFORE DELETE ON classes
+FOR EACH ROW
+EXECUTE FUNCTION remove_notifications_on_class_delete();
+
+-- Trigger para faturas
+CREATE OR REPLACE FUNCTION remove_notifications_on_invoice_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  DELETE FROM teacher_notifications
+  WHERE source_type = 'invoice'
+    AND source_id = OLD.id;
+  RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER trg_invoice_delete_notifications
+BEFORE DELETE ON invoices
+FOR EACH ROW
+EXECUTE FUNCTION remove_notifications_on_invoice_delete();
+```
+
+---
+
+## Checklist Atualizado com Lacunas
+
+### Fase 1: Infraestrutura (Backend) - ATUALIZADO
+
+1. ⬜ Criar tabela `teacher_notifications` com constraints (source_type: 'class' | 'invoice')
+2. ⬜ **NOVO:** Adicionar índice `idx_teacher_notifications_category`
+3. ⬜ **NOVO:** Adicionar índice `idx_teacher_notifications_cleanup`
+4. ⬜ Criar RLS policies (SELECT e UPDATE apenas)
+5. ⬜ Criar RPCs com SECURITY DEFINER (com fallback 'Aluno não identificado' para student_name)
+6. ⬜ **CRÍTICO:** Adicionar filtro `c.is_template = false` na RPC `get_teacher_notifications`
+7. ⬜ Criar triggers de auto-remoção (classes e invoices)
+8. ⬜ **NOVO:** Criar triggers de remoção de órfãos (ON DELETE)
+9. ⬜ **CRIAR PASTA E ARQUIVO:** `supabase/functions/generate-teacher-notifications/index.ts`
+10. ⬜ Criar edge function `generate-teacher-notifications` (com filtro temporal, cleanup e validação de business_profile)
+11. ⬜ **CRÍTICO:** Usar proxy de nome do plano para `class_reports` (não existe em features)
+12. ⬜ **NOVO:** Filtrar professores com `subscription_status = 'active'` na varredura
+13. ⬜ Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
+14. ⬜ Configurar cron job via pg_cron (06:00 UTC) - **REQUER EXECUÇÃO MANUAL NO SQL EDITOR**
+
+### Fase 2: UI Base (Frontend) - ATUALIZADO
+
+1. ⬜ Criar types em `src/types/inbox.ts` (NotificationSourceType: 'class' | 'invoice')
+2. ⬜ Criar hooks `useTeacherNotifications` (com suporte a paginação) e `useNotificationActions`
+3. ⬜ Criar componente `NotificationBell` (restrito a `isProfessor` no Layout)
+4. ⬜ Criar componentes Inbox (Tabs, Filters, Item, EmptyState)
+5. ⬜ Criar página `/inbox` (com botão "Carregar Mais")
+6. ⬜ Garantir fallback `|| 'Aluno'` na renderização de `student_name` em NotificationItem
+7. ⬜ **CRIAR:** `src/i18n/locales/pt/inbox.json` conforme seção i18n
+8. ⬜ **CRIAR:** `src/i18n/locales/en/inbox.json` conforme seção i18n
+9. ⬜ **ATUALIZAR:** `src/i18n/locales/pt/navigation.json` com chave `sidebar.inbox`
+10. ⬜ **ATUALIZAR:** `src/i18n/locales/en/navigation.json` com chave `sidebar.inbox`
+
+### Fase 3: Integração - ATUALIZADO
+
+1. ⬜ Integrar NotificationBell no Layout (verificar `isProfessor` antes de renderizar)
+2. ⬜ **CRÍTICO:** Adicionar rota `/inbox` no App.tsx (protegida para professores)
+3. ⬜ Adicionar item "Notificações" no AppSidebar.tsx (apenas para professores)
+4. ⬜ **NOVA IMPLEMENTAÇÃO CRÍTICA:** Adicionar `useSearchParams` em `Agenda.tsx`
+5. ⬜ **NOVA IMPLEMENTAÇÃO CRÍTICA:** Adicionar `useSearchParams` em `Faturas.tsx`
+6. ⬜ Implementar lógica de processamento de query params vindos do Inbox
+7. ⬜ **DOCUMENTADO:** `action=amnesty` mostra toast guiando usuário (AmnestyButton usa Dialog interno)
+8. ⬜ Testar fluxos completos
+
+### Fase 4: Refinamentos (Opcional)
+
+1. ⬜ Realtime updates (Supabase Realtime)
+2. ⬜ Animações de transição
+3. ⬜ Skeleton loading
+4. ⬜ Tratamento de erros
+5. ⬜ **FUTURO:** Refatorar AmnestyButton para context global (permitir abertura via URL)
+6. ⬜ **FUTURO:** Triggers de criação de notificações em tempo real
+
+---
+
+## Fluxo Completo Validado
 
 ```
 [Cron 06:00 UTC]
     ↓
 [Edge Function: varredura + cleanup]
-    ↓ (filtra últimos 30 dias, verifica features, valida business_profile)
+    ↓ (filtra últimos 30 dias, verifica features via nome do plano, valida business_profile)
+    ↓ (filtra is_experimental = false, is_template = false)
+    ↓ (apenas professores com subscription_status = 'active')
 [teacher_notifications: INSERT via upsert]
     ↓
 [NotificationBell: badge com contagem]
@@ -2434,16 +2691,33 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 [mark_notification_read + navigate]
     ↓
 [/agenda ou /faturas com query params]
-    ↓
+    ↓ (useSearchParams processa params)
 [Resolução da pendência (confirmar, pagar, etc)]
     ↓ (trigger AFTER UPDATE)
 [teacher_notifications: DELETE automático]
+    ↓ (se item for deletado)
+[trigger BEFORE DELETE: remove órfãos]
 ```
 
-### Opções Documentadas para Fases Futuras:
+---
+
+## Opções Documentadas para Fases Futuras
 
 - **Fase 4 (Opcional)**: Triggers de criação em tempo real (trade-offs documentados)
 - **Paginação**: Hook com offset + "Carregar Mais" pattern implementado
 - **Infinite Scroll**: Pode substituir "Carregar Mais" futuramente
+- **AmnestyButton Refactor**: Migrar para context global para suportar abertura via URL
 
-**Documento pronto para implementação. Total de 22 correções validadas.**
+---
+
+## Resumo da Revisão
+
+| Categoria | Quantidade | Status |
+|-----------|------------|--------|
+| Correções já aplicadas | 22 | ✅ Documentadas |
+| Lacunas críticas | 4 | ⬜ Requer implementação |
+| Lacunas importantes | 5 | ⬜ Requer implementação |
+| Lacunas menores | 6 | ⬜/⚠️ Parcialmente documentadas |
+| **TOTAL** | **37 itens** | **Pronto para implementação** |
+
+**Documento atualizado com 15 lacunas identificadas e soluções documentadas.**

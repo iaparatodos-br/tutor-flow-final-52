@@ -820,7 +820,11 @@ serve(async (req) => {
 
     // ===========================================
     // 3. Faturas atrasadas
-    // NOTA: Status 'pendente' + due_date < now = overdue (calculado)
+    // LACUNA 29: Status 'overdue' é um valor FÍSICO no banco (12 faturas encontradas)
+    // A varredura deve buscar AMBOS os cenários:
+    // 1. Faturas com status = 'overdue' (atualização automática por cron existente)
+    // 2. Faturas com status = 'pendente' E due_date < now (fallback para legado)
+    // NOTA: Também existe inconsistência de nomenclatura: 'paga' vs 'paid'
     // FILTRO: Apenas últimos 30 dias
     // CORREÇÃO: Apenas faturas de professores com business_profile configurado
     // ===========================================
@@ -837,35 +841,56 @@ serve(async (req) => {
     
     const teacherIdsWithBP = new Set(teachersWithBP?.map(bp => bp.user_id) || []);
     
-    // Buscar faturas atrasadas COM validação de business_profile
-    const { data: overdueInvoices, error: overdueError } = await supabase
+    // LACUNA 29: Query 1 - Faturas com status físico 'overdue'
+    const { data: physicalOverdue, error: physicalError } = await supabase
+      .from("invoices")
+      .select("id, teacher_id, business_profile_id")
+      .eq("status", "overdue")
+      .gte("due_date", thirtyDaysAgo)
+      .not("business_profile_id", "is", null);
+
+    if (physicalError) {
+      errors.push(`physicalOverdue: ${physicalError.message}`);
+    }
+
+    // LACUNA 29: Query 2 - Faturas com status 'pendente' mas vencidas (fallback legado)
+    const { data: calculatedOverdue, error: calculatedError } = await supabase
       .from("invoices")
       .select("id, teacher_id, business_profile_id")
       .eq("status", "pendente")
       .lt("due_date", now)
       .gte("due_date", thirtyDaysAgo)
-      .not("business_profile_id", "is", null); // Apenas faturas com business_profile
+      .not("business_profile_id", "is", null);
 
-    if (overdueError) {
-      errors.push(`overdueInvoices: ${overdueError.message}`);
-    } else {
-      for (const inv of overdueInvoices || []) {
-        // CORREÇÃO: Verificar se professor tem business_profile ativo
-        if (!teacherIdsWithBP.has(inv.teacher_id)) {
-          continue; // Pular faturas de professores sem BP ativo
-        }
-        
-        const { error } = await supabase
-          .from("teacher_notifications")
-          .upsert({
-            teacher_id: inv.teacher_id,
-            source_type: "invoice",
-            source_id: inv.id,
-            category: "overdue_invoices",
-          }, { onConflict: "teacher_id,source_type,source_id,category" });
-        
-        if (!error) created++;
+    if (calculatedError) {
+      errors.push(`calculatedOverdue: ${calculatedError.message}`);
+    }
+
+    // Combinar resultados (deduplicar por ID)
+    const overdueInvoices = [
+      ...(physicalOverdue || []),
+      ...(calculatedOverdue || []).filter(
+        calc => !(physicalOverdue || []).some(phys => phys.id === calc.id)
+      )
+    ];
+
+    // Processar faturas combinadas
+    for (const inv of overdueInvoices) {
+      // CORREÇÃO: Verificar se professor tem business_profile ativo
+      if (!teacherIdsWithBP.has(inv.teacher_id)) {
+        continue; // Pular faturas de professores sem BP ativo
       }
+      
+      const { error } = await supabase
+        .from("teacher_notifications")
+        .upsert({
+          teacher_id: inv.teacher_id,
+          source_type: "invoice",
+          source_id: inv.id,
+          category: "overdue_invoices",
+        }, { onConflict: "teacher_id,source_type,source_id,category" });
+      
+      if (!error) created++;
     }
 
     // ===========================================
@@ -1056,14 +1081,16 @@ FOR EACH ROW
 EXECUTE FUNCTION remove_notification_on_class_resolution();
 
 -- Remove notificação quando fatura é paga ou cancelada
--- NOTA: Status de faturas no banco são 'pendente', 'pago', 'cancelado'
--- 'overdue' NÃO é um status real - é calculado quando due_date < now()
+-- LACUNA 29: Status 'overdue' É um valor físico no banco (12 faturas encontradas)
+-- LACUNA 30: Inconsistência de nomenclatura: 'paga' vs 'paid', 'cancelado' vs 'cancelada'
+-- Trigger deve tratar transição de QUALQUER status pendente para QUALQUER status resolvido
 CREATE OR REPLACE FUNCTION remove_notification_on_invoice_paid()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Quando status muda de 'pendente' para 'pago' ou 'cancelado'
-  IF NEW.status IN ('pago', 'cancelado') 
-     AND OLD.status = 'pendente' THEN
+  -- LACUNA 29: Tratar status 'overdue' como status de origem
+  -- LACUNA 30: Tratar inconsistência paga/paid e cancelado/cancelada
+  IF NEW.status IN ('pago', 'paga', 'paid', 'cancelado', 'cancelada') 
+     AND OLD.status IN ('pendente', 'overdue') THEN
     DELETE FROM teacher_notifications 
     WHERE source_id = NEW.id 
       AND source_type = 'invoice';
@@ -3201,10 +3228,11 @@ import { NotificationBell } from '@/components/NotificationBell';
 | Lacunas menores (Revisão 1) | 6 | ⬜/⚠️ Parcialmente documentadas |
 | Lacunas adicionais (Revisão 2) | 5 | ⬜ Requer implementação |
 | Lacunas adicionais (Revisão 3) | 6 | ⬜ Requer implementação |
-| **Lacunas adicionais (Revisão 4)** | **2** | ⬜ Requer implementação |
-| **TOTAL** | **50 itens** | **Pronto para implementação** |
+| Lacunas adicionais (Revisão 4) | 2 | ⬜ Requer implementação |
+| **Lacunas adicionais (Revisão 6)** | **2** | ⬜ Requer implementação |
+| **TOTAL** | **52 itens** | **Pronto para implementação** |
 
-### Detalhamento das Lacunas (Revisões 2, 3 e 4)
+### Detalhamento das Lacunas (Revisões 2, 3, 4 e 6)
 
 | # | Lacuna | Severidade | Solução |
 |---|--------|------------|---------|
@@ -3219,8 +3247,52 @@ import { NotificationBell } from '@/components/NotificationBell';
 | 24 | Config ausente em `config.toml` | Alta | Adicionar seção da função |
 | 25 | Rota `/inbox` não registrada | Alta | Adicionar em `App.tsx` |
 | 26 | Diretório `Inbox/` e componentes ausentes | Crítica | Criar todos os arquivos |
-| **27** | **Integração `NotificationBell` no Layout.tsx** | **Alta** | **Renderizar para professores** |
-| **28** | **Chave `sidebar.inbox` ausente** | **Baixa** | **Adicionar em navigation.json** |
+| 27 | Integração `NotificationBell` no Layout.tsx | Alta | Renderizar para professores |
+| 28 | Chave `sidebar.inbox` ausente | Baixa | Adicionar em navigation.json |
+| **29** | **Status `overdue` é valor físico no banco** | **Crítica** | **Ajustar Edge Function e triggers** |
+| **30** | **Inconsistência `cancelado` vs `cancelada`** | **Alta** | **Padronizar para array com ambos** |
+
+---
+
+## Lacuna 29: Status `overdue` é Valor Físico no Banco (Não Calculado)
+
+**Problema:** O documento assumia que `overdue` era um status calculado (`pendente` + `due_date < now`). 
+Query no banco revelou que `overdue` é um valor físico armazenado (12 faturas).
+
+**Verificação:**
+
+| Status | Quantidade |
+|--------|------------|
+| overdue | 12 (FÍSICO!) |
+| paga | 3 |
+| paid | 1 (inconsistência) |
+| pendente | 1 |
+
+**Impacto:**
+- Edge Function `generate-teacher-notifications` deve buscar AMBOS cenários
+- Trigger de auto-remoção deve tratar transição de `overdue` para `pago/paga/paid`
+- Inconsistência de nomenclatura (`paga` vs `paid`) deve ser tratada
+
+**Solução:**
+1. **Edge Function:** Duas queries combinadas (status físico + fallback calculado)
+2. **Trigger:** Expandir condições para `OLD.status IN ('pendente', 'overdue')`
+3. **Trigger:** Expandir condições de saída para `NEW.status IN ('pago', 'paga', 'paid', 'cancelado', 'cancelada')`
+
+---
+
+## Lacuna 30: Inconsistência de Status `cancelado` vs `cancelada`
+
+**Problema:** O documento e triggers usam `'cancelado'` (masculino), mas o banco usa `'cancelada'` (feminino) para faturas e classes.
+
+**Verificação:**
+- Trigger documentado (linha 1065): `NEW.status IN ('pago', 'cancelado')`
+- Banco de dados: Status real é `'cancelada'`
+
+**Solução:**
+Padronizar todos os triggers e código para usar array com ambos os valores:
+```sql
+NEW.status IN ('pago', 'paga', 'paid', 'cancelado', 'cancelada')
+```
 
 ---
 
@@ -3233,11 +3305,12 @@ import { NotificationBell } from '@/components/NotificationBell';
    - Criar índices de performance
    - Criar RLS policies
    - Criar RPCs
-   - Criar triggers
+   - Criar triggers (com correções das Lacunas 29 e 30)
 
 2. **Fase 1B - Edge Function**
    - Criar diretório e arquivo `index.ts`
    - Adicionar configuração em `config.toml`
+   - **Implementar query dupla para overdue (Lacuna 29)**
    - Testar varredura localmente
 
 3. **Fase 2 - UI Frontend**
@@ -3245,11 +3318,11 @@ import { NotificationBell } from '@/components/NotificationBell';
    - Criar hooks
    - Criar componentes
    - Criar página
-   - **Adicionar chave `sidebar.inbox` em navigation.json (Lacuna 28)**
+   - Adicionar chave `sidebar.inbox` em navigation.json (Lacuna 28)
 
 4. **Fase 3 - Integração**
    - Adicionar rota em `App.tsx`
-   - **Integrar `NotificationBell` no Layout.tsx (Lacuna 27)**
+   - Integrar `NotificationBell` no Layout.tsx (Lacuna 27)
    - Implementar deep-linking em `Agenda.tsx` e `Faturas.tsx`
 
 5. **Fase 4 - Testes e Refinamentos**
@@ -3259,6 +3332,6 @@ import { NotificationBell } from '@/components/NotificationBell';
 
 ---
 
-**Documento atualizado com 28 lacunas identificadas (Revisões 1, 2, 3 e 4), status atual de implementação (0%) e próximos passos recomendados.**
+**Documento atualizado com 30 lacunas identificadas (Revisões 1, 2, 3, 4 e 6), status atual de implementação (0%) e próximos passos recomendados.**
 
-**Última atualização:** Revisão 4 - Identificadas lacunas de integração (Layout.tsx) e i18n (navigation.json)
+**Última atualização:** Revisão 6 - Identificadas lacunas críticas de status `overdue` físico (Lacuna 29) e inconsistência de nomenclatura `cancelado/cancelada` (Lacuna 30)

@@ -707,7 +707,12 @@ $$;
 
 **Arquivo:** `supabase/functions/generate-teacher-notifications/index.ts`
 
-Esta função roda via cron job 1x/dia (06:00 UTC) e:
+Esta função roda via cron job **a cada hora** (minuto 0 de cada hora) e:
+
+> **Frequência Horária:** A execução a cada hora garante que notificações 
+> de aulas pendentes e faturas vencidas apareçam no inbox do professor 
+> com atraso máximo de 1 hora. O custo é desprezível (~720 chamadas/mês 
+> vs 2M limite do plano Pro).
 
 1. Varre aulas pendentes passadas → cria notificações `pending_past_classes`
 2. Varre cancelamentos com cobrança → cria notificações `amnesty_eligible`
@@ -1016,12 +1021,12 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- Remover job existente (se houver)
-SELECT cron.unschedule('generate-teacher-notifications-daily');
+SELECT cron.unschedule('generate-teacher-notifications-hourly');
 
--- Criar cron job para rodar às 06:00 UTC (03:00 BRT)
+-- Criar cron job para rodar a cada hora (minuto 0)
 SELECT cron.schedule(
-  'generate-teacher-notifications-daily',
-  '0 6 * * *',  -- Cron expression: todo dia às 06:00 UTC
+  'generate-teacher-notifications-hourly',
+  '0 * * * *',  -- Cron expression: a cada hora no minuto 0
   $$
   SELECT net.http_post(
     url := 'https://nwgomximjevgczwuyqcx.supabase.co/functions/v1/generate-teacher-notifications',
@@ -1037,7 +1042,7 @@ SELECT cron.schedule(
 -- Verificar se o job foi criado
 SELECT jobid, jobname, schedule, command 
 FROM cron.job 
-WHERE jobname = 'generate-teacher-notifications-daily';
+WHERE jobname = 'generate-teacher-notifications-hourly';
 ```
 
 **Configurar em `supabase/config.toml`** (apenas para desabilitar JWT verification):
@@ -2350,7 +2355,7 @@ SELECT COUNT(*) FILTER (WHERE status = 'inbox' AND is_read = false)
 Para garantir performance com muitos professores:
 - Índice composto `idx_teacher_notifications_main_query` cobre a query principal
 - LIMIT de 50 por página com paginação
-- Edge function roda às 06:00 UTC (horário de baixo tráfego)
+- Edge function roda a cada hora (minuto 0)
 - Triggers são leves (apenas DELETE simples)
 
 ### Política de Cleanup
@@ -2359,7 +2364,7 @@ Para garantir performance com muitos professores:
 
 - A Edge Function `generate-teacher-notifications` remove notificações Done com mais de 30 dias
 - Isso previne acúmulo infinito de dados históricos
-- O cleanup roda junto com a varredura diária (06:00 UTC)
+- O cleanup roda junto com cada varredura horária (a cada hora)
 
 **Pendências antigas não são processadas:**
 
@@ -2393,7 +2398,7 @@ O `AmnestyButton` (em `src/components/AmnestyButton.tsx`) usa um `Dialog` intern
 - [ ] **CRIAR PASTA E ARQUIVO:** `supabase/functions/generate-teacher-notifications/index.ts`
 - [ ] Criar edge function `generate-teacher-notifications` (com filtro temporal, cleanup e validação de business_profile)
 - [ ] Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
-- [ ] Configurar cron job via pg_cron (06:00 UTC)
+- [ ] Configurar cron job via pg_cron (a cada hora - '0 * * * *')
 - [ ] Adicionar índices de performance
 
 ### Frontend
@@ -2663,7 +2668,7 @@ EXECUTE FUNCTION remove_notifications_on_invoice_delete();
 11. ⬜ **CRÍTICO:** Usar proxy de nome do plano para `class_reports` (não existe em features)
 12. ⬜ **NOVO:** Filtrar professores com `subscription_status = 'active'` na varredura
 13. ⬜ Adicionar config em `supabase/config.toml`: `[functions.generate-teacher-notifications] verify_jwt = false`
-14. ⬜ Configurar cron job via pg_cron (06:00 UTC) - **REQUER EXECUÇÃO MANUAL NO SQL EDITOR**
+14. ⬜ Configurar cron job via pg_cron (a cada hora - '0 * * * *') - **REQUER EXECUÇÃO MANUAL NO SQL EDITOR**
 
 ### Fase 2: UI Base (Frontend) - ATUALIZADO
 

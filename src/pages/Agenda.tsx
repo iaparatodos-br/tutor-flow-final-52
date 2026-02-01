@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useDebouncedCallback } from 'use-debounce';
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -143,6 +144,10 @@ export default function Agenda() {
   const [showBillingAlert, setShowBillingAlert] = useState(true);
   const [materializingClasses, setMaterializingClasses] = useState<Set<string>>(new Set());
   
+  // Deep-linking support from Inbox
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedClassId, setHighlightedClassId] = useState<string | null>(null);
+  
   // ✅ OTIMIZAÇÃO FASE 4.1: Debounce para navegação de meses (300ms delay)
   const debouncedLoadClasses = useDebouncedCallback(
     (start: Date, end: Date) => {
@@ -157,6 +162,53 @@ export default function Agenda() {
       debouncedLoadClasses.cancel();
     };
   }, [debouncedLoadClasses]);
+
+  // Deep-linking: Process URL parameters from Inbox navigation
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    const classIdParam = searchParams.get('classId');
+    const actionParam = searchParams.get('action');
+    
+    if (dateParam || classIdParam) {
+      // Navigate calendar to the specified date
+      if (dateParam) {
+        const targetDate = new Date(dateParam);
+        if (!isNaN(targetDate.getTime())) {
+          const firstDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+          const lastDay = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+          const startGrid = new Date(firstDay);
+          startGrid.setDate(startGrid.getDate() - firstDay.getDay());
+          const endGrid = new Date(startGrid);
+          endGrid.setDate(endGrid.getDate() + 41);
+          setVisibleRange({ start: startGrid, end: endGrid });
+        }
+      }
+      
+      // Highlight the specific class
+      if (classIdParam) {
+        setHighlightedClassId(classIdParam);
+        
+        // Show action-specific toast guidance
+        if (actionParam === 'amnesty') {
+          toast({
+            title: t('messages.amnestyGuidance', 'Conceder Anistia'),
+            description: t('messages.amnestyGuidanceDesc', 'Clique na aula destacada e use o botão "Conceder Anistia".'),
+          });
+        } else if (actionParam === 'report') {
+          toast({
+            title: t('messages.reportGuidance', 'Criar Relatório'),
+            description: t('messages.reportGuidanceDesc', 'Clique na aula destacada e use o botão "Criar Relatório".'),
+          });
+        }
+        
+        // Clear highlight after 5 seconds
+        setTimeout(() => setHighlightedClassId(null), 5000);
+      }
+      
+      // Clear URL params after processing
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, toast, t]);
   
   useEffect(() => {
     if (!authLoading && profile) {

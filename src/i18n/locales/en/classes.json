@@ -172,6 +172,10 @@
     "classCompleted": "Class completed!",
     "classCompletedDescription": "The class was marked as completed",
     "occurrenceCancelled": "Class cancelled",
-    "occurrenceCancelledDescription": "This class occurrence was cancelled successfully"
+    "occurrenceCancelledDescription": "This class occurrence was cancelled successfully",
+    "amnestyGuidance": "Grant Amnesty",
+    "amnestyGuidanceDesc": "Click on the highlighted class and use the \"Grant Amnesty\" button.",
+    "reportGuidance": "Create Report",
+    "reportGuidanceDesc": "Click on the highlighted class and use the \"Create Report\" button."
   }
 }

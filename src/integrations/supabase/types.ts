@@ -1779,6 +1779,53 @@ export type Database = {
         }
         Relationships: []
       }
+      teacher_notifications: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_read: boolean
+          read_at: string | null
+          source_id: string
+          source_type: string
+          status: string
+          status_changed_at: string | null
+          teacher_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          source_id: string
+          source_type: string
+          status?: string
+          status_changed_at?: string | null
+          teacher_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          source_id?: string
+          source_type?: string
+          status?: string
+          status_changed_at?: string | null
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_notifications_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teacher_student_relationships: {
         Row: {
           billing_day: number | null

@@ -392,14 +392,14 @@ CREATE INDEX idx_teacher_notifications_cleanup ON teacher_notifications(status, 
 ## CHECKLIST PARA ACOMPANHAMENTO
 
 ### Fase 1: Infraestrutura Backend
-- [ ] 1.1 - Criar tabela `teacher_notifications`
-- [ ] 1.2 - Criar índices de performance (7 índices)
-- [ ] 1.3 - Criar RLS policies (SELECT + UPDATE)
-- [ ] 1.4 - Criar RPC `get_teacher_notification_counts`
-- [ ] 1.5 - Criar RPC `get_teacher_notifications` (com paginação e enriquecimento)
-- [ ] 1.6 - Criar RPC `update_notification_status`
-- [ ] 1.7 - Criar RPC `mark_notification_read`
-- [ ] 1.8 - Criar triggers de auto-remoção (5 triggers)
+- [x] 1.1 - Criar tabela `teacher_notifications`
+- [x] 1.2 - Criar índices de performance (7 índices)
+- [x] 1.3 - Criar RLS policies (SELECT + UPDATE)
+- [x] 1.4 - Criar RPC `get_teacher_notification_counts`
+- [x] 1.5 - Criar RPC `get_teacher_notifications` (com paginação e enriquecimento)
+- [x] 1.6 - Criar RPC `update_notification_status`
+- [x] 1.7 - Criar RPC `mark_notification_read`
+- [x] 1.8 - Criar triggers de auto-remoção (5 triggers)
 - [ ] 1.9 - Criar Edge Function `generate-teacher-notifications`
 - [ ] 1.10 - Configurar em `config.toml`
 - [ ] 1.11 - Documentar SQL do cron job (pg_cron)
@@ -426,11 +426,6 @@ CREATE INDEX idx_teacher_notifications_cleanup ON teacher_notifications(status, 
 
 ## PRÓXIMO PASSO
 
-Podemos começar pelo **Bloco 1: Fundação Backend** (Tarefas 1.1 a 1.8), que pode ser implementado como uma única migration SQL contendo:
-- Criação da tabela
-- Criação dos índices
-- Criação das RLS policies
-- Criação das 4 RPCs
-- Criação dos 5 triggers
+✅ **BLOCO 1 CONCLUÍDO** - Banco de dados pronto com tabela, índices, RLS, RPCs e triggers.
 
-Isso dará a base completa para todo o sistema de notificações.
+Próximo: **Bloco 2: Edge Function** (Tarefas 1.9-1.11)

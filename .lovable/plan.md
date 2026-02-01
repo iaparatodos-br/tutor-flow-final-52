@@ -416,8 +416,8 @@ CREATE INDEX idx_teacher_notifications_cleanup ON teacher_notifications(status, 
 - [x] 3.1 - Adicionar rota `/inbox` em App.tsx
 - [x] 3.2 - Integrar NotificationBell no Layout.tsx
 - [x] 3.3 - Adicionar item "Notificações" no AppSidebar + navigation.json
-- [ ] 3.4 - Implementar deep-linking em Agenda.tsx
-- [ ] 3.5 - Implementar deep-linking em Faturas.tsx
+- [x] 3.4 - Implementar deep-linking em Agenda.tsx
+- [x] 3.5 - Implementar deep-linking em Faturas.tsx
 
 ### Fase 4: Testes
 - [ ] 4.1 - Testar fluxos completos

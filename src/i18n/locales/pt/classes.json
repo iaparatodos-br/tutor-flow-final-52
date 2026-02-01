@@ -172,6 +172,10 @@
     "classCompleted": "Aula concluída!",
     "classCompletedDescription": "A aula foi marcada como concluída",
     "occurrenceCancelled": "Aula cancelada",
-    "occurrenceCancelledDescription": "Esta ocorrência da aula foi cancelada com sucesso"
+    "occurrenceCancelledDescription": "Esta ocorrência da aula foi cancelada com sucesso",
+    "amnestyGuidance": "Conceder Anistia",
+    "amnestyGuidanceDesc": "Clique na aula destacada e use o botão \"Conceder Anistia\".",
+    "reportGuidance": "Criar Relatório",
+    "reportGuidanceDesc": "Clique na aula destacada e use o botão \"Criar Relatório\"."
   }
 }

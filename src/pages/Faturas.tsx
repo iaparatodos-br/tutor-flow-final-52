@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Layout } from '@/components/Layout';
@@ -15,11 +15,12 @@ import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertCircle, FileText, RefreshCw, Loader2, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { openExternalUrl, onBrowserClosed } from '@/utils/browser';
+import { cn } from '@/lib/utils';
 
 interface Invoice {
   id: string;
@@ -57,6 +58,11 @@ export default function Faturas() {
   const [changeMethodDialogOpen, setChangeMethodDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [changingMethod, setChangingMethod] = useState(false);
+  
+  // Deep-linking support from Inbox
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
+  const highlightedRowRef = useRef<HTMLTableRowElement>(null);
 
   // Query para buscar IDs de dependentes do usuário
   const { data: dependentIds = [] } = useQuery({
@@ -205,6 +211,28 @@ export default function Faturas() {
     return invoice.student_id !== user?.id;
   };
 
+  // Deep-linking: Process URL parameters from Inbox navigation
+  useEffect(() => {
+    const highlightParam = searchParams.get('highlight');
+    
+    if (highlightParam && invoices) {
+      setHighlightedInvoiceId(highlightParam);
+      
+      // Clear URL params after processing
+      setSearchParams({}, { replace: true });
+      
+      // Clear highlight after 5 seconds
+      setTimeout(() => setHighlightedInvoiceId(null), 5000);
+    }
+  }, [searchParams, setSearchParams, invoices]);
+
+  // Scroll to highlighted invoice when it's set and data is loaded
+  useEffect(() => {
+    if (highlightedInvoiceId && highlightedRowRef.current) {
+      highlightedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightedInvoiceId, invoices]);
+
   // Loading state while teacher context is loading
   if (teacherLoading) {
     return (
@@ -285,8 +313,14 @@ export default function Faturas() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {invoices.map((invoice) => (
-                    <TableRow key={invoice.id}>
+                {invoices.map((invoice) => (
+                    <TableRow 
+                      key={invoice.id}
+                      ref={invoice.id === highlightedInvoiceId ? highlightedRowRef : null}
+                      className={cn(
+                        invoice.id === highlightedInvoiceId && 'ring-2 ring-primary animate-pulse bg-primary/5'
+                      )}
+                    >
                       <TableCell>
                         {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: ptBR })}
                       </TableCell>

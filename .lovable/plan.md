@@ -400,22 +400,22 @@ CREATE INDEX idx_teacher_notifications_cleanup ON teacher_notifications(status, 
 - [x] 1.6 - Criar RPC `update_notification_status`
 - [x] 1.7 - Criar RPC `mark_notification_read`
 - [x] 1.8 - Criar triggers de auto-remoção (5 triggers)
-- [ ] 1.9 - Criar Edge Function `generate-teacher-notifications`
-- [ ] 1.10 - Configurar em `config.toml`
-- [ ] 1.11 - Documentar SQL do cron job (pg_cron)
+- [x] 1.9 - Criar Edge Function `generate-teacher-notifications`
+- [x] 1.10 - Configurar em `config.toml`
+- [x] 1.11 - Documentar SQL do cron job (pg_cron) → docs/teacher-inbox-cron-setup.md
 
 ### Fase 2: UI Base Frontend
-- [ ] 2.1 - Criar `src/types/inbox.ts`
-- [ ] 2.2 - Criar hooks (`useTeacherNotifications`, `useNotificationActions`)
-- [ ] 2.3 - Criar `NotificationBell.tsx`
-- [ ] 2.4 - Criar componentes Inbox (5 arquivos)
-- [ ] 2.5 - Criar página `Inbox.tsx`
-- [ ] 2.6 - Criar arquivos i18n (pt/inbox.json, en/inbox.json)
+- [x] 2.1 - Criar `src/types/inbox.ts`
+- [x] 2.2 - Criar hooks (`useTeacherNotifications`, `useNotificationActions`)
+- [x] 2.3 - Criar `NotificationBell.tsx`
+- [x] 2.4 - Criar componentes Inbox (5 arquivos)
+- [x] 2.5 - Criar página `Inbox.tsx`
+- [x] 2.6 - Criar arquivos i18n (pt/inbox.json, en/inbox.json)
 
 ### Fase 3: Integração
-- [ ] 3.1 - Adicionar rota `/inbox` em App.tsx
-- [ ] 3.2 - Integrar NotificationBell no Layout.tsx
-- [ ] 3.3 - Adicionar item "Notificações" no AppSidebar + navigation.json
+- [x] 3.1 - Adicionar rota `/inbox` em App.tsx
+- [x] 3.2 - Integrar NotificationBell no Layout.tsx
+- [x] 3.3 - Adicionar item "Notificações" no AppSidebar + navigation.json
 - [ ] 3.4 - Implementar deep-linking em Agenda.tsx
 - [ ] 3.5 - Implementar deep-linking em Faturas.tsx
 

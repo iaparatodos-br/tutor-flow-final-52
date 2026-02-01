@@ -6,6 +6,7 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
 import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
 interface LayoutProps {
   children: ReactNode;
   requireAuth?: boolean;
@@ -17,7 +18,8 @@ export function Layout({
   const {
     loading,
     isAuthenticated,
-    isAluno
+    isAluno,
+    isProfessor
   } = useAuth();
   const {
     isOpen,
@@ -67,6 +69,8 @@ export function Layout({
           <span className="font-semibold">TutorFlow</span>
           
           <div className="ml-auto flex items-center gap-4">
+            {/* Notification bell for professors */}
+            {isProfessor && <NotificationBell />}
             {/* Teacher context switcher for students */}
             {isAluno && <TeacherContextSwitcher />}
           </div>

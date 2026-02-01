@@ -1,0 +1,116 @@
+{
+  "title": "Action Center",
+  "subtitle": "Manage your pending items and notifications",
+  
+  "tabs": {
+    "inbox": "Inbox",
+    "inboxCount": "Inbox ({{count}})",
+    "saved": "Saved",
+    "savedCount": "Saved ({{count}})",
+    "done": "Done",
+    "doneCount": "Done ({{count}})"
+  },
+  
+  "filters": {
+    "all": "All",
+    "unread": "Unread",
+    "read": "Read",
+    "urgency": {
+      "label": "Urgency",
+      "all": "All",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "category": {
+      "label": "Category",
+      "all": "All",
+      "pending_past_classes": "Pending Classes",
+      "amnesty_eligible": "Amnesty Available",
+      "overdue_invoices": "Overdue Invoices",
+      "pending_reports": "Pending Reports"
+    }
+  },
+  
+  "categories": {
+    "pending_past_classes": {
+      "title": "Pending Class",
+      "description": "Confirm or cancel this past class"
+    },
+    "amnesty_eligible": {
+      "title": "Amnesty Available",
+      "description": "You can grant amnesty for this cancelled class"
+    },
+    "overdue_invoices": {
+      "title": "Overdue Invoice",
+      "description": "This invoice is awaiting payment"
+    },
+    "pending_reports": {
+      "title": "Pending Report",
+      "description": "Create a report for this completed class"
+    }
+  },
+  
+  "actions": {
+    "markDone": "Done",
+    "save": "Save",
+    "undo": "Undo",
+    "view": "View",
+    "viewClass": "View Class",
+    "viewInvoice": "View Invoice",
+    "grantAmnesty": "Grant Amnesty",
+    "createReport": "Create Report",
+    "confirmClass": "Confirm Class",
+    "movedToInbox": "Moved to Inbox",
+    "saved": "Saved for later",
+    "markedDone": "Marked as done",
+    "batchSuccess": "{{count}} items updated successfully",
+    "batchPartial": "{{success}} updated, {{failed}} failed"
+  },
+  
+  "empty": {
+    "inbox": {
+      "title": "No pending items",
+      "description": "You're all caught up! No pending actions at the moment."
+    },
+    "saved": {
+      "title": "No saved items",
+      "description": "Save important notifications to review later."
+    },
+    "done": {
+      "title": "No completed items",
+      "description": "Items marked as done will appear here."
+    }
+  },
+  
+  "errors": {
+    "loadFailed": "Failed to load notifications",
+    "updateFailed": "Failed to update",
+    "tryAgain": "Please try again"
+  },
+  
+  "pagination": {
+    "loadMore": "Load more",
+    "loading": "Loading...",
+    "noMore": "End of list"
+  },
+  
+  "time": {
+    "daysAgo": "{{count}} day ago",
+    "daysAgo_plural": "{{count}} days ago",
+    "hoursAgo": "{{count}} hour ago",
+    "hoursAgo_plural": "{{count}} hours ago",
+    "justNow": "just now"
+  },
+  
+  "student": {
+    "unknown": "Unknown student"
+  },
+  
+  "invoice": {
+    "amount": "${{amount}}",
+    "dueDate": "Due: {{date}}",
+    "daysOverdue": "{{count}} day overdue",
+    "daysOverdue_plural": "{{count}} days overdue"
+  }
+}

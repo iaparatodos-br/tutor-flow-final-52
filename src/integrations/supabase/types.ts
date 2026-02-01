@@ -2287,6 +2287,45 @@ export type Database = {
           responsible_name: string
         }[]
       }
+      get_teacher_notification_counts: {
+        Args: never
+        Returns: {
+          done_count: number
+          inbox_count: number
+          inbox_unread_count: number
+          saved_count: number
+        }[]
+      }
+      get_teacher_notifications: {
+        Args: {
+          p_category?: string
+          p_is_read?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_status?: string
+        }
+        Returns: {
+          category: string
+          class_date: string
+          class_status: string
+          created_at: string
+          days_overdue: number
+          id: string
+          invoice_amount: number
+          invoice_due_date: string
+          invoice_status: string
+          is_read: boolean
+          read_at: string
+          service_name: string
+          source_id: string
+          source_type: string
+          status: string
+          status_changed_at: string
+          student_email: string
+          student_name: string
+          teacher_id: string
+        }[]
+      }
       get_teacher_students: {
         Args: { teacher_user_id: string }
         Returns: {
@@ -2390,6 +2429,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mark_notification_read: {
+        Args: { p_notification_id: string }
+        Returns: boolean
+      }
       process_stripe_event_atomic: {
         Args: {
           p_event_created: string
@@ -2416,6 +2459,10 @@ export type Database = {
       }
       teacher_owns_dependent: {
         Args: { p_dependent_id: string }
+        Returns: boolean
+      }
+      update_notification_status: {
+        Args: { p_new_status: string; p_notification_id: string }
         Returns: boolean
       }
       user_owns_material: { Args: { p_material_id: string }; Returns: boolean }

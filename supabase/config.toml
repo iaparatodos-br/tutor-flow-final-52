@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.create-teacher]
 verify_jwt = false
+
+[functions.generate-teacher-notifications]
+verify_jwt = false

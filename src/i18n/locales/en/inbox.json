@@ -96,10 +96,10 @@
   },
   
   "time": {
-    "daysAgo": "{{count}} day ago",
-    "daysAgo_plural": "{{count}} days ago",
-    "hoursAgo": "{{count}} hour ago",
-    "hoursAgo_plural": "{{count}} hours ago",
+    "daysAgo_one": "{{count}} day ago",
+    "daysAgo_other": "{{count}} days ago",
+    "hoursAgo_one": "{{count}} hour ago",
+    "hoursAgo_other": "{{count}} hours ago",
     "justNow": "just now"
   },
   
@@ -110,7 +110,7 @@
   "invoice": {
     "amount": "${{amount}}",
     "dueDate": "Due: {{date}}",
-    "daysOverdue": "{{count}} day overdue",
-    "daysOverdue_plural": "{{count}} days overdue"
+    "daysOverdue_one": "{{count}} day overdue",
+    "daysOverdue_other": "{{count}} days overdue"
   }
 }

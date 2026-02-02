@@ -96,10 +96,10 @@
   },
   
   "time": {
-    "daysAgo": "há {{count}} dia",
-    "daysAgo_plural": "há {{count}} dias",
-    "hoursAgo": "há {{count}} hora",
-    "hoursAgo_plural": "há {{count}} horas",
+    "daysAgo_one": "há {{count}} dia",
+    "daysAgo_other": "há {{count}} dias",
+    "hoursAgo_one": "há {{count}} hora",
+    "hoursAgo_other": "há {{count}} horas",
     "justNow": "agora mesmo"
   },
   
@@ -110,7 +110,7 @@
   "invoice": {
     "amount": "R$ {{amount}}",
     "dueDate": "Vencimento: {{date}}",
-    "daysOverdue": "{{count}} dia em atraso",
-    "daysOverdue_plural": "{{count}} dias em atraso"
+    "daysOverdue_one": "{{count}} dia em atraso",
+    "daysOverdue_other": "{{count}} dias em atraso"
   }
 }

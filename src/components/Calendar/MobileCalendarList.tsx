@@ -31,6 +31,7 @@ interface MobileCalendarListProps {
   onEventClick: (event: CalendarClass | AvailabilityBlock) => void;
   onScheduleClass?: () => void;
   loading?: boolean;
+  highlightedClassId?: string | null;
 }
 
 export function MobileCalendarList({
@@ -42,7 +43,8 @@ export function MobileCalendarList({
   onGoToToday,
   onEventClick,
   onScheduleClass,
-  loading
+  loading,
+  highlightedClassId
 }: MobileCalendarListProps) {
   const { t, i18n } = useTranslation('classes');
   const locale = i18n.language === 'pt' ? ptBR : enUS;
@@ -303,7 +305,10 @@ export function MobileCalendarList({
                       return (
                         <Card 
                           key={event.id}
-                          className="shadow-sm cursor-pointer active:scale-[0.98] transition-transform"
+                          className={cn(
+                            "shadow-sm cursor-pointer active:scale-[0.98] transition-transform",
+                            highlightedClassId && event.id === highlightedClassId && "ring-2 ring-primary animate-pulse"
+                          )}
                           onClick={() => onEventClick(event)}
                         >
                           <CardContent className="p-3">

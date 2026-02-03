@@ -43,6 +43,7 @@ interface SimpleCalendarProps {
   loading?: boolean;
   onScheduleClass?: () => void;
   onVisibleRangeChange?: (start: Date, end: Date) => void;
+  highlightedClassId?: string | null;
 }
 
 export function SimpleCalendar({ 
@@ -58,7 +59,8 @@ export function SimpleCalendar({
   onEndRecurrence,
   loading,
   onScheduleClass,
-  onVisibleRangeChange
+  onVisibleRangeChange,
+  highlightedClassId
 }: SimpleCalendarProps) {
   const { t } = useTranslation('classes');
   const isMobile = useIsMobile();
@@ -577,6 +579,7 @@ export function SimpleCalendar({
           onEventClick={handleEventClick}
           onScheduleClass={onScheduleClass}
           loading={loading}
+          highlightedClassId={highlightedClassId}
         />
       ) : (
       <Card className="shadow-card">
@@ -660,7 +663,8 @@ export function SimpleCalendar({
                       onClick={() => handleEventClick(event)}
                       className={cn(
                         "p-2 rounded text-xs cursor-pointer transition-all hover:scale-105",
-                        getStatusColor(event.status)
+                        getStatusColor(event.status),
+                        highlightedClassId && event.id === highlightedClassId && "ring-2 ring-primary animate-pulse"
                       )}
                     >
                     <div className="font-medium truncate flex items-center gap-1">

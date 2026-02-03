@@ -177,7 +177,7 @@ export const buildNotificationDeepLink = (notification: TeacherNotification): st
   }
   
   if (source_type === 'invoice') {
-    return `/faturas?highlight=${source_id}`;
+    return `/financeiro?highlight=${source_id}`;
   }
   
   return '/inbox';

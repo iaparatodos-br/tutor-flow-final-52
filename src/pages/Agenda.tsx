@@ -1737,7 +1737,8 @@ export default function Agenda() {
           isProfessor={isProfessor} 
           loading={loading} 
           onScheduleClass={() => setIsDialogOpen(true)} 
-          onVisibleRangeChange={handleVisibleRangeChange} 
+          onVisibleRangeChange={handleVisibleRangeChange}
+          highlightedClassId={highlightedClassId}
         />
 
         {/* Availability Manager for Professors */}

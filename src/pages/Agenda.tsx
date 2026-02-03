@@ -165,6 +165,9 @@ export default function Agenda() {
 
   // Deep-linking: Process URL parameters from Inbox navigation
   useEffect(() => {
+    // Only process if we have a profile (user is authenticated)
+    if (!profile) return;
+    
     const dateParam = searchParams.get('date');
     const classIdParam = searchParams.get('classId');
     const actionParam = searchParams.get('action');
@@ -181,6 +184,8 @@ export default function Agenda() {
           const endGrid = new Date(startGrid);
           endGrid.setDate(endGrid.getDate() + 41);
           setVisibleRange({ start: startGrid, end: endGrid });
+          // Immediately load classes for the target month
+          loadClasses(startGrid, endGrid);
         }
       }
       
@@ -208,12 +213,15 @@ export default function Agenda() {
       // Clear URL params after processing
       setSearchParams({}, { replace: true });
     }
-  }, [searchParams, setSearchParams, toast, t]);
+  }, [searchParams, setSearchParams, toast, t, profile]);
   
   useEffect(() => {
     if (!authLoading && profile) {
       // Initial load with default range (current month)
-      if (!visibleRange) {
+      // Skip if URL has deep-link params (let deep-linking useEffect handle it)
+      const hasDeepLinkParams = searchParams.has('date') || searchParams.has('classId');
+      
+      if (!visibleRange && !hasDeepLinkParams) {
         const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -234,7 +242,7 @@ export default function Agenda() {
         loadServices();
       }
     }
-  }, [profile, isProfessor, authLoading]);
+  }, [profile, isProfessor, authLoading, searchParams]);
 
   // Reload data when selectedTeacherId changes (for students)
   useEffect(() => {

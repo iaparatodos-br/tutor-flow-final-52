@@ -162,19 +162,54 @@ export const useDeleteNotification = () => {
         throw error;
       }
 
-      return true;
+      return notificationId;
+    },
+    onMutate: async (notificationId: string) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['teacher-notifications-infinite'] });
+      await queryClient.cancelQueries({ queryKey: ['teacher-notification-counts'] });
+
+      // Snapshot the previous value
+      const previousNotifications = queryClient.getQueriesData({ queryKey: ['teacher-notifications-infinite'] });
+      const previousCounts = queryClient.getQueryData(['teacher-notification-counts']);
+
+      // Optimistically remove the notification from all infinite query caches
+      queryClient.setQueriesData(
+        { queryKey: ['teacher-notifications-infinite'] },
+        (old: { pages: Array<{ id: string }[]>; pageParams: number[] } | undefined) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) =>
+              page.filter((n) => n.id !== notificationId)
+            ),
+          };
+        }
+      );
+
+      return { previousNotifications, previousCounts };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['teacher-notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['teacher-notifications-infinite'] });
-      queryClient.invalidateQueries({ queryKey: ['teacher-notification-counts'] });
+      // Force refetch to ensure consistency
+      queryClient.refetchQueries({ queryKey: ['teacher-notification-counts'] });
 
       toast({
         description: t('actions.dismissed'),
       });
     },
-    onError: (error) => {
+    onError: (error, _notificationId, context) => {
       console.error('[useDeleteNotification] Mutation error:', error);
+      
+      // Rollback on error
+      if (context?.previousNotifications) {
+        context.previousNotifications.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+      if (context?.previousCounts) {
+        queryClient.setQueryData(['teacher-notification-counts'], context.previousCounts);
+      }
+
       toast({
         variant: 'destructive',
         title: t('errors.updateFailed'),

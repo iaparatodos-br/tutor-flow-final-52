@@ -328,7 +328,8 @@ serve(async (req) => {
           status: 'cancelada',
           cancelled_at: now.toISOString(),
           cancelled_by: cancelled_by,
-          cancellation_reason: reason
+          cancellation_reason: reason,
+          charge_applied: shouldCharge
         })
         .eq('id', class_id);
 

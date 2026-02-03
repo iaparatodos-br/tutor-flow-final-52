@@ -107,6 +107,9 @@ Deno.serve(async (req) => {
       .eq('is_template', false)
       .gte('class_date', thirtyDaysAgoISO)
 
+    // Track class IDs already added to avoid duplicates
+    const amnestyClassIds = new Set<string>()
+
     if (amnestyError) {
       console.error('[generate-teacher-notifications] Error fetching amnesty eligible:', amnestyError)
     } else if (amnestyEligible) {
@@ -118,6 +121,56 @@ Deno.serve(async (req) => {
           source_id: cls.id,
           category: 'amnesty_eligible',
         })
+        amnestyClassIds.add(cls.id)
+      }
+    }
+
+    // =====================================================
+    // CATEGORY 2B: amnesty_eligible from class_participants
+    // For students who left group classes with charge_applied=true
+    // (class itself is NOT cancelled, only the participant)
+    // =====================================================
+    const { data: amnestyParticipants, error: amnestyPartError } = await supabase
+      .from('class_participants')
+      .select('class_id')
+      .eq('status', 'cancelada')
+      .eq('charge_applied', true)
+      .gte('created_at', thirtyDaysAgoISO)
+
+    if (amnestyPartError) {
+      console.error('[generate-teacher-notifications] Error fetching amnesty from participants:', amnestyPartError)
+    } else if (amnestyParticipants && amnestyParticipants.length > 0) {
+      // Get unique class IDs from participants
+      const participantClassIds = [...new Set(amnestyParticipants.map(p => p.class_id))]
+      
+      // Filter out classes already added and fetch class details
+      const classIdsToCheck = participantClassIds.filter(id => !amnestyClassIds.has(id))
+      
+      if (classIdsToCheck.length > 0) {
+        const { data: groupClasses, error: groupError } = await supabase
+          .from('classes')
+          .select('id, teacher_id, status, amnesty_granted, class_date')
+          .in('id', classIdsToCheck)
+          .neq('status', 'cancelada')
+          .eq('amnesty_granted', false)
+          .gte('class_date', thirtyDaysAgoISO)
+
+        if (groupError) {
+          console.error('[generate-teacher-notifications] Error fetching group classes for amnesty:', groupError)
+        } else if (groupClasses) {
+          console.log(`[generate-teacher-notifications] Found ${groupClasses.length} amnesty eligible from group class participants`)
+          for (const cls of groupClasses) {
+            if (!amnestyClassIds.has(cls.id)) {
+              notifications.push({
+                teacher_id: cls.teacher_id,
+                source_type: 'class',
+                source_id: cls.id,
+                category: 'amnesty_eligible',
+              })
+              amnestyClassIds.add(cls.id)
+            }
+          }
+        }
       }
     }
 

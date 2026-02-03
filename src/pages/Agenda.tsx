@@ -147,6 +147,7 @@ export default function Agenda() {
   // Deep-linking support from Inbox
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedClassId, setHighlightedClassId] = useState<string | null>(null);
+  const [calendarInitialDate, setCalendarInitialDate] = useState<Date | null>(null);
   
   // ✅ OTIMIZAÇÃO FASE 4.1: Debounce para navegação de meses (300ms delay)
   const debouncedLoadClasses = useDebouncedCallback(
@@ -177,6 +178,9 @@ export default function Agenda() {
       if (dateParam) {
         const targetDate = new Date(dateParam);
         if (!isNaN(targetDate.getTime())) {
+          // Set the initial date for the calendar component (fixes visual navigation)
+          setCalendarInitialDate(targetDate);
+          
           const firstDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
           const lastDay = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
           const startGrid = new Date(firstDay);
@@ -1739,6 +1743,7 @@ export default function Agenda() {
           onScheduleClass={() => setIsDialogOpen(true)} 
           onVisibleRangeChange={handleVisibleRangeChange}
           highlightedClassId={highlightedClassId}
+          initialDate={calendarInitialDate}
         />
 
         {/* Availability Manager for Professors */}

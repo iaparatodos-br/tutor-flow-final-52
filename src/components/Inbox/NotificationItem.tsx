@@ -79,8 +79,10 @@ export function NotificationItem({ notification }: NotificationItemProps) {
   };
 
   // Handle permanent deletion
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    console.log('[NotificationItem] Deleting notification:', notification.id);
     deleteNotification.mutate(notification.id);
   };
 

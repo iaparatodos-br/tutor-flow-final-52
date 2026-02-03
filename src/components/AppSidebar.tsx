@@ -1,4 +1,4 @@
-import { BookOpen, Users, Calendar, DollarSign, LogOut, GraduationCap, Settings, FileText, CreditCard, Package, Archive, Bell } from "lucide-react";
+import { BookOpen, Users, Calendar, DollarSign, LogOut, GraduationCap, Settings, FileText, CreditCard, Package, Archive } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,10 +14,6 @@ const getProfessorItems = (t: any) => [{
   title: t('navigation:sidebar.dashboard'),
   url: "/dashboard",
   icon: BookOpen
-}, {
-  title: t('navigation:sidebar.inbox'),
-  url: "/inbox",
-  icon: Bell
 }, {
   title: t('navigation:sidebar.students'),
   url: "/alunos",

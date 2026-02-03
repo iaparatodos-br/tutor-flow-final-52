@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   Bookmark,
   Undo2,
-  X,
+  BellOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -200,26 +200,15 @@ export function NotificationItem({ notification }: NotificationItemProps) {
               )}
 
               {notification.status === 'done' && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2"
-                    onClick={(e) => handleStatusChange('inbox', e)}
-                    title={t('actions.undo')}
-                  >
-                    <Undo2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 px-2 text-muted-foreground hover:text-destructive"
-                    onClick={handleDelete}
-                    title={t('actions.dismiss')}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={(e) => handleStatusChange('inbox', e)}
+                  title={t('actions.undo')}
+                >
+                  <Undo2 className="h-4 w-4" />
+                </Button>
               )}
 
               <Button
@@ -229,7 +218,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
                 onClick={handleDelete}
                 title={t('actions.dismiss')}
               >
-                <X className="h-4 w-4" />
+                <BellOff className="h-4 w-4" />
               </Button>
             </div>
           </div>

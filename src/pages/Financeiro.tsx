@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 import { Layout } from "@/components/Layout";
 import { StripeAccountGuard } from "@/components/StripeAccountGuard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,6 +116,37 @@ export default function Financeiro() {
   const [invoiceDetailsOpen, setInvoiceDetailsOpen] = useState(false);
   const [invoiceItems, setInvoiceItems] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  
+  // Deep-linking support
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
+  const highlightedRowRef = useRef<HTMLTableRowElement>(null);
+
+  // Process highlight parameter from URL
+  useEffect(() => {
+    const highlightId = searchParams.get('highlight');
+    if (highlightId) {
+      setHighlightedInvoiceId(highlightId);
+      // Clear the URL parameter after reading
+      searchParams.delete('highlight');
+      setSearchParams(searchParams, { replace: true });
+      
+      // Clear highlight after animation
+      setTimeout(() => {
+        setHighlightedInvoiceId(null);
+      }, 3000);
+    }
+  }, [searchParams, setSearchParams]);
+
+  // Scroll to highlighted invoice
+  useEffect(() => {
+    if (highlightedInvoiceId && highlightedRowRef.current && !loading) {
+      highlightedRowRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [highlightedInvoiceId, loading]);
 
   // Verifica se a fatura está vencida
   const isOverdue = (dueDate: string, status: string): boolean => {
@@ -580,7 +613,13 @@ export default function Financeiro() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {invoices.map(invoice => <TableRow key={invoice.id}>
+                        {invoices.map(invoice => <TableRow 
+                            key={invoice.id}
+                            ref={invoice.id === highlightedInvoiceId ? highlightedRowRef : null}
+                            className={cn(
+                              invoice.id === highlightedInvoiceId && "ring-2 ring-primary animate-pulse bg-primary/5"
+                            )}
+                          >
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
                                 <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">

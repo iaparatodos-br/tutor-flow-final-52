@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,7 @@ interface SimpleCalendarProps {
   onScheduleClass?: () => void;
   onVisibleRangeChange?: (start: Date, end: Date) => void;
   highlightedClassId?: string | null;
+  initialDate?: Date | null;
 }
 
 export function SimpleCalendar({ 
@@ -60,11 +61,12 @@ export function SimpleCalendar({
   loading,
   onScheduleClass,
   onVisibleRangeChange,
-  highlightedClassId
+  highlightedClassId,
+  initialDate
 }: SimpleCalendarProps) {
   const { t } = useTranslation('classes');
   const isMobile = useIsMobile();
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(initialDate ?? new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState<{
     date: Date;
@@ -74,6 +76,13 @@ export function SimpleCalendar({
   const [showEndRecurrenceDialog, setShowEndRecurrenceDialog] = useState(false);
   const [endRecurrenceData, setEndRecurrenceData] = useState<{ templateId: string; endDate: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Reagir a mudanças no initialDate (para deep-links)
+  useEffect(() => {
+    if (initialDate) {
+      setCurrentDate(initialDate);
+    }
+  }, [initialDate]);
 
   // ✅ OTIMIZAÇÃO FASE 2.2: Memoizar callbacks para prevenir re-criações
   const handleEventClick = useCallback((event: CalendarClass | AvailabilityBlock) => {

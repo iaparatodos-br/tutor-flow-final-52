@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   Bookmark,
   Undo2,
-  ExternalLink,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -28,7 +28,7 @@ import {
   CATEGORY_CONFIG,
   buildNotificationDeepLink,
 } from '@/types/inbox';
-import { useUpdateNotificationStatus, useMarkNotificationRead } from '@/hooks/useNotificationActions';
+import { useUpdateNotificationStatus, useMarkNotificationRead, useDeleteNotification } from '@/hooks/useNotificationActions';
 
 // Icon mapping
 const CATEGORY_ICONS: Record<NotificationCategory, React.ReactNode> = {
@@ -47,6 +47,7 @@ export function NotificationItem({ notification }: NotificationItemProps) {
   const navigate = useNavigate();
   const updateStatus = useUpdateNotificationStatus();
   const markRead = useMarkNotificationRead();
+  const deleteNotification = useDeleteNotification();
 
   const urgency = getUrgencyLevel(notification);
   const urgencyStyles = URGENCY_STYLES[urgency];
@@ -75,6 +76,12 @@ export function NotificationItem({ notification }: NotificationItemProps) {
   const handleStatusChange = (newStatus: NotificationStatus, e: React.MouseEvent) => {
     e.stopPropagation();
     updateStatus.mutate({ notificationId: notification.id, newStatus });
+  };
+
+  // Handle permanent deletion
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteNotification.mutate(notification.id);
   };
 
   // Build description text
@@ -193,25 +200,36 @@ export function NotificationItem({ notification }: NotificationItemProps) {
               )}
 
               {notification.status === 'done' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2"
-                  onClick={(e) => handleStatusChange('inbox', e)}
-                  title={t('actions.undo')}
-                >
-                  <Undo2 className="h-4 w-4" />
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2"
+                    onClick={(e) => handleStatusChange('inbox', e)}
+                    title={t('actions.undo')}
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                    onClick={handleDelete}
+                    title={t('actions.dismiss')}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
               )}
 
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2"
-                onClick={handleNavigate}
-                title={t('actions.view')}
+                className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                onClick={handleDelete}
+                title={t('actions.dismiss')}
               >
-                <ExternalLink className="h-4 w-4" />
+                <X className="h-4 w-4" />
               </Button>
             </div>
           </div>

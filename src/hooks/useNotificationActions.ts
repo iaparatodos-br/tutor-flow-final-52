@@ -141,3 +141,45 @@ export const useBatchUpdateStatus = () => {
     },
   });
 };
+
+// =====================================================
+// DELETE NOTIFICATION (permanent)
+// =====================================================
+export const useDeleteNotification = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { t } = useTranslation('inbox');
+
+  return useMutation({
+    mutationFn: async (notificationId: string) => {
+      const { error } = await supabase
+        .from('teacher_notifications')
+        .delete()
+        .eq('id', notificationId);
+
+      if (error) {
+        console.error('[useDeleteNotification] Error:', error);
+        throw error;
+      }
+
+      return true;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teacher-notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher-notifications-infinite'] });
+      queryClient.invalidateQueries({ queryKey: ['teacher-notification-counts'] });
+
+      toast({
+        description: t('actions.dismissed'),
+      });
+    },
+    onError: (error) => {
+      console.error('[useDeleteNotification] Mutation error:', error);
+      toast({
+        variant: 'destructive',
+        title: t('errors.updateFailed'),
+        description: t('errors.tryAgain'),
+      });
+    },
+  });
+};

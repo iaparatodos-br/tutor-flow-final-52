@@ -127,7 +127,8 @@
     "completeClass": "Complete Class",
     "markAsCompleted": "Mark as Completed",
     "createReport": "Create Report",
-    "editReport": "Edit Report"
+    "editReport": "Edit Report",
+    "chargeManagement": "Charge Management"
   },
   "daysOfWeek": {
     "sun": "Sun",

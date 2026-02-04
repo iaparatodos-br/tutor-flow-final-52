@@ -31,6 +31,8 @@ interface ClassWithParticipants {
   is_experimental: boolean;
   is_group_class: boolean;
   has_report?: boolean;
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
   
   recurrence_pattern?: any;
   // student_id REMOVED - use participants array instead
@@ -388,6 +390,8 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
             class_participants!inner (
               student_id,
               dependent_id,
@@ -437,6 +441,8 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
           class_participants!inner (
             student_id,
             dependent_id,
@@ -486,6 +492,8 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
             class_participants!inner (
               student_id,
               dependent_id,
@@ -534,6 +542,8 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
           class_participants!inner (
             student_id,
             dependent_id,
@@ -587,6 +597,8 @@ export default function Agenda() {
               is_template,
               recurrence_end_date,
               class_template_id,
+              charge_applied,
+              amnesty_granted,
               class_participants!inner (
                 student_id,
                 dependent_id,
@@ -630,6 +642,8 @@ export default function Agenda() {
               is_template,
               recurrence_end_date,
               class_template_id,
+              charge_applied,
+              amnesty_granted,
               class_participants!inner (
                 student_id,
                 dependent_id,
@@ -1050,7 +1064,9 @@ export default function Agenda() {
             isVirtual: cls.isVirtual,
             class_template_id: cls.class_template_id,
             recurrence_end_date: cls.recurrence_end_date,
-            has_report: !!cls.has_report
+            has_report: !!cls.has_report,
+            charge_applied: cls.charge_applied,
+            amnesty_granted: cls.amnesty_granted
           };
         });
 
@@ -1744,6 +1760,11 @@ export default function Agenda() {
           onVisibleRangeChange={handleVisibleRangeChange}
           highlightedClassId={highlightedClassId}
           initialDate={calendarInitialDate}
+          onAmnestyGranted={() => {
+            if (visibleRange) {
+              loadClasses(visibleRange.start, visibleRange.end);
+            }
+          }}
         />
 
         {/* Availability Manager for Professors */}

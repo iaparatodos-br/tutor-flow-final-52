@@ -54,6 +54,8 @@ export interface CalendarClass {
   class_template_id?: string;
   recurrence_end_date?: string | null;
   has_report?: boolean;
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
 }
 
 export interface AvailabilityBlock {

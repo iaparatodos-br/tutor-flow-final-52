@@ -127,7 +127,8 @@
     "completeClass": "Concluir Aula",
     "markAsCompleted": "Marcar como Concluída",
     "createReport": "Criar Relatório",
-    "editReport": "Editar Relatório"
+    "editReport": "Editar Relatório",
+    "chargeManagement": "Gestão de Cobrança"
   },
   "daysOfWeek": {
     "sun": "Dom",

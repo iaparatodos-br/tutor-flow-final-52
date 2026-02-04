@@ -24,6 +24,7 @@ import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, Check
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
+import { AmnestyButton } from '@/components/AmnestyButton';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileCalendarList } from './MobileCalendarList';
@@ -45,6 +46,7 @@ interface SimpleCalendarProps {
   onVisibleRangeChange?: (start: Date, end: Date) => void;
   highlightedClassId?: string | null;
   initialDate?: Date | null;
+  onAmnestyGranted?: () => void;
 }
 
 export function SimpleCalendar({ 
@@ -62,7 +64,8 @@ export function SimpleCalendar({
   onScheduleClass,
   onVisibleRangeChange,
   highlightedClassId,
-  initialDate
+  initialDate,
+  onAmnestyGranted
 }: SimpleCalendarProps) {
   const { t } = useTranslation('classes');
   const isMobile = useIsMobile();
@@ -565,6 +568,26 @@ export function SimpleCalendar({
                       )}
                     </Button>
                   )}
+                </div>
+              )}
+              
+              {/* Amnesty Section - for cancelled classes with pending charge */}
+              {isProfessor && 
+               (selectedEvent as CalendarClass).status === 'cancelada' && 
+               (selectedEvent as CalendarClass).charge_applied === true && 
+               (selectedEvent as CalendarClass).amnesty_granted !== true && (
+                <div className="pt-4 border-t">
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                    {t('actions.chargeManagement', 'Gestão de Cobrança')}
+                  </p>
+                  <AmnestyButton
+                    classId={(selectedEvent as CalendarClass).id}
+                    studentName={getDisplayName(selectedEvent as CalendarClass).name}
+                    onAmnestyGranted={() => {
+                      setSelectedEvent(null);
+                      onAmnestyGranted?.();
+                    }}
+                  />
                 </div>
               )}
             </div>

@@ -225,6 +225,10 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
             </div>
           </div>
 
+          <p className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
+            💡 {t('fields.groupPricingNote', 'Em aulas em grupo, este valor será cobrado individualmente de cada participante, não sendo dividido entre os alunos.')}
+          </p>
+
           <div className="space-y-3">
             <div className="flex items-center space-x-2">
               <Checkbox

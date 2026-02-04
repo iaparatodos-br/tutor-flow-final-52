@@ -23,7 +23,8 @@
     "duration": "Duration (min)",
     "durationPlaceholder": "60",
     "isActive": "Service active",
-    "isDefault": "Set as default"
+    "isDefault": "Set as default",
+    "groupPricingNote": "For group classes, this price will be charged individually to each participant, not split among students."
   },
   "validation": {
     "loginRequired": "You need to be logged in to create a service.",

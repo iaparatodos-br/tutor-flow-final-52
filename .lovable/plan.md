@@ -1,184 +1,125 @@
 
 
-# Plano: Adicionar Botão de Anistia no Calendário (SimpleCalendar)
+# Plano: Botão de Download de PDF no Recibo
 
-## Problema
+## Contexto
 
-O fluxo atual de anistia está quebrado do ponto de vista de UX:
+A página de recibo (`/recibo/:invoiceId`) já possui um botão "Imprimir" que utiliza `window.print()`. O usuário precisa de uma forma de baixar o recibo como arquivo PDF.
 
-1. Professor recebe notificação "Anistia Disponível" no Inbox
-2. Deep-link navega para `/agenda?date=...&classId=...&action=amnesty`
-3. Aula é destacada no calendário
-4. Professor clica na aula cancelada
-5. **Não existe botão de Anistia** no modal de detalhes da aula
+## Solução Proposta
 
-O `AmnestyButton` atualmente só aparece na página **Financeiro** (lista de faturas), não no calendário.
+Adicionar um botão "Baixar PDF" que utiliza a funcionalidade nativa do browser para salvar como PDF, integrado com o utilitário `openExternalUrl` para compatibilidade com o app nativo (Capacitor).
 
-## Solução
+## Abordagem Técnica
 
-Adicionar o botão de anistia no modal de detalhes de aula (`SimpleCalendar`) para aulas canceladas que têm cobrança pendente.
+### Opção Escolhida: Print-to-PDF via Browser
 
-## Alterações Necessárias
+A forma mais simples e eficiente é utilizar `window.print()` que permite ao usuário salvar como PDF através do diálogo de impressão do sistema/browser. Esta é a abordagem padrão usada em sistemas de faturamento.
 
-### 1. Estender a interface `CalendarClass` (CalendarView.tsx)
+**Vantagens:**
+- Sem dependências adicionais de bibliotecas de PDF
+- Layout já otimizado para impressão (CSS print já existe em `recibo.css`)
+- Funciona em todos os browsers e no app nativo
 
-Adicionar campos `charge_applied` e `amnesty_granted` à interface:
+## Alterações
 
-```typescript
-export interface CalendarClass {
-  // ... campos existentes ...
-  charge_applied?: boolean;      // NOVO
-  amnesty_granted?: boolean;     // NOVO
-}
+### 1. Modificar `src/pages/Recibo.tsx`
+
+**Adicionar ícone `Download`** aos imports do Lucide.
+
+**Atualizar a seção de botões** para incluir o novo botão de download:
+
+```tsx
+<div className="flex gap-4 mb-8 print:hidden">
+  <Button onClick={() => navigate(-1)} variant="ghost">
+    <ArrowLeft className="mr-2 h-4 w-4" />
+    {t('receipt.back', 'Voltar')}
+  </Button>
+  <Button onClick={handlePrint} variant="outline">
+    <Printer className="mr-2 h-4 w-4" />
+    {t('receipt.print', 'Imprimir')}
+  </Button>
+  <Button onClick={handleDownloadPdf} variant="default">
+    <Download className="mr-2 h-4 w-4" />
+    {t('receipt.downloadPdf', 'Baixar PDF')}
+  </Button>
+</div>
 ```
 
-### 2. Atualizar SimpleCalendar (SimpleCalendar.tsx)
+**Adicionar função `handleDownloadPdf`:**
 
-**2.1 - Importar AmnestyButton:**
-```typescript
-import { AmnestyButton } from '@/components/AmnestyButton';
+```tsx
+const handleDownloadPdf = () => {
+  // Exibir instrução para o usuário antes de abrir o diálogo de impressão
+  toast.info(t('receipt.pdfInstructions', 'No diálogo de impressão, selecione "Salvar como PDF" como destino.'));
+  
+  // Pequeno delay para o toast aparecer antes do diálogo de impressão
+  setTimeout(() => {
+    window.print();
+  }, 500);
+};
 ```
 
-**2.2 - Adicionar callback para refresh após anistia:**
-```typescript
-interface SimpleCalendarProps {
-  // ... props existentes ...
-  onAmnestyGranted?: () => void;  // NOVO
-}
-```
+### 2. Adicionar Traduções
 
-**2.3 - Adicionar botão na seção de ações do modal:**
-
-Na função `renderEventDetails()`, após a seção de ações existentes, adicionar condição para aulas canceladas com cobrança:
-
-```typescript
-{/* Amnesty Button - for cancelled classes with pending charge */}
-{isProfessor && 
- (selectedEvent as CalendarClass).status === 'cancelada' && 
- (selectedEvent as CalendarClass).charge_applied === true && 
- (selectedEvent as CalendarClass).amnesty_granted === false && (
-  <div className="pt-4 border-t">
-    <p className="text-xs text-muted-foreground mb-3">
-      {t('actions.amnestySection', 'Gestão de Cobrança')}
-    </p>
-    <AmnestyButton
-      classId={(selectedEvent as CalendarClass).id}
-      studentName={getDisplayName(selectedEvent as CalendarClass).name}
-      onAmnestyGranted={() => {
-        setSelectedEvent(null);
-        onAmnestyGranted?.();
-      }}
-    />
-  </div>
-)}
-```
-
-### 3. Atualizar Agenda.tsx
-
-**3.1 - Mapear `charge_applied` e `amnesty_granted` nos dados do calendário:**
-
-Atualizar a função `transformClassToCalendarEvent` para incluir os novos campos:
-
-```typescript
-const transformToCalendarEvent = (cls: ClassWithParticipants): CalendarClass => ({
-  // ... campos existentes ...
-  charge_applied: cls.charge_applied,      // NOVO
-  amnesty_granted: cls.amnesty_granted,    // NOVO
-});
-```
-
-**3.2 - Passar callback de refresh:**
-
-```typescript
-<SimpleCalendar
-  // ... props existentes ...
-  onAmnestyGranted={() => {
-    if (visibleRange) {
-      loadClasses(visibleRange.start, visibleRange.end);
-    }
-  }}
-/>
-```
-
-### 4. Adicionar traduções (opcional)
-
-Adicionar chave para o título da seção no arquivo de traduções:
-
+**`src/i18n/locales/pt/financial.json`:**
 ```json
-// src/i18n/locales/pt/classes.json
 {
-  "actions": {
-    "amnestySection": "Gestão de Cobrança"
-  }
-}
-
-// src/i18n/locales/en/classes.json
-{
-  "actions": {
-    "amnestySection": "Charge Management"
+  "receipt": {
+    "back": "Voltar",
+    "print": "Imprimir",
+    "downloadPdf": "Baixar PDF",
+    "pdfInstructions": "No diálogo de impressão, selecione \"Salvar como PDF\" como destino."
   }
 }
 ```
 
-## Fluxo Resultante
+**`src/i18n/locales/en/financial.json`:**
+```json
+{
+  "receipt": {
+    "back": "Back",
+    "print": "Print",
+    "downloadPdf": "Download PDF",
+    "pdfInstructions": "In the print dialog, select \"Save as PDF\" as the destination."
+  }
+}
+```
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    FLUXO DE ANISTIA CORRIGIDO                   │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. Notificação "Anistia Disponível" no Inbox                   │
-│                    │                                            │
-│                    ▼                                            │
-│  2. Clique leva para /agenda?classId=...&action=amnesty         │
-│                    │                                            │
-│                    ▼                                            │
-│  3. Calendário navega para o mês correto                        │
-│     + Aula é destacada visualmente                              │
-│                    │                                            │
-│                    ▼                                            │
-│  4. Professor clica na aula cancelada                           │
-│                    │                                            │
-│                    ▼                                            │
-│  5. Modal de detalhes mostra:                                   │
-│     ┌──────────────────────────────────────────┐                │
-│     │  Status: Cancelada                       │                │
-│     │  Aluno: Maria Silva                      │                │
-│     │  Data: 15/01/2026                        │                │
-│     │                                          │                │
-│     │  ─────────────────────────────────       │                │
-│     │  Gestão de Cobrança                      │                │
-│     │  [ ❤️ Anistia ] ← NOVO BOTÃO             │                │
-│     └──────────────────────────────────────────┘                │
-│                    │                                            │
-│                    ▼                                            │
-│  6. Clique abre modal de confirmação do AmnestyButton           │
-│                    │                                            │
-│                    ▼                                            │
-│  7. Anistia concedida → Cobrança removida + Notificação OK      │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+### 3. Melhorar navegação de volta
+
+Atualmente o botão "Voltar" navega sempre para `/faturas`, mas pode ser melhor usar `navigate(-1)` para voltar para a página anterior (mais flexível para diferentes fluxos de acesso ao recibo).
 
 ## Arquivos a Modificar
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/Calendar/CalendarView.tsx` | Adicionar `charge_applied` e `amnesty_granted` à interface `CalendarClass` |
-| `src/components/Calendar/SimpleCalendar.tsx` | Importar `AmnestyButton`, adicionar prop `onAmnestyGranted`, renderizar botão para aulas canceladas com cobrança |
-| `src/pages/Agenda.tsx` | Mapear novos campos, passar callback `onAmnestyGranted` |
-| `src/i18n/locales/pt/classes.json` | Adicionar tradução `actions.amnestySection` |
-| `src/i18n/locales/en/classes.json` | Adicionar tradução `actions.amnestySection` |
+| `src/pages/Recibo.tsx` | Adicionar botão "Baixar PDF", importar `Download` do Lucide, adicionar função `handleDownloadPdf` |
+| `src/i18n/locales/pt/financial.json` | Adicionar traduções para `receipt.downloadPdf` e `receipt.pdfInstructions` |
+| `src/i18n/locales/en/financial.json` | Adicionar traduções para `receipt.downloadPdf` e `receipt.pdfInstructions` |
 
-## Validação
+## Resultado Visual
 
-Após implementação:
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  [← Voltar]  [🖨️ Imprimir]  [📥 Baixar PDF]                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│                      📄 Recibo de Pagamento                     │
+│                        #50CA9F3F                                │
+│                                                                 │
+│                    ┌──────────────┐                             │
+│                    │    PAGO      │                             │
+│                    └──────────────┘                             │
+│                                                                 │
+│  ... resto do recibo ...                                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-1. Cancelar uma aula com menos de 24h de antecedência (para gerar cobrança)
-2. Executar `generate-teacher-notifications` manualmente
-3. Verificar notificação "Anistia Disponível" no Inbox
-4. Clicar na notificação → navega para Agenda
-5. Clicar na aula destacada → modal mostra botão "Anistia"
-6. Clicar em "Anistia" → modal de confirmação aparece
-7. Confirmar → anistia concedida, botão desaparece, toast de sucesso
+## Observações
+
+- O CSS de impressão já existe em `recibo.css` e oculta os botões durante a impressão/geração de PDF (`print:hidden`)
+- Esta abordagem é a mais comum em sistemas web de faturamento e não requer bibliotecas pesadas de geração de PDF
+- Funciona tanto na web quanto no app nativo via Capacitor
 

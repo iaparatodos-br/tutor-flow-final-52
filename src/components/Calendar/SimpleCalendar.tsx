@@ -572,24 +572,35 @@ export function SimpleCalendar({
               )}
               
               {/* Amnesty Section - for cancelled classes with pending charge */}
-              {isProfessor && 
-               (selectedEvent as CalendarClass).status === 'cancelada' && 
-               (selectedEvent as CalendarClass).charge_applied === true && 
-               (selectedEvent as CalendarClass).amnesty_granted !== true && (
-                <div className="pt-4 border-t">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
-                    {t('actions.chargeManagement', 'Gestão de Cobrança')}
-                  </p>
-                  <AmnestyButton
-                    classId={(selectedEvent as CalendarClass).id}
-                    studentName={getDisplayName(selectedEvent as CalendarClass).name}
-                    onAmnestyGranted={() => {
-                      setSelectedEvent(null);
-                      onAmnestyGranted?.();
-                    }}
-                  />
-                </div>
-              )}
+              {(() => {
+                const classEvent = selectedEvent as CalendarClass;
+                // Check if class-level charge is applied OR if any participant has charge_applied
+                const hasClassCharge = classEvent.charge_applied === true;
+                const hasParticipantCharge = classEvent.participants?.some(
+                  (p: any) => p.charge_applied === true && (p.status === 'cancelada' || p.status === 'removida')
+                );
+                const hasAnyCharge = hasClassCharge || hasParticipantCharge;
+                const canGrantAmnesty = isProfessor && 
+                  classEvent.status === 'cancelada' && 
+                  hasAnyCharge && 
+                  classEvent.amnesty_granted !== true;
+                
+                return canGrantAmnesty ? (
+                  <div className="pt-4 border-t">
+                    <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                      {t('actions.chargeManagement', 'Gestão de Cobrança')}
+                    </p>
+                    <AmnestyButton
+                      classId={classEvent.id}
+                      studentName={getDisplayName(classEvent).name}
+                      onAmnestyGranted={() => {
+                        setSelectedEvent(null);
+                        onAmnestyGranted?.();
+                      }}
+                    />
+                  </div>
+                ) : null;
+              })()}
             </div>
           </div>
         )}

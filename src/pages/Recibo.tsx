@@ -12,7 +12,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { useTranslation } from 'react-i18next';
 import './recibo.css';
-
 interface Invoice {
   id: string;
   created_at: string;
@@ -39,11 +38,11 @@ interface Invoice {
     cnpj: string | null;
   } | null;
 }
-
 const fetchInvoiceDetails = async (invoiceId: string) => {
-  const { data, error } = await supabase
-    .from('invoices')
-    .select(`
+  const {
+    data,
+    error
+  } = await supabase.from('invoices').select(`
       id,
       created_at,
       due_date,
@@ -57,25 +56,29 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
       teacher:profiles!invoices_teacher_id_fkey(name, email),
       student:profiles!invoices_student_id_fkey(name, email),
       business_profile:business_profiles!invoices_business_profile_id_fkey(business_name, cnpj)
-    `)
-    .eq('id', invoiceId)
-    .single();
-
+    `).eq('id', invoiceId).single();
   if (error) throw new Error(error.message);
   return data as Invoice;
 };
-
 export default function Recibo() {
-  const { invoiceId } = useParams<{ invoiceId: string }>();
+  const {
+    invoiceId
+  } = useParams<{
+    invoiceId: string;
+  }>();
   const navigate = useNavigate();
-  const { t } = useTranslation('financial');
-
-  const { data: invoice, isLoading, error } = useQuery({
+  const {
+    t
+  } = useTranslation('financial');
+  const {
+    data: invoice,
+    isLoading,
+    error
+  } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: () => fetchInvoiceDetails(invoiceId!),
-    enabled: !!invoiceId,
+    enabled: !!invoiceId
   });
-
   const getPaymentOriginLabel = (origin: string | null) => {
     switch (origin) {
       case 'manual':
@@ -88,28 +91,23 @@ export default function Recibo() {
         return t('paymentOrigins.unspecified');
     }
   };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
-      currency: 'BRL',
+      currency: 'BRL'
     }).format(amount);
   };
-
   const handlePrint = () => {
     window.print();
   };
-
   const handleDownloadPdf = () => {
     toast.info(t('receipt.pdfInstructions', 'No diálogo de impressão, selecione "Salvar como PDF" como destino.'));
     setTimeout(() => {
       window.print();
     }, 500);
   };
-
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-background p-8">
+    return <div className="min-h-screen bg-background p-8">
         <div className="max-w-4xl mx-auto">
           <Skeleton className="h-12 w-48 mb-8" />
           <Card>
@@ -121,13 +119,10 @@ export default function Recibo() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    );
+      </div>;
   }
-
   if (error || !invoice) {
-    return (
-      <div className="min-h-screen bg-background p-8">
+    return <div className="min-h-screen bg-background p-8">
         <div className="max-w-4xl mx-auto">
           <Button onClick={() => navigate('/faturas')} variant="ghost" className="mb-8">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -139,12 +134,9 @@ export default function Recibo() {
             </CardContent>
           </Card>
         </div>
-      </div>
-    );
+      </div>;
   }
-
-  return (
-    <div className="min-h-screen bg-background p-8">
+  return <div className="min-h-screen bg-background p-8">
       <div className="max-w-4xl mx-auto">
         {/* Botões de ação (ocultos na impressão) */}
         <div className="flex gap-4 mb-8 print:hidden">
@@ -152,10 +144,7 @@ export default function Recibo() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             {t('receipt.back', 'Voltar')}
           </Button>
-          <Button onClick={handlePrint} variant="outline">
-            <Printer className="mr-2 h-4 w-4" />
-            {t('receipt.print', 'Imprimir')}
-          </Button>
+          
           <Button onClick={handleDownloadPdf} variant="default">
             <Download className="mr-2 h-4 w-4" />
             {t('receipt.downloadPdf', 'Baixar PDF')}
@@ -177,10 +166,7 @@ export default function Recibo() {
           <CardContent className="pt-6 space-y-6">
             {/* Status */}
             <div className="flex justify-center">
-              <InvoiceStatusBadge 
-                status={invoice.status} 
-                paymentOrigin={invoice.payment_origin}
-              />
+              <InvoiceStatusBadge status={invoice.status} paymentOrigin={invoice.payment_origin} />
             </div>
 
             <Separator />
@@ -192,11 +178,9 @@ export default function Recibo() {
                 <p className="font-medium text-lg">
                   {invoice.business_profile?.business_name || invoice.teacher.name}
                 </p>
-                {invoice.business_profile?.cnpj && (
-                  <p className="text-sm text-muted-foreground">
+                {invoice.business_profile?.cnpj && <p className="text-sm text-muted-foreground">
                     CNPJ: {invoice.business_profile.cnpj}
-                  </p>
-                )}
+                  </p>}
                 <p className="text-sm text-muted-foreground">{invoice.teacher.email}</p>
               </div>
             </div>
@@ -209,18 +193,14 @@ export default function Recibo() {
               <div className="bg-muted p-4 rounded-lg space-y-2">
                 <p className="font-medium">{invoice.student.name}</p>
                 <p className="text-sm text-muted-foreground">{invoice.student.email}</p>
-                {invoice.student.guardian_name && (
-                  <>
+                {invoice.student.guardian_name && <>
                     <p className="text-sm text-muted-foreground mt-2">
                       Responsável: {invoice.student.guardian_name}
                     </p>
-                    {invoice.student.guardian_email && (
-                      <p className="text-sm text-muted-foreground">
+                    {invoice.student.guardian_email && <p className="text-sm text-muted-foreground">
                         {invoice.student.guardian_email}
-                      </p>
-                    )}
-                  </>
-                )}
+                      </p>}
+                  </>}
               </div>
             </div>
 
@@ -233,29 +213,29 @@ export default function Recibo() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Data de Emissão:</span>
                   <span className="font-medium">
-                    {format(new Date(invoice.created_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    {format(new Date(invoice.created_at), "dd 'de' MMMM 'de' yyyy", {
+                    locale: ptBR
+                  })}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Vencimento:</span>
                   <span className="font-medium">
-                    {format(new Date(invoice.due_date), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    {format(new Date(invoice.due_date), "dd 'de' MMMM 'de' yyyy", {
+                    locale: ptBR
+                  })}
                   </span>
                 </div>
-                {invoice.description && (
-                  <div className="flex justify-between">
+                {invoice.description && <div className="flex justify-between">
                     <span className="text-muted-foreground">Descrição:</span>
                     <span className="font-medium">{invoice.description}</span>
-                  </div>
-                )}
-                {invoice.stripe_payment_intent_id && (
-                  <div className="flex justify-between">
+                  </div>}
+                {invoice.stripe_payment_intent_id && <div className="flex justify-between">
                     <span className="text-muted-foreground">ID da Transação:</span>
                     <span className="font-mono text-sm">
                       {invoice.stripe_payment_intent_id.substring(0, 20)}...
                     </span>
-                  </div>
-                )}
+                  </div>}
               </div>
             </div>
 
@@ -271,20 +251,18 @@ export default function Recibo() {
                     {getPaymentOriginLabel(invoice.payment_origin)}
                   </span>
                 </div>
-                {(invoice.status === 'paid' || invoice.status === 'paga') && (
-                  <div className="flex justify-between">
+                {(invoice.status === 'paid' || invoice.status === 'paga') && <div className="flex justify-between">
                     <span className="text-muted-foreground">Data de Pagamento:</span>
                     <span className="font-medium">
-                      {format(new Date(invoice.updated_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      {format(new Date(invoice.updated_at), "dd 'de' MMMM 'de' yyyy", {
+                    locale: ptBR
+                  })}
                     </span>
-                  </div>
-                )}
-                {invoice.manual_payment_notes && (
-                  <div className="bg-muted p-3 rounded">
+                  </div>}
+                {invoice.manual_payment_notes && <div className="bg-muted p-3 rounded">
                     <p className="text-sm text-muted-foreground mb-1">Observações:</p>
                     <p className="text-sm">{invoice.manual_payment_notes}</p>
-                  </div>
-                )}
+                  </div>}
               </div>
             </div>
 
@@ -304,12 +282,13 @@ export default function Recibo() {
             <div className="text-center text-sm text-muted-foreground pt-4 border-t">
               <p>Este é um recibo digital gerado automaticamente.</p>
               <p className="mt-1">
-                Recibo gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                Recibo gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
+                locale: ptBR
+              })}
               </p>
             </div>
           </CardContent>
         </Card>
       </div>
-    </div>
-  );
+    </div>;
 }

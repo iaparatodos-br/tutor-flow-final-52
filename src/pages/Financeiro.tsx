@@ -336,7 +336,7 @@ export default function Financeiro() {
             duration_minutes
           ),
           class_participants (
-            profiles (name)
+            profiles!class_participants_student_id_fkey (name)
           )
         `)
         .eq('invoice_id', invoice.id)

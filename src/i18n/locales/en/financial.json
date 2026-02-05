@@ -101,7 +101,11 @@
     "unspecified": "Not specified"
   },
   "receipt": {
-    "paymentMethod": "Payment Method"
+    "paymentMethod": "Payment Method",
+    "back": "Back",
+    "print": "Print",
+    "downloadPdf": "Download PDF",
+    "pdfInstructions": "In the print dialog, select \"Save as PDF\" as the destination."
   },
   "markAsPaid": {
     "title": "Confirm Manual Payment",

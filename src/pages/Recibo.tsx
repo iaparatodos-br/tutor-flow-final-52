@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { ArrowLeft, Printer, FileText } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { useTranslation } from 'react-i18next';
@@ -99,6 +100,13 @@ export default function Recibo() {
     window.print();
   };
 
+  const handleDownloadPdf = () => {
+    toast.info(t('receipt.pdfInstructions', 'No diálogo de impressão, selecione "Salvar como PDF" como destino.'));
+    setTimeout(() => {
+      window.print();
+    }, 500);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-8">
@@ -140,13 +148,17 @@ export default function Recibo() {
       <div className="max-w-4xl mx-auto">
         {/* Botões de ação (ocultos na impressão) */}
         <div className="flex gap-4 mb-8 print:hidden">
-          <Button onClick={() => navigate('/faturas')} variant="ghost">
+          <Button onClick={() => navigate(-1)} variant="ghost">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar
+            {t('receipt.back', 'Voltar')}
           </Button>
           <Button onClick={handlePrint} variant="outline">
             <Printer className="mr-2 h-4 w-4" />
-            Imprimir
+            {t('receipt.print', 'Imprimir')}
+          </Button>
+          <Button onClick={handleDownloadPdf} variant="default">
+            <Download className="mr-2 h-4 w-4" />
+            {t('receipt.downloadPdf', 'Baixar PDF')}
           </Button>
         </div>
 

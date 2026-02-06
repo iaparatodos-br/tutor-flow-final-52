@@ -7,10 +7,9 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { User, UserCheck, Mail, Phone, Calendar, AlertTriangle, CreditCard, Building2, ArrowLeft, Users } from "lucide-react";
+import { User, UserCheck, Calendar, AlertTriangle, CreditCard, Building2, ArrowLeft, Users } from "lucide-react";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTranslation } from "react-i18next";
@@ -21,18 +20,9 @@ interface StudentFormData {
   name: string;
   email: string;
   phone: string;
-  isOwnResponsible: boolean;
-  guardian_name: string;
-  guardian_email: string;
-  guardian_phone: string;
-  guardian_cpf: string;
-  guardian_address_street: string;
-  guardian_address_city: string;
-  guardian_address_state: string;
-  guardian_address_postal_code: string;
   billing_day: number;
   business_profile_id: string | null;
-  // New fields for family registration
+  // Fields for family registration
   registrationType?: StudentRegistrationType;
   dependents?: InlineDependent[];
 }
@@ -70,18 +60,6 @@ const getInitialFormData = (student?: StudentFormModalProps['student'], teacherD
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
-    // Se não há dados de responsável OU se os dados do responsável são iguais aos do aluno
-    isOwnResponsible: student ? 
-      (!student.guardian_name || student.guardian_name === student.name) : 
-      true,
-    guardian_name: student?.guardian_name || "",
-    guardian_email: student?.guardian_email || "",
-    guardian_phone: student?.guardian_phone || "",
-    guardian_cpf: student?.guardian_cpf || "",
-    guardian_address_street: student?.guardian_address_street || "",
-    guardian_address_city: student?.guardian_address_city || "",
-    guardian_address_state: student?.guardian_address_state || "",
-    guardian_address_postal_code: student?.guardian_address_postal_code || "",
     billing_day: student?.billing_day || teacherDefaultBillingDay || 15,
     business_profile_id: student?.business_profile_id || null
   };
@@ -111,13 +89,6 @@ export function StudentFormModal({
     name: false,
     email: false,
     phone: false,
-    guardian_name: false,
-    guardian_email: false,
-    guardian_cpf: false,
-    guardian_address_street: false,
-    guardian_address_city: false,
-    guardian_address_state: false,
-    guardian_address_postal_code: false,
     billing_day: false,
     business_profile_id: false
   });
@@ -171,13 +142,6 @@ export function StudentFormModal({
       name: false,
       email: false,
       phone: false,
-      guardian_name: false,
-      guardian_email: false,
-      guardian_cpf: false,
-      guardian_address_street: false,
-      guardian_address_city: false,
-      guardian_address_state: false,
-      guardian_address_postal_code: false,
       billing_day: false,
       business_profile_id: false
     });
@@ -194,78 +158,24 @@ export function StudentFormModal({
         name: false,
         email: false,
         phone: false,
-        guardian_name: false,
-        guardian_email: false,
-        guardian_cpf: false,
-        guardian_address_street: false,
-        guardian_address_city: false,
-        guardian_address_state: false,
-        guardian_address_postal_code: false,
         billing_day: false,
         business_profile_id: false
       });
     }
   }, [isOpen, student, teacherDefaultBillingDay]);
 
-  const handleIsOwnResponsibleChange = (checked: boolean) => {
-    const newFormData = {
-      ...formData,
-      isOwnResponsible: checked
-    };
-
-    if (checked) {
-      // Auto-fill guardian fields with student data
-      newFormData.guardian_name = formData.name;
-      newFormData.guardian_email = formData.email;
-      newFormData.guardian_phone = formData.phone;
-    } else {
-      // Clear guardian fields when unchecking
-      newFormData.guardian_name = "";
-      newFormData.guardian_email = "";
-      newFormData.guardian_phone = "";
-      newFormData.guardian_cpf = "";
-      newFormData.guardian_address_street = "";
-      newFormData.guardian_address_city = "";
-      newFormData.guardian_address_state = "";
-      newFormData.guardian_address_postal_code = "";
-    }
-
-    setFormData(newFormData);
-  };
-
   const handleNameChange = (value: string) => {
-    const newFormData = { ...formData, name: value };
-    
-    // If student is own responsible, update guardian name too
-    if (formData.isOwnResponsible) {
-      newFormData.guardian_name = value;
-    }
-    
-    setFormData(newFormData);
+    setFormData(prev => ({ ...prev, name: value }));
     setValidationErrors(prev => ({ ...prev, name: false }));
   };
 
   const handleEmailChange = (value: string) => {
-    const newFormData = { ...formData, email: value };
-    
-    // If student is own responsible, update guardian email too
-    if (formData.isOwnResponsible) {
-      newFormData.guardian_email = value;
-    }
-    
-    setFormData(newFormData);
+    setFormData(prev => ({ ...prev, email: value }));
     setValidationErrors(prev => ({ ...prev, email: false }));
   };
 
   const handlePhoneChange = (value: string) => {
-    const newFormData = { ...formData, phone: value };
-    
-    // If student is own responsible, update guardian phone too
-    if (formData.isOwnResponsible) {
-      newFormData.guardian_phone = value;
-    }
-    
-    setFormData(newFormData);
+    setFormData(prev => ({ ...prev, phone: value }));
     setValidationErrors(prev => ({ ...prev, phone: false }));
   };
 
@@ -292,13 +202,6 @@ export function StudentFormModal({
       name: !formData.name.trim(),
       email: !formData.email.trim(),
       phone: false,
-      guardian_name: !formData.isOwnResponsible && !formData.guardian_name.trim(),
-      guardian_email: !formData.isOwnResponsible && !formData.guardian_email.trim(),
-      guardian_cpf: false,
-      guardian_address_street: false,
-      guardian_address_city: false,
-      guardian_address_state: false,
-      guardian_address_postal_code: false,
       billing_day: hasFinancialModule && (formData.billing_day < 1 || formData.billing_day > 28),
       business_profile_id: hasFinancialModule && businessProfiles && businessProfiles.length > 0 && !formData.business_profile_id
     };
@@ -321,11 +224,6 @@ export function StudentFormModal({
 
   const handleTypeSelect = (type: StudentRegistrationType) => {
     setRegistrationType(type);
-    
-    // For family type, always set isOwnResponsible to true (guardian IS the student account)
-    if (type === 'family') {
-      setFormData(prev => ({ ...prev, isOwnResponsible: true }));
-    }
   };
 
   const handleBack = () => {
@@ -485,296 +383,135 @@ export function StudentFormModal({
                     </div>
                   )}
               
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="student-name">{t('fields.fullName')} *</Label>
-                  <Input
-                    id="student-name"
-                    type="text"
-                    placeholder={t('placeholders.studentName')}
-                    value={formData.name}
-                    onChange={(e) => handleNameChange(e.target.value)}
-                    className={validationErrors.name ? "border-destructive" : ""}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="student-phone">{t('fields.phone')}</Label>
-                  <PhoneInput
-                    id="student-phone"
-                    value={formData.phone}
-                    onChange={handlePhoneChange}
-                    className={validationErrors.phone ? "border-destructive" : ""}
-                  />
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="student-email">{t('fields.email')} *</Label>
-                <Input
-                  id="student-email"
-                  type="email"
-                  placeholder={t('placeholders.emailExample')}
-                  value={formData.email}
-                  onChange={(e) => handleEmailChange(e.target.value)}
-                  className={validationErrors.email ? "border-destructive" : ""}
-                  required
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Billing Responsible Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-3">
-                <UserCheck className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">{t('form.sections.billingResponsible')}</Label>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isOwnResponsible"
-                  checked={formData.isOwnResponsible}
-                  onCheckedChange={handleIsOwnResponsibleChange}
-                />
-                <Label htmlFor="isOwnResponsible" className="text-sm">
-                  {t('form.ownResponsible')}
-                </Label>
-              </div>
-
-              {!formData.isOwnResponsible && (
-                <>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="guardian-name">{t('fields.guardianName')} *</Label>
+                      <Label htmlFor="student-name">{t('fields.fullName')} *</Label>
                       <Input
-                        id="guardian-name"
+                        id="student-name"
                         type="text"
-                        placeholder={t('placeholders.fullName')}
-                        value={formData.guardian_name}
-                        onChange={(e) => {
-                          setFormData(prev => ({ ...prev, guardian_name: e.target.value }));
-                          setValidationErrors(prev => ({ ...prev, guardian_name: false }));
-                        }}
-                        className={validationErrors.guardian_name ? "border-destructive" : ""}
+                        placeholder={t('placeholders.studentName')}
+                        value={formData.name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        className={validationErrors.name ? "border-destructive" : ""}
                         required
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="guardian-phone">{t('fields.guardianPhone')}</Label>
+                      <Label htmlFor="student-phone">{t('fields.phone')}</Label>
                       <PhoneInput
-                        id="guardian-phone"
-                        value={formData.guardian_phone}
-                        onChange={(value) => setFormData(prev => ({ ...prev, guardian_phone: value }))}
+                        id="student-phone"
+                        value={formData.phone}
+                        onChange={handlePhoneChange}
+                        className={validationErrors.phone ? "border-destructive" : ""}
                       />
                     </div>
                   </div>
-
+                  
                   <div className="space-y-2">
-                    <Label htmlFor="guardian-email">{t('fields.guardianEmail')} *</Label>
+                    <Label htmlFor="student-email">{t('fields.email')} *</Label>
                     <Input
-                      id="guardian-email"
+                      id="student-email"
                       type="email"
                       placeholder={t('placeholders.emailExample')}
-                      value={formData.guardian_email}
-                      onChange={(e) => {
-                        setFormData(prev => ({ ...prev, guardian_email: e.target.value }));
-                        setValidationErrors(prev => ({ ...prev, guardian_email: false }));
-                      }}
-                      className={validationErrors.guardian_email ? "border-destructive" : ""}
+                      value={formData.email}
+                      onChange={(e) => handleEmailChange(e.target.value)}
+                      className={validationErrors.email ? "border-destructive" : ""}
                       required
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {hasFinancialModule ? t('form.invoiceEmail') : t('form.contactEmail')}
-                    </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="guardian-cpf">{t('fields.guardianCpf')}</Label>
-                    <Input
-                      id="guardian-cpf"
-                      type="text"
-                      placeholder={t('placeholders.cpf')}
-                      value={formData.guardian_cpf}
-                      onChange={(e) => {
-                        setFormData(prev => ({ ...prev, guardian_cpf: e.target.value }));
-                        setValidationErrors(prev => ({ ...prev, guardian_cpf: false }));
-                      }}
-                      className={validationErrors.guardian_cpf ? "border-destructive" : ""}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      {t('form.cpfForBoleto')}
-                    </p>
-                  </div>
+                  <Separator />
 
-                  <div className="space-y-4">
-                    <Label className="text-sm font-medium">{t('form.sections.guardianAddress')}</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t('form.addressRequired')}
-                    </p>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="guardian-address-street">{t('fields.fullAddress')}</Label>
-                      <Input
-                        id="guardian-address-street"
-                        type="text"
-                        placeholder={t('placeholders.streetAddress')}
-                        value={formData.guardian_address_street}
-                        onChange={(e) => {
-                          setFormData(prev => ({ ...prev, guardian_address_street: e.target.value }));
-                          setValidationErrors(prev => ({ ...prev, guardian_address_street: false }));
-                        }}
-                        className={validationErrors.guardian_address_street ? "border-destructive" : ""}
-                      />
+                  {/* Billing Configuration Section */}
+                  {hasFinancialModule && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <Label className="text-sm font-medium">{t('billingConfig', 'Configuração de Cobrança')}</Label>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="billing-day">
+                          {t('fields.monthlyBillingDay')} *
+                        </Label>
+                        <Input
+                          id="billing-day"
+                          type="number"
+                          min="1"
+                          max="28"
+                          placeholder={t('placeholders.billingDay')}
+                          value={formData.billing_day}
+                          onChange={(e) => {
+                            setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
+                            setValidationErrors(prev => ({ ...prev, billing_day: false }));
+                          }}
+                          className={validationErrors.billing_day ? "border-destructive" : ""}
+                          required
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {t('form.billingDayDescription')}
+                        </p>
+                      </div>
+
+                      {/* Business Profile Selection */}
+                      {businessProfiles && businessProfiles.length > 0 && (
+                        <div className="space-y-2">
+                          <Label htmlFor="business-profile">
+                            <Building2 className="h-4 w-4 inline mr-1" />
+                            {t('form.businessProfileLabel')}
+                          </Label>
+                          <Select
+                            value={formData.business_profile_id || ""}
+                            onValueChange={(value) => {
+                              setFormData(prev => ({ ...prev, business_profile_id: value || null }));
+                              setValidationErrors(prev => ({ ...prev, business_profile_id: false }));
+                            }}
+                          >
+                            <SelectTrigger className={validationErrors.business_profile_id ? "border-destructive" : ""}>
+                              <SelectValue placeholder={t('form.selectBusiness')} />
+                            </SelectTrigger>
+                            <SelectContent className="bg-background border z-50">
+                              {businessProfiles.map((profile) => (
+                                <SelectItem key={profile.id} value={profile.id}>
+                                  <div className="flex items-center gap-2">
+                                    <Building2 className="h-4 w-4" />
+                                    <span>{profile.business_name}</span>
+                                    {profile.cnpj && (
+                                      <span className="text-xs text-muted-foreground">
+                                        ({profile.cnpj})
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            {t('form.businessProfileDescription')}
+                          </p>
+                          {validationErrors.business_profile_id && (
+                            <p className="text-xs text-destructive">
+                              {t('form.selectBusinessError')}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {businessProfiles && businessProfiles.length === 0 && (
+                        <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+                          <Building2 className="h-4 w-4 text-amber-600" />
+                          <AlertDescription className="text-amber-800 dark:text-amber-200">
+                            <strong>{t('form.noBusinessWarning')}</strong>
+                            <br />
+                            {t('form.noBusinessAction')}
+                          </AlertDescription>
+                        </Alert>
+                      )}
                     </div>
-
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label htmlFor="guardian-address-city">{t('fields.city')}</Label>
-                        <Input
-                          id="guardian-address-city"
-                          type="text"
-                          placeholder={t('placeholders.city')}
-                          value={formData.guardian_address_city}
-                          onChange={(e) => {
-                            setFormData(prev => ({ ...prev, guardian_address_city: e.target.value }));
-                            setValidationErrors(prev => ({ ...prev, guardian_address_city: false }));
-                          }}
-                          className={validationErrors.guardian_address_city ? "border-destructive" : ""}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="guardian-address-state">{t('fields.state')}</Label>
-                        <Input
-                          id="guardian-address-state"
-                          type="text"
-                          placeholder={t('placeholders.state')}
-                          maxLength={2}
-                          value={formData.guardian_address_state}
-                          onChange={(e) => {
-                            setFormData(prev => ({ ...prev, guardian_address_state: e.target.value.toUpperCase() }));
-                            setValidationErrors(prev => ({ ...prev, guardian_address_state: false }));
-                          }}
-                          className={validationErrors.guardian_address_state ? "border-destructive" : ""}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="guardian-address-postal-code">{t('fields.postalCode')}</Label>
-                        <Input
-                          id="guardian-address-postal-code"
-                          type="text"
-                          placeholder={t('placeholders.postalCode')}
-                          value={formData.guardian_address_postal_code}
-                          onChange={(e) => {
-                            setFormData(prev => ({ ...prev, guardian_address_postal_code: e.target.value }));
-                            setValidationErrors(prev => ({ ...prev, guardian_address_postal_code: false }));
-                          }}
-                          className={validationErrors.guardian_address_postal_code ? "border-destructive" : ""}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {formData.isOwnResponsible && (
-                <div className="bg-muted/50 p-3 rounded-md">
-                  <p className="text-sm text-muted-foreground mb-2">
-                    <UserCheck className="h-4 w-4 inline mr-1" />
-                    {hasFinancialModule ? 
-                      t('form.invoicesSentTo', { email: formData.email }) :
-                      t('form.mainContact', { email: formData.email })
-                    }
-                  </p>
+                  )}
                 </div>
-              )}
-
-              {hasFinancialModule && (
-                <div className="space-y-2">
-                  <Label htmlFor="billing-day">
-                    <Calendar className="h-4 w-4 inline mr-1" />
-                    {t('fields.monthlyBillingDay')} *
-                  </Label>
-                  <Input
-                    id="billing-day"
-                    type="number"
-                    min="1"
-                    max="28"
-                    placeholder={t('placeholders.billingDay')}
-                    value={formData.billing_day}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
-                      setValidationErrors(prev => ({ ...prev, billing_day: false }));
-                    }}
-                    className={validationErrors.billing_day ? "border-destructive" : ""}
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    {t('form.billingDayDescription')}
-                  </p>
-                </div>
-              )}
-
-               {/* Business Profile Selection */}
-               {hasFinancialModule && businessProfiles && businessProfiles.length > 0 && (
-                 <div className="space-y-2">
-                   <Label htmlFor="business-profile">
-                     <Building2 className="h-4 w-4 inline mr-1" />
-                     {t('form.businessProfileLabel')}
-                   </Label>
-                   <Select
-                     value={formData.business_profile_id || ""}
-                     onValueChange={(value) => {
-                       setFormData(prev => ({ ...prev, business_profile_id: value || null }));
-                       setValidationErrors(prev => ({ ...prev, business_profile_id: false }));
-                     }}
-                   >
-                     <SelectTrigger className={validationErrors.business_profile_id ? "border-destructive" : ""}>
-                       <SelectValue placeholder={t('form.selectBusiness')} />
-                     </SelectTrigger>
-                     <SelectContent className="bg-background border z-50">
-                       {businessProfiles.map((profile) => (
-                         <SelectItem key={profile.id} value={profile.id}>
-                           <div className="flex items-center gap-2">
-                             <Building2 className="h-4 w-4" />
-                             <span>{profile.business_name}</span>
-                             {profile.cnpj && (
-                               <span className="text-xs text-muted-foreground">
-                                 ({profile.cnpj})
-                               </span>
-                             )}
-                           </div>
-                         </SelectItem>
-                       ))}
-                     </SelectContent>
-                   </Select>
-                   <p className="text-xs text-muted-foreground">
-                     {t('form.businessProfileDescription')}
-                   </p>
-                   {validationErrors.business_profile_id && (
-                     <p className="text-xs text-destructive">
-                       {t('form.selectBusinessError')}
-                     </p>
-                   )}
-                 </div>
-               )}
-
-               {hasFinancialModule && businessProfiles && businessProfiles.length === 0 && (
-                 <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
-                   <Building2 className="h-4 w-4 text-amber-600" />
-                   <AlertDescription className="text-amber-800 dark:text-amber-200">
-                     <strong>{t('form.noBusinessWarning')}</strong>
-                     <br />
-                     {t('form.noBusinessAction')}
-                   </AlertDescription>
-                 </Alert>
-                )}
-              </div>
-            </>
-          )}
+              </>
+            )}
           </div>
           <DialogFooter>
             {/* Only show submit button when type is selected or editing */}

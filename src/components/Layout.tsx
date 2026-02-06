@@ -5,7 +5,6 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
-import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
 import { NotificationBell } from "@/components/NotificationBell";
 interface LayoutProps {
   children: ReactNode;
@@ -71,8 +70,6 @@ export function Layout({
           <div className="ml-auto flex items-center gap-4">
             {/* Notification bell for professors */}
             {isProfessor && <NotificationBell />}
-            {/* Teacher context switcher for students */}
-            {isAluno && <TeacherContextSwitcher />}
           </div>
         </header>
 

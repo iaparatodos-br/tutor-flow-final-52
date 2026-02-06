@@ -1,107 +1,87 @@
 
+# Plano: Corrigir Erro ao Carregar Detalhes da Fatura
 
-# Plano: Corrigir Modal de Verificacao de Email que Nao Aparece
+## Problema Identificado
 
-## Diagnostico do Problema
+Ao clicar em "Ver Detalhes" de uma fatura na página `/financeiro`, o sistema retorna o erro:
 
-Apos testes extensivos, identifiquei que o modal de verificacao de email **nao esta aparecendo** apos o cadastro bem-sucedido. O cadastro funciona corretamente (retorna `success: true`), mas o modal nao e exibido.
-
-### Causas Provaveis
-
-1. **Problema com Dialog sem `onOpenChange`**: O Radix UI Dialog, quando usado em modo controlado (`open={...}`), requer um `onOpenChange` mesmo que seja apenas para evitar warnings. Sem ele, pode haver comportamentos inesperados.
-
-2. **Race Condition com Loading**: O `AuthContext.signUp` chama `setLoading(true/false)` internamente, e o `Auth.tsx` tambem tem seu proprio `loading` state. Isso pode causar re-renderizacoes que interferem com o estado do modal.
-
-3. **Stale Closure**: O `signupForm.email` pode estar capturando um valor antigo devido a closures do React.
-
-## Solucao Proposta
-
-### 1. Adicionar `onOpenChange` ao Dialog
-
-Mesmo que nao queiramos que o Dialog feche, precisamos fornecer um handler vazio para garantir que o Radix UI funcione corretamente:
-
-```tsx
-<Dialog 
-  open={showEmailVerificationModal} 
-  onOpenChange={() => {/* Nao fazer nada - modal barrier dismissible */}}
->
+```
+PGRST201: Could not embed because more than one relationship was found for 'class_participants' and 'profiles'
 ```
 
-### 2. Usar Callback para Garantir Estado Correto
+### Causa Raiz
 
-Garantir que o email seja capturado corretamente antes de chamar `signUp`:
+A tabela `class_participants` possui **duas foreign keys** para a tabela `profiles`:
+1. `class_participants_student_id_fkey` - referencia o aluno participante
+2. `class_participants_cancelled_by_fkey` - referencia quem cancelou a participação
 
-```tsx
-const handleSignup = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  // ... validacoes ...
-  
-  setLoading(true);
-  
-  // Capturar email ANTES da chamada async
-  const emailToRegister = signupForm.email;
-  
-  const { error } = await signUp(...);
-  
-  if (error) {
-    toast({ ... });
-  } else {
-    setRegisteredEmail(emailToRegister);
-    setShowEmailVerificationModal(true);
-  }
-  
-  setLoading(false);
-};
+Quando a query tenta fazer join com `profiles` sem especificar qual FK usar, o PostgREST não consegue resolver a ambiguidade e retorna erro.
+
+### Código Problemático (linha 327-342)
+
+```typescript
+const { data, error } = await supabase
+  .from('invoice_classes')
+  .select(`
+    id,
+    item_type,
+    amount,
+    description,
+    charge_percentage,
+    classes (
+      id,
+      class_date,
+      duration_minutes
+    ),
+    class_participants (
+      profiles (name)  // ← AMBÍGUO: qual FK usar?
+    )
+  `)
 ```
 
-### 3. Adicionar Console Logs para Debug
+## Solução
 
-Adicionar logs temporarios para verificar se o fluxo esta correto:
+Especificar explicitamente a foreign key a ser usada no join com `profiles`:
 
-```tsx
-console.log('[Auth] Signup success, showing modal for:', emailToRegister);
-setRegisteredEmail(emailToRegister);
-setShowEmailVerificationModal(true);
-console.log('[Auth] Modal state set to true');
+```typescript
+class_participants (
+  profiles!class_participants_student_id_fkey (name)
+)
 ```
 
-## Alteracoes no Arquivo
+## Arquivo a Modificar
 
-### `src/pages/Auth.tsx`
-
-1. Modificar o Dialog para incluir `onOpenChange`:
-
-```tsx
-<Dialog 
-  open={showEmailVerificationModal} 
-  onOpenChange={() => {/* Barrier dismissible - nao fechar */}}
->
-```
-
-2. Capturar email antes da chamada async no `handleSignup`:
-
-```tsx
-const emailToRegister = signupForm.email;
-// ... await signUp ...
-setRegisteredEmail(emailToRegister);
-```
-
-3. Adicionar logs de debug (remover depois de confirmar funcionamento)
-
-## Resumo das Alteracoes
-
-| Arquivo | Alteracao |
+| Arquivo | Alteração |
 |---------|-----------|
-| `src/pages/Auth.tsx` | Adicionar `onOpenChange` vazio ao Dialog, capturar email antes da chamada async |
+| `src/pages/Financeiro.tsx` | Corrigir query na função `loadInvoiceDetails` (linha ~339) para especificar a FK correta |
 
-## Validacao Apos Implementacao
+## Código Corrigido
 
-1. Acessar `/auth` e ir para aba de cadastro
-2. Preencher formulario com dados validos
-3. Clicar em "Criar Conta"
-4. **Modal DEVE aparecer** com icone de email e mensagem
-5. Verificar que nao fecha ao clicar fora
-6. Verificar que nao fecha ao pressionar ESC
-7. Clicar em "Entendi" - modal fecha e volta para aba de login
+```typescript
+const { data, error } = await supabase
+  .from('invoice_classes')
+  .select(`
+    id,
+    item_type,
+    amount,
+    description,
+    charge_percentage,
+    classes (
+      id,
+      class_date,
+      duration_minutes
+    ),
+    class_participants (
+      profiles!class_participants_student_id_fkey (name)
+    )
+  `)
+  .eq('invoice_id', invoice.id)
+  .order('created_at', { ascending: true });
+```
 
+## Validação
+
+Após a correção:
+1. Acessar `/financeiro` como professor
+2. Clicar em "Ver Detalhes" de qualquer fatura
+3. O modal deve abrir sem erros e exibir os itens da fatura

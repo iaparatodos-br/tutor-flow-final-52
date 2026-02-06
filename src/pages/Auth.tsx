@@ -29,6 +29,7 @@ export default function Auth() {
   const [showResetForm, setShowResetForm] = useState(false);
   const [emailNotConfirmed, setEmailNotConfirmed] = useState<string | null>(null);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
+  const [signupSuccessEmail, setSignupSuccessEmail] = useState<string | null>(null);
 
   if (isAuthenticated) {
     // Redirecionar baseado no papel do usuário
@@ -182,9 +183,14 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
+      // Set state for inline alert
+      setSignupSuccessEmail(signupForm.email);
+      
+      // Persistent toast as reinforcement (won't auto-dismiss)
       toast({
         title: t('messages.emailVerificationRequired'),
         description: t('messages.emailVerificationDescription'),
+        duration: Infinity,
       });
     }
     
@@ -426,6 +432,32 @@ export default function Auth() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Signup success alert - inline and persistent */}
+                  {signupSuccessEmail && (
+                    <Alert className="mb-4 border-primary/50 bg-primary/5">
+                      <Mail className="h-4 w-4 text-primary" />
+                      <AlertDescription className="flex flex-col gap-2">
+                        <span className="text-sm font-medium">
+                          {t('messages.emailVerificationRequired')}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {t('messages.emailVerificationDescription')}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('ui.emailSentTo', { email: signupSuccessEmail })}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSignupSuccessEmail(null)}
+                          className="w-full mt-2"
+                        >
+                          {t('ui.understoodCloseAlert')}
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">{t('fields.name')}</Label>
                     <Input

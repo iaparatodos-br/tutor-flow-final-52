@@ -175,9 +175,7 @@ export default function Alunos() {
       const redirectUrl = window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`;
       console.log('Calling create-student function...');
       
-      // For family registration, guardian info IS the student info
-      const isFamily = formData.registrationType === 'family';
-      
+      // For all registrations, guardian info = student info (simplified flow)
       const {
         data,
         error
@@ -187,14 +185,15 @@ export default function Alunos() {
           email: formData.email,
           teacher_id: profile.id,
           redirect_url: redirectUrl,
-          guardian_name: isFamily || formData.isOwnResponsible ? formData.name : formData.guardian_name,
-          guardian_email: isFamily || formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: isFamily || formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
-          guardian_cpf: isFamily || formData.isOwnResponsible ? null : formData.guardian_cpf || null,
-          guardian_address_street: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_street || null,
-          guardian_address_city: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_city || null,
-          guardian_address_state: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_state || null,
-          guardian_address_postal_code: isFamily || formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
+          // Guardian data always mirrors student data (adult students are their own responsible)
+          guardian_name: formData.name,
+          guardian_email: formData.email,
+          guardian_phone: formData.phone || null,
+          guardian_cpf: null,
+          guardian_address_street: null,
+          guardian_address_city: null,
+          guardian_address_state: null,
+          guardian_address_postal_code: null,
           billing_day: formData.billing_day,
           notify_professor_email: profile.email,
           professor_name: profile.name,
@@ -239,6 +238,9 @@ export default function Alunos() {
         });
         return;
       }
+
+      // Check if this is a family registration
+      const isFamily = formData.registrationType === 'family';
 
       // If this is a family registration, create the dependents
       if (isFamily && formData.dependents && formData.dependents.length > 0 && data?.user_id) {
@@ -318,7 +320,7 @@ export default function Alunos() {
     if (!profile?.id || !editingStudent) return;
     setSubmitting(true);
     try {
-      // Use the new update-student-details function
+      // Use the update-student-details function - guardian data always mirrors student data
       const {
         data,
         error
@@ -328,14 +330,15 @@ export default function Alunos() {
           teacher_id: profile.id,
           relationship_id: editingStudent.relationship_id,
           student_name: formData.name,
-          guardian_name: formData.isOwnResponsible ? formData.name : formData.guardian_name,
-          guardian_email: formData.isOwnResponsible ? formData.email : formData.guardian_email,
-          guardian_phone: formData.isOwnResponsible ? formData.phone : formData.guardian_phone || null,
-          guardian_cpf: formData.isOwnResponsible ? null : formData.guardian_cpf || null,
-          guardian_address_street: formData.isOwnResponsible ? null : formData.guardian_address_street || null,
-          guardian_address_city: formData.isOwnResponsible ? null : formData.guardian_address_city || null,
-          guardian_address_state: formData.isOwnResponsible ? null : formData.guardian_address_state || null,
-          guardian_address_postal_code: formData.isOwnResponsible ? null : formData.guardian_address_postal_code || null,
+          // Guardian data always mirrors student data (simplified flow)
+          guardian_name: formData.name,
+          guardian_email: formData.email,
+          guardian_phone: formData.phone || null,
+          guardian_cpf: null,
+          guardian_address_street: null,
+          guardian_address_city: null,
+          guardian_address_state: null,
+          guardian_address_postal_code: null,
           billing_day: formData.billing_day,
           business_profile_id: formData.business_profile_id
         }

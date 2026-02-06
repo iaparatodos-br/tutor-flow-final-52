@@ -1,188 +1,107 @@
 
-# Plano: Modal Fixo de Verificacao de Email Apos Cadastro
 
-## Problema Atual
+# Plano: Corrigir Modal de Verificacao de Email que Nao Aparece
 
-Apos o cadastro bem-sucedido de um professor:
-1. A edge function `create-teacher` cria o usuario e envia email via AWS SES
-2. O frontend exibe apenas um **toast** temporario com a mensagem "Verifique seu e-mail"
-3. O toast desaparece automaticamente apos alguns segundos
-4. **Nao ha garantia de que o professor viu e leu a mensagem**
+## Diagnostico do Problema
 
-Codigo atual (Auth.tsx, linha 185-188):
-```tsx
-toast({
-  title: t('messages.emailVerificationRequired'),
-  description: t('messages.emailVerificationDescription'),
-});
-```
+Apos testes extensivos, identifiquei que o modal de verificacao de email **nao esta aparecendo** apos o cadastro bem-sucedido. O cadastro funciona corretamente (retorna `success: true`), mas o modal nao e exibido.
+
+### Causas Provaveis
+
+1. **Problema com Dialog sem `onOpenChange`**: O Radix UI Dialog, quando usado em modo controlado (`open={...}`), requer um `onOpenChange` mesmo que seja apenas para evitar warnings. Sem ele, pode haver comportamentos inesperados.
+
+2. **Race Condition com Loading**: O `AuthContext.signUp` chama `setLoading(true/false)` internamente, e o `Auth.tsx` tambem tem seu proprio `loading` state. Isso pode causar re-renderizacoes que interferem com o estado do modal.
+
+3. **Stale Closure**: O `signupForm.email` pode estar capturando um valor antigo devido a closures do React.
 
 ## Solucao Proposta
 
-Criar um modal fixo (barrier dismissible) que aparece apos o cadastro bem-sucedido, obrigando o professor a confirmar manualmente que leu a mensagem.
+### 1. Adicionar `onOpenChange` ao Dialog
 
-### Comportamento do Modal
+Mesmo que nao queiramos que o Dialog feche, precisamos fornecer um handler vazio para garantir que o Radix UI funcione corretamente:
 
-- **Nao fecha ao clicar fora** - `onInteractOutside={(e) => e.preventDefault()}`
-- **Nao fecha com tecla ESC** - `onEscapeKeyDown={(e) => e.preventDefault()}`
-- **Sem botao X automatico** - Esconder via CSS `[&>button]:hidden`
-- **Fechamento apenas por acao manual** - Botao "Entendi" que fecha o modal
-
-### Fluxo de Usuario
-
-```text
-Professor preenche formulario de cadastro
-              |
-              v
-Clica em "Criar Conta"
-              |
-              v
-Edge function cria usuario + envia email
-              |
-              v
-  +---------------------------+
-  |   Modal Fixo Aparece      |
-  |                           |
-  |  [Icone Email]            |
-  |                           |
-  |  Verifique seu e-mail     |
-  |                           |
-  |  Enviamos um link de      |
-  |  confirmacao para:        |
-  |  exemplo@email.com        |
-  |                           |
-  |  Verifique sua caixa de   |
-  |  entrada e spam.          |
-  |                           |
-  |  [   Entendi   ]          |
-  +---------------------------+
-              |
-              v
-Professor clica "Entendi"
-              |
-              v
-Modal fecha, form limpa, aba login ativa
+```tsx
+<Dialog 
+  open={showEmailVerificationModal} 
+  onOpenChange={() => {/* Nao fazer nada - modal barrier dismissible */}}
+>
 ```
 
-## Alteracoes Necessarias
+### 2. Usar Callback para Garantir Estado Correto
 
-### 1. Arquivo: `src/pages/Auth.tsx`
+Garantir que o email seja capturado corretamente antes de chamar `signUp`:
 
-**Adicionar estado para controlar o modal:**
 ```tsx
-const [showEmailVerificationModal, setShowEmailVerificationModal] = useState(false);
-const [registeredEmail, setRegisteredEmail] = useState('');
-```
-
-**Modificar handleSignup para mostrar modal em vez de toast:**
-```tsx
-// Ao inves de toast, mostrar modal
-setRegisteredEmail(signupForm.email);
-setShowEmailVerificationModal(true);
-```
-
-**Adicionar handler de fechamento do modal:**
-```tsx
-const handleEmailVerificationAcknowledged = () => {
-  setShowEmailVerificationModal(false);
-  setRegisteredEmail('');
-  // Limpar formulario e voltar para aba de login
-  setSignupForm({ name: '', email: '', password: '', termsAccepted: false });
-  setCurrentTab('login');
+const handleSignup = async (e: React.FormEvent) => {
+  e.preventDefault();
+  
+  // ... validacoes ...
+  
+  setLoading(true);
+  
+  // Capturar email ANTES da chamada async
+  const emailToRegister = signupForm.email;
+  
+  const { error } = await signUp(...);
+  
+  if (error) {
+    toast({ ... });
+  } else {
+    setRegisteredEmail(emailToRegister);
+    setShowEmailVerificationModal(true);
+  }
+  
+  setLoading(false);
 };
 ```
 
-**Adicionar componente do modal no JSX:**
+### 3. Adicionar Console Logs para Debug
+
+Adicionar logs temporarios para verificar se o fluxo esta correto:
+
 ```tsx
-<Dialog open={showEmailVerificationModal} modal>
-  <DialogContent 
-    className="sm:max-w-md [&>button]:hidden"
-    onInteractOutside={(e) => e.preventDefault()}
-    onEscapeKeyDown={(e) => e.preventDefault()}
-  >
-    <DialogHeader className="text-center">
-      <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-        <Mail className="w-8 h-8 text-primary" />
-      </div>
-      <DialogTitle className="text-center">
-        {t('messages.emailVerificationRequired')}
-      </DialogTitle>
-      <DialogDescription className="text-center">
-        {t('emailVerificationModal.description', { email: registeredEmail })}
-      </DialogDescription>
-    </DialogHeader>
-    
-    <div className="text-center text-sm text-muted-foreground">
-      {t('emailVerificationModal.checkSpam')}
-    </div>
-    
-    <DialogFooter className="sm:justify-center">
-      <Button onClick={handleEmailVerificationAcknowledged}>
-        {t('emailVerificationModal.acknowledge')}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+console.log('[Auth] Signup success, showing modal for:', emailToRegister);
+setRegisteredEmail(emailToRegister);
+setShowEmailVerificationModal(true);
+console.log('[Auth] Modal state set to true');
 ```
 
-### 2. Arquivo: `src/i18n/locales/pt/auth.json`
+## Alteracoes no Arquivo
 
-Adicionar novas chaves de traducao:
-```json
-{
-  "emailVerificationModal": {
-    "description": "Enviamos um link de confirmação para {{email}}. Por favor, verifique sua caixa de entrada para ativar sua conta.",
-    "checkSpam": "Não encontrou? Verifique também a pasta de spam.",
-    "acknowledge": "Entendi"
-  }
-}
+### `src/pages/Auth.tsx`
+
+1. Modificar o Dialog para incluir `onOpenChange`:
+
+```tsx
+<Dialog 
+  open={showEmailVerificationModal} 
+  onOpenChange={() => {/* Barrier dismissible - nao fechar */}}
+>
 ```
 
-### 3. Arquivo: `src/i18n/locales/en/auth.json`
+2. Capturar email antes da chamada async no `handleSignup`:
 
-Adicionar novas chaves de traducao:
-```json
-{
-  "emailVerificationModal": {
-    "description": "We've sent a confirmation link to {{email}}. Please check your inbox to activate your account.",
-    "checkSpam": "Can't find it? Check your spam folder too.",
-    "acknowledge": "Got it"
-  }
-}
+```tsx
+const emailToRegister = signupForm.email;
+// ... await signUp ...
+setRegisteredEmail(emailToRegister);
 ```
+
+3. Adicionar logs de debug (remover depois de confirmar funcionamento)
 
 ## Resumo das Alteracoes
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/Auth.tsx` | Adicionar estados, handler, e modal barrier-dismissible |
-| `src/i18n/locales/pt/auth.json` | Adicionar traducoes para `emailVerificationModal` |
-| `src/i18n/locales/en/auth.json` | Adicionar traducoes para `emailVerificationModal` |
+| `src/pages/Auth.tsx` | Adicionar `onOpenChange` vazio ao Dialog, capturar email antes da chamada async |
 
-## Detalhes Tecnicos
+## Validacao Apos Implementacao
 
-### Props do DialogContent para Barrier Dismissible
-
-O componente `DialogContent` do Radix UI (via shadcn/ui) aceita os seguintes handlers para impedir fechamento involuntario:
-
-- `onInteractOutside`: Evento disparado ao clicar fora do dialog
-- `onEscapeKeyDown`: Evento disparado ao pressionar ESC
-- `[&>button]:hidden`: Classe CSS para esconder o botao X padrao
-
-### Importacoes Necessarias
-
-O componente `Dialog` e seus subcomponentes ja estao sendo importados no Auth.tsx (sera necessario adicionar se nao estiverem):
-```tsx
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-```
-
-## Validacao
-
-Apos implementacao:
 1. Acessar `/auth` e ir para aba de cadastro
 2. Preencher formulario com dados validos
 3. Clicar em "Criar Conta"
-4. Modal deve aparecer com email do usuario
-5. Tentar clicar fora do modal - nao deve fechar
-6. Pressionar ESC - nao deve fechar
-7. Clicar em "Entendi" - modal fecha, formulario limpa, volta para aba login
+4. **Modal DEVE aparecer** com icone de email e mensagem
+5. Verificar que nao fecha ao clicar fora
+6. Verificar que nao fecha ao pressionar ESC
+7. Clicar em "Entendi" - modal fecha e volta para aba de login
+

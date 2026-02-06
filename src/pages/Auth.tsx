@@ -164,13 +164,16 @@ export default function Auth() {
     
     setLoading(true);
     
+    // Capturar email ANTES da chamada async para evitar stale closure
+    const emailToRegister = signupForm.email;
+    
     // Capturar informações para auditoria legal
     const userAgent = navigator.userAgent;
     const termsVersion = "v1.0-2025-10-25";
     const privacyVersion = "v1.0-2025-10-25";
     
     const { error } = await signUp(
-      signupForm.email, 
+      emailToRegister, 
       signupForm.password, 
       signupForm.name,
       undefined,
@@ -181,6 +184,8 @@ export default function Auth() {
         ip_address: null
       }
     );
+    
+    setLoading(false);
     
     if (error) {
       toast({
@@ -194,11 +199,11 @@ export default function Auth() {
       });
     } else {
       // Mostrar modal fixo em vez de toast
-      setRegisteredEmail(signupForm.email);
+      console.log('[Auth] Signup success, showing modal for:', emailToRegister);
+      setRegisteredEmail(emailToRegister);
       setShowEmailVerificationModal(true);
+      console.log('[Auth] Modal state set to true');
     }
-    
-    setLoading(false);
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -558,7 +563,7 @@ export default function Auth() {
         </Card>
 
         {/* Modal de Verificação de E-mail - Barrier Dismissible */}
-        <Dialog open={showEmailVerificationModal} modal>
+        <Dialog open={showEmailVerificationModal} onOpenChange={() => {/* Barrier dismissible - não fechar */}}>
           <DialogContent 
             className="sm:max-w-md [&>button]:hidden"
             onInteractOutside={(e) => e.preventDefault()}

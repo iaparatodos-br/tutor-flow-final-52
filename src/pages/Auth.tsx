@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
+import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,6 +30,15 @@ export default function Auth() {
   const [emailNotConfirmed, setEmailNotConfirmed] = useState<string | null>(null);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
   const [signupSuccessEmail, setSignupSuccessEmail] = useState<string | null>(null);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+
+  // Password requirements checker
+  const getPasswordRequirements = (password: string) => ({
+    minLength: password.length >= 8,
+    lowercase: /[a-z]/.test(password),
+    uppercase: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+  });
 
   if (isAuthenticated) {
     // Redirecionar baseado no papel do usuário
@@ -500,6 +509,8 @@ export default function Auth() {
                           setSignupForm(prev => ({ ...prev, password: e.target.value }));
                           setSignupErrors(prev => ({ ...prev, password: false }));
                         }}
+                        onFocus={() => setPasswordFocused(true)}
+                        onBlur={() => setPasswordFocused(false)}
                         className={signupErrors.password ? "border-destructive pr-10" : "pr-10"}
                         required
                         minLength={8}
@@ -518,6 +529,27 @@ export default function Auth() {
                         )}
                       </Button>
                     </div>
+                    
+                    {/* Password requirements checklist */}
+                    {(passwordFocused || signupForm.password.length > 0) && (
+                      <div className="mt-2 p-3 bg-muted/50 rounded-md text-sm space-y-1.5">
+                        <p className="text-muted-foreground font-medium text-xs">
+                          {t('validation.passwordRequirements.title')}
+                        </p>
+                        {Object.entries(getPasswordRequirements(signupForm.password)).map(([key, met]) => (
+                          <div key={key} className="flex items-center gap-2">
+                            {met ? (
+                              <Check className="h-3.5 w-3.5 text-success" />
+                            ) : (
+                              <X className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span className={met ? "text-success" : "text-muted-foreground"}>
+                              {t(`validation.passwordRequirements.${key}`)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Checkbox de aceite de termos */}

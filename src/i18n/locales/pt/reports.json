@@ -29,6 +29,16 @@
         "label": "Feedback Individual",
         "description": "Feedback personalizado para cada aluno (visível apenas para o aluno e responsável)",
         "placeholder": "Feedback individual para {{name}} (opcional)"
+      },
+      "photos": {
+        "label": "Registros Fotográficos",
+        "description": "Fotos da aula (máximo 5 imagens)",
+        "dropzone": "Clique ou arraste fotos aqui",
+        "maxReached": "Limite de 5 fotos atingido",
+        "uploading": "Enviando fotos...",
+        "invalidType": "Formato não suportado. Use JPEG, PNG ou WebP",
+        "tooLarge": "Arquivo muito grande. Máximo 5MB",
+        "removePhoto": "Remover foto"
       }
     },
     "actions": {
@@ -41,7 +51,8 @@
       "createSuccess": "Relato da aula criado com sucesso",
       "updateSuccess": "Relato da aula atualizado com sucesso",
       "error": "Erro ao salvar relato",
-      "requiredField": "O resumo da aula é obrigatório"
+      "requiredField": "O resumo da aula é obrigatório",
+      "photoUploadError": "Erro ao enviar algumas fotos"
     }
   },
   "view": {
@@ -50,6 +61,8 @@
       "lessonSummary": "Resumo da Aula",
       "homework": "Tarefas",
       "materials": "Materiais e Links",
+      "photos": "Registros Fotográficos",
+      "photoCount": "{{count}} foto(s)",
       "feedback": {
         "title": "Feedbacks Individuais",
         "titleStudent": "Seu Feedback"

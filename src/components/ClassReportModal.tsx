@@ -12,6 +12,12 @@ import { CalendarClass } from '@/components/Calendar/CalendarView';
 import { useProfile } from '@/contexts/ProfileContext';
 import { BookOpen, FileText, Link, MessageSquare, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { 
+  ClassReportPhotoUpload, 
+  uploadReportPhotos, 
+  loadReportPhotos,
+  deleteReportPhotos
+} from '@/components/ClassReportPhotoUpload';
 
 interface ClassReportModalProps {
   isOpen: boolean;
@@ -25,6 +31,15 @@ interface ClassReport {
   lesson_summary: string;
   homework: string;
   extra_materials: string;
+}
+
+interface PhotoFile {
+  id: string;
+  file?: File;
+  preview: string;
+  isExisting: boolean;
+  filePath?: string;
+  fileName?: string;
 }
 
 interface StudentFeedback {
@@ -51,6 +66,8 @@ export function ClassReportModal({
   const [homework, setHomework] = useState('');
   const [extraMaterials, setExtraMaterials] = useState('');
   const [feedbacks, setFeedbacks] = useState<StudentFeedback[]>([]);
+  const [photos, setPhotos] = useState<PhotoFile[]>([]);
+  const [initialPhotos, setInitialPhotos] = useState<PhotoFile[]>([]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -66,6 +83,8 @@ export function ClassReportModal({
     setHomework('');
     setExtraMaterials('');
     setFeedbacks([]);
+    setPhotos([]);
+    setInitialPhotos([]);
     setExistingReport(null);
   };
 
@@ -96,6 +115,11 @@ export function ClassReportModal({
         setLessonSummary(report.lesson_summary || '');
         setHomework(report.homework || '');
         setExtraMaterials(report.extra_materials || '');
+
+        // Load photos for this report
+        const existingPhotos = await loadReportPhotos(report.id);
+        setPhotos(existingPhotos);
+        setInitialPhotos(existingPhotos);
 
         // Load individual feedbacks
         const { data: feedbackData, error: feedbackError } = await supabase
@@ -319,6 +343,41 @@ export function ClassReportModal({
         if (feedbackError) throw feedbackError;
       }
 
+      // Handle photo uploads
+      const newPhotos = photos.filter(p => !p.isExisting);
+      if (newPhotos.length > 0 && profile?.id) {
+        const { errors } = await uploadReportPhotos(
+          photos,
+          profile.id,
+          finalClassId,
+          reportId!
+        );
+        
+        if (errors.length > 0) {
+          toast({
+            title: t('modal.messages.photoUploadError'),
+            description: errors.join(', '),
+            variant: "destructive",
+          });
+        }
+      }
+
+      // Handle deleted photos
+      const deletedPhotos = initialPhotos.filter(
+        ip => ip.isExisting && !photos.some(p => p.id === ip.id)
+      );
+      if (deletedPhotos.length > 0) {
+        await deleteReportPhotos(deletedPhotos);
+        
+        // Also delete from database
+        for (const photo of deletedPhotos) {
+          await supabase
+            .from('class_report_photos')
+            .delete()
+            .eq('id', photo.id);
+        }
+      }
+
       // Send notifications (call edge function) - usar finalClassId
       try {
         await supabase.functions.invoke('send-class-report-notification', {
@@ -477,6 +536,12 @@ export function ClassReportModal({
               }}
             />
           </div>
+
+          {/* Photo Upload Section (only for professional/premium plans) */}
+          <ClassReportPhotoUpload
+            photos={photos}
+            onPhotosChange={setPhotos}
+          />
 
           {/* Individual Feedbacks */}
           {participants.length > 0 && (

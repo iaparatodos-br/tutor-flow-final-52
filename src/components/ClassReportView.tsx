@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslation } from 'react-i18next';
+import { ClassReportPhotoGallery } from '@/components/ClassReportPhotoGallery';
 
 interface ClassReportViewProps {
   classId: string;
@@ -338,6 +339,9 @@ export function ClassReportView({
           )}
         </CardContent>
       </Card>
+
+      {/* Photo Gallery */}
+      {report && <ClassReportPhotoGallery reportId={report.id} />}
 
       {/* Individual Feedbacks */}
       {feedbacks.length > 0 && (

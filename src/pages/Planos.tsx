@@ -3,7 +3,7 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, Star, Zap, Users, FileText, DollarSign, HardDrive, X } from 'lucide-react';
+import { Check, Star, Zap, Users, FileText, DollarSign, HardDrive, X, Camera } from 'lucide-react';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
@@ -109,6 +109,7 @@ export default function Planos() {
       case 'expenses': return <FileText className="h-4 w-4" />;
       case 'storage_mb': return <HardDrive className="h-4 w-4" />;
       case 'material_sharing': return <FileText className="h-4 w-4" />;
+      case 'report_photos': return <Camera className="h-4 w-4" />;
       default: return <Check className="h-4 w-4" />;
     }
   };
@@ -322,8 +323,20 @@ export default function Planos() {
                  <tr>
                    <td className="py-2">{t('comparison.table.storage')}</td>
                    {plans.filter(plan => plan.slug !== 'free').map((plan) => (
-                     <td key={plan.id} className="text-center py-2 px-4">
+                    <td key={plan.id} className="text-center py-2 px-4">
                        <div className="font-medium">{formatStorage(plan.features.storage_mb)}</div>
+                     </td>
+                   ))}
+                 </tr>
+                 <tr>
+                   <td className="py-2">{t('comparison.table.reportPhotos')}</td>
+                   {plans.filter(plan => plan.slug !== 'free').map((plan) => (
+                     <td key={plan.id} className="text-center py-2 px-4">
+                       {plan.slug === 'professional' || plan.slug === 'premium' ? (
+                         <Check className="h-4 w-4 text-green-500 mx-auto" />
+                       ) : (
+                         <X className="h-4 w-4 text-red-500 mx-auto" />
+                       )}
                      </td>
                    ))}
                  </tr>

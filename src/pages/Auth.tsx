@@ -10,6 +10,7 @@ import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail } from "lucide-rea
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function Auth() {
   const { isAuthenticated, isProfessor, isAluno, signIn, signUp, resetPassword, resendConfirmation } = useAuth();
@@ -29,6 +30,8 @@ export default function Auth() {
   const [showResetForm, setShowResetForm] = useState(false);
   const [emailNotConfirmed, setEmailNotConfirmed] = useState<string | null>(null);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
+  const [showEmailVerificationModal, setShowEmailVerificationModal] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
 
   if (isAuthenticated) {
     // Redirecionar baseado no papel do usuário
@@ -133,6 +136,14 @@ export default function Auth() {
     setResendingConfirmation(false);
   };
 
+  const handleEmailVerificationAcknowledged = () => {
+    setShowEmailVerificationModal(false);
+    setRegisteredEmail('');
+    // Limpar formulário e voltar para aba de login
+    setSignupForm({ name: '', email: '', password: '', termsAccepted: false });
+    setCurrentTab('login');
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -182,10 +193,9 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
-      toast({
-        title: t('messages.emailVerificationRequired'),
-        description: t('messages.emailVerificationDescription'),
-      });
+      // Mostrar modal fixo em vez de toast
+      setRegisteredEmail(signupForm.email);
+      setShowEmailVerificationModal(true);
     }
     
     setLoading(false);
@@ -546,6 +556,37 @@ export default function Auth() {
             </TabsContent>
           </Tabs>
         </Card>
+
+        {/* Modal de Verificação de E-mail - Barrier Dismissible */}
+        <Dialog open={showEmailVerificationModal} modal>
+          <DialogContent 
+            className="sm:max-w-md [&>button]:hidden"
+            onInteractOutside={(e) => e.preventDefault()}
+            onEscapeKeyDown={(e) => e.preventDefault()}
+          >
+            <DialogHeader className="text-center">
+              <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                <Mail className="w-8 h-8 text-primary" />
+              </div>
+              <DialogTitle className="text-center">
+                {t('messages.emailVerificationRequired')}
+              </DialogTitle>
+              <DialogDescription className="text-center">
+                {t('emailVerificationModal.description', { email: registeredEmail })}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="text-center text-sm text-muted-foreground">
+              {t('emailVerificationModal.checkSpam')}
+            </div>
+            
+            <DialogFooter className="sm:justify-center">
+              <Button onClick={handleEmailVerificationAcknowledged}>
+                {t('emailVerificationModal.acknowledge')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

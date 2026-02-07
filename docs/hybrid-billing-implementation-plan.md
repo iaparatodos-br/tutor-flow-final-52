@@ -1,8 +1,10 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.2 (Revisada — 99 gaps corrigidos)
+> **Versão**: 2.3 (Revisada — 114 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
+
+> **CORS**: Webhook existente (webhook-stripe-connect) usa CORS headers incompletos (Gap 100)
 
 ---
 
@@ -1494,6 +1496,21 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 97] Resposta de `process-class-billing` não segue padrão do projeto** | **Baixa** | **Médio** | **Padrão: HTTP 200 + `success: false` para erros de business logic. Interface retornava `charge_timing` string sem `success` boolean. FIX: adicionar `success: boolean` e `error?: string` na interface; usar HTTP 200 para todos os retornos.** |
 | **[Gap 98] `invoice.payment_failed` handler sem código explícito de fix** | **Média** | **Alto** | **Gap 79 mencionava no checklist mas não fornecia código. Handler (linhas 380-393) faz `if (error) { log }` sem return → evento falho marcado como success. FIX: código explícito com `completeEventProcessing(false, error)` + return 500.** |
 | **[Gap 99] `payment_intent.payment_failed` handler sem código explícito de fix** | **Média** | **Alto** | **Mesmo problema do Gap 98 para handler de payment_intent (linhas 514-535). FIX: código explícito fornecido na seção 5.3.** |
+| **[Gap 100] `supabase/config.toml` nota contradiz Gap 96** | **Alta** | **Alto** | **Seção 12 afirmava "Não é necessário modificar config.toml". Mas Gap 96 EXIGE adicionar `verify_jwt = false` para `process-class-billing`. Lovable Cloud registra a função automaticamente, mas NÃO define `verify_jwt`. FIX: corrigir nota; config.toml DEVE ser modificado.** |
+| **[Gap 101] CORS headers do `webhook-stripe-connect` existente estão incompletos** | **Média** | **Médio** | **Linha 7 do webhook: `"authorization, x-client-info, apikey, content-type"`. Faltam headers Supabase (`x-supabase-client-platform`, etc). Embora o webhook seja chamado pelo Stripe (não pelo frontend JS), inconsistência pode causar problemas em cenários de teste e debug. FIX: atualizar para headers completos conforme Gap 60.** |
+| **[Gap 102] `canChangePaymentMethod` em `Faturas.tsx` não filtra `invoice_type`** | **Média** | **Alto** | **A função (linha 201-204) verifica apenas `status` e `payment_method`, sem excluir `invoice_type === 'prepaid_class'`. Gap 78 documenta a necessidade de ocultar o botão RefreshCw para faturas pré-pagas, mas a implementação real no `canChangePaymentMethod` não foi atualizada. FIX: adicionar `&& invoice.invoice_type !== 'prepaid_class'` na condição.** |
+| **[Gap 103] `invoice.paid` e `invoice.payment_succeeded` no webhook ATUAL usam `.single()` — não `.maybeSingle()`** | **Alta** | **Alto** | **O código ATUAL em produção (linhas 306-310, 343-347) usa `.single()` para buscar invoices por `stripe_invoice_id`. Gap 75 documentou a correção para `.maybeSingle()`, mas o webhook EXISTENTE não foi atualizado — apenas o código PROPOSTO no plano usa `.maybeSingle()`. Se o Stripe enviar evento de invoice não cadastrada, `.single()` lança erro → 500 → retries infinitos por 3 dias. FIX: atualizar webhook EXISTENTE ANTES do deploy de `process-class-billing`.** |
+| **[Gap 104] `invoice.payment_succeeded` (linhas 354-368) sobrescreve `payment_origin: 'prepaid'` com `'automatic'`** | **Média** | **Alto** | **O handler ATUAL em produção faz `payment_origin: 'automatic'` incondicional (linha 358). Gap 53 documentou a correção para preservar payment_origin existente, mas apenas no código PROPOSTO do plano. O webhook existente NÃO foi atualizado. FIX: aplicar mesma lógica do `invoice.paid` proposto — verificar se já existe `payment_origin` antes de sobrescrever.** |
+| **[Gap 105] `payment_intent.succeeded` (linhas 464-501) sobrescreve `payment_origin: 'prepaid'` com `'automatic'`** | **Média** | **Alto** | **Mesmo problema do Gap 104 para o handler `payment_intent.succeeded`. Linha 470 faz `payment_origin: "automatic"` incondicional. Gap 59 documentou a necessidade, mas o código ATUAL não foi atualizado. FIX: verificar `payment_origin` existente antes de atualizar.** |
+| **[Gap 106] `payment_intent.succeeded` (linha 481) limpa `stripe_hosted_invoice_url` incondicionalmente** | **Baixa** | **Médio** | **Gap 68 documentou que faturas pré-pagas com `stripe_invoice_id` precisam preservar `hosted_invoice_url`. O código ATUAL em produção limpa incondicional (linha 481). FIX: só limpar se invoice NÃO tem `stripe_invoice_id`. Requer alterar a query para incluir `stripe_invoice_id` no select (atualmente seleciona apenas `payment_origin`).** |
+| **[Gap 107] `process-class-billing` não valida array `class_ids` vazio** | **Baixa** | **Baixo** | **Se frontend envia `class_ids: []`, a função processaria sem erro mas retornaria resultado ambíguo (`processed: 0, skipped: 0`). FIX: validar `class_ids.length > 0` no início com retorno `success: false, error: 'Nenhuma aula fornecida'`.** |
+| **[Gap 108] `process-class-billing` não especifica fonte do email do customer** | **Baixa** | **Médio** | **Passo 3c.ii menciona buscar customer por email no Connected Account, mas não especifica de onde vem o email. Para o responsável (billingStudentId), o email vem de `profiles.email WHERE id = billingStudentId`. Para dependentes, o billing vai para o responsável (já resolvido em 3b), então o email é do perfil do responsável. FIX: documentar query explícita no passo 3c.ii.** |
+| **[Gap 109] Sem tratamento para troca de `charge_timing` com faturas pré-pagas pendentes** | **Baixa** | **Médio** | **Se professor muda de `prepaid` para `postpaid` enquanto há faturas `prepaid_class` com status `pendente`, as faturas pendentes continuam existindo. Risco: professor espera que aulas futuras NÃO gerem cobrança (pós-pago), mas aulas JÁ criadas com fatura prepaid continuam com fatura ativa. Decisão: faturas existentes NÃO são afetadas pela mudança (documentado na tabela de riscos, linha 1473). Adicionar nota informativa no BillingSettings quando há faturas pendentes.** |
+| **[Gap 110] `process-class-billing` não seta `payment_method` na invoice local** | **Baixa** | **Baixo** | **O registro criado em `invoices` (passo 3c.vi) não inclui `payment_method`. Para faturas Payment Intent, o método é definido na criação. Para faturas Stripe Invoice (prepaid), o método é determinado quando o aluno paga. Isso é correto por design — `payment_method` ficará null até o webhook `invoice.paid` atualizar com o método real (via Gap 94). Documentar como decisão intencional.** |
+| **[Gap 111] `process-cancellation` void não trata erro `invoice_already_voided`** | **Baixa** | **Baixo** | **Se o webhook `invoice.voided` processar antes do void manual em `process-cancellation` (race condition), ou se `process-cancellation` rodar 2x, o `stripe.invoices.voidInvoice` retornará erro. O catch atual (linha 1165-1168) captura como non-critical, mas deveria logar especificamente esse caso para evitar alertas falsos. FIX: capturar erro específico do Stripe (status 400, `invoice_not_open`) e logar como warning, não error.** |
+| **[Gap 112] `invoice.finalized` não está na lista de `validateStripeEvent`** | **Baixa** | **Médio** | **A função `validateStripeEvent` (linhas 77-103 do webhook) lista os tipos de evento que requerem validação específica. O case `invoice.finalized` (Gap 90) não está listado. Cairia no `default: return true` (permissivo), o que é aceitável, mas para consistência e documentação explícita, deveria ser adicionado ao switch. FIX: adicionar case para `invoice.finalized` que valida `eventObject.id && eventObject.customer`.** |
+| **[Gap 113] `charge_timing` inconsistente em aulas de grupo com alunos de business_profiles diferentes** | **Baixa** | **Médio** | **Cenário raro: Professor tem 2 business_profiles (PJ=prepaid, PF=postpaid). Aluno A está no perfil PJ, Aluno B no perfil PF. Em aula em grupo, passo 2 resolve `charge_timing` do PRIMEIRO participante (ex: PJ=prepaid). Aluno B seria cobrado pré-pago mesmo estando no perfil PF (postpaid). FIX: Documentar como limitação conhecida — aulas em grupo usam o charge_timing do primeiro participante. Alternativa futura: resolver charge_timing POR PARTICIPANTE no passo 3c, não globalmente no passo 2.** |
+| **[Gap 114] CORS headers do `automated-billing` e `process-cancellation` também estão incompletos** | **Baixa** | **Baixo** | **Similar ao Gap 101, mas para edge functions que NÃO são chamadas diretamente pelo frontend. `automated-billing` (linha 6) e `process-cancellation` (linha 6) usam headers reduzidos. Para `process-cancellation` (chamada pelo frontend via `supabase.functions.invoke`), isso PODE causar problemas de CORS. FIX: atualizar CORS headers de `process-cancellation` para incluir headers Supabase completos (como Gap 60). `automated-billing` é chamado por cron/serviço, CORS não se aplica.** |
 
 ---
 
@@ -1581,7 +1598,10 @@ FASE 8: Testes e Validação
 | `supabase/functions/create-payment-intent-connect/index.ts` | **Modificar** | 7 | [Gap 74] Atualizar Stripe SDK de v14.21.0 para v14.24.0 |
 | `src/pages/Faturas.tsx` | **Modificar** | 4 | [Gap 71] Ocultar PaymentOptionsCard para `invoice_type === 'prepaid_class'`; exibir apenas link Stripe hosted |
 
-**NOTA**: Não é necessário modificar `supabase/config.toml` — o Lovable Cloud registra edge functions automaticamente.
+**NOTA**: [CORREÇÃO v2.3 - Gap 100] A seção anterior dizia "Não é necessário modificar `supabase/config.toml`",
+contradizendo o Gap 96 que EXIGE `[functions.process-class-billing] verify_jwt = false`.
+O Lovable Cloud registra edge functions automaticamente, MAS `verify_jwt` configurações devem
+ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retorna 401.
 
 ---
 
@@ -1664,9 +1684,26 @@ FASE 8: Testes e Validação
 - [ ] [v2.2] Verificar que `invoice.payment_failed` handler chama `completeEventProcessing(false, error)` e faz `return` com status 500 (Gap 98)
 - [ ] [v2.2] Verificar que `payment_intent.payment_failed` handler chama `completeEventProcessing(false, error)` e faz `return` com status 500 (Gap 99)
 
+- [ ] [v2.3] Verificar que `supabase/config.toml` inclui `[functions.process-class-billing] verify_jwt = false` — nota contraditória corrigida (Gap 100)
+- [ ] [v2.3] Verificar que CORS headers do `webhook-stripe-connect` incluem headers Supabase completos (`x-supabase-client-platform`, etc.) (Gap 101)
+- [ ] [v2.3] Verificar que `canChangePaymentMethod` em `Faturas.tsx` exclui `invoice_type === 'prepaid_class'` (Gap 102)
+- [ ] [v2.3] **CRÍTICO PRÉ-DEPLOY**: Atualizar handlers `invoice.paid` e `invoice.payment_succeeded` EXISTENTES de `.single()` para `.maybeSingle()` (Gap 103)
+- [ ] [v2.3] **CRÍTICO PRÉ-DEPLOY**: Atualizar handler `invoice.payment_succeeded` EXISTENTE para preservar `payment_origin` existente (não sobrescrever com 'automatic') (Gap 104)
+- [ ] [v2.3] **CRÍTICO PRÉ-DEPLOY**: Atualizar handler `payment_intent.succeeded` EXISTENTE para preservar `payment_origin` existente (Gap 105)
+- [ ] [v2.3] Atualizar handler `payment_intent.succeeded` EXISTENTE para NÃO limpar `stripe_hosted_invoice_url` quando invoice tem `stripe_invoice_id` (Gap 106)
+- [ ] [v2.3] Verificar que `process-class-billing` valida `class_ids.length > 0` (Gap 107)
+- [ ] [v2.3] Verificar que `process-class-billing` passo 3c.ii busca email de `profiles.email WHERE id = billingStudentId` (Gap 108)
+- [ ] [v2.3] Verificar que BillingSettings exibe nota informativa quando há faturas pendentes ao trocar charge_timing (Gap 109)
+- [ ] [v2.3] Documentar que `payment_method` null em invoices prepaid é intencional — preenchido pelo webhook (Gap 110)
+- [ ] [v2.3] Verificar que `process-cancellation` void captura erro `invoice_not_open` como warning (não error) (Gap 111)
+- [ ] [v2.3] Verificar que `validateStripeEvent` no webhook inclui case para `invoice.finalized` (Gap 112)
+- [ ] [v2.3] Documentar limitação: aulas em grupo usam charge_timing do primeiro participante (Gap 113)
+- [ ] [v2.3] Atualizar CORS headers de `process-cancellation` para incluir headers Supabase completos (Gap 114)
+
 ### Deploy
 
 - [ ] Executar migração SQL em produção
+- [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106 ANTES de deploy de process-class-billing
 - [ ] Deploy de edge functions (process-class-billing, process-cancellation, webhook-stripe-connect, create-payment-intent-connect, automated-billing)
 - [ ] Publicar frontend
 - [ ] Testar fluxo completo em produção com valor mínimo
@@ -1680,6 +1717,7 @@ FASE 8: Testes e Validação
 - [ ] Verificar que a troca prepaid→postpaid não afeta faturas existentes
 - [ ] [v1.3] Verificar que `process-cancellation` usa queries sequenciais (sem FK join)
 - [ ] [v1.5] Verificar que cancelamento de aula em grupo anula TODAS as faturas pré-pagas dos participantes
+- [ ] [v2.3] Monitorar logs do webhook para eventos `invoice.finalized` processados corretamente
 
 ---
 
@@ -1850,6 +1888,28 @@ FASE 8: Testes e Validação
 | 97 | Resposta de `process-class-billing` não segue padrão de error handling do projeto | O padrão do projeto (documentado em memória) é: HTTP 200 + `success: false` + mensagem user-friendly para erros de business logic. A interface `ProcessClassBillingResponse` retornava `charge_timing` como indicador implícito de erro/sucesso, sem campo `success` explícito nem `error` string. O frontend não consegue distinguir erro técnico de resultado de negócio. FIX: Adicionado `success: boolean` (obrigatório) e `error?: string` na interface. Todos os retornos usam HTTP 200. Documentado na seção 5.1. |
 | 98 | `invoice.payment_failed` handler — Gap 79 mencionava no checklist mas NÃO fornecia código | O handler existente (linhas 380-393) usa `if (failedError) { logStep }` sem `return`. Se update falha, execução cai no `break` e depois em `completeEventProcessing(true)` (linha 544). Evento com falha é marcado como sucesso → idempotência corrompida, retries do Stripe processam evento como "já processado com sucesso". FIX: Código explícito fornecido na seção 5.3 com `completeEventProcessing(false, error)` + `return new Response(500)`. |
 | 99 | `payment_intent.payment_failed` handler — mesmo problema do Gap 98 | O handler existente (linhas 514-535) usa pattern `if (error) { log } else if { log } else { log }` sem `return`. Falha no update marca evento como sucesso. FIX: Código explícito fornecido na seção 5.3, seguindo o mesmo pattern do Gap 98. |
+
+---
+
+### Revisão v2.3
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 100 | Nota na seção 12 contradiz Gap 96: "Não é necessário modificar config.toml" | **CONTRADIÇÃO DIRETA**: Gap 96 EXIGE `[functions.process-class-billing] verify_jwt = false` em config.toml. Lovable Cloud registra a função automaticamente, MAS não define `verify_jwt`. A nota foi corrigida na seção 12. |
+| 101 | CORS headers do `webhook-stripe-connect` EXISTENTE estão incompletos | Linha 7: `"authorization, x-client-info, apikey, content-type"`. Faltam `x-supabase-client-platform` e demais. Embora webhook seja chamado pelo Stripe, inconsistência pode causar problemas em debug. FIX: atualizar para CORS completos conforme Gap 60. |
+| 102 | `canChangePaymentMethod` em `Faturas.tsx` não exclui `invoice_type === 'prepaid_class'` | Função (linha 201-204) verifica apenas `status` e `payment_method`. Gap 78 documenta ocultar botão RefreshCw para faturas pré-pagas, mas a implementação real não foi atualizada. FIX: adicionar `&& invoice.invoice_type !== 'prepaid_class'`. |
+| 103 | **CRÍTICO**: Handlers `invoice.paid` e `invoice.payment_succeeded` EXISTENTES usam `.single()` | Código ATUAL em produção (linhas 306-310, 343-347) usa `.single()`. Gap 75 documenta correção para `.maybeSingle()`, mas apenas no código PROPOSTO. Webhook EXISTENTE NÃO foi atualizado. Se Stripe enviar evento de invoice não cadastrada → erro → 500 → retries infinitos por 3 dias. FIX: atualizar ANTES do deploy de `process-class-billing`. |
+| 104 | `invoice.payment_succeeded` EXISTENTE sobrescreve `payment_origin` incondicionalmente | Linha 358: `payment_origin: 'automatic'` sem verificar valor atual. Gap 53 documenta correção mas apenas no código PROPOSTO. FIX: verificar `payment_origin` existente antes de sobrescrever. |
+| 105 | `payment_intent.succeeded` EXISTENTE sobrescreve `payment_origin` incondicionalmente | Linha 470: `payment_origin: "automatic"` sem verificar. Gap 59 documenta necessidade. FIX: verificar existente antes de atualizar. |
+| 106 | `payment_intent.succeeded` EXISTENTE limpa `stripe_hosted_invoice_url` incondicionalmente | Linha 481 faz `stripe_hosted_invoice_url: null`. Gap 68 documenta necessidade de preservar para faturas com `stripe_invoice_id`. FIX: só limpar se invoice NÃO tem `stripe_invoice_id`. Requer alterar select para incluir campo. |
+| 107 | `process-class-billing` não valida array `class_ids` vazio | FIX: validar `class_ids.length > 0` com retorno `success: false`. |
+| 108 | `process-class-billing` passo 3c.ii não especifica fonte do email do customer | FIX: documentar: `profiles.email WHERE id = billingStudentId`. |
+| 109 | Sem tratamento para troca de `charge_timing` com faturas pendentes | Decisão: faturas existentes NÃO são afetadas. FIX: nota informativa no BillingSettings. |
+| 110 | `payment_method` null em invoice prepaid é intencional mas não documentado | Preenchido pelo webhook `invoice.paid` via Gap 94. Documentar como decisão de design. |
+| 111 | `process-cancellation` void não trata erro `invoice_already_voided` graciosamente | FIX: capturar erro Stripe status 400 `invoice_not_open` como warning, não error. |
+| 112 | `invoice.finalized` não está na lista de `validateStripeEvent` | Cairia no `default: return true` (OK), mas para consistência deveria ser listado. FIX: adicionar case no switch. |
+| 113 | `charge_timing` inconsistente em aulas de grupo com alunos de business_profiles diferentes | Cenário raro. Decisão: limitação conhecida — aulas em grupo usam charge_timing do primeiro participante. Documentar. |
+| 114 | CORS headers de `process-cancellation` incompletos | Chamada pelo frontend via `supabase.functions.invoke`. Usa headers reduzidos (linha 6). FIX: atualizar para CORS completos. |
 
 ---
 

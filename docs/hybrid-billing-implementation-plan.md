@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.4 (Revisada — 49 gaps corrigidos)
+> **Versão**: 1.5 (Revisada — 57 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -308,12 +308,29 @@ const saveChargeTiming = async () => {
 if (!formData.recurrence && !formData.is_experimental && formData.service_id) {
   try {
     const classIds = insertedClasses.map(c => c.id);
-    await supabase.functions.invoke('process-class-billing', {
+    const { data: billingResult, error: billingError } = await supabase.functions.invoke('process-class-billing', {
       body: {
         class_ids: classIds,
         teacher_id: profile.id
       }
     });
+    
+    // [CORREÇÃO v1.5 - Gap 55] Feedback visual para o professor
+    if (billingError) {
+      console.error('Erro ao processar cobrança:', billingError);
+      // Não falhar a criação da aula por erro de cobrança
+    } else if (billingResult) {
+      if (billingResult.charge_timing === 'prepaid' && billingResult.invoices_created?.length > 0) {
+        toast({ title: t('chargeTiming.prepaidInvoiceCreated') });
+      } else if (billingResult.charge_timing === 'postpaid') {
+        // Silencioso: aulas serão cobradas no próximo ciclo
+      } else if (billingResult.charge_timing === 'stripe_not_ready') {
+        toast({ 
+          title: t('chargeTiming.stripeNotReady'), 
+          variant: 'destructive' 
+        });
+      }
+    }
   } catch (billingError) {
     console.error('Erro ao processar cobrança (não crítico):', billingError);
     // Não falhar a criação da aula por erro de cobrança
@@ -396,23 +413,22 @@ orphan_charges: {
 
 **Solução**:
 
-1. **[CORREÇÃO v1.4 - Gap 46]** Ao carregar aulas no calendário, usar a **view `class_billing_status`** (já existe no banco) em vez de query direta em `invoice_classes`:
+1. **[CORREÇÃO v1.5 - Gap 51]** A view `class_billing_status` **NÃO contém** o campo `has_prepaid_invoice`.
+   Campos disponíveis: `class_id`, `teacher_id`, `total_participants`, `billed_participants`, `fully_billed`, `has_billed_items`.
+   
+   O campo `has_billed_items` indica se a aula tem QUALQUER item faturado (inclui pós-pago, mensalidade, etc.), 
+   mas **não diferencia** faturas pré-pagas. Portanto, usar query direta em `invoice_classes`:
    ```typescript
-   // Usar view existente para verificar status de billing:
-   const { data: billingStatus } = await supabase
-     .from('class_billing_status')
-     .select('class_id, has_prepaid_invoice, invoice_status')
-     .in('class_id', classIds);
-   ```
-   → Se a view `class_billing_status` não contiver campo `has_prepaid_invoice`, 
-   alternativa com query direta:
-   ```typescript
+   // [Gap 51] Query direta - view não tem campo específico para prepaid
    const { data: billedClassIds } = await supabase
      .from('invoice_classes')
      .select('class_id')
      .eq('item_type', 'prepaid_class')
      .in('class_id', classIds);
    ```
+   → Alternativamente, `has_billed_items` da view pode ser usado como indicador genérico 
+   de que a aula já foi faturada (qualquer tipo), mas para bloqueio de edição específico 
+   de pré-paga, a query direta é necessária.
 
 2. **Exibir ícone discreto** (ex: `Receipt` do lucide-react) no card da aula no calendário quando `billedClassIds` inclui o `class_id`.
 
@@ -583,12 +599,19 @@ interface ProcessClassBillingResponse {
 
 4. [CORREÇÃO v1.4 - Gap 38] Após criar fatura, invocar `send-invoice-notification`:
    ```typescript
+   // [CORREÇÃO v1.5 - Gap 50] O payload DEVE incluir notification_type (campo obrigatório).
+   // Sem ele, a edge function não sabe qual template de email usar e falha silenciosamente.
    await supabaseClient.functions.invoke('send-invoice-notification', {
-     body: { invoice_id: newInvoice.id }
+     body: { 
+       invoice_id: newInvoice.id,
+       notification_type: 'invoice_created'  // ← OBRIGATÓRIO
+     }
    });
    ```
    → Sem isso, aluno NÃO recebe email/notificação da fatura pré-paga.
    → O `send-invoice-notification` já existe e envia email via SES + cria notificação in-app.
+   → **ATENÇÃO**: O campo `notification_type` é obrigatório. Valores aceitos: 
+     `'invoice_created'`, `'invoice_payment_reminder'`, `'invoice_paid'`, `'invoice_overdue'`.
 
 5. Retornar resultado com IDs das faturas criadas
 ```
@@ -657,8 +680,43 @@ case 'invoice.paid': {
   const paidInvoice = eventObject as Stripe.Invoice;
   logStep("Invoice paid", { invoiceId: paidInvoice.id });
 
-  // ... lógica existente de verificar manual payment e atualizar status ...
-  // (linhas 306-333 mantidas integralmente)
+  // ... lógica existente de verificar manual payment ...
+  // (linhas 306-315 mantidas)
+
+  // [CORREÇÃO v1.5 - Gap 53] NÃO sobrescrever payment_origin incondicionalmente.
+  // Se a fatura já tem payment_origin = 'prepaid' (definido por process-class-billing),
+  // sobrescrever com 'automatic' perderia a rastreabilidade da origem.
+  // Solução: Só definir payment_origin se estiver null.
+  const { data: currentInvoice } = await supabaseClient
+    .from('invoices')
+    .select('payment_origin')
+    .eq('stripe_invoice_id', paidInvoice.id)
+    .maybeSingle();
+
+  const updateData: Record<string, any> = { 
+    status: 'paid',
+    updated_at: new Date().toISOString()
+  };
+  // Preservar payment_origin existente (ex: 'prepaid', 'manual')
+  if (!currentInvoice?.payment_origin) {
+    updateData.payment_origin = 'automatic';
+  }
+  
+  const { error: paidError } = await supabaseClient
+    .from('invoices')
+    .update(updateData)
+    .eq('stripe_invoice_id', paidInvoice.id);
+
+  if (paidError) {
+    logStep("Error updating invoice status to paid", paidError);
+    // [CORREÇÃO v1.5 - Gap 56] Chamar completeEventProcessing em caso de erro
+    await completeEventProcessing(supabaseClient, event.id, false, paidError);
+    return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { 
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+  logStep("Invoice marked as paid", { invoiceId: paidInvoice.id });
 
   // NOVO: Buscar invoice completa com lines expandidas
   // [Gap 14] Não confiar no payload do webhook para lines
@@ -667,15 +725,14 @@ case 'invoice.paid': {
   const stripeAccountId = paidInvoice.account as string; // Connected Account
   if (stripeAccountId) {
     try {
-      // Buscar TODAS as lines com auto-paginação
-      const allLines: Stripe.InvoiceLineItem[] = [];
-      for await (const line of stripe.invoices.listLineItems(
+      // [CORREÇÃO v1.5 - Gap 57] Usar autoPagingToArray em vez de `for await`.
+      // O `for await` pode falhar no Deno runtime com certos streams do Stripe SDK.
+      // `autoPagingToArray` é mais confiável e explícito.
+      const allLines = await stripe.invoices.listLineItems(
         paidInvoice.id,
         { limit: 100 },
         { stripeAccount: stripeAccountId }
-      )) {
-        allLines.push(line);
-      }
+      ).autoPagingToArray({ limit: 10000 });
       
       if (allLines.length > 0) {
         for (const line of allLines) {
@@ -717,10 +774,12 @@ case 'invoice.paid': {
 **Handler `invoice.voided` (linha 420-438)**: Já existe e atualiza o status da invoice no banco para `cancelada`. **Nenhuma alteração necessária** — quando a fatura é anulada (void), o status é atualizado automaticamente.
 
 **Handler `invoice.payment_succeeded` (linha 337-369)**: [CORREÇÃO v1.4 - Gap 43] Deve conter a MESMA lógica completa do handler `invoice.paid` acima. Aplicar:
+- [Gap 53] Preservar `payment_origin` existente (não sobrescrever 'prepaid' com 'automatic')
+- [Gap 57] Usar `autoPagingToArray` em vez de `for await` para compatibilidade Deno
+- [Gap 56] Chamar `completeEventProcessing(false, error)` em TODOS os caminhos de erro
 - [Gap 40] Usar `stripe.invoices.listLineItems` com auto-paginação (não `expand: ['lines']`)
 - [Gap 14] Não confiar no payload do webhook para lines
 - [Gap 13] Filtrar por `participant_id` do metadata, não por `class_id`
-- [Gap 41] Em caso de erro, chamar `completeEventProcessing(false, error)`
 
 ### 5.4 Ajustes no process-cancellation
 
@@ -728,8 +787,13 @@ case 'invoice.paid': {
 
 > **CORREÇÃO v1.2 (Gap 3)**: Adicionar import do Stripe SDK no topo do arquivo:
 > ```typescript
+> // [CORREÇÃO v1.5 - Gap 52] Padronizar versão do Stripe SDK em TODAS as edge functions
 > import Stripe from "https://esm.sh/stripe@14.21.0";
 > ```
+> O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
+> é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
+> **NOTA**: Todas as edge functions que usam Stripe DEVEM usar a mesma versão do SDK
+> (`stripe@14.21.0`) para evitar incompatibilidades de tipos e comportamento.
 > O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
 > é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
 
@@ -751,21 +815,23 @@ const { data: invoiceClassesForClass } = await supabaseClient
   .select('id, stripe_invoice_item_id, invoice_id')
   .eq('class_id', class_id);
 
-let prepaidInvoice = null;
+let prepaidInvoices: any[] = [];
 if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
   const invoiceIds = [...new Set(invoiceClassesForClass.map(ic => ic.invoice_id))];
+  // [CORREÇÃO v1.5 - Gap 54] Buscar TODAS as faturas pré-pagas vinculadas à aula,
+  // não apenas a primeira. Em aulas em grupo, pode haver múltiplas faturas 
+  // (uma por aluno). Usar `.limit(1).maybeSingle()` perderia as demais.
   const { data: invoicesData } = await supabaseClient
     .from('invoices')
     .select('id, status, stripe_invoice_id, invoice_type')
     .in('id', invoiceIds)
-    .eq('invoice_type', 'prepaid_class')
-    .limit(1)
-    .maybeSingle();
+    .eq('invoice_type', 'prepaid_class');
   
-  prepaidInvoice = invoicesData;
+  prepaidInvoices = invoicesData || [];
 }
 
-if (prepaidInvoice) {
+// Iterar sobre TODAS as faturas pré-pagas (pode haver múltiplas em aulas em grupo)
+for (const prepaidInvoice of prepaidInvoices) {
   // Só pode anular faturas não-pagas
   if (['pendente', 'open'].includes(prepaidInvoice.status) && prepaidInvoice.stripe_invoice_id) {
     console.log('📋 Voiding prepaid invoice:', prepaidInvoice.stripe_invoice_id);
@@ -832,7 +898,9 @@ if (prepaidInvoice) {
     "postpaidDescription": "Acumula as aulas e cobra tudo junto na próxima fatura do ciclo de cobrança.",
     "subscriptionNote": "Mensalidades não são afetadas por esta configuração. Elas seguem o ciclo de cobrança próprio.",
     "saveSuccess": "Configuração de cobrança atualizada com sucesso.",
-    "saveError": "Erro ao atualizar configuração de cobrança."
+    "saveError": "Erro ao atualizar configuração de cobrança.",
+    "prepaidInvoiceCreated": "Fatura pré-paga criada com sucesso.",
+    "stripeNotReady": "Conta Stripe não está pronta. Aula criada sem cobrança."
   }
 }
 ```
@@ -852,7 +920,9 @@ if (prepaidInvoice) {
     "postpaidDescription": "Accumulates classes and charges everything together on the next billing cycle invoice.",
     "subscriptionNote": "Monthly subscriptions are not affected by this setting. They follow their own billing cycle.",
     "saveSuccess": "Charge timing updated successfully.",
-    "saveError": "Error updating charge timing."
+    "saveError": "Error updating charge timing.",
+    "prepaidInvoiceCreated": "Prepaid invoice created successfully.",
+    "stripeNotReady": "Stripe account not ready. Class created without billing."
   }
 }
 ```
@@ -1128,6 +1198,14 @@ FASE 8: Testes e Validação
 - [ ] [v1.4] Verificar rollback de Invoice Items em caso de falha na criação da Invoice
 - [ ] [v1.4] Verificar idempotência: double-click no agendamento não gera cobrança duplicada
 - [ ] [v1.4] Verificar que `apiVersion: "2023-10-16"` é padronizado em todas novas funções Stripe
+- [ ] [v1.5] Verificar que `send-invoice-notification` recebe `notification_type: 'invoice_created'` (não apenas `invoice_id`)
+- [ ] [v1.5] Verificar que indicador visual na Agenda usa query em `invoice_classes` (view não tem `has_prepaid_invoice`)
+- [ ] [v1.5] Verificar que versão do Stripe SDK é `stripe@14.21.0` em TODAS as edge functions
+- [ ] [v1.5] Verificar que `invoice.paid` webhook NÃO sobrescreve `payment_origin: 'prepaid'` com `'automatic'`
+- [ ] [v1.5] Verificar que `process-cancellation` itera TODAS as faturas pré-pagas (não `.limit(1)`)
+- [ ] [v1.5] Verificar que `Agenda.tsx` exibe toast de feedback após `process-class-billing`
+- [ ] [v1.5] Verificar que `invoice.paid` e `invoice.payment_succeeded` chamam `completeEventProcessing(false, error)` em TODOS os caminhos de erro
+- [ ] [v1.5] Verificar que webhook usa `.autoPagingToArray()` em vez de `for await` para listLineItems
 
 ### Deploy
 
@@ -1144,6 +1222,7 @@ FASE 8: Testes e Validação
 - [ ] Verificar que professores sem business_profile não são afetados
 - [ ] Verificar que a troca prepaid→postpaid não afeta faturas existentes
 - [ ] [v1.3] Verificar que `process-cancellation` usa queries sequenciais (sem FK join)
+- [ ] [v1.5] Verificar que cancelamento de aula em grupo anula TODAS as faturas pré-pagas dos participantes
 
 ---
 
@@ -1207,16 +1286,29 @@ FASE 8: Testes e Validação
 |---|------------------|-----------|
 | 38 | `process-class-billing` não invoca `send-invoice-notification` | Adicionado passo 4 explícito: após criar fatura no banco, invocar `send-invoice-notification` com `invoice_id`. Sem isso, aluno não recebe email/notificação. |
 | 39 | `stripe_customer_id` não persistido em `teacher_student_relationships` | Adicionado no passo 3c.ii: após buscar/criar customer no Connected Account, fazer UPDATE em `teacher_student_relationships` para salvar `stripe_customer_id`. Evita re-criação em cobranças futuras. |
-| 40 | `stripe.invoices.retrieve({ expand: ['lines'] })` limita a 10 items | Substituído por `stripe.invoices.listLineItems` com auto-paginação (`for await`). Garante processamento correto para aulas em grupo com >10 participantes. |
+| 40 | `stripe.invoices.retrieve({ expand: ['lines'] })` limita a 10 items | Substituído por `stripe.invoices.listLineItems` com auto-paginação. Garante processamento correto para aulas em grupo com >10 participantes. |
 | 41 | Erros no webhook não chamam `completeEventProcessing` | Adicionado `completeEventProcessing(false, error)` no catch do handler de invoice. Mantém integridade do sistema de idempotência (doc: `stripe-webhook-idempotency.md`). |
 | 42 | `payment_origin` ausente na criação de invoice prepaid | Adicionado `payment_origin: 'prepaid'` no passo 3c.vi. Diferencia de `automated` e `manual`. |
 | 43 | Handler `invoice.payment_succeeded` sem código explícito | Especificado que deve conter a MESMA lógica completa do handler `invoice.paid`, incluindo paginação e idempotência. |
 | 44 | Descrição da invoice imprecisa para múltiplos serviços | Detalhada lógica: se fatura tem múltiplos serviços diferentes, listar todos. Se mesmo serviço, usar formato `3x Aula de Piano`. |
 | 45 | `invoices.class_id` indefinido para faturas multi-aula | Definido: `class_id = classIds[0]` se 1 aula, `null` se múltiplas. Relação N:N via `invoice_classes`. |
-| 46 | Indicador visual na Agenda usa query direta em vez de view existente | Substituído por view `class_billing_status` (já existe no banco). Mais eficiente e consistente. |
+| 46 | Indicador visual na Agenda usa query direta em vez de view existente | Revertido: view `class_billing_status` NÃO tem campo `has_prepaid_invoice`. Usar query direta em `invoice_classes`. |
 | 47 | Rollback de Invoice Items em caso de falha sem detalhamento | Adicionada lógica explícita: guardar IDs em `createdItemIds[]`, em caso de falha deletar via `stripe.invoiceItems.del()`. Se Invoice draft criada, deletar via `stripe.invoices.del()`. |
 | 48 | Sem idempotência/proteção contra double-click em `process-class-billing` | Adicionado passo 3a de verificação: se `invoice_classes` com `item_type = 'prepaid_class'` já existe para o `class_id`, pular. |
 | 49 | `apiVersion` Stripe inconsistente entre funções | Padronizado `apiVersion: "2023-10-16"` em todas as novas funções e documentado como requisito. |
+
+### Revisão v1.5
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 50 | `send-invoice-notification` requer `notification_type` obrigatório no payload | Corrigido passo 4: payload agora inclui `notification_type: 'invoice_created'`. Sem ele, a edge function não sabe qual template usar e falha silenciosamente. |
+| 51 | View `class_billing_status` não tem campo `has_prepaid_invoice` | Revertido Gap 46: campos da view são apenas `class_id`, `teacher_id`, `total_participants`, `billed_participants`, `fully_billed`, `has_billed_items`. `has_billed_items` é genérico (todos os tipos). Para prepaid específico, usar query direta em `invoice_classes` com filtro `item_type = 'prepaid_class'`. |
+| 52 | Versão do Stripe SDK inconsistente entre edge functions | Padronizado `stripe@14.21.0` em TODAS as edge functions. Adicionada nota explícita na seção 5.4 e como requisito no checklist. |
+| 53 | Webhook `invoice.paid` sobrescreve `payment_origin: 'prepaid'` com `'automatic'` | Corrigido: handler agora verifica `payment_origin` atual antes de atualizar. Se já tem valor (ex: `'prepaid'`, `'manual'`), preserva. Só define `'automatic'` se `payment_origin` é null. |
+| 54 | `process-cancellation` usa `.limit(1)` para faturas pré-pagas | Corrigido: removido `.limit(1).maybeSingle()`. Agora busca TODAS as faturas pré-pagas vinculadas e itera com `for...of` para void de cada uma. Crucial para aulas em grupo com múltiplas faturas (uma por aluno). |
+| 55 | `Agenda.tsx` sem feedback visual após `process-class-billing` | Adicionado: tratar resposta da edge function com toasts para `prepaid` (sucesso), `stripe_not_ready` (warning) e erros. Adicionadas chaves i18n `chargeTiming.prepaidInvoiceCreated` e `chargeTiming.stripeNotReady`. |
+| 56 | Handlers `invoice.paid` e `invoice.payment_succeeded` sem `completeEventProcessing` em caminhos de erro | Corrigido: adicionado `completeEventProcessing(supabaseClient, event.id, false, error)` em TODOS os catches e caminhos de erro dos handlers, incluindo falha no update do banco e falha ao buscar line items. |
+| 57 | `for await` incompatível com Stripe SDK no Deno runtime | Substituído por `.autoPagingToArray({ limit: 10000 })` que é mais confiável no Deno. `for await` pode falhar com certos async iterators do SDK Stripe em ambientes não-Node.js. |
 
 ---
 

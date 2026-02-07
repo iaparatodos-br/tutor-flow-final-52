@@ -1,35 +1,33 @@
 
-# Plano de Implementação: Cobrança Híbrida - v2.3 Completa
+# Plano de Implementação: Cobrança Híbrida - v2.4 Completa
 
-## Status: Documento atualizado para v2.3 com 114 gaps corrigidos
+## Status: Documento atualizado para v2.4 com 125 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.3, incorporando 15 novos gaps técnicos (100-114) identificados na revisão mais recente.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.4, incorporando 11 novos gaps técnicos (115-125) identificados na revisão mais recente.
 
-## Gaps incorporados na v2.3
+## Gaps incorporados na v2.4
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 100 | Nota na seção 12 contradiz Gap 96 — afirma "Não é necessário modificar config.toml" mas Gap 96 EXIGE verify_jwt = false | Deploy falha com 401 se config.toml não for atualizado |
-| 101 | CORS headers do webhook-stripe-connect EXISTENTE estão incompletos (faltam headers Supabase) | Inconsistência com padrão do projeto |
-| 102 | `canChangePaymentMethod` em Faturas.tsx não exclui `invoice_type === 'prepaid_class'` | Botão RefreshCw aparece para faturas pré-pagas, causando erro ao tentar trocar método |
-| 103 | **CRÍTICO**: Handlers invoice.paid e invoice.payment_succeeded EXISTENTES usam .single() — Gap 75 só corrigiu código PROPOSTO | Eventos de invoices não cadastradas causam erro 500 → retries infinitos do Stripe por 3 dias |
-| 104 | invoice.payment_succeeded EXISTENTE sobrescreve payment_origin incondicionalmente | Faturas prepaid perdem rastreabilidade de origem |
-| 105 | payment_intent.succeeded EXISTENTE sobrescreve payment_origin incondicionalmente | Mesmo problema do Gap 104 para Payment Intents |
-| 106 | payment_intent.succeeded limpa stripe_hosted_invoice_url incondicionalmente | Faturas pré-pagas perdem URL de pagamento |
-| 107 | process-class-billing não valida array class_ids vazio | Resposta ambígua se frontend envia array vazio |
-| 108 | Fonte do email do customer não especificada no passo 3c.ii | Ambiguidade na implementação |
-| 109 | Sem tratamento para troca de charge_timing com faturas pendentes | UX confusa para professor |
-| 110 | payment_method null em invoice prepaid não documentado como intencional | Confusão durante implementação |
-| 111 | process-cancellation void não trata invoice_already_voided | Alertas falsos nos logs |
-| 112 | invoice.finalized não na lista de validateStripeEvent | Inconsistência na validação |
-| 113 | charge_timing inconsistente em grupos com alunos de profiles diferentes | Limitação de design não documentada |
-| 114 | CORS headers de process-cancellation incompletos | Possíveis erros CORS em chamadas do frontend |
+| 115 | **CRÍTICO**: `payment_intent.succeeded` handler (linha 453) usa `.single()` — omitido pelo Gap 103 | Mesmo risco de retries infinitos do Stripe para PIs sem invoice no banco |
+| 116 | `shouldCharge` para faturas prepaid PAGAS não é desativado — risco de double-charging | Aluno perde prepaid + recebe cobrança de cancelamento |
+| 117 | Agenda.tsx não verifica `billingResult.success` da resposta de `process-class-billing` | Erros genéricos silenciados, professor sem feedback |
+| 118 | **CRÍTICO**: Sem rollback se Stripe Invoice criada/finalizada mas DB insert falha | Invoice Stripe pagável sem registro local — pagamento "fantasma" |
+| 119 | Padrão de resposta inconsistente entre `process-cancellation` e `process-class-billing` | Frontend pode não extrair mensagens user-friendly de HTTP 500 |
+| 120 | Agenda.tsx precisa importar namespace i18n `billing` para toasts de cobrança | Chaves traduzidas mostram literal em vez de texto |
+| 121 | Resposta não detalha participantes skipados por mensalidade ativa | Professor sem visibilidade sobre quem não foi cobrado |
+| 122 | `process-class-billing` não valida preço/status do serviço server-side | Stripe rejeita Invoice com amount 0 |
+| 123 | `payment_settings.payment_method_types` não especificado na Invoice Stripe | Documentar como decisão intencional |
+| 124 | Sem limite de batch size — risco de timeout para muitas aulas simultâneas | Edge function pode expirar com >20 aulas |
+| 125 | Seção 5.3 descreve modificações de webhook como incrementais mas são reescritas | Risco de código duplicado durante implementação |
 
-## Destaques críticos da v2.3
+## Destaques críticos da v2.4
 
-**Gaps 103-106 são PRÉ-REQUISITOS para deploy**: O webhook-stripe-connect EXISTENTE em produção tem bugs que serão amplificados quando `process-class-billing` começar a criar faturas pré-pagas. Estes 4 gaps devem ser corrigidos NO WEBHOOK ATUAL antes de qualquer deploy da feature de cobrança híbrida.
+**Gaps 115 e 118 são PRÉ-REQUISITOS para deploy**:
+- Gap 115: O handler `payment_intent.succeeded` EXISTENTE tem o mesmo bug de `.single()` identificado no Gap 103, mas foi omitido. Deve ser corrigido junto com os Gaps 103-106.
+- Gap 118: Se o DB falhar após a criação da Invoice Stripe, o aluno pode pagar uma fatura "fantasma" que nunca é reconciliada. Requer void automático como rollback.
 
 ## Próximos passos
 
 Documento pronto para implementação. Seguir fases 1-8 conforme sequência definida.
-Prioridade zero: corrigir Gaps 103-106 no webhook existente.
+Prioridade zero: corrigir Gaps 103-106 + 115 no webhook existente.

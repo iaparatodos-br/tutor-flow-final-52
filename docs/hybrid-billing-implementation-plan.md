@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.1 (Revisada)
+> **Versão**: 1.2 (Revisada — 11 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -342,49 +342,22 @@ if (!virtualClass.is_experimental && virtualClass.service_id) {
 
 **NOTA IMPORTANTE**: A edge function `materialize-virtual-class` (server-side, chamada pelo aluno) **NÃO** é modificada. O billing pré-pago só é disparado quando o professor materializa via `Agenda.tsx`. Se o aluno materializar, a aula será capturada pelo `automated-billing` no próximo ciclo (pós-pago efetivo).
 
-### 4.3 CancellationModal.tsx - Cancelamento Condicional
+### 4.3 CancellationModal.tsx - Sem Alteração Significativa
 
 **Arquivo**: `src/components/CancellationModal.tsx`
 
-Adicionar lógica **antes** de chamar `process-cancellation` para verificar se a aula tem fatura pré-paga vinculada:
+> **CORREÇÃO v1.2 (Gap 7)**: A verificação de fatura pré-paga foi **removida do frontend** e movida para dentro da edge function `process-cancellation` (seção 5.4). A razão:
+>
+> 1. **RLS**: O join `invoices!inner(...)` com filtro por `invoice_type` pode falhar se o usuário logado for aluno, pois as políticas RLS da tabela `invoices` podem bloquear o acesso.
+> 2. **PostgREST**: Joins aninhados com `!inner` e filtros têm comportamento imprevisível.
+> 3. **Segurança**: A edge function usa `SUPABASE_SERVICE_ROLE_KEY` e ignora RLS, garantindo acesso completo.
 
-```typescript
-// Nova função auxiliar para verificar billing pré-pago
-const checkPrepaidBilling = async (classId: string) => {
-  // 1. Buscar invoice_classes vinculados a esta aula
-  const { data: invoiceClasses } = await supabase
-    .from('invoice_classes')
-    .select(`
-      id,
-      invoice_id,
-      stripe_invoice_item_id,
-      invoices!inner (
-        id,
-        status,
-        stripe_invoice_id,
-        invoice_type
-      )
-    `)
-    .eq('class_id', classId)
-    .eq('invoices.invoice_type', 'prepaid_class');
+**Ação**: O `CancellationModal.tsx` **NÃO precisa de alteração** para esta feature. O fluxo atual de cancelamento já chama `process-cancellation`, que agora será responsável por:
+- Verificar se a aula tem `invoice_classes` com `invoice_type = 'prepaid_class'`
+- Decidir se deve void a invoice no Stripe
+- Retornar informação sobre o void no response (para exibir toast adequado)
 
-  if (!invoiceClasses || invoiceClasses.length === 0) {
-    return { hasPrepaidBilling: false };
-  }
-
-  const invoice = invoiceClasses[0].invoices;
-  return {
-    hasPrepaidBilling: true,
-    invoiceId: invoice.id,
-    invoiceStatus: invoice.status,
-    stripeInvoiceId: invoice.stripe_invoice_id,
-    stripeInvoiceItemId: invoiceClasses[0].stripe_invoice_item_id,
-    canVoid: ['pendente', 'open'].includes(invoice.status), // Só pode anular faturas não-pagas
-  };
-};
-```
-
-Integrar na lógica do `handleCancel`: se `hasPrepaidBilling && canVoid`, passar `void_prepaid_invoice: true` + `stripe_invoice_id` no body do `process-cancellation`.
+O frontend apenas continua passando `class_id` e `cancellation_reason` como já faz hoje.
 
 ### 4.4 InvoiceTypeBadge.tsx - Novo tipo `prepaid_class`
 
@@ -407,7 +380,33 @@ cancellation: {
 
 **NOTA**: O tipo `cancellation` já existe no sistema mas não está mapeado no `InvoiceTypeBadge`. Aproveitar para adicionar ambos.
 
-### 4.5 ClassForm.tsx - Nenhuma Alteração
+### 4.5 Indicador Visual na Agenda (Aulas com Fatura Emitida)
+
+> **CORREÇÃO v1.2 (Gap 8)**: Adicionada especificação de indicador visual para aulas pré-pagas no calendário.
+
+**Arquivo**: `src/pages/Agenda.tsx` (renderização de cards no calendário)
+
+**Problema**: O plano menciona bloquear edição de aulas com fatura emitida (seção 7.3), mas sem indicador visual o professor não sabe quais aulas já têm fatura antes de tentar editar.
+
+**Solução**:
+
+1. **Ao carregar aulas no calendário**, fazer join com `invoice_classes` para verificar se a aula tem registros com `item_type = 'prepaid_class'`:
+   ```typescript
+   // Na query de aulas, adicionar:
+   const { data: billedClassIds } = await supabase
+     .from('invoice_classes')
+     .select('class_id')
+     .eq('item_type', 'prepaid_class')
+     .in('class_id', classIds);
+   ```
+
+2. **Exibir ícone discreto** (ex: `Receipt` do lucide-react) no card da aula no calendário quando `billedClassIds` inclui o `class_id`.
+
+3. **Ao abrir detalhes da aula**, mostrar badge "Fatura emitida" usando `<InvoiceTypeBadge invoiceType="prepaid_class" />` se aplicável.
+
+4. **Tooltip**: Ao passar o mouse sobre o ícone, exibir "Aula com fatura pré-paga emitida".
+
+### 4.6 ClassForm.tsx - Nenhuma Alteração
 
 O ClassForm já exibe os serviços e seus preços. Nenhuma alteração é necessária no modal de agendamento. A configuração pré/pós-paga é global e não aparece no ClassForm. O preço do serviço já é mostrado como read-only (vem do cadastro de serviços).
 
@@ -452,6 +451,20 @@ interface ProcessClassBillingResponse {
    → Se NÃO tem business_profile: retornar { charge_timing: 'no_business_profile' }
    → Se charge_timing === 'postpaid': retornar { charge_timing: 'postpaid' }
 
+2.5 [CORREÇÃO v1.2 - Gap 6] Validar Stripe Connect:
+   → Verificar que business_profile.stripe_connect_id NÃO é null
+   → Buscar payment_accounts WHERE teacher_id = teacher_id
+     AND stripe_connect_account_id = business_profile.stripe_connect_id
+   → Verificar que stripe_charges_enabled = true
+   → Se NÃO estiver habilitado: retornar { charge_timing: 'stripe_not_ready' }
+     silenciosamente (professor não completou onboarding do Stripe)
+
+2.6 [CORREÇÃO v1.2 - Gap 4] Buscar payment_due_days:
+   SELECT payment_due_days FROM profiles WHERE id = teacher_id
+   → O campo payment_due_days está na tabela `profiles` (NÃO em business_profiles)
+   → Valor padrão: 7 (se null)
+   → Será usado em days_until_due na criação da Invoice Stripe (passo 3c.iv)
+
 3. Se charge_timing === 'prepaid':
    
    3a. Para cada class_id, buscar dados completos:
@@ -461,7 +474,7 @@ interface ProcessClassBillingResponse {
        - Excluir aulas que já têm invoice_classes (evitar duplicidade)
    
    3b. Agrupar participantes por student_id (responsável):
-       - Se participante tem dependent_id, buscar responsible_id
+       - Se participante tem dependent_id, buscar responsible_id na tabela dependents
        - Agrupar todas as aulas do mesmo responsável em uma única fatura
    
    3c. Para cada responsável/aluno único:
@@ -469,34 +482,44 @@ interface ProcessClassBillingResponse {
        ii.  Buscar/criar customer no Connected Account:
             - stripe.customers.list({ email }, { stripeAccount })
             - Se não existe: stripe.customers.create({ email, name }, { stripeAccount })
-       iii. Para cada aula desse aluno:
+       iii. [CORREÇÃO v1.2 - Gap 5] Para cada aula desse aluno:
+            - Se participante tem dependent_id:
+              → Buscar nome do dependente: SELECT name FROM dependents WHERE id = dependent_id
+              → Descrição: `[NomeDependente] - Aula de ${serviceName} - ${classDate}`
+            - Se participante NÃO tem dependent_id:
+              → Descrição: `Aula de ${serviceName} - ${classDate}`
             - stripe.invoiceItems.create({
                 customer: connectedCustomerId,
                 amount: Math.round(price * 100),
                 currency: 'brl',
-                description: `Aula de ${serviceName} - ${classDate}`,
-                metadata: { lesson_id: classId, participant_id: participantId }
+                description: descricaoCalculadaAcima,
+                metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
               }, { stripeAccount: connectAccountId })
        iv.  stripe.invoices.create({
               customer: connectedCustomerId,
               auto_advance: true,
               collection_method: 'send_invoice',
-              days_until_due: paymentDueDays,
+              days_until_due: paymentDueDays, // [Gap 4] Vem de profiles.payment_due_days
               metadata: { teacher_id, invoice_source: 'prepaid_billing' }
             }, { stripeAccount: connectAccountId })
        v.   stripe.invoices.finalizeInvoice(stripeInvoice.id, { stripeAccount })
-       vi.  Criar registro na tabela `invoices` com:
+       vi.  [CORREÇÃO v1.2 - Gap 2] Criar registro na tabela `invoices` com:
             - invoice_type: 'prepaid_class'
             - stripe_invoice_id: stripeInvoice.id
+            - stripe_hosted_invoice_url: stripeInvoice.hosted_invoice_url  ← CRÍTICO para "Pagar Agora"
+            - stripe_invoice_url: stripeInvoice.invoice_pdf                ← URL do PDF da fatura
             - status: 'pendente'
             - student_id: responsável
             - teacher_id
             - business_profile_id: da relationship
             - amount: soma dos preços
             - gateway_provider: 'stripe'
-       vii. Criar registros em `invoice_classes` com:
+            NOTA: Sem estes campos, Faturas.tsx (linha 131) não consegue 
+            renderizar o botão "Pagar Agora" para faturas pré-pagas.
+       vii. [CORREÇÃO v1.2 - Gap 5] Criar registros em `invoice_classes` com:
             - stripe_invoice_item_id: cada item do Stripe
             - class_id, participant_id, amount, item_type: 'prepaid_class'
+            - dependent_id: se o participante tem dependente vinculado ← NOVO
 
 4. Retornar resultado com IDs das faturas criadas
 ```
@@ -592,6 +615,17 @@ case 'invoice.paid': {
 ### 5.4 Ajustes no process-cancellation
 
 **Arquivo**: `supabase/functions/process-cancellation/index.ts`
+
+> **CORREÇÃO v1.2 (Gap 3)**: Adicionar import do Stripe SDK no topo do arquivo:
+> ```typescript
+> import Stripe from "https://esm.sh/stripe@14.21.0";
+> ```
+> O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
+> é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
+
+> **CORREÇÃO v1.2 (Gap 7)**: A verificação de fatura pré-paga foi **movida do frontend** 
+> (`CancellationModal.tsx`) para cá. O backend faz a verificação completa usando 
+> `SUPABASE_SERVICE_ROLE_KEY`, evitando problemas de RLS.
 
 Adicionar lógica de void/delete de fatura pré-paga. Inserir ANTES da seção de criação de fatura de cancelamento (linha ~374):
 
@@ -824,11 +858,11 @@ O handler existente de `payment_intent.succeeded` continua funcionando para fatu
 | `automated-billing` (mensalidades) | Nenhum | Mensalidades não são afetadas por `charge_timing` |
 | `create-invoice` (manual) | Nenhum | Continua funcionando independentemente |
 | `create-payment-intent-connect` | Nenhum | Continua para pagamentos de faturas existentes |
-| `Financeiro.tsx` (lista faturas) | **Baixo** | Novas faturas `prepaid_class` aparecem na lista; `InvoiceTypeBadge` precisa do novo tipo |
+| `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista |
 | `Faturas.tsx` (aluno) | **Baixo** | Faturas pré-pagas aparecem normalmente; `InvoiceTypeBadge` precisa do novo tipo |
 | `InvoiceTypeBadge.tsx` | **Médio** | Adicionar tipo `prepaid_class` e `cancellation` ao mapeamento |
 | `PaymentOptionsCard` | Nenhum | Faturas pré-pagas usam Stripe Invoice (link próprio) |
-| `CancellationModal.tsx` | **Médio** | Adicionar verificação de fatura pré-paga antes de cancelar |
+| `CancellationModal.tsx` | **Nenhum** | [Gap 7] Verificação movida para `process-cancellation` (backend). Frontend sem alteração. |
 | `StudentImportDialog` | Nenhum | Import de alunos não interage com billing |
 | Aulas antigas (sem `charge_timing`) | Nenhum | Continuam no fluxo pós-pago (automated-billing) |
 | Professores sem business_profile | Nenhum | Sem Stripe, cobrança não se aplica |
@@ -862,11 +896,12 @@ FASE 1: Migração de Banco de Dados
 │  - Regenerar tipos TypeScript
 │
 ▼
-FASE 2: Frontend - BillingSettings + i18n
+FASE 2: Frontend - BillingSettings + i18n + Financeiro refactor
 │  - Card "Momento da Cobrança"
 │  - Estado, load, save
 │  - Traduções i18n (PT/EN) para billing.json e financial.json
 │  - Atualizar InvoiceTypeBadge com novos tipos
+│  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline por InvoiceTypeBadge
 │
 ▼
 FASE 3: Backend - Edge Function process-class-billing
@@ -882,10 +917,12 @@ FASE 4: Integração - Agenda.tsx
 │  - materializeVirtualClass chama process-class-billing
 │
 ▼
-FASE 5: Cancelamento - CancellationModal + process-cancellation
-│  - Verificação de fatura pré-paga antes de cancelar
+FASE 5: Cancelamento - process-cancellation (backend only)
+│  - [Gap 7] Verificação de fatura pré-paga movida para backend
+│  - [Gap 3] Adicionar import Stripe no process-cancellation
 │  - Lógica de void/delete condicional no Stripe
 │  - Proteção contra void de faturas já pagas
+│  - CancellationModal.tsx: SEM alteração
 │
 ▼
 FASE 6: Webhook - webhook-stripe-connect
@@ -922,10 +959,11 @@ FASE 8: Testes e Validação
 | `src/i18n/locales/pt/financial.json` | **Modificar** | 2 | Tipo prepaidClass + cancellation |
 | `src/i18n/locales/en/financial.json` | **Modificar** | 2 | Tipo prepaidClass + cancellation |
 | `src/components/InvoiceTypeBadge.tsx` | **Modificar** | 2 | Adicionar tipos prepaid_class e cancellation |
+| `src/pages/Financeiro.tsx` | **Modificar** | 2 | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline (linhas 30-45, usos 581/716) pelo componente `InvoiceTypeBadge` importado |
 | `supabase/functions/process-class-billing/index.ts` | **Criar** | 3 | Router de cobrança central |
-| `src/pages/Agenda.tsx` | **Modificar** | 4 | Chamar process-class-billing em handleClassSubmit e materializeVirtualClass |
-| `src/components/CancellationModal.tsx` | **Modificar** | 5 | Verificar fatura pré-paga antes de cancelar |
-| `supabase/functions/process-cancellation/index.ts` | **Modificar** | 5 | Adicionar void de fatura pré-paga no Stripe |
+| `src/pages/Agenda.tsx` | **Modificar** | 4 | Chamar process-class-billing em handleClassSubmit e materializeVirtualClass; [Gap 8] Indicador visual de fatura emitida no calendário |
+| `src/components/CancellationModal.tsx` | **Sem alteração** | 5 | [Gap 7] Verificação movida para backend |
+| `supabase/functions/process-cancellation/index.ts` | **Modificar** | 5 | [Gap 3] Adicionar import Stripe; [Gap 7] Verificação de fatura pré-paga no backend; void de fatura no Stripe |
 | `supabase/functions/webhook-stripe-connect/index.ts` | **Modificar** | 6 | Processar lesson_id em invoice.paid e invoice.payment_succeeded |
 | `supabase/functions/automated-billing/index.ts` | **Verificar** | 7 | Confirmar que RPC filtra aulas pré-pagas; logs opcionais |
 
@@ -963,7 +1001,9 @@ FASE 8: Testes e Validação
 
 ---
 
-## Apêndice A: Gaps Corrigidos na Revisão v1.1
+## Apêndice A: Gaps Corrigidos
+
+### Revisão v1.1
 
 | # | Gap Identificado | Resolução |
 |---|------------------|-----------|
@@ -981,3 +1021,45 @@ FASE 8: Testes e Validação
 | 12 | RLS para nova coluna `charge_timing` não verificado | Verificado: políticas existentes cobrem automaticamente |
 | 13 | Hierarquia de pagamento (Boleto→PIX) na pré-paga | Removida: Stripe Invoice gerencia métodos nativamente |
 | 14 | `create-invoice` reuse vs duplicação | Decisão: lógica própria em `process-class-billing` (Invoices ≠ Payment Intents) |
+
+### Revisão v1.2
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 15 | `getInvoiceTypeBadge` duplicado em `Financeiro.tsx` (Gap 1/11) | Adicionar `Financeiro.tsx` na Fase 2; substituir função inline (linhas 30-45, usos 581/716) pelo componente `InvoiceTypeBadge` importado |
+| 16 | `stripe_hosted_invoice_url` não salvo (Gap 2) | Adicionado explicitamente no passo 3c.vi de `process-class-billing`: salvar `hosted_invoice_url` e `invoice_pdf` do Stripe na tabela `invoices` |
+| 17 | Import do Stripe ausente em `process-cancellation` (Gap 3) | Adicionado `import Stripe from "https://esm.sh/stripe@14.21.0"` como alteração explícita na seção 5.4 |
+| 18 | `payment_due_days` sem fonte definida (Gap 4) | Adicionado passo 2.6 em `process-class-billing`: buscar de `profiles` (não `business_profiles`). Default: 7 |
+| 19 | Tratamento de dependentes incompleto (Gap 5) | Detalhado passo 3c.iii: buscar nome do dependente, descrição `[NomeDependente] - Aula de...`, salvar `dependent_id` em `invoice_classes` |
+| 20 | Validação de `stripe_connect_id`/`charges_enabled` ausente (Gap 6) | Adicionado passo 2.5: verificar `stripe_connect_id` não-null e `stripe_charges_enabled = true` em `payment_accounts`. Se falhar: retornar `stripe_not_ready` |
+| 21 | Join `invoices!inner` falha por RLS no `CancellationModal` (Gap 7) | Verificação movida para `process-cancellation` (backend). `CancellationModal.tsx` sem alteração. |
+| 22 | Indicador visual de fatura emitida na Agenda (Gap 8) | Nova seção 4.5: ícone `Receipt` no card do calendário; badge "Fatura emitida" nos detalhes; query join com `invoice_classes` |
+| 23 | Participante adicionado a aula em grupo já faturada (Gap 9) | Documentado como edge case: bloquear adição de participantes a aulas com fatura prepaid, ou permitir com cobrança manual. NÃO gerar fatura automática. |
+| 24 | `handleCompleteClass` e billing (Gap 10) | Documentado: NÃO precisa chamar `process-class-billing`. Aulas normais: billing na criação. Virtuais: billing na materialização. Antigas: `automated-billing`. |
+| 25 | `Financeiro.tsx` não importa `InvoiceTypeBadge` (Gap 11) | Coberto pelo Gap 15 (mesmo arquivo). Import + substituição das 3 ocorrências. |
+
+---
+
+## Apêndice B: Edge Cases Documentados na v1.2
+
+### B.1 Participante adicionado a aula em grupo após faturamento (Gap 9)
+
+**Cenário**: Professor cria aula em grupo com 3 alunos. Sistema gera fatura pré-paga. Depois, professor tenta adicionar 4º aluno.
+
+**Decisão**: 
+- **Opção A (recomendada)**: Bloquear adição de novos participantes. Exibir alerta: "Esta aula já possui fatura pré-paga emitida. Não é possível adicionar novos participantes."
+- **Opção B**: Permitir adição, mas o professor deverá cobrar o novo participante manualmente via módulo financeiro (criar fatura manual).
+- **NÃO** gerar fatura automática para o novo participante (evita complexidade de fatura parcial).
+
+**Implementação**: No `Agenda.tsx`, ao abrir modal de edição de participantes, verificar se a aula tem `invoice_classes` com `item_type = 'prepaid_class'`. Se sim, desabilitar botão "Adicionar participante" e exibir tooltip explicativo.
+
+### B.2 handleCompleteClass e billing (Gap 10)
+
+**Cenário**: Professor conclui uma aula (muda status para `concluida`). Deve `handleCompleteClass` chamar `process-class-billing`?
+
+**Decisão**: **NÃO**. Razões:
+1. **Aulas normais**: Billing pré-pago ocorre na criação (`handleClassSubmit`). Ao concluir, a fatura já existe.
+2. **Aulas virtuais**: Billing pré-pago ocorre na materialização (`materializeVirtualClass`), que é chamada internamente por `handleCompleteClass`.
+3. **Aulas antigas (pré-feature)**: Não possuem `invoice_classes`. Serão capturadas pelo `automated-billing` normalmente no próximo ciclo, como sempre foram.
+
+Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece inalterado**.

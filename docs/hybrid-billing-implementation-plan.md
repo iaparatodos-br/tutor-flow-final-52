@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.3 (Revisada — 23 gaps corrigidos)
+> **Versão**: 1.4 (Revisada — 49 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -396,9 +396,17 @@ orphan_charges: {
 
 **Solução**:
 
-1. **Ao carregar aulas no calendário**, fazer join com `invoice_classes` para verificar se a aula tem registros com `item_type = 'prepaid_class'`:
+1. **[CORREÇÃO v1.4 - Gap 46]** Ao carregar aulas no calendário, usar a **view `class_billing_status`** (já existe no banco) em vez de query direta em `invoice_classes`:
    ```typescript
-   // Na query de aulas, adicionar:
+   // Usar view existente para verificar status de billing:
+   const { data: billingStatus } = await supabase
+     .from('class_billing_status')
+     .select('class_id, has_prepaid_invoice, invoice_status')
+     .in('class_id', classIds);
+   ```
+   → Se a view `class_billing_status` não contiver campo `has_prepaid_invoice`, 
+   alternativa com query direta:
+   ```typescript
    const { data: billedClassIds } = await supabase
      .from('invoice_classes')
      .select('class_id')
@@ -482,11 +490,16 @@ interface ProcessClassBillingResponse {
 
 3. Se charge_timing === 'prepaid':
    
-   3a. Para cada class_id, buscar dados completos:
-       - class_services (preço, nome)
-       - class_participants (student_id, dependent_id)
-       - Excluir aulas experimentais (is_experimental = true)
-       - Excluir aulas que já têm invoice_classes (evitar duplicidade)
+3a. [CORREÇÃO v1.4 - Gap 48] Verificação de idempotência:
+        - Para cada class_id, verificar se já existe `invoice_classes` com `item_type = 'prepaid_class'`
+        - Se existir, PULAR essa aula (evita cobrança duplicada em caso de retry/double-click)
+        - Logar: `Skipping class ${classId}: already has prepaid invoice`
+    
+    3a-bis. Para cada class_id, buscar dados completos:
+        - class_services (preço, nome)
+        - class_participants (student_id, dependent_id)
+        - Excluir aulas experimentais (is_experimental = true)
+        - Excluir aulas que já têm invoice_classes (evitar duplicidade - redundância com 3a)
    
    3b. Agrupar participantes por student_id (responsável):
        - Se participante tem dependent_id, buscar responsible_id na tabela dependents
@@ -494,22 +507,36 @@ interface ProcessClassBillingResponse {
    
    3c. Para cada responsável/aluno único:
        i.   Buscar business_profile_id via teacher_student_relationships
-       ii.  Buscar/criar customer no Connected Account:
-            - stripe.customers.list({ email }, { stripeAccount })
-            - Se não existe: stripe.customers.create({ email, name }, { stripeAccount })
+        ii.  Buscar/criar customer no Connected Account:
+             - stripe.customers.list({ email }, { stripeAccount })
+             - Se não existe: stripe.customers.create({ email, name }, { stripeAccount })
+             - [CORREÇÃO v1.4 - Gap 39] Persistir `stripe_customer_id` de volta:
+               → UPDATE teacher_student_relationships SET stripe_customer_id = connectedCustomerId
+                 WHERE teacher_id = teacher_id AND student_id = studentId
+               → Evita buscar/criar novamente em futuras cobranças
        iii. [CORREÇÃO v1.2 - Gap 5] Para cada aula desse aluno:
             - Se participante tem dependent_id:
               → Buscar nome do dependente: SELECT name FROM dependents WHERE id = dependent_id
               → Descrição: `[NomeDependente] - Aula de ${serviceName} - ${classDate}`
             - Se participante NÃO tem dependent_id:
               → Descrição: `Aula de ${serviceName} - ${classDate}`
-            - stripe.invoiceItems.create({
-                customer: connectedCustomerId,
-                amount: Math.round(price * 100),
-                currency: 'brl',
-                description: descricaoCalculadaAcima,
-                metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
-              }, { stripeAccount: connectAccountId })
+             - [CORREÇÃO v1.4 - Gap 49] Todas chamadas Stripe usam apiVersion padronizado:
+               `const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });`
+             - stripe.invoiceItems.create({
+                 customer: connectedCustomerId,
+                 amount: Math.round(price * 100),
+                 currency: 'brl',
+                 description: descricaoCalculadaAcima,
+                 metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
+               }, { stripeAccount: connectAccountId })
+             - [CORREÇÃO v1.4 - Gap 47] Guardar IDs dos Invoice Items criados em array:
+               `createdItemIds.push(invoiceItem.id)`
+               → Em caso de falha no passo iv/v, fazer cleanup:
+               ```
+               for (const itemId of createdItemIds) {
+                 await stripe.invoiceItems.del(itemId, { stripeAccount: connectAccountId });
+               }
+               ```
        iv.  [CORREÇÃO v1.3 - Gap 17] stripe.invoices.create({
               customer: connectedCustomerId,
               auto_advance: false,  ← IMPORTANTE: false para evitar finalização automática
@@ -522,30 +549,48 @@ interface ProcessClassBillingResponse {
             finalizeInvoice causaria erro 'invoice_already_finalized'.
        v.   stripe.invoices.finalizeInvoice(stripeInvoice.id, { stripeAccount })
        vi.  [CORREÇÃO v1.2 - Gap 2] Criar registro na tabela `invoices` com:
-            - invoice_type: 'prepaid_class'
-            - stripe_invoice_id: stripeInvoice.id
-            - stripe_hosted_invoice_url: stripeInvoice.hosted_invoice_url  ← CRÍTICO para "Pagar Agora"
-            - stripe_invoice_url: stripeInvoice.invoice_pdf                ← URL do PDF da fatura
-            - status: 'pendente'
-            - student_id: responsável
-            - teacher_id
-            - business_profile_id: da relationship
-            - amount: soma dos preços
-            - gateway_provider: 'stripe'
+             - invoice_type: 'prepaid_class'
+             - stripe_invoice_id: stripeInvoice.id
+             - stripe_hosted_invoice_url: stripeInvoice.hosted_invoice_url  ← CRÍTICO para "Pagar Agora"
+             - stripe_invoice_url: stripeInvoice.invoice_pdf                ← URL do PDF da fatura
+             - status: 'pendente'
+             - student_id: responsável
+             - teacher_id
+             - business_profile_id: da relationship
+             - amount: soma dos preços
+             - gateway_provider: 'stripe'
+             - [CORREÇÃO v1.4 - Gap 42] payment_origin: 'prepaid'
+               ← Diferencia de faturas criadas por `automated-billing` (`payment_origin: 'automated'`)
+               e faturas manuais (`payment_origin: 'manual'`)
+             - [CORREÇÃO v1.4 - Gap 45] class_id: classIds.length === 1 ? classIds[0] : null
+               ← Para faturas com múltiplas aulas, `class_id` fica null. 
+               A relação aula↔fatura é via `invoice_classes` (relação N:N).
             - [CORREÇÃO v1.3 - Gap 15] due_date: calculado como 
               new Date(Date.now() + paymentDueDays * 86400000).toISOString().split('T')[0]
               ← Campo NOT NULL obrigatório na tabela invoices
             - [CORREÇÃO v1.3 - Gap 16] description: 
               `Fatura pré-paga - Aula(s) de ${serviceName}`
               ← Campo opcional mas importante para exibição
-            NOTA: Sem hosted_invoice_url, Faturas.tsx (linha 131) não consegue 
-            renderizar o botão "Pagar Agora" para faturas pré-pagas.
-       vii. [CORREÇÃO v1.2 - Gap 5] Criar registros em `invoice_classes` com:
+             NOTA: Sem hosted_invoice_url, Faturas.tsx (linha 131) não consegue 
+             renderizar o botão "Pagar Agora" para faturas pré-pagas.
+             - [CORREÇÃO v1.4 - Gap 44] description: Se fatura tem múltiplos serviços,
+               listar todos: `Fatura pré-paga - Aula de Piano, Aula de Violão (2 aulas)`
+               Se todos mesmos serviço: `Fatura pré-paga - 3x Aula de Piano`
+        vii. [CORREÇÃO v1.2 - Gap 5] Criar registros em `invoice_classes` com:
             - stripe_invoice_item_id: cada item do Stripe
             - class_id, participant_id, amount, item_type: 'prepaid_class'
             - dependent_id: se o participante tem dependente vinculado ← NOVO
 
-4. Retornar resultado com IDs das faturas criadas
+4. [CORREÇÃO v1.4 - Gap 38] Após criar fatura, invocar `send-invoice-notification`:
+   ```typescript
+   await supabaseClient.functions.invoke('send-invoice-notification', {
+     body: { invoice_id: newInvoice.id }
+   });
+   ```
+   → Sem isso, aluno NÃO recebe email/notificação da fatura pré-paga.
+   → O `send-invoice-notification` já existe e envia email via SES + cria notificação in-app.
+
+5. Retornar resultado com IDs das faturas criadas
 ```
 
 **Pontos críticos:**
@@ -556,11 +601,13 @@ interface ProcessClassBillingResponse {
 
 3. **Hierarquia de pagamento**: NÃO se aplica aqui. A Invoice do Stripe será enviada com `collection_method: 'send_invoice'` e `days_until_due`. O aluno receberá o link de pagamento e escolherá o método disponível. O Stripe cuida da apresentação dos métodos habilitados no Connected Account.
 
-4. **Atomicidade**: Se o Stripe falhar em qualquer etapa, fazer cleanup:
-   - Deletar Invoice Items já criados
-   - NÃO salvar no banco
-   - A aula já foi criada (ok), mas sem cobrança vinculada
-   - Professor pode cobrar manualmente depois
+4. **Atomicidade e Rollback** [CORREÇÃO v1.4 - Gap 47]: Se o Stripe falhar em qualquer etapa, fazer cleanup:
+    - Deletar Invoice Items já criados via `stripe.invoiceItems.del(itemId, { stripeAccount })`
+    - Se a Invoice foi criada mas finalização falhou: `stripe.invoices.del(invoiceId, { stripeAccount })` (só invoices draft)
+    - NÃO salvar no banco (invoices/invoice_classes)
+    - A aula já foi criada (ok), mas sem cobrança vinculada
+    - Professor pode cobrar manualmente depois
+    - Logar todos os IDs deletados para auditoria
 
 5. **Lote para aulas avulsas**: Se `class_ids` tem mais de uma aula para o MESMO aluno, criar N Invoice Items e UMA única Invoice.
 
@@ -615,17 +662,23 @@ case 'invoice.paid': {
 
   // NOVO: Buscar invoice completa com lines expandidas
   // [Gap 14] Não confiar no payload do webhook para lines
+  // [Gap 40] `expand: ['lines']` retorna no máximo 10 items.
+  // Para faturas com >10 line items (aulas em grupo grandes), usar listLineItems com paginação:
   const stripeAccountId = paidInvoice.account as string; // Connected Account
   if (stripeAccountId) {
     try {
-      const fullInvoice = await stripe.invoices.retrieve(
+      // Buscar TODAS as lines com auto-paginação
+      const allLines: Stripe.InvoiceLineItem[] = [];
+      for await (const line of stripe.invoices.listLineItems(
         paidInvoice.id,
-        { expand: ['lines'] },
+        { limit: 100 },
         { stripeAccount: stripeAccountId }
-      );
+      )) {
+        allLines.push(line);
+      }
       
-      if (fullInvoice.lines?.data) {
-        for (const line of fullInvoice.lines.data) {
+      if (allLines.length > 0) {
+        for (const line of allLines) {
           const lessonId = line.metadata?.lesson_id;
           const participantId = line.metadata?.participant_id;
           
@@ -652,7 +705,9 @@ case 'invoice.paid': {
         }
       }
     } catch (retrieveError) {
+      // [Gap 41] Em caso de erro, marcar como falha no sistema de idempotência
       logStep('Error retrieving full invoice for line processing', retrieveError);
+      await completeEventProcessing(supabaseClient, event.id, false, retrieveError);
     }
   }
   break;
@@ -661,9 +716,11 @@ case 'invoice.paid': {
 
 **Handler `invoice.voided` (linha 420-438)**: Já existe e atualiza o status da invoice no banco para `cancelada`. **Nenhuma alteração necessária** — quando a fatura é anulada (void), o status é atualizado automaticamente.
 
-**Handler `invoice.payment_succeeded` (linha 337-369)**: Mesma lógica de iteração. Aplicar as MESMAS correções:
-- [Gap 14] Buscar invoice completa via `stripe.invoices.retrieve` com `expand: ['lines']`
+**Handler `invoice.payment_succeeded` (linha 337-369)**: [CORREÇÃO v1.4 - Gap 43] Deve conter a MESMA lógica completa do handler `invoice.paid` acima. Aplicar:
+- [Gap 40] Usar `stripe.invoices.listLineItems` com auto-paginação (não `expand: ['lines']`)
+- [Gap 14] Não confiar no payload do webhook para lines
 - [Gap 13] Filtrar por `participant_id` do metadata, não por `class_id`
+- [Gap 41] Em caso de erro, chamar `completeEventProcessing(false, error)`
 
 ### 5.4 Ajustes no process-cancellation
 
@@ -1063,7 +1120,14 @@ FASE 8: Testes e Validação
 - [ ] [v1.3] Verificar `Financeiro.tsx` usa `InvoiceTypeBadge` importado (sem função inline)
 - [ ] [v1.3] Verificar `stripe_hosted_invoice_url` habilita botão "Pagar Agora" em Faturas.tsx
 - [ ] [v1.3] Verificar indicador visual (ícone Receipt) na Agenda para aulas faturadas
-- [ ] [v1.3] Verificar bloqueio de adição de participante em aula com fatura prepaid
+- [ ] [v1.4] Verificar que `process-class-billing` invoca `send-invoice-notification` após criar fatura
+- [ ] [v1.4] Verificar que `stripe_customer_id` é persistido em `teacher_student_relationships`
+- [ ] [v1.4] Verificar que webhook usa `listLineItems` com auto-paginação (não `expand: ['lines']`)
+- [ ] [v1.4] Verificar que erros no webhook chamam `completeEventProcessing(false, error)`
+- [ ] [v1.4] Verificar `payment_origin: 'prepaid'` salvo na tabela `invoices`
+- [ ] [v1.4] Verificar rollback de Invoice Items em caso de falha na criação da Invoice
+- [ ] [v1.4] Verificar idempotência: double-click no agendamento não gera cobrança duplicada
+- [ ] [v1.4] Verificar que `apiVersion: "2023-10-16"` é padronizado em todas novas funções Stripe
 
 ### Deploy
 
@@ -1136,6 +1200,23 @@ FASE 8: Testes e Validação
 | 35 | `stripe_not_ready` ausente da interface `ProcessClassBillingResponse` (Gap 21) | Adicionado como quarto valor possível do campo `charge_timing`. |
 | 36 | i18n faltante para textos de indicador visual e bloqueio (Gap 22) | Adicionadas chaves `prepaidIndicator.*` em `financial.json` (PT/EN). |
 | 37 | Checklist de deploy incompleto para v1.2/v1.3 (Gap 23) | Adicionados 7 novos itens no checklist pré-deploy e 1 no pós-deploy. |
+
+### Revisão v1.4
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 38 | `process-class-billing` não invoca `send-invoice-notification` | Adicionado passo 4 explícito: após criar fatura no banco, invocar `send-invoice-notification` com `invoice_id`. Sem isso, aluno não recebe email/notificação. |
+| 39 | `stripe_customer_id` não persistido em `teacher_student_relationships` | Adicionado no passo 3c.ii: após buscar/criar customer no Connected Account, fazer UPDATE em `teacher_student_relationships` para salvar `stripe_customer_id`. Evita re-criação em cobranças futuras. |
+| 40 | `stripe.invoices.retrieve({ expand: ['lines'] })` limita a 10 items | Substituído por `stripe.invoices.listLineItems` com auto-paginação (`for await`). Garante processamento correto para aulas em grupo com >10 participantes. |
+| 41 | Erros no webhook não chamam `completeEventProcessing` | Adicionado `completeEventProcessing(false, error)` no catch do handler de invoice. Mantém integridade do sistema de idempotência (doc: `stripe-webhook-idempotency.md`). |
+| 42 | `payment_origin` ausente na criação de invoice prepaid | Adicionado `payment_origin: 'prepaid'` no passo 3c.vi. Diferencia de `automated` e `manual`. |
+| 43 | Handler `invoice.payment_succeeded` sem código explícito | Especificado que deve conter a MESMA lógica completa do handler `invoice.paid`, incluindo paginação e idempotência. |
+| 44 | Descrição da invoice imprecisa para múltiplos serviços | Detalhada lógica: se fatura tem múltiplos serviços diferentes, listar todos. Se mesmo serviço, usar formato `3x Aula de Piano`. |
+| 45 | `invoices.class_id` indefinido para faturas multi-aula | Definido: `class_id = classIds[0]` se 1 aula, `null` se múltiplas. Relação N:N via `invoice_classes`. |
+| 46 | Indicador visual na Agenda usa query direta em vez de view existente | Substituído por view `class_billing_status` (já existe no banco). Mais eficiente e consistente. |
+| 47 | Rollback de Invoice Items em caso de falha sem detalhamento | Adicionada lógica explícita: guardar IDs em `createdItemIds[]`, em caso de falha deletar via `stripe.invoiceItems.del()`. Se Invoice draft criada, deletar via `stripe.invoices.del()`. |
+| 48 | Sem idempotência/proteção contra double-click em `process-class-billing` | Adicionado passo 3a de verificação: se `invoice_classes` com `item_type = 'prepaid_class'` já existe para o `class_id`, pular. |
+| 49 | `apiVersion` Stripe inconsistente entre funções | Padronizado `apiVersion: "2023-10-16"` em todas as novas funções e documentado como requisito. |
 
 ---
 

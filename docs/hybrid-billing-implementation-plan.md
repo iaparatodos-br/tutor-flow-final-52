@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.9 (Revisada — 81 gaps corrigidos)
+> **Versão**: 2.0 (Revisada — 87 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -721,18 +721,27 @@ case 'invoice.paid': {
   const paidInvoice = eventObject as Stripe.Invoice;
   logStep("Invoice paid", { invoiceId: paidInvoice.id });
 
-  // ... lógica existente de verificar manual payment ...
-  // (linhas 306-315 mantidas)
-
-  // [CORREÇÃO v1.5 - Gap 53] NÃO sobrescrever payment_origin incondicionalmente.
-  // Se a fatura já tem payment_origin = 'prepaid' (definido por process-class-billing),
-  // sobrescrever com 'automatic' perderia a rastreabilidade da origem.
-  // Solução: Só definir payment_origin se estiver null.
+  // [CORREÇÃO v2.0 - Gap 87] Consolidar queries de verificação.
+  // O código anterior fazia 2 queries separadas: uma para checar 'manual' (linhas 306-315)
+  // e outra para checar payment_origin (Gap 53). Consolidar em UMA query com .maybeSingle()
+  // que já implementa Gap 75 (null safety) e Gap 53 (preservar payment_origin).
   const { data: currentInvoice } = await supabaseClient
     .from('invoices')
-    .select('payment_origin')
+    .select('id, payment_origin, invoice_type')
     .eq('stripe_invoice_id', paidInvoice.id)
     .maybeSingle();
+
+  // [Gap 75] Se invoice não existe no nosso banco, logar e retornar 200
+  if (!currentInvoice) {
+    logStep("Invoice not found in local database, skipping", { stripeInvoiceId: paidInvoice.id });
+    break;
+  }
+
+  // [Gap 53] Preservar payment_origin 'manual' — teacher já marcou como pago
+  if (currentInvoice.payment_origin === 'manual') {
+    logStep("Invoice marked as manual payment, skipping webhook", { invoiceId: paidInvoice.id });
+    break;
+  }
 
   const updateData: Record<string, any> = { 
     status: 'paid',
@@ -748,7 +757,7 @@ case 'invoice.paid': {
     .update(updateData)
     .eq('stripe_invoice_id', paidInvoice.id);
 
-  if (paidError) {
+   if (paidError) {
     logStep("Error updating invoice status to paid", paidError);
     // [CORREÇÃO v1.5 - Gap 56] Chamar completeEventProcessing em caso de erro
     await completeEventProcessing(supabaseClient, event.id, false, paidError);
@@ -763,7 +772,10 @@ case 'invoice.paid': {
   // [Gap 14] Não confiar no payload do webhook para lines
   // [Gap 40] `expand: ['lines']` retorna no máximo 10 items.
   // Para faturas com >10 line items (aulas em grupo grandes), usar listLineItems com paginação:
-  const stripeAccountId = paidInvoice.account as string; // Connected Account
+  // [CORREÇÃO v2.0 - Gap 85] Usar `event.account` (fonte confiável para Connect webhooks)
+  // conforme Gap 80. A linha anterior usava `paidInvoice.account` diretamente,
+  // contradizendo a correção do Gap 80.
+  const stripeAccountId = (event as any).account || (paidInvoice as any).account;
   if (stripeAccountId) {
     try {
       // [CORREÇÃO v1.5 - Gap 57] Usar autoPagingToArray em vez de `for await`.
@@ -782,6 +794,10 @@ case 'invoice.paid': {
           
           if (lessonId && participantId) {
             // [Gap 13] Atualizar APENAS o participante específico, não todos da aula
+            // [CORREÇÃO v2.0 - Gap 84] Filtrar por status elegíveis para confirmação.
+            // Sem `.neq('status', 'concluida')`, se o professor completou a aula antes
+            // do pagamento chegar (ex: boleto pago dias depois), o status reverteria
+            // de 'concluida' para 'confirmada' — perdendo o registro de conclusão.
             const { error: participantUpdateError } = await supabaseClient
               .from('class_participants')
               .update({ 
@@ -789,7 +805,8 @@ case 'invoice.paid': {
                 confirmed_at: new Date().toISOString() 
               })
               .eq('id', participantId)
-              .neq('status', 'cancelada');
+              .neq('status', 'cancelada')
+              .neq('status', 'concluida');
             
             if (participantUpdateError) {
               logStep(`Error updating participant ${participantId} for lesson ${lessonId}`, participantUpdateError);
@@ -813,6 +830,48 @@ case 'invoice.paid': {
 ```
 
 **Handler `invoice.voided` (linha 420-438)**: Já existe e atualiza o status da invoice no banco para `cancelada`. **Nenhuma alteração necessária** — quando a fatura é anulada (void), o status é atualizado automaticamente.
+
+> **[CORREÇÃO v2.0 - Gap 82]**: O handler `invoice.voided` (linhas 425-435) e o handler 
+> `invoice.marked_uncollectible` (linhas 401-415) usam `return new Response(..., { status: 500 })`
+> quando o update falha, MAS **NÃO chamam `completeEventProcessing(false, error)`** antes de retornar.
+> Diferente dos handlers cobertos pelo Gap 79 (que usam pattern `if/else` e caem no fluxo de sucesso),
+> estes handlers fazem **early return** — bypassando completamente o `completeEventProcessing(true)`
+> da linha 544. O evento fica permanentemente preso no estado "processing" no sistema de idempotência,
+> impedindo retries automáticos do Stripe de serem processados.
+>
+> **FIX**: Aplicar o MESMO pattern do Gap 56/67 em AMBOS os handlers:
+> ```typescript
+> if (voidError) {
+>   logStep("Error updating invoice status to voided", voidError);
+>   await completeEventProcessing(supabaseClient, event.id, false, voidError);
+>   return new Response(JSON.stringify({ error: 'Failed' }), { 
+>     status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+>   });
+> }
+> ```
+
+> **[CORREÇÃO v2.0 - Gap 86]**: O handler `invoice.marked_uncollectible` (linhas 396-418)
+> NÃO verifica `payment_origin === 'manual'` antes de atualizar o status para `overdue`.
+> Os handlers `invoice.paid` e `invoice.payment_succeeded` já possuem essa verificação (linhas
+> 306-315, 343-352), mas `marked_uncollectible` não. Se o professor marcou manualmente o 
+> pagamento como recebido (`payment_origin: 'manual'`) e o Stripe marca a invoice como 
+> incobrável (porque o Stripe Payment Intent falhou/expirou), o webhook sobrescreveria o 
+> status `paid` com `overdue`, contradizendo a decisão do professor.
+>
+> **FIX**: Adicionar a MESMA verificação de `payment_origin === 'manual'` no handler, 
+> antes do update:
+> ```typescript
+> const { data: existingUncollectible } = await supabaseClient
+>   .from('invoices')
+>   .select('payment_origin')
+>   .eq('stripe_invoice_id', uncollectibleInvoice.id)
+>   .maybeSingle();
+> 
+> if (existingUncollectible?.payment_origin === 'manual') {
+>   logStep("Invoice marked as manual payment, skipping uncollectible webhook", { invoiceId: uncollectibleInvoice.id });
+>   break;
+> }
+> ```
 
 **Handler `invoice.payment_succeeded` (linha 337-369)**: [CORREÇÃO v1.4 - Gap 43] Deve conter a MESMA lógica completa do handler `invoice.paid` acima. Aplicar:
 - [Gap 53] Preservar `payment_origin` existente (não sobrescrever 'prepaid' com 'automatic')
@@ -1175,6 +1234,36 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 > }
 > ```
 
+> **[CORREÇÃO v2.0 - Gap 83]**: O `catch` externo do webhook (linhas 551-558) NÃO chama
+> `completeEventProcessing(false, error)`. Se um erro não capturado ocorre dentro de um 
+> handler APÓS `processEventIdempotency` marcar o evento como "processing" (linha 161),
+> o evento fica permanentemente preso nesse estado — impedindo retries do Stripe de serem
+> processados (idempotência rejeita o evento por estar "processing").
+>
+> **FIX**: No catch externo, verificar se `event` e `supabaseClient` estão definidos
+> e chamar `completeEventProcessing`:
+> ```typescript
+> } catch (error) {
+>   const errorMessage = error instanceof Error ? error.message : String(error);
+>   logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
+>   
+>   // [Gap 83] Completar processamento do evento em caso de erro não capturado
+>   // para evitar que o evento fique preso em "processing"
+>   if (typeof event !== 'undefined' && typeof supabaseClient !== 'undefined') {
+>     try {
+>       await completeEventProcessing(supabaseClient, event.id, false, error instanceof Error ? error : new Error(errorMessage));
+>     } catch (completeError) {
+>       logStep("Failed to complete event processing in outer catch", { error: (completeError as Error).message });
+>     }
+>   }
+>   
+>   return new Response(JSON.stringify({ error: errorMessage }), {
+>     status: 500,
+>     headers: { ...corsHeaders, "Content-Type": "application/json" }
+>   });
+> }
+> ```
+
 ---
 
 ## 9. Compatibilidade com Sistema Existente
@@ -1214,6 +1303,10 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | Invoice do Stripe sem metadata.lesson_id | Baixa | Médio | Validar que `lesson_id` está em metadata de cada InvoiceItem; logar se ausente |
 | **[Gap 77] Class IDs de outro professor processados** | **Baixa** | **Alto** | **Validar `classes.teacher_id === authenticated_teacher_id` para cada class_id antes de processar billing** |
 | **[Gap 81] Falha de pagamento em fatura pré-paga sem tratamento** | **Baixa** | **Médio** | **Documentado como edge case: aula permanece `confirmada`, fatura fica `falha_pagamento`. Professor decide ação (cancelar aula ou cobrar manualmente).** |
+| **[Gap 82] Eventos Stripe presos em "processing" por early return** | **Média** | **Alto** | **Handlers `invoice.paid` e `invoice.marked_uncollectible` retornam 500 sem `completeEventProcessing(false)`. Evento fica permanentemente preso. FIX: chamar `completeEventProcessing` antes de `return`.** |
+| **[Gap 83] Outer catch do webhook não completa evento** | **Baixa** | **Alto** | **Erros não capturados dentro dos handlers propagam para o catch externo, que não chama `completeEventProcessing`. Evento fica preso. FIX: chamar `completeEventProcessing` no catch externo.** |
+| **[Gap 84] Webhook downgrades status `concluida` para `confirmada`** | **Baixa** | **Médio** | **Se professor completa aula antes do pagamento chegar (ex: boleto), webhook reverte status. FIX: filtrar `.neq('status', 'concluida')`.** |
+| **[Gap 86] `invoice.marked_uncollectible` sobrescreve pagamento manual** | **Baixa** | **Alto** | **Handler não verifica `payment_origin === 'manual'`. Pode reverter decisão do professor. FIX: adicionar check como nos outros handlers.** |
 
 ---
 
@@ -1364,6 +1457,13 @@ FASE 8: Testes e Validação
 - [ ] [v1.9] Verificar que `invoice.paid` handler extrai `stripeAccountId` do evento Stripe (não do objeto invoice) para `listLineItems` (Gap 80)
 - [ ] [v1.9] Verificar que falha de pagamento em fatura pré-paga é tratada como edge case documentado (Gap 81)
 
+- [ ] [v2.0] Verificar que `invoice.paid` e `invoice.marked_uncollectible` chamam `completeEventProcessing(false, error)` ANTES de retornar 500 (Gap 82)
+- [ ] [v2.0] Verificar que o outer `catch` do webhook chama `completeEventProcessing(false, error)` quando `event.id` disponível (Gap 83)
+- [ ] [v2.0] Verificar que `invoice.paid` handler NÃO faz downgrade de `concluida` para `confirmada` — filtrar `.neq('status', 'concluida')` (Gap 84)
+- [ ] [v2.0] Verificar que `stripeAccountId` usa `event.account` (não `paidInvoice.account`) conforme Gap 80 — inconsistência interna resolvida (Gap 85)
+- [ ] [v2.0] Verificar que `invoice.marked_uncollectible` verifica `payment_origin === 'manual'` antes de atualizar status (Gap 86)
+- [ ] [v2.0] Verificar que `invoice.paid` handler faz UMA query consolidada (`.maybeSingle()` com null guard + manual check + payment_origin check), não queries separadas (Gap 87)
+
 ### Deploy
 
 - [ ] Executar migração SQL em produção
@@ -1512,6 +1612,19 @@ FASE 8: Testes e Validação
 | 79 | Handlers de webhook `invoice.voided`, `invoice.payment_failed`, `payment_intent.payment_failed` não chamam `completeEventProcessing(false, error)` | O Gap 67 identificou o problema para `invoice.payment_succeeded` e disse "aplicar o MESMO pattern em TODOS os handlers", mas não listou explicitamente os demais. Handlers afetados: `invoice.voided` (linhas 420-438): usa `if/else` sem return, erro cai no `completeEventProcessing(true)` na linha 544. `invoice.payment_failed` (linhas 372-393): mesmo padrão. `payment_intent.payment_failed` (linhas 504-537): mesmo padrão. FIX: Todos devem usar o pattern `if (error) { completeEventProcessing(false, error); return 500; }`. |
 | 80 | `invoice.paid` handler extrai `stripeAccountId` do objeto invoice, pode ser null | O código proposto (linha 746 do plano) usa `paidInvoice.account as string`. Para webhooks Connect, o Connected Account ID está no campo `account` do EVENTO (`event.account`), não necessariamente no objeto invoice. Para webhooks recebidos via platform endpoint, `event.account` é o campo confiável. FIX: Usar `(event as any).account || paidInvoice.account` como fallback, com validação de null antes de chamar `listLineItems`. Se null, logar warning e pular iteração de line items. |
 | 81 | `invoice.payment_failed` para faturas pré-pagas não tem tratamento específico | Quando uma fatura `prepaid_class` falha no pagamento (ex: boleto não pago, PIX expirado), a aula permanece `confirmada` mas sem pagamento. O plano não documenta este cenário. Decisão: a aula NÃO é cancelada automaticamente (poderia causar problemas se o aluno pagar depois). Professor é responsável por decidir ação (cancelar aula manualmente ou esperar pagamento). Adicionado como edge case documentado (Apêndice B.3) e à tabela de riscos. |
+
+---
+
+### Revisão v2.0
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 82 | Handlers `invoice.paid` e `invoice.marked_uncollectible` retornam 500 SEM chamar `completeEventProcessing(false, error)` | **Diferente do Gap 79** (que cobre handlers com pattern `if/else` que caem no fluxo de sucesso), estes handlers fazem **early return** com `return new Response(..., { status: 500 })`. Isso bypassa completamente o `completeEventProcessing(true)` da linha 544. O evento fica permanentemente preso em "processing" no sistema de idempotência — retries do Stripe são rejeitados pela função `start_stripe_event_processing`. FIX: Chamar `completeEventProcessing(false, error)` ANTES de cada `return` com status 500, como já documentado para o handler de `invoice.paid` no código proposto (seção 5.3), mas faltava para `invoice.marked_uncollectible`. |
+| 83 | Outer `catch` do webhook (linhas 551-558) não chama `completeEventProcessing(false, error)` | Erros não capturados dentro dos handlers propagam para o catch externo. Se o erro ocorre APÓS `processEventIdempotency` marcar o evento como "processing" (linha 161), o evento fica permanentemente preso — impedindo retries. FIX: No catch externo, verificar se `event` e `supabaseClient` estão definidos e chamar `completeEventProcessing(false, error)` com try/catch de proteção (seção 8.3). |
+| 84 | Proposta de `invoice.paid` handler faz downgrade de `concluida` para `confirmada` | O handler proposto (seção 5.3) atualiza `class_participants.status` para `confirmada` com `.neq('status', 'cancelada')`. Mas se o professor completou a aula (`concluida`) antes do pagamento chegar (ex: boleto pago 3 dias depois), o webhook reverteria o status. FIX: Adicionado `.neq('status', 'concluida')` ao filtro do update na seção 5.3. |
+| 85 | Código proposto do `invoice.paid` (linha 766) usa `paidInvoice.account` — contradiz Gap 80 | O Gap 80 especifica usar `(event as any).account || paidInvoice.account` como fonte confiável do Connected Account ID. O código na seção 5.3 usava `paidInvoice.account as string` diretamente. FIX: Corrigido na seção 5.3 para usar `(event as any).account || (paidInvoice as any).account` conforme Gap 80. |
+| 86 | `invoice.marked_uncollectible` não verifica `payment_origin === 'manual'` | Os handlers `invoice.paid` e `invoice.payment_succeeded` já verificam se `payment_origin === 'manual'` para evitar sobrescrever decisões do professor. O handler `marked_uncollectible` NÃO faz essa verificação. Se o professor marcou pagamento manualmente e o Stripe marca a invoice como incobrável, o webhook sobrescreveria `paid` com `overdue`. FIX: Adicionar verificação de `payment_origin === 'manual'` antes do update (seção 5.3). |
+| 87 | Proposta de `invoice.paid` faz 2 queries separadas para a mesma invoice | O código proposto fazia uma query para checar `payment_origin === 'manual'` (linhas 306-315 originais) e outra para checar `payment_origin` para Gap 53 (linhas 731-735). Consolidado em UMA query com `.maybeSingle()` que já implementa Gap 75 (null safety), Gap 53 (preservar payment_origin) e Gap 87 (eficiência). Se `currentInvoice` é null, logar warning e break (per Gap 75). |
 
 ---
 

@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.2 (Revisada — 11 gaps corrigidos)
+> **Versão**: 1.3 (Revisada — 23 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -376,9 +376,15 @@ cancellation: {
   icon: FileText, // ou AlertTriangle
   className: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700'
 },
+// [CORREÇÃO v1.3 - Gap 18] Tipo existente não mapeado
+orphan_charges: {
+  label: t('invoiceTypes.orphanCharges'),
+  icon: FileText,
+  className: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700'
+},
 ```
 
-**NOTA**: O tipo `cancellation` já existe no sistema mas não está mapeado no `InvoiceTypeBadge`. Aproveitar para adicionar ambos.
+**NOTA**: Os tipos `cancellation` e `orphan_charges` já existem no sistema mas não estão mapeados no `InvoiceTypeBadge`. Aproveitar para adicionar todos.
 
 ### 4.5 Indicador Visual na Agenda (Aulas com Fatura Emitida)
 
@@ -420,19 +426,28 @@ O ClassForm já exibe os serviços e seus preços. Nenhuma alteração é necess
 
 **NOVA Edge Function** - Router central de cobrança chamado após criação de aulas.
 
+> **CORREÇÃO v1.3 (Gap 20)**: Esta edge function DEVE incluir CORS headers padrão 
+> e handler de `OPTIONS` (como todas as edge functions chamadas do frontend).
+
 ```typescript
+// CORS headers (obrigatório)
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 // Parâmetros de entrada
 interface ProcessClassBillingRequest {
   class_ids: string[];   // IDs das aulas criadas (já no banco)
   teacher_id: string;    // ID do professor
 }
 
-// Resposta
+// Resposta [CORREÇÃO v1.3 - Gap 21: adicionado 'stripe_not_ready']
 interface ProcessClassBillingResponse {
   success: boolean;
   processed: number;      // Número de aulas processadas
   skipped: number;        // Número de aulas ignoradas (sem serviço, etc.)
-  charge_timing: string;  // 'prepaid', 'postpaid', ou 'no_business_profile'
+  charge_timing: 'prepaid' | 'postpaid' | 'no_business_profile' | 'stripe_not_ready';
   invoices_created?: string[]; // IDs das faturas criadas (se prepaid)
 }
 ```
@@ -495,13 +510,16 @@ interface ProcessClassBillingResponse {
                 description: descricaoCalculadaAcima,
                 metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
               }, { stripeAccount: connectAccountId })
-       iv.  stripe.invoices.create({
+       iv.  [CORREÇÃO v1.3 - Gap 17] stripe.invoices.create({
               customer: connectedCustomerId,
-              auto_advance: true,
+              auto_advance: false,  ← IMPORTANTE: false para evitar finalização automática
               collection_method: 'send_invoice',
               days_until_due: paymentDueDays, // [Gap 4] Vem de profiles.payment_due_days
               metadata: { teacher_id, invoice_source: 'prepaid_billing' }
             }, { stripeAccount: connectAccountId })
+            NOTA: Usar auto_advance: false para controlar explicitamente 
+            a finalização no passo v. Com auto_advance: true, chamar 
+            finalizeInvoice causaria erro 'invoice_already_finalized'.
        v.   stripe.invoices.finalizeInvoice(stripeInvoice.id, { stripeAccount })
        vi.  [CORREÇÃO v1.2 - Gap 2] Criar registro na tabela `invoices` com:
             - invoice_type: 'prepaid_class'
@@ -514,7 +532,13 @@ interface ProcessClassBillingResponse {
             - business_profile_id: da relationship
             - amount: soma dos preços
             - gateway_provider: 'stripe'
-            NOTA: Sem estes campos, Faturas.tsx (linha 131) não consegue 
+            - [CORREÇÃO v1.3 - Gap 15] due_date: calculado como 
+              new Date(Date.now() + paymentDueDays * 86400000).toISOString().split('T')[0]
+              ← Campo NOT NULL obrigatório na tabela invoices
+            - [CORREÇÃO v1.3 - Gap 16] description: 
+              `Fatura pré-paga - Aula(s) de ${serviceName}`
+              ← Campo opcional mas importante para exibição
+            NOTA: Sem hosted_invoice_url, Faturas.tsx (linha 131) não consegue 
             renderizar o botão "Pagar Agora" para faturas pré-pagas.
        vii. [CORREÇÃO v1.2 - Gap 5] Criar registros em `invoice_classes` com:
             - stripe_invoice_item_id: cada item do Stripe
@@ -573,6 +597,14 @@ logStep(`Unbilled participations found for ${studentInfo.student_name}`, {
 
 **Handler `invoice.paid` (linha 300-335)**: Adicionar iteração sobre linhas da fatura para atualizar status das aulas. Inserir APÓS a atualização de status da invoice no banco (linha 333):
 
+> **CORREÇÃO v1.3 (Gap 14)**: O payload do webhook `invoice.paid` NÃO garante que 
+> `invoice.lines.data` esteja completo. O Stripe pode enviar apenas um subset ou um 
+> objeto `list` com `has_more: true`. A solução é **buscar a invoice completa** via API:
+
+> **CORREÇÃO v1.3 (Gap 13)**: A atualização de `class_participants` deve ser filtrada 
+> pelo `participant_id` específico (do metadata), NÃO por `class_id`. Em aulas em grupo, 
+> confirmar por `class_id` confirmaria todos os participantes quando apenas um pagou.
+
 ```typescript
 case 'invoice.paid': {
   const paidInvoice = eventObject as Stripe.Invoice;
@@ -581,27 +613,46 @@ case 'invoice.paid': {
   // ... lógica existente de verificar manual payment e atualizar status ...
   // (linhas 306-333 mantidas integralmente)
 
-  // NOVO: Iterar sobre linhas da fatura e atualizar status das aulas
-  if (paidInvoice.lines?.data) {
-    for (const line of paidInvoice.lines.data) {
-      const lessonId = line.metadata?.lesson_id;
-      if (lessonId) {
-        // Atualizar participantes da aula para 'confirmada'
-        const { error: participantUpdateError } = await supabaseClient
-          .from('class_participants')
-          .update({ 
-            status: 'confirmada', 
-            confirmed_at: new Date().toISOString() 
-          })
-          .eq('class_id', lessonId)
-          .neq('status', 'cancelada');
-        
-        if (participantUpdateError) {
-          logStep(`Error updating participants for lesson ${lessonId}`, participantUpdateError);
-        } else {
-          logStep(`Lesson ${lessonId} participants confirmed via invoice payment`);
+  // NOVO: Buscar invoice completa com lines expandidas
+  // [Gap 14] Não confiar no payload do webhook para lines
+  const stripeAccountId = paidInvoice.account as string; // Connected Account
+  if (stripeAccountId) {
+    try {
+      const fullInvoice = await stripe.invoices.retrieve(
+        paidInvoice.id,
+        { expand: ['lines'] },
+        { stripeAccount: stripeAccountId }
+      );
+      
+      if (fullInvoice.lines?.data) {
+        for (const line of fullInvoice.lines.data) {
+          const lessonId = line.metadata?.lesson_id;
+          const participantId = line.metadata?.participant_id;
+          
+          if (lessonId && participantId) {
+            // [Gap 13] Atualizar APENAS o participante específico, não todos da aula
+            const { error: participantUpdateError } = await supabaseClient
+              .from('class_participants')
+              .update({ 
+                status: 'confirmada', 
+                confirmed_at: new Date().toISOString() 
+              })
+              .eq('id', participantId)
+              .neq('status', 'cancelada');
+            
+            if (participantUpdateError) {
+              logStep(`Error updating participant ${participantId} for lesson ${lessonId}`, participantUpdateError);
+            } else {
+              logStep(`Participant ${participantId} confirmed via invoice payment`);
+            }
+          } else if (lessonId && !participantId) {
+            // Fallback: se não tem participant_id no metadata (compatibilidade)
+            logStep(`Warning: lesson ${lessonId} has no participant_id in metadata - skipping participant update`);
+          }
         }
       }
+    } catch (retrieveError) {
+      logStep('Error retrieving full invoice for line processing', retrieveError);
     }
   }
   break;
@@ -610,7 +661,9 @@ case 'invoice.paid': {
 
 **Handler `invoice.voided` (linha 420-438)**: Já existe e atualiza o status da invoice no banco para `cancelada`. **Nenhuma alteração necessária** — quando a fatura é anulada (void), o status é atualizado automaticamente.
 
-**Handler `invoice.payment_succeeded` (linha 337-369)**: Mesma lógica de iteração sobre linhas. Adicionar o MESMO código de iteração sobre `invoice.lines.data` para consistência (o Stripe pode enviar `invoice.paid` OU `invoice.payment_succeeded` dependendo do cenário).
+**Handler `invoice.payment_succeeded` (linha 337-369)**: Mesma lógica de iteração. Aplicar as MESMAS correções:
+- [Gap 14] Buscar invoice completa via `stripe.invoices.retrieve` com `expand: ['lines']`
+- [Gap 13] Filtrar por `participant_id` do metadata, não por `class_id`
 
 ### 5.4 Ajustes no process-cancellation
 
@@ -629,27 +682,33 @@ case 'invoice.paid': {
 
 Adicionar lógica de void/delete de fatura pré-paga. Inserir ANTES da seção de criação de fatura de cancelamento (linha ~374):
 
+> **CORREÇÃO v1.3 (Gap 12)**: A query abaixo foi reescrita para usar queries 
+> sequenciais independentes em vez de FK join (`invoices!inner`). Joins com FK 
+> falham no Deno runtime por cache de schema (padrão documentado do projeto).
+
 ```typescript
 // NOVO: Verificar se a aula tem fatura pré-paga vinculada
-const { data: prepaidInvoiceClasses } = await supabaseClient
+// [Gap 12] Usar queries sequenciais em vez de FK join
+const { data: invoiceClassesForClass } = await supabaseClient
   .from('invoice_classes')
-  .select(`
-    id,
-    stripe_invoice_item_id,
-    invoice_id,
-    invoices!inner (
-      id,
-      status,
-      stripe_invoice_id,
-      invoice_type
-    )
-  `)
-  .eq('class_id', class_id)
-  .eq('invoices.invoice_type', 'prepaid_class');
+  .select('id, stripe_invoice_item_id, invoice_id')
+  .eq('class_id', class_id);
 
-if (prepaidInvoiceClasses && prepaidInvoiceClasses.length > 0) {
-  const prepaidInvoice = prepaidInvoiceClasses[0].invoices;
+let prepaidInvoice = null;
+if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
+  const invoiceIds = [...new Set(invoiceClassesForClass.map(ic => ic.invoice_id))];
+  const { data: invoicesData } = await supabaseClient
+    .from('invoices')
+    .select('id, status, stripe_invoice_id, invoice_type')
+    .in('id', invoiceIds)
+    .eq('invoice_type', 'prepaid_class')
+    .limit(1)
+    .maybeSingle();
   
+  prepaidInvoice = invoicesData;
+}
+
+if (prepaidInvoice) {
   // Só pode anular faturas não-pagas
   if (['pendente', 'open'].includes(prepaidInvoice.status) && prepaidInvoice.stripe_invoice_id) {
     console.log('📋 Voiding prepaid invoice:', prepaidInvoice.stripe_invoice_id);
@@ -749,7 +808,14 @@ if (prepaidInvoiceClasses && prepaidInvoiceClasses.length > 0) {
 {
   "invoiceTypes": {
     "prepaidClass": "Pré-paga",
-    "cancellation": "Cancelamento"
+    "cancellation": "Cancelamento",
+    "orphanCharges": "Cobranças pendentes"
+  },
+  "prepaidIndicator": {
+    "tooltip": "Aula com fatura pré-paga emitida",
+    "badge": "Fatura emitida",
+    "editBlocked": "Esta aula já possui fatura emitida. Alterações de serviço e participantes estão bloqueadas.",
+    "addParticipantBlocked": "Não é possível adicionar participantes a uma aula com fatura pré-paga."
   }
 }
 ```
@@ -760,7 +826,14 @@ if (prepaidInvoiceClasses && prepaidInvoiceClasses.length > 0) {
 {
   "invoiceTypes": {
     "prepaidClass": "Prepaid",
-    "cancellation": "Cancellation"
+    "cancellation": "Cancellation",
+    "orphanCharges": "Pending charges"
+  },
+  "prepaidIndicator": {
+    "tooltip": "Class with prepaid invoice issued",
+    "badge": "Invoice issued",
+    "editBlocked": "This class already has an issued invoice. Service and participant changes are blocked.",
+    "addParticipantBlocked": "Cannot add participants to a class with a prepaid invoice."
   }
 }
 ```
@@ -915,6 +988,8 @@ FASE 3: Backend - Edge Function process-class-billing
 FASE 4: Integração - Agenda.tsx
 │  - handleClassSubmit chama process-class-billing
 │  - materializeVirtualClass chama process-class-billing
+│  - [Gap 8] Indicador visual (ícone Receipt) para aulas com fatura emitida
+│  - [Gap 19] Bloqueio de edição de serviço/participantes em aulas faturadas (seção 7.3)
 │
 ▼
 FASE 5: Cancelamento - process-cancellation (backend only)
@@ -981,8 +1056,14 @@ FASE 8: Testes e Validação
 - [ ] Testar `process-class-billing` com conta Stripe de teste
 - [ ] Testar cancelamento nos 3 cenários (fatura pendente, fatura paga, sem Stripe)
 - [ ] Verificar webhook recebe `invoice.paid` corretamente
-- [ ] Verificar `InvoiceTypeBadge` exibe `prepaid_class` e `cancellation`
+- [ ] [v1.3] Verificar que webhook busca invoice completa via `retrieve` (não confia no payload)
+- [ ] [v1.3] Verificar que webhook atualiza participante específico (não todos da aula)
+- [ ] Verificar `InvoiceTypeBadge` exibe `prepaid_class`, `cancellation` e `orphan_charges`
 - [ ] Verificar que materialização server-side (aluno) NÃO gera cobrança
+- [ ] [v1.3] Verificar `Financeiro.tsx` usa `InvoiceTypeBadge` importado (sem função inline)
+- [ ] [v1.3] Verificar `stripe_hosted_invoice_url` habilita botão "Pagar Agora" em Faturas.tsx
+- [ ] [v1.3] Verificar indicador visual (ícone Receipt) na Agenda para aulas faturadas
+- [ ] [v1.3] Verificar bloqueio de adição de participante em aula com fatura prepaid
 
 ### Deploy
 
@@ -998,6 +1079,7 @@ FASE 8: Testes e Validação
 - [ ] Testar fluxo completo com professor real em produção
 - [ ] Verificar que professores sem business_profile não são afetados
 - [ ] Verificar que a troca prepaid→postpaid não afeta faturas existentes
+- [ ] [v1.3] Verificar que `process-cancellation` usa queries sequenciais (sem FK join)
 
 ---
 
@@ -1037,6 +1119,23 @@ FASE 8: Testes e Validação
 | 23 | Participante adicionado a aula em grupo já faturada (Gap 9) | Documentado como edge case: bloquear adição de participantes a aulas com fatura prepaid, ou permitir com cobrança manual. NÃO gerar fatura automática. |
 | 24 | `handleCompleteClass` e billing (Gap 10) | Documentado: NÃO precisa chamar `process-class-billing`. Aulas normais: billing na criação. Virtuais: billing na materialização. Antigas: `automated-billing`. |
 | 25 | `Financeiro.tsx` não importa `InvoiceTypeBadge` (Gap 11) | Coberto pelo Gap 15 (mesmo arquivo). Import + substituição das 3 ocorrências. |
+
+### Revisão v1.3
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 26 | FK join `invoices!inner` no Edge Function `process-cancellation` (Gap 12) | Reescrita para queries sequenciais independentes. FK joins falham no Deno runtime por cache de schema. |
+| 27 | Webhook `invoice.paid` confirma TODOS participantes da aula (Gap 13) | Filtrar por `participant_id` do metadata do Invoice Item, não por `class_id`. Evita confirmar participantes que não pagaram em aulas em grupo. |
+| 28 | `invoice.lines.data` pode não estar expandido no webhook (Gap 14) | Handler deve buscar invoice completa via `stripe.invoices.retrieve(id, { expand: ['lines'] })`. Não confiar no payload do evento. |
+| 29 | `due_date` NOT NULL omitido no passo 3c.vi (Gap 15) | Adicionado cálculo: `new Date(Date.now() + paymentDueDays * 86400000)`. |
+| 30 | `description` omitido no passo 3c.vi (Gap 16) | Adicionado: `Fatura pré-paga - Aula(s) de ${serviceName}`. |
+| 31 | `auto_advance: true` + `finalizeInvoice` redundante (Gap 17) | Alterado para `auto_advance: false` para controlar finalização explicitamente no passo v. |
+| 32 | `orphan_charges` ausente do `InvoiceTypeBadge` (Gap 18) | Adicionado `orphan_charges` ao mapeamento na seção 4.4 e traduções i18n. |
+| 33 | Indicador visual e bloqueio de edição sem fase definida (Gap 19) | Movidos explicitamente para Fase 4 na sequência de implementação. |
+| 34 | CORS headers ausentes em `process-class-billing` (Gap 20) | Adicionados `corsHeaders` e handler `OPTIONS` na interface da edge function. |
+| 35 | `stripe_not_ready` ausente da interface `ProcessClassBillingResponse` (Gap 21) | Adicionado como quarto valor possível do campo `charge_timing`. |
+| 36 | i18n faltante para textos de indicador visual e bloqueio (Gap 22) | Adicionadas chaves `prepaidIndicator.*` em `financial.json` (PT/EN). |
+| 37 | Checklist de deploy incompleto para v1.2/v1.3 (Gap 23) | Adicionados 7 novos itens no checklist pré-deploy e 1 no pós-deploy. |
 
 ---
 

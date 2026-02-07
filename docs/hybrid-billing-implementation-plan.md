@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.5 (Revisada — 133 gaps corrigidos)
+> **Versão**: 2.6 (Revisada — 143 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -325,24 +325,37 @@ if (!formData.recurrence && !formData.is_experimental && formData.service_id) {
     });
     
     // [CORREÇÃO v1.5 - Gap 55] Feedback visual para o professor
+    // [CORREÇÃO v2.6 - Gap 143] Mostrar warning toast quando invocação falha (não silenciar)
     if (billingError) {
       console.error('Erro ao processar cobrança:', billingError);
+      toast({ 
+        title: t('billing:chargeTiming.billingInvocationFailed'),
+        description: t('billing:chargeTiming.billingInvocationFailedDescription'),
+        variant: 'destructive' 
+      });
       // Não falhar a criação da aula por erro de cobrança
     } else if (billingResult) {
-      if (billingResult.charge_timing === 'prepaid' && billingResult.invoices_created?.length > 0) {
-        toast({ title: t('chargeTiming.prepaidInvoiceCreated') });
+      // [CORREÇÃO v2.4 - Gap 117] Verificar success ANTES de charge_timing
+      if (billingResult.success === false && billingResult.error) {
+        toast({ title: billingResult.error, variant: 'destructive' });
+      } else if (billingResult.charge_timing === 'prepaid' && billingResult.invoices_created?.length > 0) {
+        toast({ title: t('billing:chargeTiming.prepaidInvoiceCreated') });
       } else if (billingResult.charge_timing === 'postpaid') {
         // Silencioso: aulas serão cobradas no próximo ciclo
       } else if (billingResult.charge_timing === 'stripe_not_ready') {
         toast({ 
-          title: t('chargeTiming.stripeNotReady'), 
+          title: t('billing:chargeTiming.stripeNotReady'), 
           variant: 'destructive' 
         });
       }
     }
   } catch (billingError) {
     console.error('Erro ao processar cobrança (não crítico):', billingError);
-    // Não falhar a criação da aula por erro de cobrança
+    // [CORREÇÃO v2.6 - Gap 143] Não silenciar erros — professor precisa saber que billing falhou
+    toast({ 
+      title: t('billing:chargeTiming.billingInvocationFailed'),
+      variant: 'destructive' 
+    });
   }
 }
 ```
@@ -500,6 +513,18 @@ interface ProcessClassBillingResponse {
   charge_timing: 'prepaid' | 'postpaid' | 'no_business_profile' | 'stripe_not_ready';
   invoices_created?: string[]; // IDs das faturas criadas (se prepaid)
   error?: string;         // Mensagem de erro user-friendly (se success: false)
+  // [CORREÇÃO v2.4 - Gap 121] Detalhes de participantes skipados
+  skipped_details?: Array<{
+    participant_id: string;
+    student_name: string;
+    reason: 'active_subscription' | 'experimental' | 'already_billed' | 'service_inactive' | 'class_cancelled';
+  }>;
+  // [CORREÇÃO v2.6 - Gap 137] Detalhes de falhas parciais em grupo
+  failed_details?: Array<{
+    student_id: string;
+    student_name: string;
+    error: string;
+  }>;
 }
 
 // TODOS os retornos da edge function devem usar HTTP 200:
@@ -508,6 +533,7 @@ interface ProcessClassBillingResponse {
 // - { success: false, charge_timing: 'no_business_profile', error: 'Perfil de negócios não configurado' }
 // - { success: false, charge_timing: 'stripe_not_ready', error: 'Conta Stripe não está pronta' }
 // - { success: false, error: 'Você não tem permissão para cobrar estas aulas' } // Gap 77
+// - { success: true, charge_timing: 'prepaid', processed: 2, skipped: 0, failed_details: [...] } // Gap 137 - partial success
 ```
 
 **Lógica principal detalhada:**
@@ -575,6 +601,9 @@ interface ProcessClassBillingResponse {
         - [Gap 127] Sem essa verificação de status, aulas cujas faturas foram voidadas (ex: cancelamento + re-agendamento) seriam permanentemente bloqueadas para cobrança pré-paga, pois os `invoice_classes` da fatura anulada ainda existiriam no banco.
     
     3a-bis. Para cada class_id, buscar dados completos:
+        - [CORREÇÃO v2.6 - Gap 136] Verificar `classes.status` — PULAR aulas com status `'cancelada'`
+          (race condition: aula cancelada entre criação e processamento de billing)
+          Logar: `Skipping class ${classId}: status is 'cancelada'`
         - class_services (preço, nome)
         - [CORREÇÃO v2.5 - Gap 129] Se `class_services` não existe (serviço deletado entre criação da aula e billing), PULAR a aula com log warning: `Skipping class ${classId}: service_id ${serviceId} not found (deleted?)`
         - class_participants (student_id, dependent_id)
@@ -1212,7 +1241,9 @@ for (const prepaidInvoice of prepaidInvoices) {
     "saveSuccess": "Configuração de cobrança atualizada com sucesso.",
     "saveError": "Erro ao atualizar configuração de cobrança.",
     "prepaidInvoiceCreated": "Fatura pré-paga criada com sucesso.",
-    "stripeNotReady": "Conta Stripe não está pronta. Aula criada sem cobrança."
+    "stripeNotReady": "Conta Stripe não está pronta. Aula criada sem cobrança.",
+    "billingInvocationFailed": "Erro ao processar cobrança automática.",
+    "billingInvocationFailedDescription": "A aula foi criada, mas a cobrança não foi processada. Você pode gerar a fatura manualmente no módulo financeiro."
   }
 }
 ```
@@ -1234,7 +1265,9 @@ for (const prepaidInvoice of prepaidInvoices) {
     "saveSuccess": "Charge timing updated successfully.",
     "saveError": "Error updating charge timing.",
     "prepaidInvoiceCreated": "Prepaid invoice created successfully.",
-    "stripeNotReady": "Stripe account not ready. Class created without billing."
+    "stripeNotReady": "Stripe account not ready. Class created without billing.",
+    "billingInvocationFailed": "Error processing automatic billing.",
+    "billingInvocationFailedDescription": "The class was created, but billing was not processed. You can generate the invoice manually in the financial module."
   }
 }
 ```
@@ -1249,6 +1282,11 @@ for (const prepaidInvoice of prepaidInvoices) {
     "prepaidClass": "Pré-paga",
     "cancellation": "Cancelamento",
     "orphanCharges": "Cobranças pendentes"
+  },
+  "paymentOrigins": {
+    "prepaid": "Pré-paga",
+    "automatic": "Automática",
+    "manual": "Manual"
   },
   "prepaidIndicator": {
     "tooltip": "Aula com fatura pré-paga emitida",
@@ -1267,6 +1305,11 @@ for (const prepaidInvoice of prepaidInvoices) {
     "prepaidClass": "Prepaid",
     "cancellation": "Cancellation",
     "orphanCharges": "Pending charges"
+  },
+  "paymentOrigins": {
+    "prepaid": "Prepaid",
+    "automatic": "Automatic",
+    "manual": "Manual"
   },
   "prepaidIndicator": {
     "tooltip": "Class with prepaid invoice issued",
@@ -1531,6 +1574,16 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 123] `payment_settings.payment_method_types` não especificado na Invoice Stripe** | **Baixa** | **Baixo** | **A Invoice Stripe criada no passo 3c.iv não passa `payment_settings.payment_method_types`. Isso faz a Invoice aceitar TODOS os métodos habilitados na Connected Account do Stripe. Se o professor configurou `enabled_payment_methods` no nosso `business_profiles` (ex: apenas Boleto) mas tem PIX habilitado no Stripe, o aluno veria PIX na Invoice. Decisão: Documentar como INTENCIONAL — para Invoices Stripe, o gerenciamento de métodos é nativo do Stripe, não do nosso sistema. A config `enabled_payment_methods` aplica-se apenas ao fluxo Payment Intent (`create-payment-intent-connect`).** |
 | **[Gap 124] Sem limite de batch size — risco de timeout para muitas aulas simultâneas** | **Baixa** | **Médio** | **`process-class-billing` processa N classes em uma única requisição. Para cada classe: busca dados, busca participantes, cria InvoiceItems no Stripe, cria Invoice, finaliza Invoice, insere no DB. Se N > ~15-20, as múltiplas chamadas à API do Stripe (com idempotency) podem exceder o timeout do edge function (tipicamente 60s). FIX: Validar `class_ids.length <= 20` no início com retorno `success: false, error: 'Máximo de 20 aulas por chamada'`. Para lotes maiores, o frontend deve particionar.** |
 | **[Gap 125] Modificações no webhook são descritas como incrementais mas são reescritas completas** | **Média** | **Médio** | **A seção 5.3 descreve as modificações nos handlers como "Inserir APÓS a atualização de status da invoice no banco (linha 333)". Na realidade, o código proposto SUBSTITUI os handlers `invoice.paid` (linhas 300-335), `invoice.payment_succeeded` (linhas 337-369), e `payment_intent.succeeded` (linhas 441-502) inteiramente (novas queries consolidadas, `.maybeSingle()`, null guards, payment_origin preservation). Se o desenvolvedor interpretar como "adicionar código após linha 333" em vez de "substituir handler", o resultado será código duplicado e bugs. FIX: Refrasejar na seção 5.3: "SUBSTITUIR handler completo (linhas X-Y)" em vez de "Inserir APÓS linha X".** |
+| **[Gap 134] `process-class-billing` não valida status da aula — pode cobrar aulas canceladas** | **Baixa** | **Alto** | **Race condition: aula cancelada entre criação e processamento de billing. Função não verifica `classes.status`. FIX: filtrar `WHERE status NOT IN ('cancelada')` no passo 3a-bis; logar `Skipping class ${classId}: status is 'cancelada'`.** |
+| **[Gap 135] Falha parcial em grupo billing — resposta não identifica quais alunos falharam** | **Baixa** | **Médio** | **Se billing para aluno A sucede mas falha para aluno B (erro Stripe individual), resposta tem `processed` agregado sem indicar quem falhou. FIX: adicionar `failed_details?: Array<{student_id, student_name, error}>` à `ProcessClassBillingResponse`. Implementar try/catch POR ALUNO no loop do passo 3c.** |
+| **[Gap 136] Deploy checklist não menciona atualizar evento `invoice.finalized` no Stripe Dashboard** | **Baixa** | **Alto** | **Se endpoint no Stripe Dashboard NÃO está subscrito para `invoice.finalized`, evento nunca é entregue. Case explícito (Gap 90) seria inútil. FIX: adicionar item no checklist: "Verificar no Stripe Dashboard que webhook endpoint para Connect inclui evento `invoice.finalized`".** |
+| **[Gap 137] `BillingSettings` com múltiplos business_profiles mostra `charge_timing` potencialmente incorreto** | **Baixa** | **Médio** | **Gap 126 usa `.limit(1)`. Se professor tem PJ (prepaid) e PF (postpaid), BillingSettings mostra charge_timing de profile com ordem indefinida. Billing usa profile da relationship (Gap 89). FIX: nota em BillingSettings: "Você tem mais de um perfil. O momento da cobrança pode variar por aluno."** |
+| **[Gap 138] `paymentOrigins.prepaid` documentado no Gap 128 mas NÃO aplicado na seção 6.3** | **Baixa** | **Baixo** | **Tabela de gaps mencionava chave `paymentOrigins.prepaid` mas seção 6.3 não incluía. FIX: adicionado na seção 6.3 para PT e EN.** |
+| **[Gap 139] `invoice.payment_succeeded` — código completo de substituição não fornecido** | **Média** | **Alto** | **Seção 5.3 fornece 110 linhas para `invoice.paid` mas diz "MESMA lógica" para `payment_succeeded`. Copiar manualmente é error-prone. FIX: nota explícita: handler `invoice.payment_succeeded` é IDÊNTICO — copiar integralmente. Melhor: extrair lógica em função helper.** |
+| **[Gap 140] Dual webhook events para pagamento de Stripe Invoice — comportamento intencional não documentado** | **Baixa** | **Médio** | **Stripe envia AMBOS `invoice.paid` e `payment_intent.succeeded`. Para prepaid, `stripe_payment_intent_id` NÃO é armazenado → `payment_intent.succeeded` é no-op (`.maybeSingle()` retorna null). DOCUMENTAR como comportamento intencional.** |
+| **[Gap 141] `send-invoice-notification` template não prioriza `stripe_hosted_invoice_url`** | **Baixa** | **Médio** | **Para faturas prepaid, `boleto_url` e `pix_copy_paste` são null. Template precisa usar `stripe_hosted_invoice_url` como CTA principal. FIX: `const paymentUrl = invoice.stripe_hosted_invoice_url \|\| invoice.boleto_url \|\| null`.** |
+| **[Gap 142] `process-class-billing` não seta `original_amount` na invoice local** | **Baixa** | **Baixo** | **Campo `original_amount` existe na tabela. Outros fluxos setam para rastrear valor original. FIX: setar `original_amount: amount` (sem desconto em prepaid).** |
+| **[Gap 143] Falha de invocação de `process-class-billing` é silenciosa para o professor** | **Média** | **Alto** | **Quando `billingError` é truthy (timeout/rede), apenas `console.error`. Professor não sabe que billing falhou. FIX: toast warning: "Aula criada, mas cobrança automática falhou." Chaves i18n adicionadas em billing.json (seção 6.1/6.2).** |
 
 ---
 
@@ -1731,6 +1784,17 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.4] Documentar decisão: Invoices Stripe aceitam todos métodos do Connected Account (não filtram por `enabled_payment_methods`) (Gap 123)
 - [ ] [v2.4] Verificar que `process-class-billing` valida `class_ids.length <= 20` para evitar timeout (Gap 124)
 - [ ] [v2.4] Verificar que seção 5.3 é interpretada como SUBSTITUIÇÃO de handlers (não adição incremental) (Gap 125)
+
+- [ ] [v2.6] Verificar que `process-class-billing` passo 3a-bis filtra aulas com `status = 'cancelada'` (Gap 134)
+- [ ] [v2.6] Verificar que resposta de `process-class-billing` inclui `failed_details` para falhas parciais em grupo (Gap 135)
+- [ ] [v2.6] Verificar no Stripe Dashboard que webhook endpoint para Connect inclui evento `invoice.finalized` (Gap 136)
+- [ ] [v2.6] Verificar que BillingSettings exibe nota quando professor tem múltiplos business_profiles (Gap 137)
+- [ ] [v2.6] Verificar que `paymentOrigins.prepaid` está em `financial.json` PT e EN (Gap 138)
+- [ ] [v2.6] Verificar que handler `invoice.payment_succeeded` é cópia integral do `invoice.paid` — ou extrair helper (Gap 139)
+- [ ] [v2.6] Documentar que `payment_intent.succeeded` é no-op para faturas prepaid (comportamento intencional) (Gap 140)
+- [ ] [v2.6] Verificar que `send-invoice-notification` prioriza `stripe_hosted_invoice_url` como CTA quando `boleto_url` é null (Gap 141)
+- [ ] [v2.6] Verificar que `process-class-billing` seta `original_amount: amount` na invoice local (Gap 142)
+- [ ] [v2.6] Verificar que Agenda.tsx mostra toast warning quando invocação de `process-class-billing` falha (não silencia erros) (Gap 143)
 
 ### Deploy
 

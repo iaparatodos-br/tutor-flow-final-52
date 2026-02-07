@@ -1,20 +1,21 @@
 
-# Plano de Implementação: Cobrança Híbrida - v2.9 Completa
+# Plano de Implementação: Cobrança Híbrida - v3.0 Completa
 
-## Status: Documento atualizado para v2.9 com 161 gaps corrigidos
+## Status: Documento atualizado para v3.0 com 168 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.9, incorporando 6 novos gaps técnicos (156-161) identificados na revisão cruzada com o código-fonte real.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 3.0, incorporando 7 novos gaps técnicos (162-168) identificados na revisão cruzada com o código-fonte real.
 
-## Gaps incorporados na v2.9
+## Gaps incorporados na v3.0
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 156 | **CRÍTICO**: Gap 153 afirmava erroneamente que `process-cancellation` já tinha import Stripe — código real NÃO tem | Implementador pularia import → `ReferenceError` em runtime |
-| 157 | Variável `voidResult` usada na seção 5.4 (Gap 148) nunca é declarada | `ReferenceError` ao atribuir resultado do void de fatura paga |
-| 158 | Gap 147 (partial unique index) não está na seção 3 "Estrutura de Dados" | Migração incompleta → sem proteção DB contra duplicatas prepaid |
-| 159 | `send-invoice-notification` — modificações para Gaps 145/155 sem código explícito | Implementador não sabe ONDE/COMO modificar os CTAs no switch |
-| 160 | Gap 91 ausente da numeração (v2.1 pula de 90 para 92) | Confusão na contagem total de gaps |
-| 161 | Apêndice A sem seções v2.5, v2.6, v2.7 — Gaps 126-149 sem documentação tabular | Implementadores perdem contexto/rationale de 24 correções |
+| 162 | `voidResult` / `prepaid_invoice_info` nunca incluído no return de `process-cancellation` | Frontend não recebe info da fatura pré-paga paga → professor sem feedback |
+| 163 | SELECT de invoices na seção 5.4 não inclui campo `amount` | `voidResult.paid_amount` retorna `undefined` |
+| 164 | **CRÍTICO**: `shouldCharge` não setado `false` para faturas prepaid pagas (Gap 116 violado) | Dupla penalização: multa de cancelamento + pagamento original mantido |
+| 165 | Checklist pré-deploy pula v2.5 (Gaps 126-133) | 8 verificações ausentes → implementador pode ignorar |
+| 166 | `send-invoice-notification` sem código concreto para CTA de `prepaid_class` | Aluno recebe link para `/faturas` em vez da página de pagamento Stripe |
+| 167 | Step 3c.vi de `process-class-billing` omite `original_amount` | Relatórios financeiros sem dados de valor original |
+| 168 | Apêndice A verificado — seções v2.2-v2.4 e v2.8-v2.9 já existem | Resolvido por verificação |
 
 ## Próximos passos
 

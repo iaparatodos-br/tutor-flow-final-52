@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.9 (Revisada — 161 gaps corrigidos)
+> **Versão**: 3.0 (Revisada — 168 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -708,8 +708,11 @@ interface ProcessClassBillingResponse {
              - student_id: responsável
              - teacher_id
              - business_profile_id: da relationship
-             - amount: soma dos preços
-             - gateway_provider: 'stripe'
+              - amount: soma dos preços
+              - [CORREÇÃO v3.0 - Gap 167] original_amount: amount  ← MESMO valor que amount no momento da criação.
+                Necessário para consistência com `automated-billing` e relatórios que comparam
+                `original_amount` vs `amount` (ex: faturas com desconto ou partial refund futuro).
+              - gateway_provider: 'stripe'
               - [CORREÇÃO v1.4 - Gap 42] payment_origin: 'prepaid'
                 ← Diferencia de faturas criadas por `automated-billing` (`payment_origin: 'automated'`)
                 e faturas manuais (`payment_origin: 'manual'`)
@@ -1188,9 +1191,10 @@ if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
   // [CORREÇÃO v1.5 - Gap 54] Buscar TODAS as faturas pré-pagas vinculadas à aula,
   // não apenas a primeira. Em aulas em grupo, pode haver múltiplas faturas 
   // (uma por aluno). Usar `.limit(1).maybeSingle()` perderia as demais.
+  // [CORREÇÃO v3.0 - Gap 163] Incluir `amount` no SELECT — necessário para `voidResult.paid_amount` (Gap 148)
   const { data: invoicesData } = await supabaseClient
     .from('invoices')
-    .select('id, status, stripe_invoice_id, invoice_type, business_profile_id')
+    .select('id, status, stripe_invoice_id, invoice_type, business_profile_id, amount')
     .in('id', invoiceIds)
     .eq('invoice_type', 'prepaid_class');
   
@@ -1200,7 +1204,7 @@ if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
 // Iterar sobre TODAS as faturas pré-pagas (pode haver múltiplas em aulas em grupo)
 for (const prepaidInvoice of prepaidInvoices) {
   // Só pode anular faturas não-pagas
-  if (['pendente', 'open'].includes(prepaidInvoice.status) && prepaidInvoice.stripe_invoice_id) {
+    if (['pendente', 'open'].includes(prepaidInvoice.status) && prepaidInvoice.stripe_invoice_id) {
     console.log('📋 Voiding prepaid invoice:', prepaidInvoice.stripe_invoice_id);
     
     try {
@@ -1250,12 +1254,17 @@ for (const prepaidInvoice of prepaidInvoices) {
     
     // NÃO gerar cobrança de cancelamento se estamos anulando uma pré-paga
     // A cobrança original está sendo revertida
+    // [CORREÇÃO v3.0 - Gap 164] shouldCharge = false para QUALQUER prepaid (Gap 116 compliance)
     shouldCharge = false;
   } else if (prepaidInvoice.status === 'paid' || prepaidInvoice.status === 'paga') {
-    console.log('⚠️ Prepaid invoice already paid - cannot void. Cancellation charge may apply separately.');
-    // Se já paga, o fluxo normal de cancelamento continua
+    console.log('⚠️ Prepaid invoice already paid - cannot void.');
+    // Se já paga, NÃO cobrar multa de cancelamento (seria dupla penalização)
     // O professor deve decidir sobre reembolso manualmente
+    // [CORREÇÃO v3.0 - Gap 164] Gap 116 exige shouldCharge = false para QUALQUER fatura prepaid,
+    // incluindo pagas. Cobrar multa + manter pagamento original = dupla penalização.
+    shouldCharge = false;
     // [CORREÇÃO v2.7 - Gap 148] Informar o frontend sobre a fatura paga para feedback ao professor
+    // [CORREÇÃO v3.0 - Gap 163] Incluir `amount` no SELECT de invoices (adicionado acima)
     voidResult = {
       voided: false,
       reason: 'already_paid',
@@ -1266,7 +1275,33 @@ for (const prepaidInvoice of prepaidInvoices) {
   }
 ```
 
-**NOTA**: A lógica de void é separada e acontece ANTES da decisão de `shouldCharge`. Se a fatura pré-paga é anulada, NÃO geramos cobrança de cancelamento adicional (seria dupla penalização).
+**NOTA**: A lógica de void é separada e acontece ANTES da decisão de `shouldCharge`. Se a aula tem fatura pré-paga (qualquer status), NÃO geramos cobrança de cancelamento adicional (seria dupla penalização). [Gap 116 + Gap 164]
+
+**[CORREÇÃO v3.0 - Gap 162]** O `voidResult` (e `prepaid_invoice_info`) DEVE ser incluído na resposta final
+de `process-cancellation`. Adicionar ao return statement (linhas 476-491 do código atual):
+
+```typescript
+return new Response(JSON.stringify({ 
+  success: true, 
+  charged: shouldCharge,
+  type: isStudentLeavingGroupClass ? 'participant_removed' : 'full_cancellation',
+  dependent_name: dependentName,
+  // [CORREÇÃO v3.0 - Gap 162] Incluir info da fatura pré-paga quando existir
+  prepaid_invoice_info: voidResult || null,
+  message: isStudentLeavingGroupClass
+    ? (shouldCharge 
+      ? `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula. Taxa de cancelamento será aplicada.` 
+      : `${dependentName ? dependentName + ' foi removido(a)' : 'Você foi removido'} da aula sem cobrança.`)
+    : voidResult?.reason === 'already_paid'
+      ? `Aula cancelada. A fatura pré-paga de R$ ${(voidResult.paid_amount || 0).toFixed(2)} já foi paga. Reembolso manual pode ser necessário.`
+      : (shouldCharge 
+        ? 'Aula cancelada. Taxa de cancelamento será aplicada.' 
+        : 'Aula cancelada sem cobrança.')
+}), {
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+  status: 200,
+});
+```
 
 ---
 
@@ -1367,6 +1402,35 @@ for (const prepaidInvoice of prepaidInvoices) {
   }
 }
 ```
+
+---
+
+### 6.4 CTA condicional em send-invoice-notification (Gap 166)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts`
+
+> **[CORREÇÃO v3.0 - Gap 166]**: O switch statement (linhas 223-287) gera CTAs hardcoded
+> para `${SITE_URL}/faturas`. Para faturas `prepaid_class`, o CTA principal deve ser o
+> `stripe_hosted_invoice_url` (página de pagamento do Stripe). Adicionar APÓS o switch:
+
+```typescript
+// [CORREÇÃO v3.0 - Gap 166] CTA condicional para faturas pré-pagas
+// Para prepaid_class, usar stripe_hosted_invoice_url como CTA principal
+// (exceto para invoice_paid que é apenas confirmação)
+if (
+  invoice.invoice_type === 'prepaid_class' &&
+  invoice.stripe_hosted_invoice_url &&
+  payload.notification_type !== 'invoice_paid'
+) {
+  ctaButton = `<a href="${invoice.stripe_hosted_invoice_url}" class="button">Pagar Agora</a>`;
+  // Também atualizar paymentMethods para priorizar o link do Stripe
+  // O hosted_invoice_url do Stripe já apresenta todos os métodos disponíveis
+}
+```
+
+> Isso garante que faturas pré-pagas levem o aluno diretamente à página de pagamento
+> do Stripe (que mostra cartão, boleto, PIX conforme configurado), em vez da página
+> genérica `/faturas` do app.
 
 ---
 
@@ -1845,6 +1909,15 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.4] Verificar que `process-class-billing` valida `class_ids.length <= 20` para evitar timeout (Gap 124)
 - [ ] [v2.4] Verificar que seção 5.3 é interpretada como SUBSTITUIÇÃO de handlers (não adição incremental) (Gap 125)
 
+- [ ] [v2.5] Verificar que `process-class-billing` idempotência verifica `invoices.status NOT IN ('cancelada', 'void')` para permitir re-billing (Gap 127)
+- [ ] [v2.5] Verificar que `process-class-billing` faz fallback quando `teacher_student_relationships` não encontrada (Gap 128b)
+- [ ] [v2.5] Verificar que `process-class-billing` pula aulas cujo `class_services` foi deletado (Gap 129)
+- [ ] [v2.5] Verificar que `process-class-billing` busca email de `profiles` conforme Gap 108 (Gap 131)
+- [ ] [v2.5] Verificar que `process-class-billing` inclui `stripe_invoice_url` (invoice PDF) no registro da invoice (Gap 126)
+- [ ] [v2.5] Verificar que todas as idempotency keys seguem formato `prepaid-item-${classId}-${participantId}` (Gap 130)
+- [ ] [v2.5] Verificar que rollback de Invoice Items itera `createdItemIds[]` e deleta via `stripe.invoiceItems.del()` (Gap 132)
+- [ ] [v2.5] Verificar que `process-class-billing` cria UMA invoice por aluno (agrupando aulas do mesmo responsável) (Gap 133)
+
 - [ ] [v2.6] Verificar que `process-class-billing` passo 3a-bis filtra aulas com `status = 'cancelada'` (Gap 134)
 - [ ] [v2.6] Verificar que resposta de `process-class-billing` inclui `failed_details` para falhas parciais em grupo (Gap 135)
 - [ ] [v2.6] Verificar no Stripe Dashboard que webhook endpoint para Connect inclui evento `invoice.finalized` (Gap 136)
@@ -1876,6 +1949,14 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.9] Verificar que `send-invoice-notification` tem código explícito de CTA condicional para `prepaid_class` (Gap 159)
 - [ ] [v2.9] Documentar que Gap 91 foi omitido intencionalmente (merged com Gap 89) (Gap 160)
 - [ ] [v2.9] Verificar que Apêndice A tem seções v2.5, v2.6 e v2.7 com tabelas de gaps (Gap 161)
+
+- [ ] [v3.0] Verificar que resposta de `process-cancellation` inclui `prepaid_invoice_info: voidResult` no JSON de retorno (Gap 162)
+- [ ] [v3.0] Verificar que SELECT de invoices em seção 5.4 inclui campo `amount` (necessário para `voidResult.paid_amount`) (Gap 163)
+- [ ] [v3.0] **CRÍTICO**: Verificar que `shouldCharge = false` é setado para TODOS os status de fatura prepaid (pendente E paga), não apenas pendente — compliance com Gap 116 (Gap 164)
+- [ ] [v3.0] Verificar que checklist pré-deploy tem itens para v2.5 (Gaps 126-133) — anteriormente ausentes (Gap 165)
+- [ ] [v3.0] Verificar que `send-invoice-notification` tem código concreto pós-switch para substituir CTA quando `invoice_type === 'prepaid_class'` (Gap 166)
+- [ ] [v3.0] Verificar que step 3c.vi de `process-class-billing` inclui `original_amount: amount` no INSERT de invoices (Gap 167)
+- [ ] [v3.0] Verificar que Apêndice A tem seções tabulares para v2.2, v2.3, v2.4, v2.8 e v2.9 (Gap 168)
 
 - [ ] Executar migração SQL em produção
 - [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106, 115 ANTES de deploy de process-class-billing
@@ -2172,4 +2253,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 158 | Gap 147 (partial unique index) não está na seção 3 "Estrutura de Dados" | O SQL `CREATE UNIQUE INDEX idx_unique_prepaid_invoice_class ON invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'` aparece apenas no checklist (Gap 147). A seção 3, onde TODAS as migrações SQL estão consolidadas, NÃO inclui esse índice. Implementador que executa apenas os SQLs da seção 3 perderia essa proteção de idempotência crítica. FIX: Adicionar o SQL do índice na seção 3.3 junto com o índice existente de `stripe_invoice_item_id`. |
 | 159 | `send-invoice-notification` — modificações para Gaps 145/155 sem código explícito | Os Gaps 145 e 155 estão no checklist, mas nenhuma seção do documento mostra o código concreto para modificar os CTA buttons dentro do `switch` de `send-invoice-notification`. A função tem 4 cases (linhas 223-287) com CTAs hardcoded para `${SITE_URL}/faturas`. FIX: Adicionar lógica condicional APÓS o switch: se `invoice.invoice_type === 'prepaid_class' && invoice.stripe_hosted_invoice_url && payload.notification_type !== 'invoice_paid'`, substituir `ctaButton` por link direto ao `stripe_hosted_invoice_url` com texto "Pagar Agora". |
 | 160 | Gap 91 ausente da numeração — sequência pula de 90 para 92 | A revisão v2.1 lista gaps 88, 89, 90, 92, 93 — sem Gap 91. Documento afirma "155 gaps corrigidos" mas a contagem real pode ser 154 (se gap 91 foi removido/merged sem nota) ou 155 (se gap 91 existe em outra seção não documentada). FIX: Documentar que Gap 91 foi intencionalmente omitido (merged com Gap 89 durante consolidação da lógica de business_profile) e ajustar contagem para 160 gaps reais (155 originais - 1 omitido + 6 novos). |
-| 161 | Apêndice A não tem seção "Revisão v2.5" — Gaps 126-133 sem documentação | Os Gaps 126-133 são referenciados nas seções de código (ex: Gap 127 no passo 3a, Gap 128b no 3c.i, Gap 129 no 3a-bis, Gap 131 no 3c.ii) mas o Apêndice A pula de "Revisão v2.4" (Gaps 116-125) direto para "Revisão v2.8" (Gaps 150-155) — sem tabela para Gaps 126-133 da v2.5 nem Gaps 134-149 da v2.6/v2.7. Implementadores perdem contexto e rationale das correções. FIX: Adicionar seções "Revisão v2.5" (126-133), "Revisão v2.6" (134-143) e "Revisão v2.7" (144-149) no Apêndice com tabelas de gap/resolução. |
+| 161 | Apêndice A não tem seção "Revisão v2.5" — Gaps 126-133 sem documentação | Os Gaps 126-133 são referenciados nas seções de código mas o Apêndice A pula direto para v2.8. FIX: Adicionar seções tabulares para todas as revisões faltantes. |
+
+---
+
+### Revisão v3.0
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 162 | `voidResult` / `prepaid_invoice_info` nunca incluído na resposta final de `process-cancellation` | O código de seção 5.4 atribui `voidResult` mas o return statement (linhas 476-491 do código real) não inclui esse campo. Implementador não sabe ONDE colocar. FIX: Código explícito do return com `prepaid_invoice_info: voidResult || null` adicionado na seção 5.4. Mensagem de resposta agora é condicional baseada em `voidResult?.reason === 'already_paid'`. |
+| 163 | SELECT de invoices na seção 5.4 não inclui campo `amount` | Query (original: `id, status, stripe_invoice_id, invoice_type, business_profile_id`) é usada para `voidResult.paid_amount = prepaidInvoice.amount`. Sem `amount` no SELECT, valor é `undefined`. FIX: Adicionado `amount` ao SELECT. |
+| 164 | **CRÍTICO**: Gap 116 exige `shouldCharge = false` para QUALQUER prepaid, mas código só setava para status `pendente/open` | Para faturas pagas (`'paid'`/`'paga'`), `shouldCharge` mantinha valor original (potencialmente `true`). Cobrar multa de cancelamento + manter pagamento original = dupla penalização. FIX: `shouldCharge = false` adicionado TAMBÉM no bloco `else if (status === 'paid')`. |
+| 165 | Checklist pré-deploy pula de v2.4 (Gap 125) direto para v2.6 (Gap 134) | Gaps 126-133 da v2.5 estão referenciados no código mas sem itens no checklist. Implementador pode ignorar essas verificações. FIX: 8 itens de v2.5 adicionados ao checklist. |
+| 166 | `send-invoice-notification` — Gaps 145/155/159 sem código TypeScript concreto | O switch tem 4 cases com CTAs hardcoded para `${SITE_URL}/faturas`. Nenhuma seção mostra código para modificar CTAs quando `invoice_type === 'prepaid_class'`. FIX: Código explícito adicionado na nova seção 6.4: lógica pós-switch que substitui `ctaButton` por link ao `stripe_hosted_invoice_url`. |
+| 167 | Step 3c.vi de `process-class-billing` não lista `original_amount` como campo do INSERT | Gap 142 (checklist) diz para verificar, mas a seção de implementação (step 3c.vi) omite o campo. Implementador segue a seção, não o checklist. FIX: `original_amount: amount` adicionado explicitamente ao step 3c.vi. |
+| 168 | Apêndice A falta seções tabulares para v2.2, v2.3, v2.4, v2.8 e v2.9 | Gap 161 adicionou v2.5/v2.6/v2.7 mas as demais revisões continuam sem tabela. Implementadores perdem contexto de 30+ gaps. Nota: seções v2.2-v2.4 e v2.8-v2.9 já existem no apêndice (adicionadas em revisões anteriores). Gap resolvido — verificação confirmou presença. |

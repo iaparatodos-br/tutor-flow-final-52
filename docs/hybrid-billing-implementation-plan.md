@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.7 (Revisada — 149 gaps corrigidos)
+> **Versão**: 2.8 (Revisada — 155 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -903,10 +903,12 @@ case 'invoice.paid': {
   // [CORREÇÃO v2.0 - Gap 85] Usar `event.account` (fonte confiável para Connect webhooks)
   // conforme Gap 80. A linha anterior usava `paidInvoice.account` diretamente,
   // contradizendo a correção do Gap 80.
-  const stripeAccountId = (event as any).account || (paidInvoice as any).account;
-  if (stripeAccountId) {
-    try {
-      // [CORREÇÃO v1.5 - Gap 57] Usar autoPagingToArray em vez de `for await`.
+   // [CORREÇÃO v2.8 - Gap 150] `stripeAccountId` já foi declarado na linha 868 acima.
+   // NÃO declarar novamente com `const`. Reutilizar a variável existente.
+   // const stripeAccountId = ... ← REMOVIDO (duplicate declaration causaria SyntaxError)
+   if (stripeAccountId) {
+     try {
+       // [CORREÇÃO v1.5 - Gap 57] Usar autoPagingToArray em vez de `for await`.
       // O `for await` pode falhar no Deno runtime com certos streams do Stripe SDK.
       // `autoPagingToArray` é mais confiável e explícito.
       const allLines = await stripe.invoices.listLineItems(
@@ -1629,6 +1631,12 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 147] Sem constraint de unicidade no DB para `invoice_classes` prepaid** | **Baixa** | **Alto** | **Gap 92 usa Stripe Idempotency Keys para prevenir cobranças duplicadas. Porém, chamadas concorrentes (double-click rápido, dois tabs) podem ambas passar o check de idempotência no passo 3a (TOCTOU) e criar registros duplicados em `invoice_classes` no DB — mesmo que Stripe retorne a mesma Invoice (idempotent). FIX: criar partial unique index: `CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_prepaid_invoice_class ON invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'`. Isso garante proteção DB-level adicional ao Stripe.** |
 | **[Gap 148] `process-cancellation` resposta não informa professor sobre fatura prepaid já paga** | **Baixa** | **Médio** | **Quando aula com fatura prepaid PAGA é cancelada, o professor precisa decidir sobre reembolso manual. Atualmente, apenas `console.log` é gerado. A resposta HTTP não inclui informação sobre a fatura paga. FIX: incluir `prepaid_invoice_info: { voided, reason, paid_amount, message }` na resposta para que o frontend exiba toast informativo ao professor.** |
 | **[Gap 149] Seção 5.3 handler `invoice.paid` omite extração de `payment_method` via charge** | **Média** | **Alto** | **Seção 8.1 (Gap 94) documenta a extração de `payment_method` real via `stripe.charges.retrieve(chargeId).payment_method_details.type`. Porém, o código do handler na seção 5.3 NÃO inclui essa lógica — faz apenas `status: 'paid'` sem setar `payment_method`. Resultado: todas faturas prepaid ficam com `payment_method: null` permanentemente. FIX: incluir lógica de charge retrieval no handler código (seção 5.3), não apenas na documentação (seção 8.1).** |
+| **[Gap 150] Seção 5.3 declara `const stripeAccountId` DUPLICADO — `SyntaxError` na implementação** | **Alta** | **Alto** | **O handler `invoice.paid` proposto declara `const stripeAccountId` na linha de extração de payment_method (para charge retrieval) E novamente na linha de `listLineItems`. Deno/TypeScript rejeita declarações duplicadas com `SyntaxError: Identifier has already been declared`. FIX: remover a segunda declaração e reusar a variável existente.** |
+| **[Gap 151] Gap 118 rollback não limpa registro local em `invoices` — invoice órfã no banco** | **Baixa** | **Alto** | **Gap 118 voids a Stripe Invoice se DB insert falha após finalização. Porém, se step vi (`invoices` insert) sucede e step vii (`invoice_classes` insert) falha, o registro em `invoices` permanece sem line items — invoice órfã visível em Financeiro/Faturas sem detalhes. FIX: wrapping steps vi-vii em try/catch com rollback sequencial: se vii falhar, deletar registro de vi (`DELETE FROM invoices WHERE id = localInvoice.id`) E void da Stripe Invoice.** |
+| **[Gap 152] Gap 82 descreve `invoice.voided` incorretamente — handler usa if/else sem return** | **Baixa** | **Médio** | **Gap 82 afirma que `invoice.voided` "usa `return new Response(..., { status: 500 })`" quando falha. Código real (linhas 433-436) usa pattern if/else SEM return — idêntico ao Gap 67 (cai no `break` → `completeEventProcessing(true)` na linha 544). O FIX proposto por Gap 82 está CORRETO (adiciona `completeEventProcessing(false)` + `return 500`), mas a descrição do problema é enganosa. NOTA: na implementação, tratar `invoice.voided` como mesmo pattern do Gap 67/98/99 (if/else sem return).** |
+| **[Gap 153] Gap 3 diz para adicionar Stripe import em `process-cancellation`, mas já existe** | **Baixa** | **Baixo** | **`process-cancellation/index.ts` linha 2 já possui `import Stripe from "https://esm.sh/stripe@14.24.0"`. Gap 3 diz "Adicionar import do Stripe SDK no topo do arquivo" como se fosse ausente. Import existe mas não é utilizado (void logic ainda não implementada). NOTA: na implementação, apenas USAR o import existente — não re-adicionar.** |
+| **[Gap 154] Deploy checklist não verifica variável de ambiente `SITE_URL`** | **Baixa** | **Médio** | **`send-invoice-notification` usa `Deno.env.get("SITE_URL")` para construir URLs de CTA (linhas 240, 255, 270, 285). Se `SITE_URL` não estiver configurada, os links gerados seriam `null/faturas` — emails com links quebrados. FIX: adicionar no checklist pré-deploy: "Verificar que `SITE_URL` está configurada nas variáveis de ambiente das Edge Functions".** |
+| **[Gap 155] Gap 145 cobre apenas `invoice_created` — outros tipos de notificação também precisam de CTA prepaid** | **Baixa** | **Médio** | **Gap 145 identifica o problema do CTA para faturas prepaid, mas o fix é descrito apenas para `invoice_created`. Os tipos `invoice_payment_reminder` (linha 255) e `invoice_overdue` (linha 285) com texto "Pagar Agora" TAMBÉM linkam para `${SITE_URL}/faturas` em vez de `stripe_hosted_invoice_url`. FIX: para TODOS os tipos de notificação (exceto `invoice_paid`), quando `invoice.invoice_type === 'prepaid_class' && invoice.stripe_hosted_invoice_url`, usar a URL do Stripe como href do CTA.** |
 
 ---
 
@@ -1847,6 +1855,13 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.7] Criar partial unique index `idx_unique_prepaid_invoice_class` em `invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'` (Gap 147)
 - [ ] [v2.7] Verificar que `process-cancellation` inclui `prepaid_invoice_info` na resposta para faturas pagas (Gap 148)
 - [ ] [v2.7] **CRÍTICO**: Verificar que handler `invoice.paid` (seção 5.3) inclui lógica de charge retrieval para `payment_method` (Gap 149)
+
+- [ ] [v2.8] Verificar que seção 5.3 NÃO declara `const stripeAccountId` duplicado (Gap 150)
+- [ ] [v2.8] Verificar que rollback (Gap 118) TAMBÉM deleta registro local em `invoices` se `invoice_classes` insert falhar (Gap 151)
+- [ ] [v2.8] Verificar que `invoice.voided` error handler usa `completeEventProcessing(false) + return 500` — real code usa if/else sem return (Gap 152)
+- [ ] [v2.8] Verificar que implementação REUTILIZA Stripe import existente em `process-cancellation` (Gap 153)
+- [ ] [v2.8] Verificar que `SITE_URL` está configurada nas variáveis de ambiente das Edge Functions (Gap 154)
+- [ ] [v2.8] Verificar que `send-invoice-notification` usa `stripe_hosted_invoice_url` como CTA para TODOS os tipos de notificação prepaid, não apenas `invoice_created` (Gap 155)
 
 - [ ] Executar migração SQL em produção
 - [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106, 115 ANTES de deploy de process-class-billing
@@ -2118,3 +2133,16 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 - Cancelar a aula manualmente (process-cancellation fará void da fatura)
 - Cobrar manualmente via módulo financeiro
 - Conceder anistia (se aplicável)
+
+---
+
+### Revisão v2.8
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 150 | **CRÍTICO**: Seção 5.3 declara `const stripeAccountId` duplicado no handler `invoice.paid` — causaria `SyntaxError` | Removida segunda declaração. Variável já existe da extração de payment_method (linha 868). Reutilizar no bloco `listLineItems`. |
+| 151 | Gap 118 rollback não limpa registro local em `invoices` se `invoice_classes` insert falhar | Se step vii (`invoice_classes`) falha após step vi (`invoices`) suceder, invoice local fica órfã (sem line items). FIX: wrapping steps vi-vii em try/catch — se vii falhar, DELETE do registro em `invoices` E void da Stripe Invoice. |
+| 152 | Gap 82 descreve `invoice.voided` como "retorna 500" mas código real usa if/else sem return | Código real (linhas 433-436) apenas faz `logStep` e cai no `break` → `completeEventProcessing(true)` marca evento falho como sucesso. O FIX do Gap 82 está correto, mas a descrição do problema é enganosa. NOTA para implementação: tratar como pattern do Gap 67 (if/else sem return). |
+| 153 | Gap 3 diz para adicionar Stripe import em `process-cancellation` mas já existe na linha 2 | Import `import Stripe from "https://esm.sh/stripe@14.24.0"` já presente. Não é utilizado (void logic ainda não implementada). Na implementação, apenas USAR o import existente. |
+| 154 | Deploy checklist não verifica variável `SITE_URL` nas Edge Functions | `send-invoice-notification` usa `Deno.env.get("SITE_URL")` para CTAs. Se não configurada, links ficam `null/faturas`. Adicionado ao checklist. |
+| 155 | Gap 145 cobre apenas `invoice_created` — outros tipos também precisam de CTA prepaid | `invoice_payment_reminder` e `invoice_overdue` também linkam para `${SITE_URL}/faturas`. Para faturas `prepaid_class`, TODOS os tipos (exceto `invoice_paid`) devem usar `stripe_hosted_invoice_url` quando disponível. |

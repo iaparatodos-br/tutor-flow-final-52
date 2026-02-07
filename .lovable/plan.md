@@ -1,21 +1,20 @@
 
-# Plano de Implementação: Cobrança Híbrida - v2.1 Completa
+# Plano de Implementação: Cobrança Híbrida - v2.2 Completa
 
-## Status: Documento atualizado para v2.1 com 93 gaps corrigidos
+## Status: Documento atualizado para v2.2 com 99 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.1, incorporando 6 novos gaps técnicos (88-93) identificados na revisão mais recente.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.2, incorporando 6 novos gaps técnicos (94-99) identificados na revisão mais recente.
 
-## Gaps incorporados na v2.1
+## Gaps incorporados na v2.2
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 88 | `process-class-billing` passo 3c.vi NÃO inclui `payment_account_used_id` na tabela `invoices`. O `automated-billing` já seta esse campo; pré-pagas ficam sem rastreamento por conta de pagamento | Relatórios financeiros e dashboards que agrupam por conta de pagamento ignoram faturas pré-pagas |
-| 89 | `process-class-billing` busca `charge_timing` do PRIMEIRO business_profile (`LIMIT 1`), mas usa `business_profile_id` da relationship para Stripe. Se professor tem múltiplos profiles com `charge_timing` diferentes, usa config de um e Stripe de outro | Inconsistência entre decisão de cobrança e conta Stripe utilizada. Professor com PJ (prepaid) e PF (postpaid) teria comportamento imprevisível |
-| 90 | Evento `invoice.finalized` do Stripe não tem case explícito no webhook. `process-class-billing` chama `finalizeInvoice` → Stripe envia `invoice.finalized` → se default case não chama `completeEventProcessing`, evento fica preso | Evento preso em "processing" no sistema de idempotência, impedindo retries futuros |
-| 92 | Race condition (TOCTOU) no check de idempotência: verificação de `invoice_classes` e criação de InvoiceItems no Stripe NÃO são atômicas. Double-click simultâneo pode criar InvoiceItems duplicados | Duplicação de cobrança no Stripe (InvoiceItems duplicados) mesmo com check no banco |
-| 93 | `teacher_student_relationships.business_profile_id` é nullable. Sem fallback, invoice é criada com `business_profile_id: null` mesmo quando step 2 encontrou um business_profile válido | Invoice "órfã" sem vínculo a business_profile. Inconsistência com faturas do `automated-billing` |
-
-**Nota**: Gap 91 (null guard para `stripeAccountId`) já estava implementado no código proposto da seção 5.3 (linha 803: `if (stripeAccountId) {`). Verificação confirmou que o guard existe. Gap número 91 pulado para evitar renumeração.
+| 94 | `payment_method` extraction em `invoice.paid`/`invoice.payment_succeeded` usa `payment_settings.payment_method_types[0]` — lista de métodos PERMITIDOS, não o método usado. Deve usar charge associado (`stripe.charges.retrieve(chargeId).payment_method_details.type`) | Método de pagamento incorreto salvo no banco (ex: "boleto" quando aluno pagou com PIX) |
+| 95 | `process-cancellation` void busca `business_profile` por `user_id = teacher_id` para `stripe_connect_id`. Se professor tem múltiplos profiles, pode voiding na conta Connect ERRADA | Void executado na conta Stripe errada → fatura NÃO é anulada, aluno continua sendo cobrado |
+| 96 | `process-class-billing` não especifica `verify_jwt = false` em `config.toml`. Per convenção do projeto, edge functions chamadas pelo frontend DEVEM ter esta config | Chamada da edge function falha com 401 mesmo com JWT válido (Supabase rejeita antes da função rodar) |
+| 97 | Resposta de `process-class-billing` não segue padrão do projeto (HTTP 200 + `success: false` para erros de business logic). Interface não incluía `success: boolean` nem `error?: string` | Frontend não consegue distinguir erro técnico de resultado de negócios |
+| 98 | Gap 79 mencionava `invoice.payment_failed` no checklist mas NÃO fornecia código explícito de correção. Handler (linhas 380-393) marca evento falho como sucesso no sistema de idempotência | Idempotência corrompida: evento falho não será reprocessado em retries do Stripe |
+| 99 | Gap 79 mencionava `payment_intent.payment_failed` no checklist mas NÃO fornecia código explícito. Handler (linhas 514-535) tem mesmo problema do Gap 98 | Mesmo impacto do Gap 98 |
 
 ## Próximos passos
 

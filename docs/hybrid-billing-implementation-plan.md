@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.1 (Revisada — 93 gaps corrigidos)
+> **Versão**: 2.2 (Revisada — 99 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -460,6 +460,18 @@ O ClassForm já exibe os serviços e seus preços. Nenhuma alteração é necess
 > **CORREÇÃO v1.3 (Gap 20)**: Esta edge function DEVE incluir CORS headers padrão 
 > e handler de `OPTIONS` (como todas as edge functions chamadas do frontend).
 
+> **[CORREÇÃO v2.2 - Gap 96]**: A edge function `process-class-billing` DEVE ter 
+> `verify_jwt = false` em `supabase/config.toml` (per convenção do projeto). A validação 
+> de JWT é feita IN-CODE via `supabase.auth.getUser(token)` (passo 1). Sem `verify_jwt = false`,
+> o Supabase rejeita a requisição com 401 ANTES de a função executar, mesmo com JWT válido,
+> porque o default é `verify_jwt = true` que aplica validação no gateway.
+>
+> **Adicionar em `supabase/config.toml`**:
+> ```toml
+> [functions.process-class-billing]
+> verify_jwt = false
+> ```
+
 ```typescript
 // CORS headers (obrigatório)
 // [CORREÇÃO v1.6 - Gap 60] CORS headers DEVEM incluir headers específicos do Supabase
@@ -472,17 +484,28 @@ const corsHeaders = {
 // Parâmetros de entrada
 interface ProcessClassBillingRequest {
   class_ids: string[];   // IDs das aulas criadas (já no banco)
-  teacher_id: string;    // ID do professor
+  teacher_id: string;    // ID do professor (IGNORADO - usa JWT)
 }
 
-// Resposta [CORREÇÃO v1.3 - Gap 21: adicionado 'stripe_not_ready']
+// [CORREÇÃO v2.2 - Gap 97] Resposta segue padrão do projeto:
+// HTTP 200 + success: false para erros de business logic
+// HTTP 500 apenas para erros técnicos inesperados
+// Isso permite que o frontend extraia mensagens de erro user-friendly do JSON body.
 interface ProcessClassBillingResponse {
-  success: boolean;
+  success: boolean;       // OBRIGATÓRIO: true se processou, false se erro de negócio
   processed: number;      // Número de aulas processadas
   skipped: number;        // Número de aulas ignoradas (sem serviço, etc.)
   charge_timing: 'prepaid' | 'postpaid' | 'no_business_profile' | 'stripe_not_ready';
   invoices_created?: string[]; // IDs das faturas criadas (se prepaid)
+  error?: string;         // Mensagem de erro user-friendly (se success: false)
 }
+
+// TODOS os retornos da edge function devem usar HTTP 200:
+// - { success: true, charge_timing: 'prepaid', invoices_created: [...] }
+// - { success: true, charge_timing: 'postpaid' }
+// - { success: false, charge_timing: 'no_business_profile', error: 'Perfil de negócios não configurado' }
+// - { success: false, charge_timing: 'stripe_not_ready', error: 'Conta Stripe não está pronta' }
+// - { success: false, error: 'Você não tem permissão para cobrar estas aulas' } // Gap 77
 ```
 
 **Lógica principal detalhada:**
@@ -932,6 +955,79 @@ case 'invoice.paid': {
 > ```
 > Aplicar o MESMO pattern em TODOS os handlers que atualmente usam `if/else` sem return.
 
+> **[CORREÇÃO v2.2 - Gap 98]**: O handler `invoice.payment_failed` (linhas 380-393) tem o 
+> MESMO problema do Gap 67. O update `status: 'falha_pagamento'` pode falhar, mas o handler
+> apenas faz `logStep("Error...")` e cai no `break` → `completeEventProcessing(true)`.
+> O evento falho é marcado como sucesso, impedindo retries.
+>
+> **FIX explícito** (faltava no Gap 79 que apenas mencionava no checklist):
+> ```typescript
+> case 'invoice.payment_failed': {
+>   const failedInvoice = eventObject as Stripe.Invoice;
+>   logStep("Invoice payment failed", { 
+>     invoiceId: failedInvoice.id, 
+>     reason: failedInvoice.last_payment_error?.message 
+>   });
+>
+>   const { error: failedError } = await supabaseClient
+>     .from('invoices')
+>     .update({ 
+>       status: 'falha_pagamento',
+>       updated_at: new Date().toISOString()
+>     })
+>     .eq('stripe_invoice_id', failedInvoice.id);
+>
+>   if (failedError) {
+>     logStep("Error updating invoice payment failed", failedError);
+>     await completeEventProcessing(supabaseClient, event.id, false, failedError);
+>     return new Response(JSON.stringify({ error: 'Failed to update invoice' }), { 
+>       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+>     });
+>   }
+>   logStep("Invoice marked as payment failed", { invoiceId: failedInvoice.id });
+>   break;
+> }
+> ```
+
+> **[CORREÇÃO v2.2 - Gap 99]**: O handler `payment_intent.payment_failed` (linhas 504-537) 
+> tem o MESMO problema. Usa `if (error) { log } else if { log } else { log }` sem `return`.
+> Se o update falha, o evento é marcado como `success: true` via `completeEventProcessing` 
+> da linha 544.
+>
+> **FIX explícito**:
+> ```typescript
+> case "payment_intent.payment_failed": {
+>   const paymentIntent = eventObject as Stripe.PaymentIntent;
+>   logStep("Payment intent failed", { 
+>     paymentIntentId: paymentIntent.id,
+>     last_payment_error: paymentIntent.last_payment_error,
+>   });
+>
+>   const { data: updatedInvoices, error } = await supabaseClient
+>     .from("invoices")
+>     .update({
+>       status: "falha_pagamento",
+>       updated_at: new Date().toISOString()
+>     })
+>     .eq("stripe_payment_intent_id", paymentIntent.id)
+>     .select();
+>
+>   if (error) {
+>     logStep("Error updating invoice payment intent failed", error);
+>     await completeEventProcessing(supabaseClient, event.id, false, error);
+>     return new Response(JSON.stringify({ error: 'Failed' }), { 
+>       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+>     });
+>   }
+>   if (updatedInvoices && updatedInvoices.length > 0) {
+>     logStep("Invoice marked as failed from payment intent", { invoiceId: updatedInvoices[0].id });
+>   } else {
+>     logStep("No invoice found for failed payment intent", { paymentIntentId: paymentIntent.id });
+>   }
+>   break;
+> }
+> ```
+
 ### 5.4 Ajustes no process-cancellation
 
 **Arquivo**: `supabase/functions/process-cancellation/index.ts`
@@ -1013,7 +1109,7 @@ if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
   // (uma por aluno). Usar `.limit(1).maybeSingle()` perderia as demais.
   const { data: invoicesData } = await supabaseClient
     .from('invoices')
-    .select('id, status, stripe_invoice_id, invoice_type')
+    .select('id, status, stripe_invoice_id, invoice_type, business_profile_id')
     .in('id', invoiceIds)
     .eq('invoice_type', 'prepaid_class');
   
@@ -1030,17 +1126,32 @@ for (const prepaidInvoice of prepaidInvoices) {
       const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
       const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
       
-      // Buscar Connected Account ID
+      // [CORREÇÃO v2.2 - Gap 95] Buscar stripe_connect_id da fatura sendo anulada,
+      // NÃO do perfil genérico do professor. Se professor tem múltiplos business_profiles,
+      // a busca por `user_id = teacher_id` pode retornar o perfil ERRADO (ex: PF em vez de PJ),
+      // e o void seria executado na conta Stripe errada → fatura NÃO é anulada.
+      // A fonte correta é: `invoices.business_profile_id` → `business_profiles.stripe_connect_id`
       const { data: businessProfile } = await supabaseClient
         .from('business_profiles')
         .select('stripe_connect_id')
-        .eq('user_id', classData.teacher_id)
+        .eq('id', prepaidInvoice.business_profile_id || '')
         .maybeSingle();
       
-      if (businessProfile?.stripe_connect_id) {
+      // Fallback: se invoice não tem business_profile_id, buscar pelo teacher_id
+      const effectiveProfile = businessProfile || (await (async () => {
+        const { data: fallbackProfile } = await supabaseClient
+          .from('business_profiles')
+          .select('stripe_connect_id')
+          .eq('user_id', classData.teacher_id)
+          .limit(1)
+          .maybeSingle();
+        return fallbackProfile;
+      })());
+      
+      if (effectiveProfile?.stripe_connect_id) {
         await stripe.invoices.voidInvoice(
           prepaidInvoice.stripe_invoice_id,
-          { stripeAccount: businessProfile.stripe_connect_id }
+          { stripeAccount: effectiveProfile.stripe_connect_id }
         );
         
         // Atualizar status no banco (webhook voided também fará isso, mas garantir)
@@ -1230,10 +1341,25 @@ Quando o Stripe notifica que uma invoice foi paga:
 5. Para cada linha com `metadata.lesson_id`:
    - Atualizar `class_participants.status` para `confirmada`
    - Atualizar `class_participants.confirmed_at`
-6. [CORREÇÃO v1.8 - Gap 72] `payment_method`: Extrair o método de pagamento REAL do evento Stripe.
-   NÃO hardcodar `'stripe_invoice'`. Usar `succeededInvoice.payment_settings?.payment_method_types?.[0]`
-   ou inspecionar o charge associado via `succeededInvoice.charge`. Se indisponível, usar `'stripe_invoice'` 
-   como fallback.
+6. [CORREÇÃO v2.2 - Gap 94] `payment_method`: Extrair o método de pagamento REAL via charge associado.
+   **NÃO** usar `payment_settings.payment_method_types[0]` — isso retorna a lista de métodos 
+   **permitidos** na invoice, NÃO o método efetivamente usado pelo aluno. A fonte correta é 
+   o charge vinculado ao pagamento:
+   ```typescript
+   let paymentMethod = 'stripe_invoice'; // fallback
+   const chargeId = typeof succeededInvoice.charge === 'string' 
+     ? succeededInvoice.charge 
+     : succeededInvoice.charge?.id;
+   if (chargeId && stripeAccountId) {
+     try {
+       const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: stripeAccountId });
+       paymentMethod = charge.payment_method_details?.type || 'stripe_invoice';
+     } catch (chargeError) {
+       logStep("Could not retrieve charge for payment method", { chargeId, error: chargeError });
+     }
+   }
+   ```
+   Se `charge` é null (ex: invoice $0, credit balance), usar `'stripe_invoice'` como fallback.
 7. Campos temporários (boleto_url, pix_qr_code) são gerenciados pelo Stripe Invoice; não precisam ser limpos manualmente aqui.
 
 ### 8.2 invoice.finalized (NOVO)
@@ -1362,6 +1488,12 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 90] Evento `invoice.finalized` não tratado no webhook** | **Baixa** | **Médio** | **`finalizeInvoice` dispara evento. Se webhook default case não processa corretamente, evento fica preso. FIX: case explícito com `break` e sem ação.** |
 | **[Gap 92] Race condition no check de idempotência de `process-class-billing`** | **Baixa** | **Alto** | **TOCTOU entre check de `invoice_classes` e criação no Stripe. Double-click rápido cria duplicatas. FIX: Stripe Idempotency Keys em todas as chamadas `invoiceItems.create` e `invoices.create`.** |
 | **[Gap 93] `relationship.business_profile_id` nullable sem fallback** | **Baixa** | **Médio** | **Se relationship não tem `business_profile_id`, invoice é criada com `null`. FIX: fallback para `business_profile.id` do step 2.** |
+| **[Gap 94] `payment_method` extraído de fonte errada no webhook** | **Média** | **Médio** | **Gap 72 sugeria `payment_settings.payment_method_types[0]` que retorna métodos PERMITIDOS, não o usado. FIX: usar charge associado (`stripe.charges.retrieve(chargeId).payment_method_details.type`). Fallback para `'stripe_invoice'`.** |
+| **[Gap 95] `process-cancellation` void usa business_profile genérico** | **Baixa** | **Alto** | **Void busca `business_profile` por `user_id = teacher_id` → pode pegar o perfil ERRADO se professor tem múltiplos. FIX: usar `invoices.business_profile_id` da fatura sendo anulada → `business_profiles.stripe_connect_id`.** |
+| **[Gap 96] `process-class-billing` sem `verify_jwt = false` em config.toml** | **Alta** | **Alto** | **Sem essa config, Supabase rejeita requisição com 401 antes da função executar. FIX: adicionar `[functions.process-class-billing] verify_jwt = false` em config.toml.** |
+| **[Gap 97] Resposta de `process-class-billing` não segue padrão do projeto** | **Baixa** | **Médio** | **Padrão: HTTP 200 + `success: false` para erros de business logic. Interface retornava `charge_timing` string sem `success` boolean. FIX: adicionar `success: boolean` e `error?: string` na interface; usar HTTP 200 para todos os retornos.** |
+| **[Gap 98] `invoice.payment_failed` handler sem código explícito de fix** | **Média** | **Alto** | **Gap 79 mencionava no checklist mas não fornecia código. Handler (linhas 380-393) faz `if (error) { log }` sem return → evento falho marcado como success. FIX: código explícito com `completeEventProcessing(false, error)` + return 500.** |
+| **[Gap 99] `payment_intent.payment_failed` handler sem código explícito de fix** | **Média** | **Alto** | **Mesmo problema do Gap 98 para handler de payment_intent (linhas 514-535). FIX: código explícito fornecido na seção 5.3.** |
 
 ---
 
@@ -1525,6 +1657,13 @@ FASE 8: Testes e Validação
 - [ ] [v2.1] Verificar que `process-class-billing` usa Stripe Idempotency Keys (`idempotencyKey`) em `invoiceItems.create` e `invoices.create` (Gap 92)
 - [ ] [v2.1] Verificar que `process-class-billing` faz fallback de `relationship.business_profile_id` para `businessProfile.id` do step 2 quando nullable (Gap 93)
 
+- [ ] [v2.2] Verificar que extração de `payment_method` em `invoice.paid`/`invoice.payment_succeeded` usa charge associado (NÃO `payment_settings.payment_method_types`) (Gap 94)
+- [ ] [v2.2] Verificar que `process-cancellation` void busca `stripe_connect_id` via `invoices.business_profile_id` (NÃO `user_id = teacher_id`) (Gap 95)
+- [ ] [v2.2] Verificar que `supabase/config.toml` tem `[functions.process-class-billing] verify_jwt = false` (Gap 96)
+- [ ] [v2.2] Verificar que `process-class-billing` retorna HTTP 200 com `success: false` para erros de business logic (Gap 97)
+- [ ] [v2.2] Verificar que `invoice.payment_failed` handler chama `completeEventProcessing(false, error)` e faz `return` com status 500 (Gap 98)
+- [ ] [v2.2] Verificar que `payment_intent.payment_failed` handler chama `completeEventProcessing(false, error)` e faz `return` com status 500 (Gap 99)
+
 ### Deploy
 
 - [ ] Executar migração SQL em produção
@@ -1656,7 +1795,7 @@ FASE 8: Testes e Validação
 |---|------------------|-----------|
 | 70 | `process-cancellation` lookup de participante para voiding não filtra por `dependent_id` | **Ambiguidade**: Se um responsável tem 2+ dependentes na mesma aula em grupo, a query `.eq('student_id', cancelled_by).maybeSingle()` retorna null (PGRST116: multiple rows). Sem o `participant_id`, o filtro de `invoice_classes` é pulado e TODAS as faturas pré-pagas são voidadas. FIX: Adicionar `.eq('dependent_id', dependent_id)` quando presente, ou `.is('dependent_id', null)` para o responsável direto. |
 | 71 | `Faturas.tsx` não diferencia faturas pré-pagas para o aluno | O `PaymentOptionsCard` (que cria Payment Intents via `create-payment-intent-connect`) apareceria para faturas `prepaid_class`, conflitando com o Stripe Invoice flow. FIX: Se `invoice_type === 'prepaid_class'`, ocultar `PaymentOptionsCard` e exibir apenas o botão "Pagar Agora" redirecionando para `stripe_hosted_invoice_url`. O `change-payment-method` também não se aplica. |
-| 72 | `invoice.payment_succeeded` hardcoda `payment_method: 'stripe_invoice'` | Handler (linha 359) define `payment_method: 'stripe_invoice'` para todas faturas pagas via Invoice flow. Para faturas pré-pagas, o aluno pode pagar via boleto, PIX ou cartão na página hosted. FIX: Extrair o método real do evento Stripe (`payment_settings.payment_method_types[0]` ou do charge associado). Fallback para `'stripe_invoice'` se indisponível. |
+| 72 | `invoice.payment_succeeded` hardcoda `payment_method: 'stripe_invoice'` | Handler (linha 359) define `payment_method: 'stripe_invoice'` para todas faturas pagas via Invoice flow. Para faturas pré-pagas, o aluno pode pagar via boleto, PIX ou cartão na página hosted. FIX: Extrair o método real do evento Stripe via charge associado (`succeededInvoice.charge` → `stripe.charges.retrieve(chargeId, { stripeAccount }).payment_method_details.type`). Fallback para `'stripe_invoice'` se indisponível. [ATUALIZADO v2.2 — Gap 94: `payment_settings.payment_method_types` é lista de métodos PERMITIDOS, não o método usado. Usar charge é a fonte correta.] |
 | 73 | Deploy checklist não inclui `automated-billing` para redeployment | `automated-billing` usa FK joins (`profiles!teacher_id`, `profiles!student_id`, `classes!inner`) que podem ficar stale no Deno runtime após a migração adicionar `charge_timing` a `business_profiles`. FIX: Incluir `automated-billing` e `create-payment-intent-connect` na lista de edge functions a serem redeployadas. Mesmo sem modificações de código, o redeploy força refresh do schema cache. |
 | 74 | `create-payment-intent-connect` não listado como arquivo a modificar | Apesar do Gap 66 identificar a versão divergente do SDK (`14.21.0` vs `14.24.0`), o arquivo não constava na tabela "Arquivos a Criar/Modificar" (seção 12). A atualização do SDK é uma modificação real que deve ser rastreada. FIX: Adicionado à tabela na Fase 7. |
 | 75 | Webhook handlers usam `.single()` para buscar invoices por `stripe_invoice_id` | Os handlers `invoice.paid` (linha 310), `invoice.payment_succeeded` (linha 347) e `payment_intent.succeeded` (linha 457) usam `.single()`. Se o `stripe_invoice_id`/`stripe_payment_intent_id` não existir no banco (invoice criada diretamente no Stripe Dashboard, ou de outra integração), `.single()` lança erro → webhook retorna 500 → Stripe retenta indefinidamente (até 3 dias). FIX: Substituir por `.maybeSingle()` e, se null, logar warning e retornar 200 (evento reconhecido, sem ação). |
@@ -1698,6 +1837,19 @@ FASE 8: Testes e Validação
 | 90 | Evento `invoice.finalized` do Stripe não é tratado no webhook | `process-class-billing` chama `finalizeInvoice` → Stripe envia `invoice.finalized`. Se o `switch` do webhook não tem case para este tipo e o default NÃO chama `completeEventProcessing` (per Gap 83), o evento fica preso em "processing". FIX: Adicionar case explícito `'invoice.finalized'` com `logStep` + `break` (sem ação no banco). Documentado na seção 8.2. |
 | 92 | Race condition no check de idempotência de `process-class-billing` (TOCTOU) | A verificação "se `invoice_classes` com `item_type = 'prepaid_class'` já existe" (passo 3a) e a criação dos InvoiceItems no Stripe NÃO são atômicas. Dois requests simultâneos (double-click rápido com debounce falho, retry automático do frontend) podem ambos passar o check e criar InvoiceItems duplicados no Stripe. O check no banco previne duplicação de `invoice_classes`, mas NÃO previne duplicação de InvoiceItems no Stripe. FIX: Usar Stripe Idempotency Keys (`idempotencyKey` no segundo argumento de chamadas Stripe): `invoiceItems.create` com key `prepaid-item-${classId}-${participantId}`, e `invoices.create` com key `prepaid-invoice-${customerId}-${classIds.sort().join('-')}`. Stripe rejeita automaticamente chamadas duplicadas com a mesma key dentro de 24h. |
 | 93 | `teacher_student_relationships.business_profile_id` é nullable — sem fallback | Se a relationship não tem `business_profile_id` definido (professor não atribuiu perfil de negócio ao aluno), step 3c.vi salvaria `business_profile_id: null` na invoice. Mas step 2 já encontrou um `business_profile` (com `charge_timing`). Sem fallback, a invoice fica "órfã" de business_profile. FIX: Se `relationship.business_profile_id` é null, usar `businessProfile.id` do step 2 como fallback. Isso mantém consistência entre a decisão de cobrança (step 2) e o registro da fatura (step 3c.vi). Adicionado na seção 5.1 passo 3c.vi. |
+
+---
+
+### Revisão v2.2
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 94 | `payment_method` extraction usa `payment_settings.payment_method_types[0]` — fonte ERRADA | Gap 72 sugeria usar `payment_settings.payment_method_types[0]` como alternativa ao hardcode. MAS `payment_settings.payment_method_types` é a lista de métodos **permitidos** na invoice, NÃO o método efetivamente usado pelo aluno. Ex: invoice permite `['boleto', 'card']`, aluno paga com `card`, mas sistema salva `'boleto'`. FIX: Usar o charge associado como fonte correta: `stripe.charges.retrieve(chargeId, { stripeAccount }).payment_method_details.type`. Fallback para `'stripe_invoice'` se charge é null (ex: invoice $0). Código atualizado nas seções 5.3 e 8.1. |
+| 95 | `process-cancellation` void busca `business_profile` por `user_id = teacher_id` — pode usar conta Stripe ERRADA | O código de void (seção 5.4) busca `business_profiles WHERE user_id = teacher_id` para obter `stripe_connect_id`. Se professor tem múltiplos profiles (PF + PJ), pode retornar o perfil ERRADO. O void seria executado na conta Connect errada → Stripe retorna erro ou anula fatura de outro contexto. FIX: Buscar `stripe_connect_id` via `invoices.business_profile_id` da fatura sendo anulada (a invoice sabe de qual profile veio). Fallback para `user_id = teacher_id` apenas se `business_profile_id` é null. Código atualizado na seção 5.4. |
+| 96 | `process-class-billing` sem `verify_jwt = false` em `config.toml` | Per convenção do projeto (documentada no guia de edge functions), TODAS as edge functions chamadas pelo frontend devem ter `verify_jwt = false` em `config.toml` com validação in-code via `auth.getUser(token)`. Sem isso, o Supabase gateway rejeita a requisição com 401 ANTES de a função executar — mesmo com JWT válido no header Authorization. FIX: Adicionar `[functions.process-class-billing]\nverify_jwt = false` em `supabase/config.toml`. Nota adicionada na seção 5.1. |
+| 97 | Resposta de `process-class-billing` não segue padrão de error handling do projeto | O padrão do projeto (documentado em memória) é: HTTP 200 + `success: false` + mensagem user-friendly para erros de business logic. A interface `ProcessClassBillingResponse` retornava `charge_timing` como indicador implícito de erro/sucesso, sem campo `success` explícito nem `error` string. O frontend não consegue distinguir erro técnico de resultado de negócio. FIX: Adicionado `success: boolean` (obrigatório) e `error?: string` na interface. Todos os retornos usam HTTP 200. Documentado na seção 5.1. |
+| 98 | `invoice.payment_failed` handler — Gap 79 mencionava no checklist mas NÃO fornecia código | O handler existente (linhas 380-393) usa `if (failedError) { logStep }` sem `return`. Se update falha, execução cai no `break` e depois em `completeEventProcessing(true)` (linha 544). Evento com falha é marcado como sucesso → idempotência corrompida, retries do Stripe processam evento como "já processado com sucesso". FIX: Código explícito fornecido na seção 5.3 com `completeEventProcessing(false, error)` + `return new Response(500)`. |
+| 99 | `payment_intent.payment_failed` handler — mesmo problema do Gap 98 | O handler existente (linhas 514-535) usa pattern `if (error) { log } else if { log } else { log }` sem `return`. Falha no update marca evento como sucesso. FIX: Código explícito fornecido na seção 5.3, seguindo o mesmo pattern do Gap 98. |
 
 ---
 

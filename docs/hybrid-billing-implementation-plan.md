@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.0 (Revisada — 87 gaps corrigidos)
+> **Versão**: 2.1 (Revisada — 93 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -501,12 +501,25 @@ interface ProcessClassBillingResponse {
      e o sistema processaria (usando o business_profile do atacante mas referenciando aulas alheias)
    → Implementar ANTES de qualquer lógica de billing
 
-2. Buscar business_profile do professor:
+2. [CORREÇÃO v2.1 - Gap 89] Buscar business_profile CORRETO para este contexto:
+   → NÃO usar `WHERE user_id = teacher_id LIMIT 1` (poderia pegar o profile errado 
+     se professor tem múltiplos business_profiles com charge_timing diferentes).
+   → Lógica correta para cada cenário:
+     a) Se class_ids têm PARTICIPANTES, buscar o primeiro student_id → 
+        buscar `teacher_student_relationships.business_profile_id` WHERE teacher_id AND student_id
+        → se não-null, buscar `business_profiles` WHERE id = relationship.business_profile_id
+        → se null (campo nullable), FALLBACK: buscar `business_profiles` WHERE user_id = teacher_id LIMIT 1
+     b) Se cenário (a) não aplicável, usar `business_profiles WHERE user_id = teacher_id LIMIT 1`
+   → Isso garante consistência: o `charge_timing` e o `stripe_connect_id` vêm do MESMO profile.
+   → Sem essa correção, professor com PJ (prepaid) e PF (postpaid) poderia usar
+     charge_timing do profile PJ mas criar invoice no Connected Account do profile PF.
+   
    SELECT id, charge_timing, stripe_connect_id, enabled_payment_methods
    FROM business_profiles
-   WHERE user_id = teacher_id
+   WHERE id = relationship_business_profile_id OR user_id = teacher_id
+   ORDER BY (id = relationship_business_profile_id) DESC  -- priorizar da relationship
    LIMIT 1
-   
+    
    → Se NÃO tem business_profile: retornar { charge_timing: 'no_business_profile' }
    → Se charge_timing === 'postpaid': retornar { charge_timing: 'postpaid' }
 
@@ -515,6 +528,8 @@ interface ProcessClassBillingResponse {
    → Buscar payment_accounts WHERE teacher_id = teacher_id
      AND stripe_connect_account_id = business_profile.stripe_connect_id
    → Verificar que stripe_charges_enabled = true
+   → [CORREÇÃO v2.1 - Gap 88] GUARDAR o `payment_accounts.id` como `paymentAccountId`
+     para uso posterior no passo 3c.vi (campo `payment_account_used_id` do invoice)
    → Se NÃO estiver habilitado: retornar { charge_timing: 'stripe_not_ready' }
      silenciosamente (professor não completou onboarding do Stripe)
 
@@ -577,13 +592,18 @@ interface ProcessClassBillingResponse {
               → Descrição: `Aula de ${serviceName} - ${classDate}`
              - [CORREÇÃO v1.4 - Gap 49] Todas chamadas Stripe usam apiVersion padronizado:
                `const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });`
-             - stripe.invoiceItems.create({
-                 customer: connectedCustomerId,
-                 amount: Math.round(price * 100),
-                 currency: 'brl',
-                 description: descricaoCalculadaAcima,
-                 metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
-               }, { stripeAccount: connectAccountId })
+              - [CORREÇÃO v2.1 - Gap 92] Usar Stripe Idempotency Keys em TODAS as chamadas:
+                `{ stripeAccount: connectAccountId }` deve incluir `idempotencyKey`:
+                ```
+                const idempotencyKey = `prepaid-item-${classId}-${participantId}`;
+                ```
+              - stripe.invoiceItems.create({
+                  customer: connectedCustomerId,
+                  amount: Math.round(price * 100),
+                  currency: 'brl',
+                  description: descricaoCalculadaAcima,
+                  metadata: { lesson_id: classId, participant_id: participantId, dependent_id: dependentId || null }
+                }, { stripeAccount: connectAccountId, idempotencyKey })
              - [CORREÇÃO v1.4 - Gap 47] Guardar IDs dos Invoice Items criados em array:
                `createdItemIds.push(invoiceItem.id)`
                → Em caso de falha no passo iv/v, fazer cleanup:
@@ -592,13 +612,17 @@ interface ProcessClassBillingResponse {
                  await stripe.invoiceItems.del(itemId, { stripeAccount: connectAccountId });
                }
                ```
-       iv.  [CORREÇÃO v1.3 - Gap 17] stripe.invoices.create({
-              customer: connectedCustomerId,
-              auto_advance: false,  ← IMPORTANTE: false para evitar finalização automática
-              collection_method: 'send_invoice',
-              days_until_due: paymentDueDays, // [Gap 4] Vem de profiles.payment_due_days
-              metadata: { teacher_id, invoice_source: 'prepaid_billing' }
-            }, { stripeAccount: connectAccountId })
+        iv.  [CORREÇÃO v1.3 - Gap 17] stripe.invoices.create({
+               customer: connectedCustomerId,
+               auto_advance: false,  ← IMPORTANTE: false para evitar finalização automática
+               collection_method: 'send_invoice',
+               days_until_due: paymentDueDays, // [Gap 4] Vem de profiles.payment_due_days
+               metadata: { teacher_id, invoice_source: 'prepaid_billing' }
+             }, { 
+               stripeAccount: connectAccountId,
+               // [CORREÇÃO v2.1 - Gap 92] Idempotency key para criação de Invoice
+               idempotencyKey: `prepaid-invoice-${connectedCustomerId}-${classIds.sort().join('-')}`
+             })
             NOTA: Usar auto_advance: false para controlar explicitamente 
             a finalização no passo v. Com auto_advance: true, chamar 
             finalizeInvoice causaria erro 'invoice_already_finalized'.
@@ -614,10 +638,19 @@ interface ProcessClassBillingResponse {
              - business_profile_id: da relationship
              - amount: soma dos preços
              - gateway_provider: 'stripe'
-             - [CORREÇÃO v1.4 - Gap 42] payment_origin: 'prepaid'
-               ← Diferencia de faturas criadas por `automated-billing` (`payment_origin: 'automated'`)
-               e faturas manuais (`payment_origin: 'manual'`)
-             - [CORREÇÃO v1.4 - Gap 45] class_id: classIds.length === 1 ? classIds[0] : null
+              - [CORREÇÃO v1.4 - Gap 42] payment_origin: 'prepaid'
+                ← Diferencia de faturas criadas por `automated-billing` (`payment_origin: 'automated'`)
+                e faturas manuais (`payment_origin: 'manual'`)
+              - [CORREÇÃO v2.1 - Gap 88] payment_account_used_id: paymentAccountId
+                ← Buscar `payment_accounts.id` WHERE `stripe_connect_account_id = business_profile.stripe_connect_id`
+                  AND `teacher_id = teacher_id`. Sem esse campo, relatórios financeiros e dashboards
+                  do professor que agrupam por conta de pagamento não incluiriam faturas pré-pagas.
+                  O `automated-billing` já seta esse campo; `process-class-billing` deve ser consistente.
+              - [CORREÇÃO v2.1 - Gap 93] business_profile_id: relationship.business_profile_id || businessProfile.id
+                ← Se `teacher_student_relationships.business_profile_id` é null (campo nullable),
+                  usar o `business_profile.id` do step 2 como fallback. Mantém consistência entre
+                  a decisão de cobrança (step 2) e o registro da fatura (step 3c.vi).
+              - [CORREÇÃO v1.4 - Gap 45] class_id: classIds.length === 1 ? classIds[0] : null
                ← Para faturas com múltiplas aulas, `class_id` fica null. 
                A relação aula↔fatura é via `invoice_classes` (relação N:N).
             - [CORREÇÃO v1.3 - Gap 15] due_date: calculado como 
@@ -1203,13 +1236,30 @@ Quando o Stripe notifica que uma invoice foi paga:
    como fallback.
 7. Campos temporários (boleto_url, pix_qr_code) são gerenciados pelo Stripe Invoice; não precisam ser limpos manualmente aqui.
 
-### 8.2 invoice.voided
+### 8.2 invoice.finalized (NOVO)
+
+> **[CORREÇÃO v2.1 - Gap 90]**: Quando `process-class-billing` chama `finalizeInvoice` (passo v),
+> o Stripe envia o evento `invoice.finalized`. Se o `switch` do webhook-stripe-connect NÃO tem
+> case para `invoice.finalized`, o evento cai no `default` case. Se o default apenas faz `break`
+> e cai no `completeEventProcessing(true)`, está OK. MAS se o default retorna erro ou NÃO chama
+> `completeEventProcessing`, o evento fica preso (per Gaps 82/83).
+>
+> **FIX**: Adicionar case explícito para `invoice.finalized`:
+> ```typescript
+> case 'invoice.finalized':
+>   logStep("Invoice finalized (no action needed)", { invoiceId: eventObject.id });
+>   break;
+> ```
+> Isso garante que o evento é reconhecido e marcado como processado com sucesso,
+> sem nenhuma ação no banco de dados (a finalização é apenas um trigger interno do Stripe).
+
+### 8.3 invoice.voided
 
 Handler já existe (linha 420-438). Quando o Stripe notifica void:
 - Atualizar status da invoice no banco para `cancelada`
 - **Nenhuma ação adicional necessária** sobre aulas — o void é resultado do cancelamento que já tratou a aula.
 
-### 8.3 payment_intent.succeeded (existente)
+### 8.4 payment_intent.succeeded (existente)
 
 > **[CORREÇÃO v1.6 - Gap 59]**: O handler existente de `payment_intent.succeeded` TAMBÉM 
 > sobrescreve `payment_origin` incondicionalmente. Aplicar a mesma correção do Gap 53:
@@ -1299,7 +1349,7 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | Recorrência com prepaid cobrando todas de uma vez | Média | Alto | Cobrança ocorre na materialização, não na criação do template |
 | Customer Stripe duplicado para mesmo aluno | Baixa | Médio | Buscar customer existente por email no Connected Account antes de criar |
 | Materialização pelo aluno não dispara billing | Baixa | Baixo | Design intencional: billing é responsabilidade do professor |
-| Professor com múltiplos business_profiles | Baixa | Médio | Usar `teacher_student_relationships.business_profile_id` como fonte da verdade (padrão existente) |
+| Professor com múltiplos business_profiles | Baixa | Médio | [Gap 89] ATUALIZADO: Usar `teacher_student_relationships.business_profile_id` como fonte para AMBOS `charge_timing` e `stripe_connect_id`. Fallback para primeiro business_profile do professor se relationship não tem profile. |
 | Invoice do Stripe sem metadata.lesson_id | Baixa | Médio | Validar que `lesson_id` está em metadata de cada InvoiceItem; logar se ausente |
 | **[Gap 77] Class IDs de outro professor processados** | **Baixa** | **Alto** | **Validar `classes.teacher_id === authenticated_teacher_id` para cada class_id antes de processar billing** |
 | **[Gap 81] Falha de pagamento em fatura pré-paga sem tratamento** | **Baixa** | **Médio** | **Documentado como edge case: aula permanece `confirmada`, fatura fica `falha_pagamento`. Professor decide ação (cancelar aula ou cobrar manualmente).** |
@@ -1307,6 +1357,11 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 83] Outer catch do webhook não completa evento** | **Baixa** | **Alto** | **Erros não capturados dentro dos handlers propagam para o catch externo, que não chama `completeEventProcessing`. Evento fica preso. FIX: chamar `completeEventProcessing` no catch externo.** |
 | **[Gap 84] Webhook downgrades status `concluida` para `confirmada`** | **Baixa** | **Médio** | **Se professor completa aula antes do pagamento chegar (ex: boleto), webhook reverte status. FIX: filtrar `.neq('status', 'concluida')`.** |
 | **[Gap 86] `invoice.marked_uncollectible` sobrescreve pagamento manual** | **Baixa** | **Alto** | **Handler não verifica `payment_origin === 'manual'`. Pode reverter decisão do professor. FIX: adicionar check como nos outros handlers.** |
+| **[Gap 88] `payment_account_used_id` ausente em faturas pré-pagas** | **Baixa** | **Médio** | **`process-class-billing` não setava `payment_account_used_id` na invoice. Relatórios financeiros que agrupam por conta de pagamento ignorariam faturas pré-pagas. FIX: buscar `payment_accounts.id` no passo 2.5 e salvar no passo 3c.vi.** |
+| **[Gap 89] Source inconsistente de `business_profile`** | **Média** | **Alto** | **Step 2 buscava qualquer profile do teacher (`LIMIT 1`); step 3c.i usava profile da relationship. Se teacher tem múltiplos profiles com `charge_timing` diferente, poderia usar prepaid de um e stripe_connect_id de outro. FIX: usar consistentemente o profile da relationship.** |
+| **[Gap 90] Evento `invoice.finalized` não tratado no webhook** | **Baixa** | **Médio** | **`finalizeInvoice` dispara evento. Se webhook default case não processa corretamente, evento fica preso. FIX: case explícito com `break` e sem ação.** |
+| **[Gap 92] Race condition no check de idempotência de `process-class-billing`** | **Baixa** | **Alto** | **TOCTOU entre check de `invoice_classes` e criação no Stripe. Double-click rápido cria duplicatas. FIX: Stripe Idempotency Keys em todas as chamadas `invoiceItems.create` e `invoices.create`.** |
+| **[Gap 93] `relationship.business_profile_id` nullable sem fallback** | **Baixa** | **Médio** | **Se relationship não tem `business_profile_id`, invoice é criada com `null`. FIX: fallback para `business_profile.id` do step 2.** |
 
 ---
 
@@ -1463,6 +1518,12 @@ FASE 8: Testes e Validação
 - [ ] [v2.0] Verificar que `stripeAccountId` usa `event.account` (não `paidInvoice.account`) conforme Gap 80 — inconsistência interna resolvida (Gap 85)
 - [ ] [v2.0] Verificar que `invoice.marked_uncollectible` verifica `payment_origin === 'manual'` antes de atualizar status (Gap 86)
 - [ ] [v2.0] Verificar que `invoice.paid` handler faz UMA query consolidada (`.maybeSingle()` com null guard + manual check + payment_origin check), não queries separadas (Gap 87)
+
+- [ ] [v2.1] Verificar que `process-class-billing` seta `payment_account_used_id` no registro `invoices` (Gap 88)
+- [ ] [v2.1] Verificar que `process-class-billing` busca `charge_timing` do business_profile da RELATIONSHIP (não do primeiro profile do professor) (Gap 89)
+- [ ] [v2.1] Verificar que webhook-stripe-connect tem case explícito para `invoice.finalized` (return OK sem ação) (Gap 90)
+- [ ] [v2.1] Verificar que `process-class-billing` usa Stripe Idempotency Keys (`idempotencyKey`) em `invoiceItems.create` e `invoices.create` (Gap 92)
+- [ ] [v2.1] Verificar que `process-class-billing` faz fallback de `relationship.business_profile_id` para `businessProfile.id` do step 2 quando nullable (Gap 93)
 
 ### Deploy
 
@@ -1625,6 +1686,18 @@ FASE 8: Testes e Validação
 | 85 | Código proposto do `invoice.paid` (linha 766) usa `paidInvoice.account` — contradiz Gap 80 | O Gap 80 especifica usar `(event as any).account || paidInvoice.account` como fonte confiável do Connected Account ID. O código na seção 5.3 usava `paidInvoice.account as string` diretamente. FIX: Corrigido na seção 5.3 para usar `(event as any).account || (paidInvoice as any).account` conforme Gap 80. |
 | 86 | `invoice.marked_uncollectible` não verifica `payment_origin === 'manual'` | Os handlers `invoice.paid` e `invoice.payment_succeeded` já verificam se `payment_origin === 'manual'` para evitar sobrescrever decisões do professor. O handler `marked_uncollectible` NÃO faz essa verificação. Se o professor marcou pagamento manualmente e o Stripe marca a invoice como incobrável, o webhook sobrescreveria `paid` com `overdue`. FIX: Adicionar verificação de `payment_origin === 'manual'` antes do update (seção 5.3). |
 | 87 | Proposta de `invoice.paid` faz 2 queries separadas para a mesma invoice | O código proposto fazia uma query para checar `payment_origin === 'manual'` (linhas 306-315 originais) e outra para checar `payment_origin` para Gap 53 (linhas 731-735). Consolidado em UMA query com `.maybeSingle()` que já implementa Gap 75 (null safety), Gap 53 (preservar payment_origin) e Gap 87 (eficiência). Se `currentInvoice` é null, logar warning e break (per Gap 75). |
+
+---
+
+### Revisão v2.1
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 88 | `process-class-billing` passo 3c.vi NÃO inclui `payment_account_used_id` na tabela `invoices` | Campo existente na tabela `invoices`, usado pelo `automated-billing` para rastreamento financeiro por conta de pagamento. Sem ele, relatórios financeiros e dashboards do professor que agrupam por conta de pagamento ignorariam faturas pré-pagas. FIX: No passo 2.5, ao buscar `payment_accounts`, GUARDAR o `payment_accounts.id` como `paymentAccountId`. No passo 3c.vi, salvar `payment_account_used_id: paymentAccountId` no registro de invoice. |
+| 89 | `process-class-billing` busca `charge_timing` do PRIMEIRO business_profile (`LIMIT 1`), mas usa `business_profile_id` da relationship para Stripe | **Inconsistência**: Se professor tem múltiplos business_profiles (ex: PJ com `prepaid` e PF com `postpaid`), poderia usar `charge_timing = 'prepaid'` do profile PJ enquanto cria invoice no Connected Account do profile PF. FIX: Buscar o business_profile da relationship PRIMEIRO. Se `relationship.business_profile_id` não é null, usar ESSE profile para `charge_timing` E `stripe_connect_id`. Fallback para `WHERE user_id = teacher_id LIMIT 1` apenas se relationship não tem profile. Step 2 reescrito na seção 5.1. |
+| 90 | Evento `invoice.finalized` do Stripe não é tratado no webhook | `process-class-billing` chama `finalizeInvoice` → Stripe envia `invoice.finalized`. Se o `switch` do webhook não tem case para este tipo e o default NÃO chama `completeEventProcessing` (per Gap 83), o evento fica preso em "processing". FIX: Adicionar case explícito `'invoice.finalized'` com `logStep` + `break` (sem ação no banco). Documentado na seção 8.2. |
+| 92 | Race condition no check de idempotência de `process-class-billing` (TOCTOU) | A verificação "se `invoice_classes` com `item_type = 'prepaid_class'` já existe" (passo 3a) e a criação dos InvoiceItems no Stripe NÃO são atômicas. Dois requests simultâneos (double-click rápido com debounce falho, retry automático do frontend) podem ambos passar o check e criar InvoiceItems duplicados no Stripe. O check no banco previne duplicação de `invoice_classes`, mas NÃO previne duplicação de InvoiceItems no Stripe. FIX: Usar Stripe Idempotency Keys (`idempotencyKey` no segundo argumento de chamadas Stripe): `invoiceItems.create` com key `prepaid-item-${classId}-${participantId}`, e `invoices.create` com key `prepaid-invoice-${customerId}-${classIds.sort().join('-')}`. Stripe rejeita automaticamente chamadas duplicadas com a mesma key dentro de 24h. |
+| 93 | `teacher_student_relationships.business_profile_id` é nullable — sem fallback | Se a relationship não tem `business_profile_id` definido (professor não atribuiu perfil de negócio ao aluno), step 3c.vi salvaria `business_profile_id: null` na invoice. Mas step 2 já encontrou um `business_profile` (com `charge_timing`). Sem fallback, a invoice fica "órfã" de business_profile. FIX: Se `relationship.business_profile_id` é null, usar `businessProfile.id` do step 2 como fallback. Isso mantém consistência entre a decisão de cobrança (step 2) e o registro da fatura (step 3c.vi). Adicionado na seção 5.1 passo 3c.vi. |
 
 ---
 

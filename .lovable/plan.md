@@ -1,11 +1,22 @@
 
-# Plano de Implementação: Cobrança Híbrida - v1.5 Completa
+# Plano de Implementação: Cobrança Híbrida - v1.6 Completa
 
-## Status: Documento atualizado para v1.5 com 57 gaps corrigidos
+## Status: Documento atualizado para v1.6 com 63 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 1.5, incorporando 8 novos gaps técnicos (50-57) identificados na revisão mais recente.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 1.6, incorporando 6 novos gaps técnicos (58-63) identificados na revisão mais recente.
 
-## Gaps incorporados na v1.5
+## Gaps incorporados na v1.6
+
+| Gap | Descrição | Impacto |
+|-----|-----------|---------|
+| 58 | Versão Stripe SDK divergente: plano dizia `v14.21.0` mas webhook usa `v14.24.0` | Incompatibilidade de tipos e comportamento |
+| 59 | Handler `payment_intent.succeeded` sobrescreve `payment_origin: 'prepaid'` | Perda de rastreabilidade (mesma causa do Gap 53) |
+| 60 | CORS headers faltam headers específicos do Supabase | Requisições bloqueadas pelo preflight |
+| 61 | `process-class-billing` usa `teacher_id` do body sem validação JWT | Vulnerabilidade de segurança |
+| 62 | `create-payment-intent-connect` cria customers sem persistir ID | Customers Stripe duplicados |
+| 63 | `get_unbilled_participants_v2` filtra por `participant_id` — não documentado | Confusão em testes de billing parcial em grupo |
+
+## Gaps anteriores (v1.5)
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|

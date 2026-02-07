@@ -1,20 +1,20 @@
 
-# Plano de Implementação: Cobrança Híbrida - v1.8 Completa
+# Plano de Implementação: Cobrança Híbrida - v1.9 Completa
 
-## Status: Documento atualizado para v1.8 com 75 gaps corrigidos
+## Status: Documento atualizado para v1.9 com 81 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 1.8, incorporando 6 novos gaps técnicos (70-75) identificados na revisão mais recente.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 1.9, incorporando 6 novos gaps técnicos (76-81) identificados na revisão mais recente.
 
-## Gaps incorporados na v1.8
+## Gaps incorporados na v1.9
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 70 | `process-cancellation` lookup de participante não filtra por `dependent_id` | Voiding incorreto de TODAS as faturas quando responsável tem 2+ dependentes na mesma aula |
-| 71 | `Faturas.tsx` não diferencia faturas pré-pagas para o aluno | `PaymentOptionsCard` conflita com Stripe Invoice flow para faturas `prepaid_class` |
-| 72 | `invoice.payment_succeeded` hardcoda `payment_method: 'stripe_invoice'` | Perde informação do método real usado (boleto/pix/card) |
-| 73 | Deploy checklist não inclui `automated-billing` para redeployment | FK joins podem ficar stale após migração de schema |
-| 74 | `create-payment-intent-connect` não listado como arquivo a modificar | Atualização do SDK v14.21.0→v14.24.0 não rastreada |
-| 75 | Webhook handlers usam `.single()` para buscar invoices | Invoices não encontradas causam erro 500 → retries infinitos do Stripe |
+| 76 | **CRÍTICO**: `process-class-billing` não verifica `student_monthly_subscriptions.is_active` | Alunos com mensalidade seriam cobrados pré-pago E perderiam franquia do plano (dupla cobrança) |
+| 77 | `process-class-billing` não valida ownership dos `class_ids` | Professor poderia processar billing de aulas de outro professor |
+| 78 | Gap 71 afirma que `Faturas.tsx` usa `PaymentOptionsCard` — INCORRETO | `Faturas.tsx` NÃO importa `PaymentOptionsCard`. Correção real: ocultar botão `change-payment-method` para faturas `prepaid_class` |
+| 79 | Handlers `invoice.voided`, `invoice.payment_failed`, `payment_intent.payment_failed` não chamam `completeEventProcessing(false, error)` | Erros nesses handlers são marcados como sucesso, impedindo retries |
+| 80 | `invoice.paid` handler extrai `stripeAccountId` do objeto invoice (pode ser null) | Deve usar `event.account` (campo confiável para Connect webhooks) com fallback |
+| 81 | `invoice.payment_failed` para faturas pré-pagas não tem tratamento específico documentado | Edge case: aula fica `confirmada` mas sem pagamento. Professor decide ação. |
 
 ## Próximos passos
 

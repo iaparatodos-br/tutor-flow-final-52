@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.8 (Revisada — 75 gaps corrigidos)
+> **Versão**: 1.9 (Revisada — 81 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -494,6 +494,13 @@ interface ProcessClassBillingResponse {
    → O `teacher_id` no body é IGNORADO; o professor autenticado é determinado pelo JWT
    → Isso segue o padrão de segurança do projeto (doc: `teacher-context-security-pattern.md`)
 
+1.5 [CORREÇÃO v1.9 - Gap 77] Validar ownership dos class_ids:
+   → Para cada class_id recebido no body, buscar `classes.teacher_id`
+   → Se `class.teacher_id !== authenticated_teacher_id`, REJEITAR com erro 403
+   → Sem essa validação, um professor autenticado poderia passar class_ids de outro professor
+     e o sistema processaria (usando o business_profile do atacante mas referenciando aulas alheias)
+   → Implementar ANTES de qualquer lógica de billing
+
 2. Buscar business_profile do professor:
    SELECT id, charge_timing, stripe_connect_id, enabled_payment_methods
    FROM business_profiles
@@ -530,6 +537,19 @@ interface ProcessClassBillingResponse {
         - Excluir aulas experimentais (is_experimental = true)
         - Excluir aulas que já têm invoice_classes (evitar duplicidade - redundância com 3a)
    
+   3a-ter. [CORREÇÃO v1.9 - Gap 76] Excluir participantes com mensalidade ativa:
+        - Para cada participante, buscar `teacher_student_relationships.id` (relationship_id)
+          WHERE teacher_id = authenticated_teacher_id AND student_id = participant.student_id
+        - Com o relationship_id, buscar `student_monthly_subscriptions`
+          WHERE relationship_id = relationship_id AND is_active = true
+        - Se o participante TEM mensalidade ativa: PULAR billing pré-pago para ele
+          → Aula será contabilizada pelo `automated-billing` no ciclo da mensalidade
+          → Logar: `Skipping prepaid for participant ${participantId}: has active subscription`
+        - Para dependentes: usar o responsible_id para buscar a relação
+        - **CRÍTICO**: Sem essa verificação, `process-class-billing` criaria `invoice_classes`
+          que impediriam `get_unbilled_participants_v2` de contar a aula na franquia do plano.
+          Resultado: aluno cobrado 2x (prepaid individual + mensalidade base).
+
    3b. Agrupar participantes por student_id (responsável):
        - Se participante tem dependent_id, buscar responsible_id na tabela dependents
        - Agrupar todas as aulas do mesmo responsável em uma única fatura
@@ -1162,13 +1182,13 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | Componente | Impacto | Ação |
 |-----------|---------|------|
 | `automated-billing` (tradicional) | Baixo | Aulas pré-pagas já terão `invoice_classes`, serão filtradas pela RPC |
-| `automated-billing` (mensalidades) | Nenhum | Mensalidades não são afetadas por `charge_timing` |
+| `automated-billing` (mensalidades) | **Médio** | [Gap 76] Alunos COM mensalidade ativa NÃO devem ser cobrados pré-pago. `process-class-billing` deve verificar `student_monthly_subscriptions.is_active` antes de criar invoice. Sem isso, aula é cobrada pré-pago E não entra na franquia da mensalidade (double-billing). |
 | `create-invoice` (manual) | Nenhum | Continua funcionando independentemente |
 | `create-payment-intent-connect` | Nenhum | Continua para pagamentos de faturas existentes |
 | `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista |
-| `Faturas.tsx` (aluno) | **Médio** | [Gap 71] Faturas pré-pagas (`invoice_type === 'prepaid_class'`) devem exibir APENAS o link Stripe hosted (`stripe_hosted_invoice_url`) e OCULTAR o `PaymentOptionsCard`. O botão "Pagar Agora" redireciona para `hosted_invoice_url`. O `change-payment-method` NÃO se aplica. |
+| `Faturas.tsx` (aluno) | **Médio** | [Gap 78] `Faturas.tsx` NÃO usa `PaymentOptionsCard` (verificação de código confirma 0 referências). O fluxo existente `handlePayNow → openExternalUrl(hosted_invoice_url)` já funciona para faturas pré-pagas. A correção real é: ocultar o botão `change-payment-method` (RefreshCw icon) para `invoice_type === 'prepaid_class'`, pois troca de método via `change-payment-method` edge function não se aplica ao Invoice flow do Stripe. |
 | `InvoiceTypeBadge.tsx` | **Médio** | Adicionar tipo `prepaid_class` e `cancellation` ao mapeamento |
-| `PaymentOptionsCard` | **Baixo** | [Gap 71] NÃO deve aparecer para `invoice_type === 'prepaid_class'`. Essas faturas usam o Stripe Invoice flow nativo, que gerencia métodos de pagamento internamente. |
+| `PaymentOptionsCard` | **Nenhum** | [Gap 78] CORREÇÃO: `Faturas.tsx` NÃO importa nem usa `PaymentOptionsCard`. O componente aparece apenas em `Financeiro.tsx` (visão do professor), onde já é contextual para faturas com Payment Intent. Nenhuma alteração necessária no `PaymentOptionsCard`. |
 | `CancellationModal.tsx` | **Nenhum** | [Gap 7] Verificação movida para `process-cancellation` (backend). Frontend sem alteração. |
 | `StudentImportDialog` | Nenhum | Import de alunos não interage com billing |
 | Aulas antigas (sem `charge_timing`) | Nenhum | Continuam no fluxo pós-pago (automated-billing) |
@@ -1182,6 +1202,7 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | Risco | Probabilidade | Impacto | Mitigação |
 |-------|--------------|---------|-----------|
 | Duplicidade de cobrança (pré-pago + automated-billing) | Média | Alto | RPC `get_unbilled_participants_v2` filtra participantes já faturados via `invoice_classes` |
+| **[Gap 76] Aluno com mensalidade cobrado pré-pago** | **Alta** | **Alto** | **`process-class-billing` DEVE verificar `student_monthly_subscriptions.is_active` antes de criar invoice. Sem isso, aluno perde franquia do plano e é cobrado 2x.** |
 | Falha na criação do Invoice no Stripe | Baixa | Médio | Não impede criação da aula; professor pode cobrar manualmente depois |
 | Aluno sem customer_id no Stripe Connected | Média | Médio | Criar customer automaticamente na primeira cobrança pré-paga |
 | Professor muda de prepaid para postpaid com faturas pendentes | Baixa | Baixo | Faturas existentes não são afetadas; apenas novas aulas seguem nova config |
@@ -1191,6 +1212,8 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | Materialização pelo aluno não dispara billing | Baixa | Baixo | Design intencional: billing é responsabilidade do professor |
 | Professor com múltiplos business_profiles | Baixa | Médio | Usar `teacher_student_relationships.business_profile_id` como fonte da verdade (padrão existente) |
 | Invoice do Stripe sem metadata.lesson_id | Baixa | Médio | Validar que `lesson_id` está em metadata de cada InvoiceItem; logar se ausente |
+| **[Gap 77] Class IDs de outro professor processados** | **Baixa** | **Alto** | **Validar `classes.teacher_id === authenticated_teacher_id` para cada class_id antes de processar billing** |
+| **[Gap 81] Falha de pagamento em fatura pré-paga sem tratamento** | **Baixa** | **Médio** | **Documentado como edge case: aula permanece `confirmada`, fatura fica `falha_pagamento`. Professor decide ação (cancelar aula ou cobrar manualmente).** |
 
 ---
 
@@ -1328,11 +1351,18 @@ FASE 8: Testes e Validação
 - [ ] [v1.7] Verificar que `get_unbilled_participants_v2` RPC filtra corretamente aulas pré-pagas (via `LEFT JOIN invoice_classes ... WHERE ic.id IS NULL`)
 
 - [ ] [v1.8] Verificar que `process-cancellation` filtra `class_participants` por `dependent_id` quando presente (Gap 70)
-- [ ] [v1.8] Verificar que `Faturas.tsx` oculta `PaymentOptionsCard` para `invoice_type === 'prepaid_class'` (Gap 71)
+- [ ] [v1.8] ~~Verificar que `Faturas.tsx` oculta `PaymentOptionsCard` para `invoice_type === 'prepaid_class'`~~ [Gap 78] CORRIGIDO: `Faturas.tsx` não usa `PaymentOptionsCard`. Verificar que botão `change-payment-method` (RefreshCw) é ocultado para `invoice_type === 'prepaid_class'`
 - [ ] [v1.8] Verificar que `invoice.payment_succeeded` extrai `payment_method` real do Stripe (não hardcoda `'stripe_invoice'`) (Gap 72)
 - [ ] [v1.8] Verificar que `automated-billing` foi redeployado após migração de schema (Gap 73)
 - [ ] [v1.8] Verificar que `create-payment-intent-connect` usa `stripe@14.24.0` (Gap 74)
 - [ ] [v1.8] Verificar que handlers `invoice.paid`/`invoice.payment_succeeded` usam `.maybeSingle()` (não `.single()`) (Gap 75)
+
+- [ ] [v1.9] Verificar que `process-class-billing` consulta `student_monthly_subscriptions.is_active` e PULA participantes com mensalidade ativa (Gap 76)
+- [ ] [v1.9] Verificar que `process-class-billing` valida `classes.teacher_id === authenticated_teacher_id` para cada class_id (Gap 77)
+- [ ] [v1.9] Verificar que `Faturas.tsx` oculta botão `change-payment-method` (RefreshCw) para faturas `prepaid_class` (Gap 78)
+- [ ] [v1.9] Verificar que TODOS os handlers de webhook (`invoice.voided`, `invoice.payment_failed`, `payment_intent.payment_failed`) chamam `completeEventProcessing(false, error)` em caminhos de erro (Gap 79)
+- [ ] [v1.9] Verificar que `invoice.paid` handler extrai `stripeAccountId` do evento Stripe (não do objeto invoice) para `listLineItems` (Gap 80)
+- [ ] [v1.9] Verificar que falha de pagamento em fatura pré-paga é tratada como edge case documentado (Gap 81)
 
 ### Deploy
 
@@ -1472,6 +1502,19 @@ FASE 8: Testes e Validação
 
 ---
 
+### Revisão v1.9
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 76 | **CRÍTICO**: `process-class-billing` não verifica mensalidade ativa do aluno | Sem verificação, alunos com `student_monthly_subscriptions.is_active = true` seriam cobrados individualmente (prepaid). Isso cria `invoice_classes` que impedem `get_unbilled_participants_v2` de contar a aula na franquia do plano. Resultado: dupla cobrança (prepaid + mensalidade base). FIX: Antes do passo 3b, buscar `student_monthly_subscriptions` via `relationship_id` (de `teacher_student_relationships`). Se `is_active = true`, pular participante. Para dependentes, usar `responsible_id` para encontrar a relação. Adicionado passo 3a-ter na seção 5.1. |
+| 77 | `process-class-billing` não valida ownership dos `class_ids` | Um professor autenticado poderia passar `class_ids` de outro professor. A função usaria o `business_profile` correto (do JWT) mas criaria `invoice_classes` referenciando aulas alheias. FIX: Para cada `class_id`, validar `classes.teacher_id === authenticated_teacher_id`. Se diferente, rejeitar com erro 403. Adicionado passo 1.5 na seção 5.1. |
+| 78 | Gap 71 afirma que `Faturas.tsx` usa `PaymentOptionsCard` — INCORRETO | Verificação de código confirma: `Faturas.tsx` NÃO importa nem renderiza `PaymentOptionsCard` (0 referências). O componente só aparece em `Financeiro.tsx` (visão professor). O fluxo existente `handlePayNow → openExternalUrl(hosted_invoice_url)` já funciona para faturas pré-pagas. A correção REAL necessária é: ocultar o botão `change-payment-method` (ícone RefreshCw, linha 371-379) quando `invoice.invoice_type === 'prepaid_class'`, pois `change-payment-method` edge function manipula Payment Intents, não Stripe Invoices. Tabela de compatibilidade (seção 9) atualizada. |
+| 79 | Handlers de webhook `invoice.voided`, `invoice.payment_failed`, `payment_intent.payment_failed` não chamam `completeEventProcessing(false, error)` | O Gap 67 identificou o problema para `invoice.payment_succeeded` e disse "aplicar o MESMO pattern em TODOS os handlers", mas não listou explicitamente os demais. Handlers afetados: `invoice.voided` (linhas 420-438): usa `if/else` sem return, erro cai no `completeEventProcessing(true)` na linha 544. `invoice.payment_failed` (linhas 372-393): mesmo padrão. `payment_intent.payment_failed` (linhas 504-537): mesmo padrão. FIX: Todos devem usar o pattern `if (error) { completeEventProcessing(false, error); return 500; }`. |
+| 80 | `invoice.paid` handler extrai `stripeAccountId` do objeto invoice, pode ser null | O código proposto (linha 746 do plano) usa `paidInvoice.account as string`. Para webhooks Connect, o Connected Account ID está no campo `account` do EVENTO (`event.account`), não necessariamente no objeto invoice. Para webhooks recebidos via platform endpoint, `event.account` é o campo confiável. FIX: Usar `(event as any).account || paidInvoice.account` como fallback, com validação de null antes de chamar `listLineItems`. Se null, logar warning e pular iteração de line items. |
+| 81 | `invoice.payment_failed` para faturas pré-pagas não tem tratamento específico | Quando uma fatura `prepaid_class` falha no pagamento (ex: boleto não pago, PIX expirado), a aula permanece `confirmada` mas sem pagamento. O plano não documenta este cenário. Decisão: a aula NÃO é cancelada automaticamente (poderia causar problemas se o aluno pagar depois). Professor é responsável por decidir ação (cancelar aula manualmente ou esperar pagamento). Adicionado como edge case documentado (Apêndice B.3) e à tabela de riscos. |
+
+---
+
 ## Apêndice B: Edge Cases Documentados na v1.2
 
 ### B.1 Participante adicionado a aula em grupo após faturamento (Gap 9)
@@ -1495,3 +1538,23 @@ FASE 8: Testes e Validação
 3. **Aulas antigas (pré-feature)**: Não possuem `invoice_classes`. Serão capturadas pelo `automated-billing` normalmente no próximo ciclo, como sempre foram.
 
 Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece inalterado**.
+
+### B.3 Falha de pagamento em fatura pré-paga (Gap 81)
+
+**Cenário**: Professor tem `charge_timing = 'prepaid'`. Cria aula → fatura pré-paga gerada → aluno não paga (boleto expirou, PIX expirou, cartão recusado).
+
+**Estado resultante**:
+- Aula: `status = 'confirmada'` (permanece inalterada)
+- Fatura: `status = 'falha_pagamento'`
+- Participante: `status = 'confirmada'` (já foi confirmado na criação)
+
+**Decisão**: **Não cancelar a aula automaticamente**. Razões:
+1. O aluno pode pagar depois (retry, novo método de pagamento)
+2. Cancelar automaticamente por falha de pagamento seria agressivo e poderia gerar conflitos
+3. O professor tem visibilidade da fatura no Financeiro e pode decidir a ação
+
+**Ações possíveis pelo professor**:
+- Aguardar pagamento (Stripe pode retentar automaticamente dependendo da configuração)
+- Cancelar a aula manualmente (process-cancellation fará void da fatura)
+- Cobrar manualmente via módulo financeiro
+- Conceder anistia (se aplicável)

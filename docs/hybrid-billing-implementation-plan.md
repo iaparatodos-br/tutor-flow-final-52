@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.5 (Revisada — 57 gaps corrigidos)
+> **Versão**: 1.6 (Revisada — 63 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -455,9 +455,11 @@ O ClassForm já exibe os serviços e seus preços. Nenhuma alteração é necess
 
 ```typescript
 // CORS headers (obrigatório)
+// [CORREÇÃO v1.6 - Gap 60] CORS headers DEVEM incluir headers específicos do Supabase
+// para compatibilidade com o cliente JS do Supabase.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 // Parâmetros de entrada
@@ -479,7 +481,11 @@ interface ProcessClassBillingResponse {
 **Lógica principal detalhada:**
 
 ```
-1. Autenticar professor (auth.uid() === teacher_id)
+1. [CORREÇÃO v1.6 - Gap 61] Autenticar professor via `supabase.auth.getUser(token)`:
+   → Extrair JWT do header `Authorization: Bearer <token>`
+   → Validar com `supabaseClient.auth.getUser(token)` (mesmo padrão de `create-invoice`)
+   → O `teacher_id` no body é IGNORADO; o professor autenticado é determinado pelo JWT
+   → Isso segue o padrão de segurança do projeto (doc: `teacher-context-security-pattern.md`)
 
 2. Buscar business_profile do professor:
    SELECT id, charge_timing, stripe_connect_id, enabled_payment_methods
@@ -530,6 +536,12 @@ interface ProcessClassBillingResponse {
                → UPDATE teacher_student_relationships SET stripe_customer_id = connectedCustomerId
                  WHERE teacher_id = teacher_id AND student_id = studentId
                → Evita buscar/criar novamente em futuras cobranças
+             - [CORREÇÃO v1.6 - Gap 62] A edge function `create-payment-intent-connect` 
+               TAMBÉM cria customers no Connected Account (linhas 422-434) mas NÃO persiste 
+               o ID. Para evitar duplicação, `process-class-billing` deve PRIMEIRO verificar 
+               `teacher_student_relationships.stripe_customer_id` antes de chamar `stripe.customers.list`.
+               → Se já existe: usar diretamente (sem chamar a API Stripe)
+               → Se não existe: buscar por email, criar se necessário, E persistir
        iii. [CORREÇÃO v1.2 - Gap 5] Para cada aula desse aluno:
             - Se participante tem dependent_id:
               → Buscar nome do dependente: SELECT name FROM dependents WHERE id = dependent_id
@@ -635,6 +647,8 @@ interface ProcessClassBillingResponse {
 5. **Lote para aulas avulsas**: Se `class_ids` tem mais de uma aula para o MESMO aluno, criar N Invoice Items e UMA única Invoice.
 
 6. **Múltiplos alunos**: Se `class_ids` inclui aulas em grupo com múltiplos participantes, criar UMA Invoice por aluno (cada um com seus itens).
+
+7. **[CORREÇÃO v1.6 - Gap 63] Billing parcial em grupo**: A RPC `get_unbilled_participants_v2` filtra por `participant_id` (não `class_id`). Isso significa que em uma aula em grupo, se 3 dos 4 participantes já foram cobrados (pré-pago), apenas o 4º será capturado pelo `automated-billing`. Documentar esse comportamento explicitamente para evitar confusão durante testes.
 
 ### 5.2 Ajustes no automated-billing
 
@@ -787,13 +801,13 @@ case 'invoice.paid': {
 
 > **CORREÇÃO v1.2 (Gap 3)**: Adicionar import do Stripe SDK no topo do arquivo:
 > ```typescript
-> // [CORREÇÃO v1.5 - Gap 52] Padronizar versão do Stripe SDK em TODAS as edge functions
-> import Stripe from "https://esm.sh/stripe@14.21.0";
+> // [CORREÇÃO v1.6 - Gap 58] Padronizar versão do Stripe SDK em TODAS as edge functions
+> import Stripe from "https://esm.sh/stripe@14.24.0";
 > ```
 > O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
 > é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
 > **NOTA**: Todas as edge functions que usam Stripe DEVEM usar a mesma versão do SDK
-> (`stripe@14.21.0`) para evitar incompatibilidades de tipos e comportamento.
+> (`stripe@14.24.0`) para evitar incompatibilidades de tipos e comportamento.
 > O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
 > é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
 
@@ -1046,7 +1060,9 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 
 ### 8.3 payment_intent.succeeded (existente)
 
-O handler existente de `payment_intent.succeeded` continua funcionando para faturas criadas via `create-payment-intent-connect`. As novas faturas pré-pagas usam Stripe Invoices (não Payment Intents diretos), então são capturadas pelos handlers `invoice.paid` / `invoice.payment_succeeded`.
+> **[CORREÇÃO v1.6 - Gap 59]**: O handler existente de `payment_intent.succeeded` TAMBÉM 
+> sobrescreve `payment_origin` incondicionalmente. Aplicar a mesma correção do Gap 53:
+> verificar o valor atual de `payment_origin` e só definir `'automatic'` se for null.
 
 ---
 
@@ -1200,12 +1216,17 @@ FASE 8: Testes e Validação
 - [ ] [v1.4] Verificar que `apiVersion: "2023-10-16"` é padronizado em todas novas funções Stripe
 - [ ] [v1.5] Verificar que `send-invoice-notification` recebe `notification_type: 'invoice_created'` (não apenas `invoice_id`)
 - [ ] [v1.5] Verificar que indicador visual na Agenda usa query em `invoice_classes` (view não tem `has_prepaid_invoice`)
-- [ ] [v1.5] Verificar que versão do Stripe SDK é `stripe@14.21.0` em TODAS as edge functions
+- [ ] [v1.6] Verificar que versão do Stripe SDK é `stripe@14.24.0` em TODAS as edge functions (alinhado com webhook existente)
 - [ ] [v1.5] Verificar que `invoice.paid` webhook NÃO sobrescreve `payment_origin: 'prepaid'` com `'automatic'`
 - [ ] [v1.5] Verificar que `process-cancellation` itera TODAS as faturas pré-pagas (não `.limit(1)`)
 - [ ] [v1.5] Verificar que `Agenda.tsx` exibe toast de feedback após `process-class-billing`
 - [ ] [v1.5] Verificar que `invoice.paid` e `invoice.payment_succeeded` chamam `completeEventProcessing(false, error)` em TODOS os caminhos de erro
 - [ ] [v1.5] Verificar que webhook usa `.autoPagingToArray()` em vez de `for await` para listLineItems
+- [ ] [v1.6] Verificar que CORS headers incluem `x-supabase-client-platform` e demais headers do cliente Supabase
+- [ ] [v1.6] Verificar que `process-class-billing` autentica via JWT (`auth.getUser(token)`) e ignora `teacher_id` do body
+- [ ] [v1.6] Verificar que `process-class-billing` consulta `stripe_customer_id` em `teacher_student_relationships` ANTES de chamar API Stripe
+- [ ] [v1.6] Verificar que `payment_intent.succeeded` handler NÃO sobrescreve `payment_origin: 'prepaid'` com `'automatic'`
+- [ ] [v1.6] Verificar que `get_unbilled_participants_v2` filtra por `participant_id` (billing parcial em grupo funciona)
 
 ### Deploy
 
@@ -1303,12 +1324,23 @@ FASE 8: Testes e Validação
 |---|------------------|-----------|
 | 50 | `send-invoice-notification` requer `notification_type` obrigatório no payload | Corrigido passo 4: payload agora inclui `notification_type: 'invoice_created'`. Sem ele, a edge function não sabe qual template usar e falha silenciosamente. |
 | 51 | View `class_billing_status` não tem campo `has_prepaid_invoice` | Revertido Gap 46: campos da view são apenas `class_id`, `teacher_id`, `total_participants`, `billed_participants`, `fully_billed`, `has_billed_items`. `has_billed_items` é genérico (todos os tipos). Para prepaid específico, usar query direta em `invoice_classes` com filtro `item_type = 'prepaid_class'`. |
-| 52 | Versão do Stripe SDK inconsistente entre edge functions | Padronizado `stripe@14.21.0` em TODAS as edge functions. Adicionada nota explícita na seção 5.4 e como requisito no checklist. |
+| 52 | Versão do Stripe SDK inconsistente entre edge functions | [Atualizado v1.6 - Gap 58] Padronizado `stripe@14.24.0` em TODAS as edge functions (alinhado com webhook-stripe-connect existente). |
 | 53 | Webhook `invoice.paid` sobrescreve `payment_origin: 'prepaid'` com `'automatic'` | Corrigido: handler agora verifica `payment_origin` atual antes de atualizar. Se já tem valor (ex: `'prepaid'`, `'manual'`), preserva. Só define `'automatic'` se `payment_origin` é null. |
 | 54 | `process-cancellation` usa `.limit(1)` para faturas pré-pagas | Corrigido: removido `.limit(1).maybeSingle()`. Agora busca TODAS as faturas pré-pagas vinculadas e itera com `for...of` para void de cada uma. Crucial para aulas em grupo com múltiplas faturas (uma por aluno). |
 | 55 | `Agenda.tsx` sem feedback visual após `process-class-billing` | Adicionado: tratar resposta da edge function com toasts para `prepaid` (sucesso), `stripe_not_ready` (warning) e erros. Adicionadas chaves i18n `chargeTiming.prepaidInvoiceCreated` e `chargeTiming.stripeNotReady`. |
 | 56 | Handlers `invoice.paid` e `invoice.payment_succeeded` sem `completeEventProcessing` em caminhos de erro | Corrigido: adicionado `completeEventProcessing(supabaseClient, event.id, false, error)` em TODOS os catches e caminhos de erro dos handlers, incluindo falha no update do banco e falha ao buscar line items. |
 | 57 | `for await` incompatível com Stripe SDK no Deno runtime | Substituído por `.autoPagingToArray({ limit: 10000 })` que é mais confiável no Deno. `for await` pode falhar com certos async iterators do SDK Stripe em ambientes não-Node.js. |
+
+### Revisão v1.6
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 58 | Versão do Stripe SDK divergente: plano dizia `v14.21.0` mas webhook já usa `v14.24.0` | Padronizado `stripe@14.24.0` em TODAS as edge functions. A versão v14.24.0 já está em produção no `webhook-stripe-connect`. Usar versão menor causaria incompatibilidades de tipos. |
+| 59 | Handler `payment_intent.succeeded` também sobrescreve `payment_origin: 'prepaid'` | Aplicada mesma correção do Gap 53: verificar `payment_origin` atual antes de definir `'automatic'`. O handler `payment_intent.succeeded` processa pagamentos de faturas criadas por `create-payment-intent-connect` (PIX/Boleto), que podem ter `payment_origin: 'prepaid'` se originadas por `process-class-billing`. |
+| 60 | CORS headers de `process-class-billing` faltam headers específicos do Supabase | Adicionados `x-supabase-client-platform`, `x-supabase-client-platform-version`, `x-supabase-client-runtime`, `x-supabase-client-runtime-version` aos CORS headers. Sem eles, requisições do cliente Supabase JS podem ser bloqueadas pelo preflight. |
+| 61 | `process-class-billing` usa `teacher_id` do body sem validação | Corrigido: autenticação via `supabase.auth.getUser(token)` com JWT do header `Authorization`. O `teacher_id` do body é ignorado; o professor autenticado é determinado pelo JWT. Segue padrão de `create-invoice` e `teacher-context-security-pattern.md`. |
+| 62 | `create-payment-intent-connect` cria Stripe customers sem persistir `stripe_customer_id` | Documentado: `process-class-billing` deve PRIMEIRO verificar `teacher_student_relationships.stripe_customer_id` antes de chamar a API Stripe. Se já existe, usar diretamente. A correção no `create-payment-intent-connect` é desejável mas fora do escopo desta implementação. |
+| 63 | `get_unbilled_participants_v2` filtra por `participant_id` — comportamento em grupo | Confirmado e documentado: a RPC filtra por `participant_id` (não `class_id`), permitindo billing parcial em grupo (3 de 4 alunos cobrados pré-pago, 4º capturado pelo `automated-billing`). Isso é correto e intencional, mas precisa ser documentado para evitar confusão em testes. |
 
 ---
 

@@ -1,20 +1,20 @@
 
-# Plano de Implementação: Cobrança Híbrida - v2.7 Completa
+# Plano de Implementação: Cobrança Híbrida - v2.9 Completa
 
-## Status: Documento atualizado para v2.8 com 155 gaps corrigidos
+## Status: Documento atualizado para v2.9 com 161 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.8, incorporando 6 novos gaps técnicos (150-155) identificados na revisão cruzada com o código-fonte real.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.9, incorporando 6 novos gaps técnicos (156-161) identificados na revisão cruzada com o código-fonte real.
 
-## Gaps incorporados na v2.7
+## Gaps incorporados na v2.9
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 150 | **CRÍTICO**: `const stripeAccountId` declarado 2x na seção 5.3 → `SyntaxError` | Código proposto não compilaria |
-| 151 | Gap 118 rollback não deleta registro local em `invoices` se `invoice_classes` falhar | Invoice órfã no banco sem line items |
-| 152 | Gap 82 descreve `invoice.voided` incorretamente (real: if/else sem return) | Implementador pode aplicar fix errado |
-| 153 | Gap 3 diz para adicionar Stripe import que já existe em `process-cancellation` | Confusão na implementação |
-| 154 | Deploy checklist não verifica `SITE_URL` env var | Emails com links quebrados |
-| 155 | Gap 145 cobre só `invoice_created` — reminder e overdue também precisam CTA prepaid | Aluno sem link de pagamento em lembretes |
+| 156 | **CRÍTICO**: Gap 153 afirmava erroneamente que `process-cancellation` já tinha import Stripe — código real NÃO tem | Implementador pularia import → `ReferenceError` em runtime |
+| 157 | Variável `voidResult` usada na seção 5.4 (Gap 148) nunca é declarada | `ReferenceError` ao atribuir resultado do void de fatura paga |
+| 158 | Gap 147 (partial unique index) não está na seção 3 "Estrutura de Dados" | Migração incompleta → sem proteção DB contra duplicatas prepaid |
+| 159 | `send-invoice-notification` — modificações para Gaps 145/155 sem código explícito | Implementador não sabe ONDE/COMO modificar os CTAs no switch |
+| 160 | Gap 91 ausente da numeração (v2.1 pula de 90 para 92) | Confusão na contagem total de gaps |
+| 161 | Apêndice A sem seções v2.5, v2.6, v2.7 — Gaps 126-149 sem documentação tabular | Implementadores perdem contexto/rationale de 24 correções |
 
 ## Próximos passos
 

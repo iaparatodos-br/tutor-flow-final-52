@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.6 (Revisada — 143 gaps corrigidos)
+> **Versão**: 2.7 (Revisada — 149 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -587,7 +587,10 @@ interface ProcessClassBillingResponse {
 2.6 [CORREÇÃO v1.2 - Gap 4] Buscar payment_due_days:
    SELECT payment_due_days FROM profiles WHERE id = teacher_id
    → O campo payment_due_days está na tabela `profiles` (NÃO em business_profiles)
-   → Valor padrão: 7 (se null)
+   → [CORREÇÃO v2.7 - Gap 144] Valor padrão: 15 (se null). O `automated-billing` (linha 148) 
+     usa `|| 15` como fallback. `process-class-billing` DEVE usar o MESMO default para consistência.
+     Anteriormente documentado como 7, causaria discrepância entre datas de vencimento de faturas
+     pré-pagas (7 dias) e pós-pagas (15 dias) para o mesmo professor.
    → Será usado em days_until_due na criação da Invoice Stripe (passo 3c.iv)
 
 3. Se charge_timing === 'prepaid':
@@ -736,17 +739,29 @@ interface ProcessClassBillingResponse {
    ```typescript
    // [CORREÇÃO v1.5 - Gap 50] O payload DEVE incluir notification_type (campo obrigatório).
    // Sem ele, a edge function não sabe qual template de email usar e falha silenciosamente.
-   await supabaseClient.functions.invoke('send-invoice-notification', {
-     body: { 
-       invoice_id: newInvoice.id,
-       notification_type: 'invoice_created'  // ← OBRIGATÓRIO
-     }
-   });
+   // [CORREÇÃO v2.7 - Gap 146] Fire-and-forget: NÃO esperar resposta nem falhar billing por erro de notificação.
+   try {
+     await supabaseClient.functions.invoke('send-invoice-notification', {
+       body: { 
+         invoice_id: newInvoice.id,
+         notification_type: 'invoice_created'  // ← OBRIGATÓRIO
+       }
+     });
+   } catch (notificationError) {
+     // [Gap 146] Notificação é non-critical. Invoice já foi criada com sucesso.
+     // Aluno pode acessar a fatura via app mesmo sem email.
+     logStep("Warning: failed to send invoice notification (non-critical)", {
+       invoiceId: newInvoice.id,
+       error: (notificationError as Error).message
+     });
+   }
    ```
    → Sem isso, aluno NÃO recebe email/notificação da fatura pré-paga.
    → O `send-invoice-notification` já existe e envia email via SES + cria notificação in-app.
    → **ATENÇÃO**: O campo `notification_type` é obrigatório. Valores aceitos: 
      `'invoice_created'`, `'invoice_payment_reminder'`, `'invoice_paid'`, `'invoice_overdue'`.
+   → [Gap 146] Se a notificação falhar, a fatura permanece válida e acessível no app. 
+     O erro é logado para monitoramento mas NÃO impede a criação da fatura.
 
 5. Retornar resultado com IDs das faturas criadas
 ```
@@ -847,6 +862,23 @@ case 'invoice.paid': {
   if (!currentInvoice?.payment_origin) {
     updateData.payment_origin = 'automatic';
   }
+
+  // [CORREÇÃO v2.7 - Gap 149] Extrair payment_method REAL do charge associado (conforme Gap 94).
+  // A seção 8.1 documenta a lógica mas ela DEVE estar incluída no handler código.
+  const stripeAccountId = (event as any).account || (paidInvoice as any).account;
+  let paymentMethod = 'stripe_invoice'; // fallback
+  const chargeId = typeof paidInvoice.charge === 'string' 
+    ? paidInvoice.charge 
+    : (paidInvoice.charge as any)?.id;
+  if (chargeId && stripeAccountId) {
+    try {
+      const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: stripeAccountId });
+      paymentMethod = (charge as any).payment_method_details?.type || 'stripe_invoice';
+    } catch (chargeError) {
+      logStep("Could not retrieve charge for payment method", { chargeId, error: chargeError });
+    }
+  }
+  updateData.payment_method = paymentMethod;
   
   const { error: paidError } = await supabaseClient
     .from('invoices')
@@ -1214,8 +1246,15 @@ for (const prepaidInvoice of prepaidInvoices) {
     console.log('⚠️ Prepaid invoice already paid - cannot void. Cancellation charge may apply separately.');
     // Se já paga, o fluxo normal de cancelamento continua
     // O professor deve decidir sobre reembolso manualmente
+    // [CORREÇÃO v2.7 - Gap 148] Informar o frontend sobre a fatura paga para feedback ao professor
+    voidResult = {
+      voided: false,
+      reason: 'already_paid',
+      paid_amount: prepaidInvoice.amount || 0,
+      stripe_invoice_id: prepaidInvoice.stripe_invoice_id,
+      message: 'Fatura pré-paga já foi paga. O reembolso deve ser feito manualmente.'
+    };
   }
-}
 ```
 
 **NOTA**: A lógica de void é separada e acontece ANTES da decisão de `shouldCharge`. Se a fatura pré-paga é anulada, NÃO geramos cobrança de cancelamento adicional (seria dupla penalização).
@@ -1584,6 +1623,12 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | **[Gap 141] `send-invoice-notification` template não prioriza `stripe_hosted_invoice_url`** | **Baixa** | **Médio** | **Para faturas prepaid, `boleto_url` e `pix_copy_paste` são null. Template precisa usar `stripe_hosted_invoice_url` como CTA principal. FIX: `const paymentUrl = invoice.stripe_hosted_invoice_url \|\| invoice.boleto_url \|\| null`.** |
 | **[Gap 142] `process-class-billing` não seta `original_amount` na invoice local** | **Baixa** | **Baixo** | **Campo `original_amount` existe na tabela. Outros fluxos setam para rastrear valor original. FIX: setar `original_amount: amount` (sem desconto em prepaid).** |
 | **[Gap 143] Falha de invocação de `process-class-billing` é silenciosa para o professor** | **Média** | **Alto** | **Quando `billingError` é truthy (timeout/rede), apenas `console.error`. Professor não sabe que billing falhou. FIX: toast warning: "Aula criada, mas cobrança automática falhou." Chaves i18n adicionadas em billing.json (seção 6.1/6.2).** |
+| **[Gap 144] `payment_due_days` default inconsistente entre documento e código existente** | **Baixa** | **Médio** | **Documento dizia default 7, mas `automated-billing` (linha 148) usa `\|\| 15` como fallback. `process-class-billing` DEVE usar 15 para consistência. Sem isso, faturas pré-pagas teriam vencimento em 7 dias e pós-pagas em 15 dias para o mesmo professor. FIX: corrigido default para 15 no passo 2.6.** |
+| **[Gap 145] `send-invoice-notification` CTA para faturas prepaid não linka para Stripe hosted URL** | **Baixa** | **Médio** | **O botão CTA principal em `invoice_created` (linha 240) sempre linka para `${SITE_URL}/faturas`. Para faturas `prepaid_class`, o aluno pode não ter acesso ao app ainda. O CTA deveria linkar para `stripe_hosted_invoice_url` quando disponível. FIX: no `send-invoice-notification`, se `invoice.invoice_type === 'prepaid_class' && invoice.stripe_hosted_invoice_url`, usar como href do CTA com texto "Pagar Agora". Fallback para `${SITE_URL}/faturas`.** |
+| **[Gap 146] `process-class-billing` invoca `send-invoice-notification` sem tratamento de erro explícito** | **Baixa** | **Médio** | **Passo 4 chamava `await supabaseClient.functions.invoke(...)` sem try/catch. Se notificação falhar (SES down, template error), a exceção propagaria e falharia todo o billing — mesmo que a fatura já tenha sido criada com sucesso. FIX: wrapping em try/catch fire-and-forget com log warning. Fatura permanece válida independente do email.** |
+| **[Gap 147] Sem constraint de unicidade no DB para `invoice_classes` prepaid** | **Baixa** | **Alto** | **Gap 92 usa Stripe Idempotency Keys para prevenir cobranças duplicadas. Porém, chamadas concorrentes (double-click rápido, dois tabs) podem ambas passar o check de idempotência no passo 3a (TOCTOU) e criar registros duplicados em `invoice_classes` no DB — mesmo que Stripe retorne a mesma Invoice (idempotent). FIX: criar partial unique index: `CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_prepaid_invoice_class ON invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'`. Isso garante proteção DB-level adicional ao Stripe.** |
+| **[Gap 148] `process-cancellation` resposta não informa professor sobre fatura prepaid já paga** | **Baixa** | **Médio** | **Quando aula com fatura prepaid PAGA é cancelada, o professor precisa decidir sobre reembolso manual. Atualmente, apenas `console.log` é gerado. A resposta HTTP não inclui informação sobre a fatura paga. FIX: incluir `prepaid_invoice_info: { voided, reason, paid_amount, message }` na resposta para que o frontend exiba toast informativo ao professor.** |
+| **[Gap 149] Seção 5.3 handler `invoice.paid` omite extração de `payment_method` via charge** | **Média** | **Alto** | **Seção 8.1 (Gap 94) documenta a extração de `payment_method` real via `stripe.charges.retrieve(chargeId).payment_method_details.type`. Porém, o código do handler na seção 5.3 NÃO inclui essa lógica — faz apenas `status: 'paid'` sem setar `payment_method`. Resultado: todas faturas prepaid ficam com `payment_method: null` permanentemente. FIX: incluir lógica de charge retrieval no handler código (seção 5.3), não apenas na documentação (seção 8.1).** |
 
 ---
 
@@ -1796,7 +1841,12 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.6] Verificar que `process-class-billing` seta `original_amount: amount` na invoice local (Gap 142)
 - [ ] [v2.6] Verificar que Agenda.tsx mostra toast warning quando invocação de `process-class-billing` falha (não silencia erros) (Gap 143)
 
-### Deploy
+- [ ] [v2.7] Verificar que `process-class-billing` usa default 15 (não 7) para `payment_due_days` fallback — consistente com `automated-billing` (Gap 144)
+- [ ] [v2.7] Verificar que `send-invoice-notification` usa `stripe_hosted_invoice_url` como CTA principal para faturas `prepaid_class` (Gap 145)
+- [ ] [v2.7] Verificar que `process-class-billing` invoca `send-invoice-notification` em try/catch fire-and-forget (Gap 146)
+- [ ] [v2.7] Criar partial unique index `idx_unique_prepaid_invoice_class` em `invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'` (Gap 147)
+- [ ] [v2.7] Verificar que `process-cancellation` inclui `prepaid_invoice_info` na resposta para faturas pagas (Gap 148)
+- [ ] [v2.7] **CRÍTICO**: Verificar que handler `invoice.paid` (seção 5.3) inclui lógica de charge retrieval para `payment_method` (Gap 149)
 
 - [ ] Executar migração SQL em produção
 - [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106, 115 ANTES de deploy de process-class-billing

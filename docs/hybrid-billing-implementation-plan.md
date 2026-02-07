@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.6 (Revisada — 63 gaps corrigidos)
+> **Versão**: 1.7 (Revisada — 69 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -195,6 +195,13 @@ Professor agenda aula recorrente (ex: semanal, 4 ocorrências)
 ALTER TABLE public.business_profiles
   ADD COLUMN IF NOT EXISTS charge_timing TEXT NOT NULL DEFAULT 'prepaid'
   CHECK (charge_timing IN ('prepaid', 'postpaid'));
+
+-- [CORREÇÃO v1.7 - Gap 64] MIGRAÇÃO SEGURA para professores existentes:
+-- O DEFAULT 'prepaid' aplica-se a NOVAS linhas. Para registros existentes,
+-- definir como 'postpaid' para preservar o comportamento atual (aulas acumulam
+-- para o próximo ciclo). Sem isso, TODOS os professores teriam cobrança imediata
+-- ativada no momento do deploy, gerando faturas inesperadas.
+UPDATE public.business_profiles SET charge_timing = 'postpaid';
 
 COMMENT ON COLUMN public.business_profiles.charge_timing IS
   'Momento da cobrança de aulas avulsas: prepaid (imediata ao agendar) ou postpaid (próximo ciclo de faturamento)';
@@ -795,6 +802,24 @@ case 'invoice.paid': {
 - [Gap 14] Não confiar no payload do webhook para lines
 - [Gap 13] Filtrar por `participant_id` do metadata, não por `class_id`
 
+> **[CORREÇÃO v1.7 - Gap 67]**: O handler `invoice.payment_succeeded` (linhas 354-362) 
+> atual NÃO chama `completeEventProcessing(false, error)` quando o update falha — apenas 
+> faz `logStep` e cai no `break`. O erro cai no fluxo normal e o evento é marcado como 
+> `success: true` na linha 544, quando deveria ser `false`. Isso corrompe o sistema de 
+> idempotência: o evento NÃO será re-processado em retries.
+> 
+> **FIX**: Substituir o pattern `if (error) { log } else { log }` por:
+> ```typescript
+> if (succeededError) {
+>   logStep("Error updating invoice payment succeeded", succeededError);
+>   await completeEventProcessing(supabaseClient, event.id, false, succeededError);
+>   return new Response(JSON.stringify({ error: 'Failed' }), { 
+>     status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+>   });
+> }
+> ```
+> Aplicar o MESMO pattern em TODOS os handlers que atualmente usam `if/else` sem return.
+
 ### 5.4 Ajustes no process-cancellation
 
 **Arquivo**: `supabase/functions/process-cancellation/index.ts`
@@ -821,13 +846,37 @@ Adicionar lógica de void/delete de fatura pré-paga. Inserir ANTES da seção d
 > sequenciais independentes em vez de FK join (`invoices!inner`). Joins com FK 
 > falham no Deno runtime por cache de schema (padrão documentado do projeto).
 
+> **[CORREÇÃO v1.7 - Gap 65]**: Para cancelamento de PARTICIPANTE em aula de grupo, 
+> a query DEVE filtrar também por `student_id` para evitar anular faturas de outros alunos.
+> Se `cancelled_by_type === 'student'` ou `dependent_id` está presente, adicionar filtro:
+> `.eq('participant_id', participantId)` na busca de `invoice_classes`.
+
 ```typescript
 // NOVO: Verificar se a aula tem fatura pré-paga vinculada
 // [Gap 12] Usar queries sequenciais em vez de FK join
-const { data: invoiceClassesForClass } = await supabaseClient
+// [Gap 65] Para cancelamento individual, filtrar por participante específico
+let invoiceClassQuery = supabaseClient
   .from('invoice_classes')
-  .select('id, stripe_invoice_item_id, invoice_id')
+  .select('id, stripe_invoice_item_id, invoice_id, participant_id')
   .eq('class_id', class_id);
+
+// Se é cancelamento de participante individual (não da aula inteira),
+// filtrar apenas os invoice_classes desse participante
+if (dependent_id || cancelled_by_type === 'student') {
+  // Buscar participant_id para este student/dependent
+  const { data: participantRecord } = await supabaseClient
+    .from('class_participants')
+    .select('id')
+    .eq('class_id', class_id)
+    .eq('student_id', cancelled_by)
+    .maybeSingle();
+  
+  if (participantRecord) {
+    invoiceClassQuery = invoiceClassQuery.eq('participant_id', participantRecord.id);
+  }
+}
+
+const { data: invoiceClassesForClass } = await invoiceClassQuery;
 
 let prepaidInvoices: any[] = [];
 if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
@@ -1064,6 +1113,25 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 > sobrescreve `payment_origin` incondicionalmente. Aplicar a mesma correção do Gap 53:
 > verificar o valor atual de `payment_origin` e só definir `'automatic'` se for null.
 
+> **[CORREÇÃO v1.7 - Gap 68]**: O handler `payment_intent.succeeded` (linhas 464-501) 
+> também faz `stripe_hosted_invoice_url: null` (linha 481). Para faturas pré-pagas que 
+> usam Stripe Invoice, o `hosted_invoice_url` é a URL do "Pagar Agora". Embora faturas 
+> pré-pagas normalmente disparem `invoice.paid` (não `payment_intent.succeeded`), proteger 
+> contra edge cases:
+> ```typescript
+> // [Gap 68] Só limpar campos temporários se a fatura NÃO é do tipo Stripe Invoice
+> // (faturas pré-pagas usam Invoice flow e precisam preservar hosted_invoice_url)
+> const invoiceToUpdate = existingPI; // já buscado acima
+> const clearFields: Record<string, any> = {
+>   pix_qr_code: null, pix_copy_paste: null, pix_expires_at: null,
+>   boleto_url: null, linha_digitavel: null, boleto_expires_at: null, barcode: null,
+> };
+> // Só limpar stripe_hosted_invoice_url se não é fatura de Stripe Invoice
+> if (!invoiceToUpdate?.stripe_invoice_id) {
+>   clearFields.stripe_hosted_invoice_url = null;
+> }
+> ```
+
 ---
 
 ## 9. Compatibilidade com Sistema Existente
@@ -1227,6 +1295,12 @@ FASE 8: Testes e Validação
 - [ ] [v1.6] Verificar que `process-class-billing` consulta `stripe_customer_id` em `teacher_student_relationships` ANTES de chamar API Stripe
 - [ ] [v1.6] Verificar que `payment_intent.succeeded` handler NÃO sobrescreve `payment_origin: 'prepaid'` com `'automatic'`
 - [ ] [v1.6] Verificar que `get_unbilled_participants_v2` filtra por `participant_id` (billing parcial em grupo funciona)
+- [ ] [v1.7] Verificar que migração SQL define `charge_timing = 'postpaid'` para professores EXISTENTES (preservar comportamento atual)
+- [ ] [v1.7] Verificar que cancelamento de participante individual em grupo filtra `invoice_classes` por `participant_id` (não anula fatura de outros)
+- [ ] [v1.7] Verificar que `invoice.payment_succeeded` handler chama `completeEventProcessing(false, error)` e faz `return` (não cai no fluxo de sucesso)
+- [ ] [v1.7] Verificar que `payment_intent.succeeded` NÃO limpa `stripe_hosted_invoice_url` para faturas com `stripe_invoice_id`
+- [ ] [v1.7] Verificar que `create-payment-intent-connect` usa mesma versão do Stripe SDK (`14.24.0`)
+- [ ] [v1.7] Verificar que `get_unbilled_participants_v2` RPC filtra corretamente aulas pré-pagas (via `LEFT JOIN invoice_classes ... WHERE ic.id IS NULL`)
 
 ### Deploy
 
@@ -1341,6 +1415,17 @@ FASE 8: Testes e Validação
 | 61 | `process-class-billing` usa `teacher_id` do body sem validação | Corrigido: autenticação via `supabase.auth.getUser(token)` com JWT do header `Authorization`. O `teacher_id` do body é ignorado; o professor autenticado é determinado pelo JWT. Segue padrão de `create-invoice` e `teacher-context-security-pattern.md`. |
 | 62 | `create-payment-intent-connect` cria Stripe customers sem persistir `stripe_customer_id` | Documentado: `process-class-billing` deve PRIMEIRO verificar `teacher_student_relationships.stripe_customer_id` antes de chamar a API Stripe. Se já existe, usar diretamente. A correção no `create-payment-intent-connect` é desejável mas fora do escopo desta implementação. |
 | 63 | `get_unbilled_participants_v2` filtra por `participant_id` — comportamento em grupo | Confirmado e documentado: a RPC filtra por `participant_id` (não `class_id`), permitindo billing parcial em grupo (3 de 4 alunos cobrados pré-pago, 4º capturado pelo `automated-billing`). Isso é correto e intencional, mas precisa ser documentado para evitar confusão em testes. |
+
+### Revisão v1.7
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 64 | Migração `DEFAULT 'prepaid'` altera comportamento de TODOS os professores existentes | **CRÍTICO**: A migração `ADD COLUMN charge_timing DEFAULT 'prepaid'` ativaria cobrança imediata para todos os professores existentes sem aviso. Adicionado `UPDATE business_profiles SET charge_timing = 'postpaid'` na migração para preservar o comportamento atual (pós-pago). Novos professores criam com `'prepaid'` (default da coluna). |
+| 65 | Cancelamento de participante individual em grupo anula fatura de OUTROS alunos | A query de void em `process-cancellation` filtra por `class_id`, pegando invoice_classes de TODOS os participantes. Para cancelamento individual (um aluno/dependente sai do grupo), deve filtrar também por `participant_id` para voiding apenas a fatura daquele aluno, não de todos. Adicionada lógica condicional na seção 5.4. |
+| 66 | Stripe SDK `create-payment-intent-connect` não listado para atualização | `create-payment-intent-connect` (linha 2) usa `stripe@14.21.0`. É chamado diretamente no fluxo de pagamento (PIX/Boleto) e interage com o mesmo Connected Account que `process-class-billing`. Deve ser atualizado para `stripe@14.24.0` junto com as demais 21 funções. Adicionado à lista de arquivos e ao checklist. |
+| 67 | `invoice.payment_succeeded` error handler não interrompe fluxo | O handler (linhas 354-368) usa pattern `if (error) { log } else { log }` sem `return`. Quando o update falha, a execução continua e o evento é marcado como `success: true` na linha 544 (via `completeEventProcessing`). Isso impede retries automáticos. Adicionado `return` com status 500 após `completeEventProcessing(false, error)`. |
+| 68 | `payment_intent.succeeded` limpa `stripe_hosted_invoice_url` incondicionalmente | O handler (linha 481) seta `stripe_hosted_invoice_url: null`. Para faturas que têm `stripe_invoice_id` (faturas pré-pagas usam Stripe Invoice flow), essa URL é necessária para o botão "Pagar Agora". Adicionada verificação: só limpar se a fatura NÃO tem `stripe_invoice_id`. |
+| 69 | Verificação explícita da RPC `get_unbilled_participants_v2` | Confirmado via SQL: a RPC usa `LEFT JOIN invoice_classes ic ON cp.id = ic.participant_id WHERE ic.id IS NULL`. Isso significa que QUALQUER `invoice_classes` (incluindo `item_type = 'prepaid_class'`) exclui o participante dos "não-faturados". Aulas pré-pagas são corretamente filtradas pelo `automated-billing`. Sem ação adicional necessária. |
 
 ---
 

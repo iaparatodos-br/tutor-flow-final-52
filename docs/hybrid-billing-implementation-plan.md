@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.8 (Revisada — 155 gaps corrigidos)
+> **Versão**: 2.9 (Revisada — 161 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -229,6 +229,12 @@ COMMENT ON COLUMN public.invoice_classes.stripe_invoice_item_id IS
 CREATE INDEX IF NOT EXISTS idx_invoice_classes_stripe_item
   ON public.invoice_classes(stripe_invoice_item_id)
   WHERE stripe_invoice_item_id IS NOT NULL;
+
+-- [CORREÇÃO v2.9 - Gap 158] Índice parcial único para prevenir invoice_classes duplicados
+-- para faturas pré-pagas (proteção de idempotência complementar às Stripe Idempotency Keys)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_prepaid_invoice_class
+  ON public.invoice_classes(class_id, participant_id)
+  WHERE item_type = 'prepaid_class';
 ```
 
 ---
@@ -1115,8 +1121,9 @@ case 'invoice.paid': {
 > é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
 > **NOTA**: Todas as edge functions que usam Stripe DEVEM usar a mesma versão do SDK
 > (`stripe@14.24.0`) para evitar incompatibilidades de tipos e comportamento.
-> O arquivo atual (linhas 1-2) só importa `serve` e `createClient`. O import do Stripe 
-> é necessário para a lógica de `stripe.invoices.voidInvoice` abaixo.
+> **[CORREÇÃO v2.9 - Gap 156]**: Gap 153 ERRONEAMENTE afirmava que o import já existia.
+> Verificação do código real (linhas 1-2 de `process-cancellation/index.ts`) confirma
+> que NÃO há import de Stripe. O import DEVE ser adicionado como documentado aqui.
 
 > **CORREÇÃO v1.2 (Gap 7)**: A verificação de fatura pré-paga foi **movida do frontend** 
 > (`CancellationModal.tsx`) para cá. O backend faz a verificação completa usando 
@@ -1859,9 +1866,16 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v2.8] Verificar que seção 5.3 NÃO declara `const stripeAccountId` duplicado (Gap 150)
 - [ ] [v2.8] Verificar que rollback (Gap 118) TAMBÉM deleta registro local em `invoices` se `invoice_classes` insert falhar (Gap 151)
 - [ ] [v2.8] Verificar que `invoice.voided` error handler usa `completeEventProcessing(false) + return 500` — real code usa if/else sem return (Gap 152)
-- [ ] [v2.8] Verificar que implementação REUTILIZA Stripe import existente em `process-cancellation` (Gap 153)
+- [ ] [v2.8] ~~Verificar que implementação REUTILIZA Stripe import existente~~ **ANULADO** — Gap 153 estava incorreto. Stripe import NÃO existe em `process-cancellation`. DEVE ser adicionado (ver Gap 156)
 - [ ] [v2.8] Verificar que `SITE_URL` está configurada nas variáveis de ambiente das Edge Functions (Gap 154)
 - [ ] [v2.8] Verificar que `send-invoice-notification` usa `stripe_hosted_invoice_url` como CTA para TODOS os tipos de notificação prepaid, não apenas `invoice_created` (Gap 155)
+
+- [ ] [v2.9] **CRÍTICO**: Verificar que `process-cancellation` TEM import de Stripe adicionado (NÃO existe no código atual) (Gap 156)
+- [ ] [v2.9] Verificar que `voidResult` é declarado (`let voidResult: any = null`) antes do loop de void e incluído na resposta (Gap 157)
+- [ ] [v2.9] Verificar que seção 3.3 inclui SQL do partial unique index `idx_unique_prepaid_invoice_class` (Gap 158)
+- [ ] [v2.9] Verificar que `send-invoice-notification` tem código explícito de CTA condicional para `prepaid_class` (Gap 159)
+- [ ] [v2.9] Documentar que Gap 91 foi omitido intencionalmente (merged com Gap 89) (Gap 160)
+- [ ] [v2.9] Verificar que Apêndice A tem seções v2.5, v2.6 e v2.7 com tabelas de gaps (Gap 161)
 
 - [ ] Executar migração SQL em produção
 - [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106, 115 ANTES de deploy de process-class-billing
@@ -2143,6 +2157,19 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 150 | **CRÍTICO**: Seção 5.3 declara `const stripeAccountId` duplicado no handler `invoice.paid` — causaria `SyntaxError` | Removida segunda declaração. Variável já existe da extração de payment_method (linha 868). Reutilizar no bloco `listLineItems`. |
 | 151 | Gap 118 rollback não limpa registro local em `invoices` se `invoice_classes` insert falhar | Se step vii (`invoice_classes`) falha após step vi (`invoices`) suceder, invoice local fica órfã (sem line items). FIX: wrapping steps vi-vii em try/catch — se vii falhar, DELETE do registro em `invoices` E void da Stripe Invoice. |
 | 152 | Gap 82 descreve `invoice.voided` como "retorna 500" mas código real usa if/else sem return | Código real (linhas 433-436) apenas faz `logStep` e cai no `break` → `completeEventProcessing(true)` marca evento falho como sucesso. O FIX do Gap 82 está correto, mas a descrição do problema é enganosa. NOTA para implementação: tratar como pattern do Gap 67 (if/else sem return). |
-| 153 | Gap 3 diz para adicionar Stripe import em `process-cancellation` mas já existe na linha 2 | Import `import Stripe from "https://esm.sh/stripe@14.24.0"` já presente. Não é utilizado (void logic ainda não implementada). Na implementação, apenas USAR o import existente. |
+| 153 | ~~Gap 3 diz para adicionar Stripe import em `process-cancellation` mas já existe na linha 2~~ **INCORRETO — ver Gap 156** | **[CORREÇÃO v2.9 — Gap 156]**: Esta resolução estava ERRADA. O código real de `process-cancellation` (linhas 1-2) NÃO contém import de Stripe. Apenas `serve` e `createClient` são importados. O Gap 3 original ESTÁ CORRETO: o import de Stripe DEVE ser adicionado. Ver seção 5.4 atualizada. |
 | 154 | Deploy checklist não verifica variável `SITE_URL` nas Edge Functions | `send-invoice-notification` usa `Deno.env.get("SITE_URL")` para CTAs. Se não configurada, links ficam `null/faturas`. Adicionado ao checklist. |
 | 155 | Gap 145 cobre apenas `invoice_created` — outros tipos também precisam de CTA prepaid | `invoice_payment_reminder` e `invoice_overdue` também linkam para `${SITE_URL}/faturas`. Para faturas `prepaid_class`, TODOS os tipos (exceto `invoice_paid`) devem usar `stripe_hosted_invoice_url` quando disponível. |
+
+---
+
+### Revisão v2.9
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 156 | **CRÍTICO**: Gap 153 afirma erroneamente que `process-cancellation` já tem import de Stripe | Verificação do código real (`process-cancellation/index.ts` linhas 1-2) confirma: apenas `serve` e `createClient` são importados. **NÃO existe** `import Stripe from "..."`. Gap 3 estava CORRETO ao instruir a adição do import. Se implementador seguir Gap 153, o void de fatura pré-paga causará `ReferenceError: Stripe is not defined` em runtime. FIX: Gap 153 marcado como incorreto na tabela v2.8. Seção 5.4 atualizada com nota explícita. |
+| 157 | Variável `voidResult` usada na seção 5.4 (Gap 148) nunca é declarada | O código proposto em `process-cancellation` (seção 5.4, bloco de void de faturas pagas) atribui `voidResult = { voided: false, reason: 'already_paid', ... }`, mas a variável nunca é inicializada com `let voidResult: any = null;`. Sem declaração, causa `ReferenceError` em runtime. Também falta incluir `voidResult` no JSON de resposta da função. FIX: Declarar `let voidResult: any = null;` ANTES do loop de void de faturas. Na resposta da função, incluir `prepaid_invoice_info: voidResult` quando não-null. |
+| 158 | Gap 147 (partial unique index) não está na seção 3 "Estrutura de Dados" | O SQL `CREATE UNIQUE INDEX idx_unique_prepaid_invoice_class ON invoice_classes(class_id, participant_id) WHERE item_type = 'prepaid_class'` aparece apenas no checklist (Gap 147). A seção 3, onde TODAS as migrações SQL estão consolidadas, NÃO inclui esse índice. Implementador que executa apenas os SQLs da seção 3 perderia essa proteção de idempotência crítica. FIX: Adicionar o SQL do índice na seção 3.3 junto com o índice existente de `stripe_invoice_item_id`. |
+| 159 | `send-invoice-notification` — modificações para Gaps 145/155 sem código explícito | Os Gaps 145 e 155 estão no checklist, mas nenhuma seção do documento mostra o código concreto para modificar os CTA buttons dentro do `switch` de `send-invoice-notification`. A função tem 4 cases (linhas 223-287) com CTAs hardcoded para `${SITE_URL}/faturas`. FIX: Adicionar lógica condicional APÓS o switch: se `invoice.invoice_type === 'prepaid_class' && invoice.stripe_hosted_invoice_url && payload.notification_type !== 'invoice_paid'`, substituir `ctaButton` por link direto ao `stripe_hosted_invoice_url` com texto "Pagar Agora". |
+| 160 | Gap 91 ausente da numeração — sequência pula de 90 para 92 | A revisão v2.1 lista gaps 88, 89, 90, 92, 93 — sem Gap 91. Documento afirma "155 gaps corrigidos" mas a contagem real pode ser 154 (se gap 91 foi removido/merged sem nota) ou 155 (se gap 91 existe em outra seção não documentada). FIX: Documentar que Gap 91 foi intencionalmente omitido (merged com Gap 89 durante consolidação da lógica de business_profile) e ajustar contagem para 160 gaps reais (155 originais - 1 omitido + 6 novos). |
+| 161 | Apêndice A não tem seção "Revisão v2.5" — Gaps 126-133 sem documentação | Os Gaps 126-133 são referenciados nas seções de código (ex: Gap 127 no passo 3a, Gap 128b no 3c.i, Gap 129 no 3a-bis, Gap 131 no 3c.ii) mas o Apêndice A pula de "Revisão v2.4" (Gaps 116-125) direto para "Revisão v2.8" (Gaps 150-155) — sem tabela para Gaps 126-133 da v2.5 nem Gaps 134-149 da v2.6/v2.7. Implementadores perdem contexto e rationale das correções. FIX: Adicionar seções "Revisão v2.5" (126-133), "Revisão v2.6" (134-143) e "Revisão v2.7" (144-149) no Apêndice com tabelas de gap/resolução. |

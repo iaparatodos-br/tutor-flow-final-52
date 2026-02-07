@@ -1,24 +1,20 @@
 
-# Plano de Implementação: Cobrança Híbrida - v2.6 Completa
+# Plano de Implementação: Cobrança Híbrida - v2.7 Completa
 
-## Status: Documento atualizado para v2.6 com 143 gaps corrigidos
+## Status: Documento atualizado para v2.7 com 149 gaps corrigidos
 
-O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.6, incorporando 10 novos gaps técnicos (134-143) identificados na revisão mais recente.
+O documento `docs/hybrid-billing-implementation-plan.md` foi atualizado para a versão 2.7, incorporando 6 novos gaps técnicos (144-149) identificados na revisão cruzada com o código-fonte real.
 
-## Gaps incorporados na v2.6
+## Gaps incorporados na v2.7
 
 | Gap | Descrição | Impacto |
 |-----|-----------|---------|
-| 134 | `process-class-billing` não valida `classes.status` — pode cobrar aulas canceladas (race condition) | Cobrança de aula já cancelada |
-| 135 | Falha parcial em grupo billing não identifica quais alunos falharam | Professor sem visibilidade para cobrança manual |
-| 136 | Deploy checklist não menciona adicionar `invoice.finalized` no Stripe Dashboard | Evento nunca entregue, Gap 90 inútil |
-| 137 | BillingSettings com múltiplos business_profiles mostra charge_timing potencialmente errado | UX confusa |
-| 138 | `paymentOrigins.prepaid` documentado no Gap 128 mas NÃO aplicado na seção 6.3 | Texto raw no dashboard |
-| 139 | `invoice.payment_succeeded` — código completo não fornecido | Alto risco de erro na implementação |
-| 140 | Dual webhook events para prepaid — comportamento não documentado | Confusão durante debug |
-| 141 | `send-invoice-notification` não prioriza `stripe_hosted_invoice_url` | Email sem link de pagamento |
-| 142 | `original_amount` não setado em invoices prepaid | Inconsistência em relatórios |
-| 143 | **CRÍTICO UX**: Falha de invocação de billing é silenciosa | Aula criada sem fatura, sem aviso |
+| 144 | `payment_due_days` default inconsistente (doc dizia 7, `automated-billing` usa 15) | Datas de vencimento diferentes entre pré e pós-pago |
+| 145 | `send-invoice-notification` CTA para prepaid não linka para Stripe hosted URL | Aluno sem acesso ao app não consegue pagar |
+| 146 | `process-class-billing` invoca notificação sem try/catch (fire-and-forget) | Falha de email poderia falhar billing inteiro |
+| 147 | Sem unique index no DB para `invoice_classes` prepaid (complementa Stripe idempotency) | Registros duplicados possíveis em concorrência |
+| 148 | `process-cancellation` resposta não informa professor sobre fatura prepaid já paga | Professor sem informação para decidir reembolso |
+| 149 | **CRÍTICO**: Handler `invoice.paid` na seção 5.3 omite extração de `payment_method` via charge | `payment_method` fica null permanentemente em faturas prepaid |
 
 ## Próximos passos
 

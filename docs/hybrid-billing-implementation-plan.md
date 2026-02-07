@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 2.4 (Revisada — 125 gaps corrigidos)
+> **Versão**: 2.5 (Revisada — 133 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -566,16 +566,20 @@ interface ProcessClassBillingResponse {
 
 3. Se charge_timing === 'prepaid':
    
-3a. [CORREÇÃO v1.4 - Gap 48] Verificação de idempotência:
+3a. [CORREÇÃO v1.4 - Gap 48] [CORREÇÃO v2.5 - Gap 127] Verificação de idempotência:
         - Para cada class_id, verificar se já existe `invoice_classes` com `item_type = 'prepaid_class'`
-        - Se existir, PULAR essa aula (evita cobrança duplicada em caso de retry/double-click)
+          E cuja `invoices.status NOT IN ('cancelada', 'void')` (join com invoices)
+        - Se existir com fatura ATIVA, PULAR essa aula (evita cobrança duplicada em caso de retry/double-click)
+        - Se existir mas fatura está cancelada/voidada, PERMITIR re-billing (a fatura original foi anulada por cancelamento e classe foi re-agendada)
         - Logar: `Skipping class ${classId}: already has prepaid invoice`
+        - [Gap 127] Sem essa verificação de status, aulas cujas faturas foram voidadas (ex: cancelamento + re-agendamento) seriam permanentemente bloqueadas para cobrança pré-paga, pois os `invoice_classes` da fatura anulada ainda existiriam no banco.
     
     3a-bis. Para cada class_id, buscar dados completos:
         - class_services (preço, nome)
+        - [CORREÇÃO v2.5 - Gap 129] Se `class_services` não existe (serviço deletado entre criação da aula e billing), PULAR a aula com log warning: `Skipping class ${classId}: service_id ${serviceId} not found (deleted?)`
         - class_participants (student_id, dependent_id)
         - Excluir aulas experimentais (is_experimental = true)
-        - Excluir aulas que já têm invoice_classes (evitar duplicidade - redundância com 3a)
+        - Excluir aulas que já têm invoice_classes com fatura ativa (redundância segura com 3a)
    
    3a-ter. [CORREÇÃO v1.9 - Gap 76] Excluir participantes com mensalidade ativa:
         - Para cada participante, buscar `teacher_student_relationships.id` (relationship_id)
@@ -596,9 +600,14 @@ interface ProcessClassBillingResponse {
    
    3c. Para cada responsável/aluno único:
        i.   Buscar business_profile_id via teacher_student_relationships
+             - [CORREÇÃO v2.5 - Gap 128b] Se `teacher_student_relationships` não encontrada para este par teacher-student, 
+               PULAR billing com log warning: `No relationship found for teacher ${teacherId} + student ${studentId}`
+               → Pode ocorrer se aluno foi removido entre criação da aula e processamento de billing
         ii.  Buscar/criar customer no Connected Account:
              - stripe.customers.list({ email }, { stripeAccount })
              - Se não existe: stripe.customers.create({ email, name }, { stripeAccount })
+             - [CORREÇÃO v2.5 - Gap 131] `email` vem de `profiles.email WHERE id = billingStudentId` (per Gap 108).
+               `name` vem de `profiles.name WHERE id = billingStudentId`. Ambos buscados na mesma query.
              - [CORREÇÃO v1.4 - Gap 39] Persistir `stripe_customer_id` de volta:
                → UPDATE teacher_student_relationships SET stripe_customer_id = connectedCustomerId
                  WHERE teacher_id = teacher_id AND student_id = studentId

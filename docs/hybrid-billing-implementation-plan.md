@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 1.7 (Revisada — 69 gaps corrigidos)
+> **Versão**: 1.8 (Revisada — 75 gaps corrigidos)
 > **Data**: 2026-02-07
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -851,10 +851,17 @@ Adicionar lógica de void/delete de fatura pré-paga. Inserir ANTES da seção d
 > Se `cancelled_by_type === 'student'` ou `dependent_id` está presente, adicionar filtro:
 > `.eq('participant_id', participantId)` na busca de `invoice_classes`.
 
+> **[CORREÇÃO v1.8 - Gap 70]**: A busca de `participant_id` em `class_participants` (Gap 65)
+> DEVE filtrar por `dependent_id` quando presente, não apenas por `student_id`. Sem isso,
+> se um responsável tem 2+ dependentes na mesma aula em grupo, `.maybeSingle()` retorna null
+> (PGRST116: multiple rows), e o filtro de `invoice_classes` é pulado — voidando TODAS as 
+> faturas pré-pagas da aula em vez de apenas a do dependente cancelado.
+
 ```typescript
 // NOVO: Verificar se a aula tem fatura pré-paga vinculada
 // [Gap 12] Usar queries sequenciais em vez de FK join
 // [Gap 65] Para cancelamento individual, filtrar por participante específico
+// [Gap 70] Para dependentes, DEVE filtrar por dependent_id para evitar ambiguidade
 let invoiceClassQuery = supabaseClient
   .from('invoice_classes')
   .select('id, stripe_invoice_item_id, invoice_id, participant_id')
@@ -864,12 +871,20 @@ let invoiceClassQuery = supabaseClient
 // filtrar apenas os invoice_classes desse participante
 if (dependent_id || cancelled_by_type === 'student') {
   // Buscar participant_id para este student/dependent
-  const { data: participantRecord } = await supabaseClient
+  let participantQuery = supabaseClient
     .from('class_participants')
     .select('id')
     .eq('class_id', class_id)
-    .eq('student_id', cancelled_by)
-    .maybeSingle();
+    .eq('student_id', cancelled_by);
+  
+  // [Gap 70] OBRIGATÓRIO: filtrar por dependent_id quando presente
+  if (dependent_id) {
+    participantQuery = participantQuery.eq('dependent_id', dependent_id);
+  } else {
+    participantQuery = participantQuery.is('dependent_id', null);
+  }
+  
+  const { data: participantRecord } = await participantQuery.maybeSingle();
   
   if (participantRecord) {
     invoiceClassQuery = invoiceClassQuery.eq('participant_id', participantRecord.id);
@@ -1093,13 +1108,21 @@ Quando o professor tenta editar uma aula que tem `invoice_classes` com `invoice_
 
 Quando o Stripe notifica que uma invoice foi paga:
 
-1. Buscar a invoice no banco pelo `stripe_invoice_id`
-2. Atualizar status para `pago` / `paid`
-3. **NOVO**: Iterar sobre `invoice.lines.data`
-4. Para cada linha com `metadata.lesson_id`:
+1. [CORREÇÃO v1.8 - Gap 75] Buscar a invoice no banco pelo `stripe_invoice_id` usando `.maybeSingle()` 
+   (NÃO `.single()`). O webhook pode receber eventos de invoices que não existem na nossa base 
+   (ex: invoices criadas diretamente no Stripe Dashboard, ou de outras integrações). `.single()` 
+   com 0 linhas lança erro e retorna 500, causando retries infinitos do Stripe.
+2. Se invoice não encontrada: logar warning e retornar 200 (evento reconhecido, sem ação)
+3. Atualizar status para `pago` / `paid`
+4. **NOVO**: Iterar sobre `invoice.lines.data`
+5. Para cada linha com `metadata.lesson_id`:
    - Atualizar `class_participants.status` para `confirmada`
    - Atualizar `class_participants.confirmed_at`
-5. Campos temporários (boleto_url, pix_qr_code) são gerenciados pelo Stripe Invoice; não precisam ser limpos manualmente aqui.
+6. [CORREÇÃO v1.8 - Gap 72] `payment_method`: Extrair o método de pagamento REAL do evento Stripe.
+   NÃO hardcodar `'stripe_invoice'`. Usar `succeededInvoice.payment_settings?.payment_method_types?.[0]`
+   ou inspecionar o charge associado via `succeededInvoice.charge`. Se indisponível, usar `'stripe_invoice'` 
+   como fallback.
+7. Campos temporários (boleto_url, pix_qr_code) são gerenciados pelo Stripe Invoice; não precisam ser limpos manualmente aqui.
 
 ### 8.2 invoice.voided
 
@@ -1143,9 +1166,9 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | `create-invoice` (manual) | Nenhum | Continua funcionando independentemente |
 | `create-payment-intent-connect` | Nenhum | Continua para pagamentos de faturas existentes |
 | `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista |
-| `Faturas.tsx` (aluno) | **Baixo** | Faturas pré-pagas aparecem normalmente; `InvoiceTypeBadge` precisa do novo tipo |
+| `Faturas.tsx` (aluno) | **Médio** | [Gap 71] Faturas pré-pagas (`invoice_type === 'prepaid_class'`) devem exibir APENAS o link Stripe hosted (`stripe_hosted_invoice_url`) e OCULTAR o `PaymentOptionsCard`. O botão "Pagar Agora" redireciona para `hosted_invoice_url`. O `change-payment-method` NÃO se aplica. |
 | `InvoiceTypeBadge.tsx` | **Médio** | Adicionar tipo `prepaid_class` e `cancellation` ao mapeamento |
-| `PaymentOptionsCard` | Nenhum | Faturas pré-pagas usam Stripe Invoice (link próprio) |
+| `PaymentOptionsCard` | **Baixo** | [Gap 71] NÃO deve aparecer para `invoice_type === 'prepaid_class'`. Essas faturas usam o Stripe Invoice flow nativo, que gerencia métodos de pagamento internamente. |
 | `CancellationModal.tsx` | **Nenhum** | [Gap 7] Verificação movida para `process-cancellation` (backend). Frontend sem alteração. |
 | `StudentImportDialog` | Nenhum | Import de alunos não interage com billing |
 | Aulas antigas (sem `charge_timing`) | Nenhum | Continuam no fluxo pós-pago (automated-billing) |
@@ -1250,8 +1273,10 @@ FASE 8: Testes e Validação
 | `src/pages/Agenda.tsx` | **Modificar** | 4 | Chamar process-class-billing em handleClassSubmit e materializeVirtualClass; [Gap 8] Indicador visual de fatura emitida no calendário |
 | `src/components/CancellationModal.tsx` | **Sem alteração** | 5 | [Gap 7] Verificação movida para backend |
 | `supabase/functions/process-cancellation/index.ts` | **Modificar** | 5 | [Gap 3] Adicionar import Stripe; [Gap 7] Verificação de fatura pré-paga no backend; void de fatura no Stripe |
-| `supabase/functions/webhook-stripe-connect/index.ts` | **Modificar** | 6 | Processar lesson_id em invoice.paid e invoice.payment_succeeded |
-| `supabase/functions/automated-billing/index.ts` | **Verificar** | 7 | Confirmar que RPC filtra aulas pré-pagas; logs opcionais |
+| `supabase/functions/webhook-stripe-connect/index.ts` | **Modificar** | 6 | Processar lesson_id em invoice.paid e invoice.payment_succeeded; [Gap 72] extrair payment_method real; [Gap 75] usar .maybeSingle() |
+| `supabase/functions/automated-billing/index.ts` | **Redeployer** | 7 | [Gap 73] Confirmar que RPC filtra aulas pré-pagas; REDEPLOYER para refresh do schema cache após migração |
+| `supabase/functions/create-payment-intent-connect/index.ts` | **Modificar** | 7 | [Gap 74] Atualizar Stripe SDK de v14.21.0 para v14.24.0 |
+| `src/pages/Faturas.tsx` | **Modificar** | 4 | [Gap 71] Ocultar PaymentOptionsCard para `invoice_type === 'prepaid_class'`; exibir apenas link Stripe hosted |
 
 **NOTA**: Não é necessário modificar `supabase/config.toml` — o Lovable Cloud registra edge functions automaticamente.
 
@@ -1302,10 +1327,17 @@ FASE 8: Testes e Validação
 - [ ] [v1.7] Verificar que `create-payment-intent-connect` usa mesma versão do Stripe SDK (`14.24.0`)
 - [ ] [v1.7] Verificar que `get_unbilled_participants_v2` RPC filtra corretamente aulas pré-pagas (via `LEFT JOIN invoice_classes ... WHERE ic.id IS NULL`)
 
+- [ ] [v1.8] Verificar que `process-cancellation` filtra `class_participants` por `dependent_id` quando presente (Gap 70)
+- [ ] [v1.8] Verificar que `Faturas.tsx` oculta `PaymentOptionsCard` para `invoice_type === 'prepaid_class'` (Gap 71)
+- [ ] [v1.8] Verificar que `invoice.payment_succeeded` extrai `payment_method` real do Stripe (não hardcoda `'stripe_invoice'`) (Gap 72)
+- [ ] [v1.8] Verificar que `automated-billing` foi redeployado após migração de schema (Gap 73)
+- [ ] [v1.8] Verificar que `create-payment-intent-connect` usa `stripe@14.24.0` (Gap 74)
+- [ ] [v1.8] Verificar que handlers `invoice.paid`/`invoice.payment_succeeded` usam `.maybeSingle()` (não `.single()`) (Gap 75)
+
 ### Deploy
 
 - [ ] Executar migração SQL em produção
-- [ ] Deploy de edge functions (process-class-billing, process-cancellation, webhook-stripe-connect)
+- [ ] Deploy de edge functions (process-class-billing, process-cancellation, webhook-stripe-connect, create-payment-intent-connect, automated-billing)
 - [ ] Publicar frontend
 - [ ] Testar fluxo completo em produção com valor mínimo
 
@@ -1426,6 +1458,17 @@ FASE 8: Testes e Validação
 | 67 | `invoice.payment_succeeded` error handler não interrompe fluxo | O handler (linhas 354-368) usa pattern `if (error) { log } else { log }` sem `return`. Quando o update falha, a execução continua e o evento é marcado como `success: true` na linha 544 (via `completeEventProcessing`). Isso impede retries automáticos. Adicionado `return` com status 500 após `completeEventProcessing(false, error)`. |
 | 68 | `payment_intent.succeeded` limpa `stripe_hosted_invoice_url` incondicionalmente | O handler (linha 481) seta `stripe_hosted_invoice_url: null`. Para faturas que têm `stripe_invoice_id` (faturas pré-pagas usam Stripe Invoice flow), essa URL é necessária para o botão "Pagar Agora". Adicionada verificação: só limpar se a fatura NÃO tem `stripe_invoice_id`. |
 | 69 | Verificação explícita da RPC `get_unbilled_participants_v2` | Confirmado via SQL: a RPC usa `LEFT JOIN invoice_classes ic ON cp.id = ic.participant_id WHERE ic.id IS NULL`. Isso significa que QUALQUER `invoice_classes` (incluindo `item_type = 'prepaid_class'`) exclui o participante dos "não-faturados". Aulas pré-pagas são corretamente filtradas pelo `automated-billing`. Sem ação adicional necessária. |
+
+### Revisão v1.8
+
+| # | Gap Identificado | Resolução |
+|---|------------------|-----------|
+| 70 | `process-cancellation` lookup de participante para voiding não filtra por `dependent_id` | **Ambiguidade**: Se um responsável tem 2+ dependentes na mesma aula em grupo, a query `.eq('student_id', cancelled_by).maybeSingle()` retorna null (PGRST116: multiple rows). Sem o `participant_id`, o filtro de `invoice_classes` é pulado e TODAS as faturas pré-pagas são voidadas. FIX: Adicionar `.eq('dependent_id', dependent_id)` quando presente, ou `.is('dependent_id', null)` para o responsável direto. |
+| 71 | `Faturas.tsx` não diferencia faturas pré-pagas para o aluno | O `PaymentOptionsCard` (que cria Payment Intents via `create-payment-intent-connect`) apareceria para faturas `prepaid_class`, conflitando com o Stripe Invoice flow. FIX: Se `invoice_type === 'prepaid_class'`, ocultar `PaymentOptionsCard` e exibir apenas o botão "Pagar Agora" redirecionando para `stripe_hosted_invoice_url`. O `change-payment-method` também não se aplica. |
+| 72 | `invoice.payment_succeeded` hardcoda `payment_method: 'stripe_invoice'` | Handler (linha 359) define `payment_method: 'stripe_invoice'` para todas faturas pagas via Invoice flow. Para faturas pré-pagas, o aluno pode pagar via boleto, PIX ou cartão na página hosted. FIX: Extrair o método real do evento Stripe (`payment_settings.payment_method_types[0]` ou do charge associado). Fallback para `'stripe_invoice'` se indisponível. |
+| 73 | Deploy checklist não inclui `automated-billing` para redeployment | `automated-billing` usa FK joins (`profiles!teacher_id`, `profiles!student_id`, `classes!inner`) que podem ficar stale no Deno runtime após a migração adicionar `charge_timing` a `business_profiles`. FIX: Incluir `automated-billing` e `create-payment-intent-connect` na lista de edge functions a serem redeployadas. Mesmo sem modificações de código, o redeploy força refresh do schema cache. |
+| 74 | `create-payment-intent-connect` não listado como arquivo a modificar | Apesar do Gap 66 identificar a versão divergente do SDK (`14.21.0` vs `14.24.0`), o arquivo não constava na tabela "Arquivos a Criar/Modificar" (seção 12). A atualização do SDK é uma modificação real que deve ser rastreada. FIX: Adicionado à tabela na Fase 7. |
+| 75 | Webhook handlers usam `.single()` para buscar invoices por `stripe_invoice_id` | Os handlers `invoice.paid` (linha 310), `invoice.payment_succeeded` (linha 347) e `payment_intent.succeeded` (linha 457) usam `.single()`. Se o `stripe_invoice_id`/`stripe_payment_intent_id` não existir no banco (invoice criada diretamente no Stripe Dashboard, ou de outra integração), `.single()` lança erro → webhook retorna 500 → Stripe retenta indefinidamente (até 3 dias). FIX: Substituir por `.maybeSingle()` e, se null, logar warning e retornar 200 (evento reconhecido, sem ação). |
 
 ---
 

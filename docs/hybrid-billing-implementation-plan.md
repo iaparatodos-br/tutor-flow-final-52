@@ -1,8 +1,9 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.10 FINAL (Revisada — 228 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.10 FINAL ENCERRADO (228 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
-> **Status**: ✅ APROVADO FINAL — Pronto para Implementação (Fase 0)
+> **Status**: ✅ ENCERRADO — Pronto para Implementação (Fase 0)
+> **Revisão final**: Todas as seções (1-13) + Apêndices (A-D) cruzadas com codebase real. Nenhum gap adicional encontrado.
 
 > **CORS**: Webhook existente (webhook-stripe-connect) usa CORS headers incompletos (Gap 100)
 > **IMPORTANTE**: Leia a Seção 11.0 (Fase 0) sobre correções críticas no webhook ANTES de implementar novas features.
@@ -2132,6 +2133,8 @@ FASE 2: Frontend - BillingSettings + Financeiro refactor
 │  - [v3.1 Ponta Solta 2] Atualizar InvoiceTypeBadge com TODOS os 7 tipos
 │  - [v3.6 Gap 204] Atualizar InvoiceStatusBadge para suportar paymentOrigin 'prepaid'
 │  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline (linhas 30-45, usos 581/716) por InvoiceTypeBadge
+│  - [v3.10 Gap 226] Financeiro.tsx: adicionar payment_method ao SELECT + interface InvoiceWithStudent
+│  - [v3.10 Gap 227] Financeiro.tsx: substituir getStatusBadge inline por InvoiceStatusBadge; adicionar payment_origin ao SELECT + interface; adicionar falha_pagamento ao type union da interface
 │  - [v3.6 Gap 206] Financeiro.tsx: atualizar alerta de taxas Stripe para refletir múltiplos métodos (não apenas Boleto)
 │  - [v3.1 Ponta Solta 5] Faturas.tsx: canChangePaymentMethod deve excluir prepaid_class (ver Apêndice C)
 │
@@ -2169,7 +2172,8 @@ FASE 6: Webhook - webhook-stripe-connect (novas features após Fase 0)
 │  - Atualizar status de participantes automaticamente
 │
 ▼
-FASE 7: Ajustes - automated-billing
+FASE 7: Ajustes - automated-billing + RPC
+│  - [v3.10 Gap 228] **PRÉ-REQUISITO**: Executar CREATE OR REPLACE FUNCTION para RPC create_invoice_and_mark_classes_billed adicionando payment_origin e original_amount ao INSERT (ANTES dos Gaps 209/212)
 │  - Verificar que RPC filtra aulas já cobradas
 │  - [v3.7 Gap 209] Setar payment_origin: 'automated' ao criar invoices
 │  - [v3.7 Gap 212] Setar original_amount: amount ao criar invoices
@@ -2199,7 +2203,7 @@ FASE 8: Testes e Validação
 | `src/i18n/locales/pt/financial.json` | **Modificar** | 2 | Tipo prepaidClass + cancellation |
 | `src/i18n/locales/en/financial.json` | **Modificar** | 2 | Tipo prepaidClass + cancellation |
 | `src/components/InvoiceTypeBadge.tsx` | **Modificar** | 2 | Adicionar tipos prepaid_class e cancellation |
-| `src/pages/Financeiro.tsx` | **Modificar** | 2 | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline (linhas 30-45, usos 581/716) pelo componente `InvoiceTypeBadge` importado |
+| `src/pages/Financeiro.tsx` | **Modificar** | 2 | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge`; [Gap 226] Adicionar `payment_method` ao SELECT e interface; [Gap 227] Substituir `getStatusBadge` inline por `InvoiceStatusBadge`, adicionar `payment_origin` ao SELECT e interface, adicionar `falha_pagamento` ao type union |
 | `supabase/functions/process-class-billing/index.ts` | **Criar** | 3 | Router de cobrança central |
 | `src/pages/Agenda.tsx` | **Modificar** | 4 | Chamar process-class-billing em handleClassSubmit e materializeVirtualClass; [Gap 8] Indicador visual de fatura emitida no calendário |
 | `src/components/CancellationModal.tsx` | **Sem alteração** | 5 | [Gap 7] Verificação movida para backend |
@@ -2421,6 +2425,14 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v3.6] Verificar que seção 4.5 (indicador visual na Agenda) tem code block TypeScript concreto com `fetchBilledClassIds`, estado `billedClassIds`, e JSX com `Tooltip` + `Receipt` icon (Gap 205)
 - [ ] [v3.6] Verificar que alerta de taxas Stripe em `Financeiro.tsx` (linhas 424-446) é atualizado ou condicionado para refletir múltiplos métodos (Boleto R$ 3,49 + PIX + Cartão), não apenas taxa fixa de Boleto (Gap 206)
 - [ ] [v3.6] Verificar que `process-cancellation` valida `cancelled_by` contra JWT autenticado (ou documenta como limitação aceita) para consistência com `process-class-billing` Gap 61 (Gap 207)
+
+### Itens v3.10 FINAL — Gaps 226-228
+
+- [ ] [v3.10] Verificar que `Financeiro.tsx` `loadInvoices` SELECT inclui `payment_method` e `payment_origin` (Gap 226 + 227)
+- [ ] [v3.10] Verificar que interface `InvoiceWithStudent` em `Financeiro.tsx` inclui `payment_method?: string`, `payment_origin?: string` e `falha_pagamento` no type union de `status` (Gap 226 + 227)
+- [ ] [v3.10] Verificar que cálculo `stripeFees` em `Financeiro.tsx` usa fee breakdown variável por `payment_method` (Boleto R$ 3,49, PIX 1,19%, Cartão 3,2% + R$ 0,39, Manual R$ 0,00) em vez de hardcoded `paidInvoices.length * 3.49` (Gap 226)
+- [ ] [v3.10] Verificar que `Financeiro.tsx` usa `<InvoiceStatusBadge>` em vez de `getStatusBadge` inline (Gap 227)
+- [ ] [v3.10] **FASE 7 PRÉ-REQUISITO**: Verificar que RPC `create_invoice_and_mark_classes_billed` inclui `payment_origin` e `original_amount` no INSERT via `CREATE OR REPLACE FUNCTION` (Gap 228) — executar ANTES dos Gaps 209/212
 
 ### Deploy
 

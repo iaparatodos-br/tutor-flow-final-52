@@ -1,36 +1,32 @@
 
+# Plano v3.10 FINAL ENCERRADO — 228 Gaps — Pronto para Fase 0
 
-# Plano v3.10 FINAL — 228 Gaps Corrigidos — ENCERRADO
+## Status: ✅ ENCERRADO — Revisão final concluída
 
-## Status: ✅ APROVADO FINAL — Pronto para Fase 0
+Documento completo: `docs/hybrid-billing-implementation-plan.md` (v3.10 FINAL ENCERRADO)
 
-Documento completo: `docs/hybrid-billing-implementation-plan.md` (v3.10 FINAL)
+Todas as 2937 linhas do documento foram cruzadas com os arquivos reais do codebase.
+Seções 1-13 + Apêndices A-D verificadas. Nenhum gap adicional encontrado.
 
-## Resumo
+## Resultado da Revisão Final
 
-228 gaps identificados e documentados ao longo de 10 revisões incrementais (v3.1 a v3.10).
-Todas as inconsistências entre o documento de implementação e o código real foram resolvidas.
-
-## Últimos Gaps (226-228)
-
-| # | Gap | Gravidade | Fase |
-|---|-----|-----------|------|
-| 226 | Financeiro.tsx loadInvoices não inclui payment_method | Média | 2 |
-| 227 | Financeiro.tsx getStatusBadge inline não usa InvoiceStatusBadge | Média | 2 |
-| 228 | RPC create_invoice_and_mark_classes_billed sem SQL concreto | Alta | 7 |
+- **228 gaps** identificados e documentados (v3.1 a v3.10)
+- **15 pontas soltas** resolvidas
+- **Seções 11 (sequência), 12 (arquivos), 13 (checklist)** atualizadas com referências aos Gaps 226-228
+- Interface `InvoiceWithStudent.status` deve incluir `falha_pagamento` — documentado como sub-item do Gap 227
 
 ## Sequência de Implementação
 
 | Fase | Descrição | Gaps Principais |
 |------|-----------|-----------------|
-| 0 | Correções críticas no webhook existente (.maybeSingle(), payment_origin, event.account) | 100, 181, 198 |
-| 1 | Migração SQL + i18n (charge_timing, stripe_customer_id, chaves prepaid) | 208, 221, 222 |
-| 2 | Frontend (BillingSettings toggle, InvoiceTypeBadge 7 tipos, InvoiceStatusBadge prepaid, Financeiro refactor) | 219, 220, 223, 224, 225, 226, 227 |
+| 0 | Correções críticas no webhook existente | 82, 83, 86, 90, 98, 99, 103-106, 114, 115, 178-181 |
+| 1 | Migração SQL + i18n + SDK updates | 208, 221, 222, 190, 197 |
+| 2 | Frontend (BillingSettings, InvoiceTypeBadge 7 tipos, InvoiceStatusBadge prepaid, Financeiro refactor completo) | 219, 220, 223-227 |
 | 3 | Edge Function process-class-billing (nova) | Core feature |
-| 4 | Integração frontend (Agenda.tsx, ClassForm.tsx) | 205 |
+| 4 | Integração frontend (Agenda.tsx) | 205 |
 | 5 | process-cancellation (void de faturas pré-pagas) | 198, 200, 202, 207 |
 | 6 | Webhook invoice.paid (handleInvoicePaidEvent) | 203 |
-| 7 | Ajustes automated-billing + RPC | 209, 212, 228 (pré-requisito) |
+| 7 | Ajustes automated-billing + RPC (Gap 228 é pré-requisito) | 209, 212, 228 |
 | 8 | Testes e validação | — |
 
 ## Próximo Passo

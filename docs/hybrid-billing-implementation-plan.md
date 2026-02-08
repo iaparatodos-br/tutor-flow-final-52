@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.3 (Revisada — 192 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.4 (Revisada — 197 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -286,6 +286,14 @@ const [savingTiming, setSavingTiming] = useState(false);
 // DE: .select('id, enabled_payment_methods')
 // PARA: .select('id, enabled_payment_methods, charge_timing')
 //
+// [CORREÇÃO v3.4 - Gap 193] Adicionar .limit(1) ANTES de .maybeSingle().
+// Sem .limit(1), professores com múltiplos business_profiles (PJ + PF)
+// causam PGRST116 no .maybeSingle() — retornando null e impedindo
+// exibição das configurações de cobrança. O código atual (linha 79) já
+// captura PGRST116 mas deixa businessProfile como null.
+// DE: .eq('user_id', profile!.id).maybeSingle()
+// PARA: .eq('user_id', profile!.id).limit(1).maybeSingle()
+//
 // E adicionar após setBusinessProfileId:
 // if (businessProfile.charge_timing) {
 //   setChargeTiming(businessProfile.charge_timing as 'prepaid' | 'postpaid');
@@ -428,9 +436,15 @@ orphan_charges: {
   icon: FileText,
   className: 'bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700'
 },
+// [CORREÇÃO v3.4 - Gap 195] Tipo `regular` para faturas legadas (invoice_type = null ou 'regular')
+regular: {
+  label: t('invoiceTypes.regular'),
+  icon: FileText,
+  className: 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-600'
+},
 ```
 
-**NOTA**: Os tipos `cancellation` e `orphan_charges` já existem no sistema mas não estão mapeados no `InvoiceTypeBadge`. Aproveitar para adicionar todos.
+**NOTA**: Os tipos `cancellation`, `orphan_charges` e `regular` já existem no sistema mas não estão mapeados no `InvoiceTypeBadge`. Aproveitar para adicionar todos os 7 tipos.
 
 ### 4.5 Indicador Visual na Agenda (Aulas com Fatura Emitida)
 
@@ -1518,7 +1532,8 @@ return new Response(JSON.stringify({
   "invoiceTypes": {
     "prepaidClass": "Pré-paga",
     "cancellation": "Cancelamento",
-    "orphanCharges": "Cobranças pendentes"
+    "orphanCharges": "Cobranças pendentes",
+    "regular": "Regular"
   },
   "paymentOrigins": {
     "prepaid": "Pré-paga",
@@ -1541,7 +1556,8 @@ return new Response(JSON.stringify({
   "invoiceTypes": {
     "prepaidClass": "Prepaid",
     "cancellation": "Cancellation",
-    "orphanCharges": "Pending charges"
+    "orphanCharges": "Pending charges",
+    "regular": "Regular"
   },
   "paymentOrigins": {
     "prepaid": "Prepaid",
@@ -1975,6 +1991,8 @@ FASE 1: Migração de Banco de Dados + i18n (JUNTOS)
 │  - [v3.1 Ponta Solta 1] Regenerar tipos TypeScript (OBRIGATÓRIO após migração)
 │  - [v3.1 Ponta Solta 4] Traduções i18n: billing.json (chargeTiming.*) — JUNTO com migração
 │  - [v3.1 Ponta Solta 3] Traduções i18n: financial.json (paymentOrigins.prepaid, prepaidIndicator.*)
+│  - [v3.4 Gap 190] Verificar SDK de create-payment-intent-connect (stripe@14.24.0)
+│  - [v3.4 Gap 197] Atualizar webhook-stripe-subscriptions SDK de v14.21.0 para v14.24.0
 │
 ▼
 FASE 2: Frontend - BillingSettings + Financeiro refactor
@@ -1982,7 +2000,7 @@ FASE 2: Frontend - BillingSettings + Financeiro refactor
 │  - Estado, load, save
 │  - [v3.1 Ponta Solta 2] Atualizar InvoiceTypeBadge com TODOS os 7 tipos
 │  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline (linhas 30-45, usos 581/716) por InvoiceTypeBadge
-│  - [v3.1 Ponta Solta 5] Faturas.tsx: canChangePaymentMethod deve excluir prepaid_class
+│  - [v3.1 Ponta Solta 5] Faturas.tsx: canChangePaymentMethod deve excluir prepaid_class (ver Apêndice C)
 │
 ▼
 FASE 3: Backend - Edge Function process-class-billing
@@ -2051,8 +2069,9 @@ FASE 8: Testes e Validação
 | `supabase/functions/process-cancellation/index.ts` | **Modificar** | 5 | [Gap 3] Adicionar import Stripe; [Gap 7] Verificação de fatura pré-paga no backend; void de fatura no Stripe |
 | `supabase/functions/webhook-stripe-connect/index.ts` | **Modificar** | 6 | Processar lesson_id em invoice.paid e invoice.payment_succeeded; [Gap 72] extrair payment_method real; [Gap 75] usar .maybeSingle() |
 | `supabase/functions/automated-billing/index.ts` | **Redeployer** | 7 | [Gap 73] Confirmar que RPC filtra aulas pré-pagas; REDEPLOYER para refresh do schema cache após migração |
-| `supabase/functions/create-payment-intent-connect/index.ts` | **Modificar** | 7 | [Gap 74] Atualizar Stripe SDK de v14.21.0 para v14.24.0 |
-| `src/pages/Faturas.tsx` | **Modificar** | 4 | [Gap 71] Ocultar PaymentOptionsCard para `invoice_type === 'prepaid_class'`; exibir apenas link Stripe hosted |
+| `supabase/functions/create-payment-intent-connect/index.ts` | **Modificar** | 1 | [Gap 74/190] Atualizar Stripe SDK de v14.21.0 para v14.24.0 |
+| `supabase/functions/webhook-stripe-subscriptions/index.ts` | **Modificar** | 1 | [Gap 197] Atualizar Stripe SDK de v14.21.0 para v14.24.0 |
+| `src/pages/Faturas.tsx` | **Modificar** | 2 | [Gap 78/173] Atualizar `canChangePaymentMethod` para excluir `prepaid_class` (ver Apêndice C) |
 
 **NOTA**: [CORREÇÃO v2.3 - Gap 100] A seção anterior dizia "Não é necessário modificar `supabase/config.toml`",
 contradizendo o Gap 96 que EXIGE `[functions.process-class-billing] verify_jwt = false`.
@@ -2237,6 +2256,26 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v3.2] **FASE 0**: Verificar que helper function `handleInvoicePaidEvent` é extraída e usada por AMBOS `invoice.paid` e `invoice.payment_succeeded` (Ponta Solta 13/Gap 181)
 - [ ] [v3.2] Verificar que `send-invoice-notification` seção de métodos de pagamento mostra "Escolher Método de Pagamento" (não "Pagar com Cartão") para faturas `prepaid_class` (Ponta Solta 14/Gap 182)
 - [ ] [v3.2] **FASE 0**: Verificar que Fase 0 inclui Gap 90 (`invoice.finalized` case explícito) para reduzir ruído de log (Ponta Solta 15/Gap 183)
+
+### Itens v3.3 — Gaps 184-192
+
+- [ ] [v3.3] Verificar que `invoice.voided` error handler usa pattern Gap 67 (if/else sem return) — implementar `completeEventProcessing(false)` + `return 500` (Gap 184)
+- [ ] [v3.3] Verificar que `handleInvoicePaidEvent` helper tem signature simplificada: `(supabaseClient, stripe, event, paidInvoice)` sem params redundantes (Gap 185)
+- [ ] [v3.3] Verificar que `InvoiceTypeBadge` seção 4.4 inclui tipo `regular` com ícone `FileText` e className neutra (Gap 186)
+- [ ] [v3.3] Verificar que Gap 114 (CORS process-cancellation) está apenas na Fase 0, não duplicado na Fase 5 (Gap 187)
+- [ ] [v3.3] Documentar failsafe prepaid → automated na seção 9 de compatibilidade (Gap 188)
+- [ ] [v3.3] **FASE 0**: Verificar que `validateStripeEvent` inclui case para `invoice.finalized` com validação `eventObject.id && eventObject.customer` (Gap 189)
+- [ ] [v3.3] Verificar que SDK update de `create-payment-intent-connect` (Gap 74) está na Fase 1, não Fase 7 (Gap 190)
+- [ ] [v3.3] Verificar que override de `paymentMethods` em `send-invoice-notification` está APÓS construção (linha ~309), não após switch (linha 287) (Gap 191)
+- [ ] [v3.3] Verificar que `handleInvoicePaidEvent` retorna `Response(500)` no catch de `listLineItems` — não `null` (Gap 192)
+
+### Itens v3.4 — Gaps 193-197
+
+- [ ] [v3.4] **CRÍTICO**: Verificar que query de `business_profiles` na seção 4.1 usa `.limit(1).maybeSingle()` — não apenas `.maybeSingle()` (Gap 193)
+- [ ] [v3.4] Verificar que `Faturas.tsx` está na Fase 2 (não Fase 4) na tabela de arquivos da seção 12 — alinhado com seção 11 (Gap 194)
+- [ ] [v3.4] Verificar que code block da seção 4.4 inclui tipo `regular` com className `bg-slate-100` (Gap 195)
+- [ ] [v3.4] Verificar que `financial.json` PT e EN incluem chave `"regular": "Regular"` em `invoiceTypes` (Gap 196)
+- [ ] [v3.4] Verificar que `webhook-stripe-subscriptions` está na lista de SDK update (seção 12) e na Fase 1 (seção 11) para atualização de `v14.21.0` → `v14.24.0` (Gap 197)
 
 ### Deploy
 
@@ -2597,6 +2636,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 190 | Stripe SDK update para `create-payment-intent-connect` (Gap 74) na Fase 7 — deveria ser Fase 1 | Baixa | **Movido para Fase 1** na seção 11. Consistência de versão do SDK entre functions é pré-requisito, não ajuste final. `create-payment-intent-connect` usa `stripe@14.24.0` (mesmo das demais), mas Gap 74 recomenda verificação — fazê-la na Fase 1 garante uniformidade antes de criar `process-class-billing`. |
 | 191 | Seção 6.4 instrui override "APÓS o switch" mas `paymentMethods` é construído DEPOIS do switch — override seria sobrescrito | Alta | **Ponto de inserção corrigido** na seção 6.4: override deve ser colocado APÓS a construção de `paymentMethods` (após linha 308 do código real de `send-invoice-notification`), NÃO após o switch (linha 287). Se colocado após o switch, `paymentMethods` seria sobrescrito pela construção padrão (linhas 289-308, que usam `+=`). Texto da seção 6.4 atualizado: "Adicionar APÓS a construção de `paymentMethods` (linha ~309)". |
 | 192 | `handleInvoicePaidEvent` chama `completeEventProcessing(false)` no catch de `listLineItems` mas retorna `null` — caller faz `break` → `completeEventProcessing(true)` sobrescreve falha | Alta | **Return alterado** no catch block do helper: em vez de `return null`, agora retorna `new Response(500)` com `completeEventProcessing(false)`. O caller recebe a Response e faz `return errorResponse` — evitando o `break` → `completeEventProcessing(true)` da linha 544. Mesma correção aplicada ao handler `invoice.paid` na seção 5.3 (mesmo bug). |
+
+---
+
+### Revisão v3.4 — Gaps 193-197
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 193 | Seção 4.1: query `business_profiles` no plano não inclui `.limit(1)` antes de `.maybeSingle()` | Alta | **`.limit(1)` adicionado** à seção 4.1. Sem ele, professores com múltiplos `business_profiles` (PJ + PF) causam PGRST116 no `.maybeSingle()`, retornando null e impedindo a exibição do card "Momento da Cobrança". O código real (linha 79 de `Settings/BillingSettings.tsx`) já captura PGRST116 mas deixa `businessProfile` como null — efeito: professor não vê configurações de pagamento. |
+| 194 | `Faturas.tsx` listado como Fase 4 na seção 12 mas `canChangePaymentMethod` fix está na Fase 2 (seção 11) | Média | **Alinhado para Fase 2** na seção 12. A alteração de `canChangePaymentMethod` (Apêndice C) é uma correção de frontend puro que deve ser deployada junto com as demais atualizações de UI. Manter na Fase 4 atrasaria desnecessariamente uma proteção contra interação incorreta do aluno com faturas prepaid. |
+| 195 | Seção 4.4: code block de `InvoiceTypeBadge` não inclui tipo `regular` apesar do Gap 186 afirmar que foi adicionado | Média | **Tipo `regular` adicionado** ao code block da seção 4.4 com `icon: FileText`, `className: 'bg-slate-100 ...'` e `label: t('invoiceTypes.regular')`. Sem ele, faturas legadas (com `invoice_type = null` ou `'regular'`) mostrariam badge "Manual" em vez de badge neutro. |
+| 196 | Seção 6.3: `financial.json` PT/EN não inclui chave `"regular": "Regular"` apesar do Gap 186 afirmar que i18n foi adicionado | Baixa | **Chave `regular` adicionada** em ambos os blocos `invoiceTypes` de `financial.json` (PT e EN) na seção 6.3. Sem a tradução, `InvoiceTypeBadge` mostraria `financial:invoiceTypes.regular` como texto literal. |
+| 197 | `webhook-stripe-subscriptions/index.ts` usa `stripe@14.21.0` mas não está na lista de SDK update (seção 12) | Média | **Adicionado à seção 12** como Fase 1 e à sequência de implementação (Fase 1). Embora `webhook-stripe-subscriptions` trate do webhook de assinaturas da plataforma (não Connect), manter versões divergentes do SDK causa riscos de incompatibilidade de tipos e comportamento. A memory do projeto (`infrastructure/stripe-sdk-version-standard`) exige uniformidade em `v14.24.0`. |
 
 ---
 

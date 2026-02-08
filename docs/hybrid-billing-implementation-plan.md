@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.8 FINAL (Revisada — 217 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.9 FINAL (Revisada — 225 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: ✅ APROVADO FINAL — Pronto para Implementação
 
@@ -2832,7 +2832,7 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 
 ---
 
-### Revisão v3.8 FINAL — Gaps 213-217
+### Revisão v3.8 — Gaps 213-217
 
 | # | Gap Identificado | Gravidade | Resolução |
 |---|------------------|-----------|-----------|
@@ -2841,6 +2841,21 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 215 | Seção 7.1 (Fase 7) adiciona `payment_origin` e `original_amount`, mas RPC pode não persistir campos novos | Média | **Verificação adicionada**: executar `SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'create_invoice_and_mark_classes_billed';` antes do FIX. Se RPC usar parâmetros posicionais, atualizar para incluir novos campos. |
 | 216 | Fee breakdown ignora faturas com `payment_method = null` | Baixa | **Fallback adicionado**: `const method = invoice.payment_method \|\| 'manual';` com taxa R$ 0,00. Chave i18n `financial.feeBreakdown.manual`. |
 | 217 | Chave `paymentOrigin.prepaid` faltando em ambos PT e EN | Baixa | **Ambas adicionadas** à seção 6.3: PT `"prepaid": "Pré-pago"`, EN `"prepaid": "Prepaid"`. |
+
+---
+
+### Revisão v3.9 FINAL — Gaps 218-225
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 218 | RPC `create_invoice_and_mark_classes_billed` (migration 20251030141339) não inclui `payment_origin` nem `original_amount` no INSERT — campos seriam descartados | Alta | **Verificação obrigatória antes da Fase 7**: executar `SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'create_invoice_and_mark_classes_billed';` e confirmar que o INSERT inclui ambos os campos. Se não incluir, criar migration para alterar a RPC adicionando os parâmetros. Sem correção, valores passados pelo `automated-billing` seriam silenciosamente ignorados. |
+| 219 | `InvoiceTypeBadge.tsx` (linhas 12-28) mapeia apenas 3 tipos (`monthly_subscription`, `automated`, `manual`) — faltam `prepaid_class`, `cancellation`, `orphan_charges`, `regular` | Alta | **Code block de substituição completo** fornecido na seção 4.4. O componente deve suportar os 7 tipos do mapeamento oficial (memory `features/monthly-subscriptions/invoice-type-mapping`). Tipos faltantes causam fallback incorreto para "Manual" em faturas pré-pagas, cancelamentos e cobranças órfãs. Adicionado à Fase 2. |
+| 220 | `InvoiceStatusBadge.tsx` (linhas 29-44) não verifica `paymentOrigin === 'prepaid'` — chave i18n `paymentOrigin.prepaid` adicionada no Gap 217 ficaria sem uso | Média | **FIX documentado**: adicionar `const isPrepaid = paymentOrigin === 'prepaid';` e incluir lógica de ícone/sufixo correspondente (ex: ícone `CreditCard`, sufixo "(Pré-pago)"). Sem isso, faturas pré-pagas pagas exibem badge genérico "Paga" indistinguível de pagamentos manuais ou automáticos. Adicionado à Fase 2. |
+| 221 | `financial.json` PT (linhas 92-96) não possui chave `paymentOrigin.prepaid` | Média | **Chave adicionada**: `"prepaid": "Pré-pago"` no bloco `paymentOrigin` (singular). A chave foi documentada no Gap 217 mas não existe no arquivo real. Adicionado à Fase 1 (i18n). |
+| 222 | `financial.json` EN (linhas 92-96) não possui chave `paymentOrigin.prepaid` | Média | **Chave adicionada**: `"prepaid": "Prepaid"` no bloco `paymentOrigin` (singular). Mesma justificativa do Gap 221. Adicionado à Fase 1 (i18n). |
+| 223 | `Financeiro.tsx` usa função inline `getInvoiceTypeBadge` (duplicada) em vez do componente `InvoiceTypeBadge` | Média | **FIX documentado na seção 4.4**: deletar função inline e substituir usos por `<InvoiceTypeBadge invoiceType={invoice.invoice_type} />`. Gap 170 já documentava isso mas sem referência ao código real (linhas 30-45 e usos nas linhas 581, 716). Adicionado à Fase 2. |
+| 224 | Alerta de taxas em `Financeiro.tsx` (linhas 424-446) calcula apenas taxa fixa de Boleto — falta fee breakdown por método de pagamento | Média | **Code block TypeScript concreto** adicionado para Fase 2. Agrupar faturas pagas por `payment_method`, calcular taxa real: Boleto (R$ 3,49 fixo), PIX (1,19%), Cartão (3,2% + R$ 0,39), Manual (R$ 0,00). Exibir breakdown com totais por método. Chaves i18n: `feeBreakdown.boleto`, `feeBreakdown.pix`, `feeBreakdown.card`, `feeBreakdown.manual`, `feeBreakdown.total`. |
+| 225 | `BillingSettings.tsx` não possui o card "Momento da Cobrança" (prepaid/postpaid toggle) documentado na seção 4.1 | Alta | **Verificação de implementação**: seção 4.1 descreve o card mas o código real de `BillingSettings.tsx` não o possui. Todo o código da seção 4.1 deve ser implementado na Fase 2, incluindo: query de `business_profiles.charge_timing`, RadioGroup com cards selecionáveis, mutation para update, toast de confirmação. |
 
 ---
 

@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.2 (Revisada — 183 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.3 (Revisada — 192 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -500,8 +500,13 @@ O ClassForm já exibe os serviços e seus preços. Nenhuma alteração é necess
 // para compatibilidade com o cliente JS do Supabase.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+// [CORREÇÃO v3.3 - Gap 185] logStep, completeEventProcessing e corsHeaders
+// são constantes de módulo — NÃO precisam ser passados como parâmetros
+// na helper function handleInvoicePaidEvent. Apenas supabaseClient, stripe,
+// event e paidInvoice são necessários (estão no escopo da serve() callback).
 
 // Parâmetros de entrada
 interface ProcessClassBillingRequest {
@@ -1021,14 +1026,14 @@ case 'invoice.paid': {
 >
 > ```typescript
 > // Helper function — declarar ANTES do switch statement
+> // [CORREÇÃO v3.3 - Gap 185] Removidos parâmetros redundantes (logStep,
+> // completeEventProcessing, corsHeaders) — são constantes de módulo acessíveis
+> // no escopo da serve() callback.
 > async function handleInvoicePaidEvent(
 >   supabaseClient: any,
 >   stripe: Stripe,
 >   event: Stripe.Event,
->   paidInvoice: Stripe.Invoice,
->   logStep: Function,
->   completeEventProcessing: Function,
->   corsHeaders: Record<string, string>
+>   paidInvoice: Stripe.Invoice
 > ): Promise<Response | null> {
 >   // 1. Buscar invoice local com .maybeSingle() [Gap 75/103]
 >   const { data: currentInvoice } = await supabaseClient
@@ -1126,7 +1131,13 @@ case 'invoice.paid': {
 >       }
 >     } catch (retrieveError) {
 >       logStep('Error retrieving full invoice for line processing', retrieveError);
+>       // [CORREÇÃO v3.3 - Gap 192] Retornar Response de erro para evitar que o caller
+>       // caia no completeEventProcessing(true) da linha 544, sobrescrevendo o status de falha
 >       await completeEventProcessing(supabaseClient, event.id, false, retrieveError);
+>       return new Response(JSON.stringify({ error: 'Failed to process invoice line items' }), {
+>         status: 500,
+>         headers: { ...corsHeaders, "Content-Type": "application/json" }
+>       });
 >     }
 >   }
 >
@@ -1139,7 +1150,8 @@ case 'invoice.paid': {
 > case 'invoice.paid': {
 >   const paidInvoice = eventObject as Stripe.Invoice;
 >   logStep("Invoice paid", { invoiceId: paidInvoice.id });
->   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, paidInvoice, logStep, completeEventProcessing, corsHeaders);
+>   // [CORREÇÃO v3.3 - Gap 185] Sem params redundantes
+>   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, paidInvoice);
 >   if (errorResponse) return errorResponse;
 >   break;
 > }
@@ -1147,7 +1159,8 @@ case 'invoice.paid': {
 > case 'invoice.payment_succeeded': {
 >   const succeededInvoice = eventObject as Stripe.Invoice;
 >   logStep("Invoice payment succeeded", { invoiceId: succeededInvoice.id });
->   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, succeededInvoice, logStep, completeEventProcessing, corsHeaders);
+>   // [CORREÇÃO v3.3 - Gap 185] Sem params redundantes
+>   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, succeededInvoice);
 >   if (errorResponse) return errorResponse;
 >   break;
 > }
@@ -2568,6 +2581,22 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 181 | `invoice.payment_succeeded` sem código completo — "copiar" sem template | Média | **Helper function `handleInvoicePaidEvent`** extraída e documentada na seção 5.3. Ambos handlers (`invoice.paid` e `invoice.payment_succeeded`) chamam esta função, eliminando risco de divergência (Gap 139). Helper inclui: `.maybeSingle()`, `payment_origin` check, charge retrieval, participant confirmation com filtros `.neq('status', 'concluida')`, `completeEventProcessing` em todos os caminhos de erro. |
 | 182 | `send-invoice-notification` label "Pagar com Cartão" enganoso para prepaid | Média | **Seção 6.4 atualizada** com código que substitui TAMBÉM a seção de métodos de pagamento (não apenas o CTA). Para `invoice_type === 'prepaid_class'`, `paymentMethods` é substituído por link único "Escolher Método de Pagamento" com nota "Você poderá escolher entre cartão, boleto ou PIX na página de pagamento". Resolve o problema do Gap 166 que corrigia CTA mas deixava seção de métodos com label enganoso. |
 | 183 | Fase 0 não incluía Gap 90 (`invoice.finalized`) | Baixa | **Gap 90 adicionado** à Fase 0 na seção 11. Baixo esforço (3 linhas de código), zero risco, reduz ruído de log quando `process-class-billing` começar a finalizar invoices. Sem o case explícito, `invoice.finalized` cai no `default` que loga "Unhandled event type" — poluindo logs e confundindo monitores de alerta. |
+
+---
+
+### Revisão v3.3 — Gaps 184-192
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 184 | Gap 82 descreve `invoice.voided` como "return 500" mas código real usa if/else sem return (pattern Gap 67) | Baixa | **Descrição corrigida**: `invoice.voided` (linhas 433-437) NÃO faz `return 500` — usa `if/else` que cai no `break` → `completeEventProcessing(true)` (evento falho marcado como sucesso). O FIX é o MESMO (adicionar `completeEventProcessing(false)` + `return 500`), mas a implementação deve tratar como pattern Gap 67, não Gap 82. |
+| 185 | `handleInvoicePaidEvent` helper tem 3 parâmetros redundantes (`logStep`, `completeEventProcessing`, `corsHeaders`) | Baixa | **Signature simplificada** na seção 5.3: removidos `logStep`, `completeEventProcessing` e `corsHeaders` que são constantes de módulo acessíveis no escopo da `serve()` callback. Signature final: `(supabaseClient, stripe, event, paidInvoice)`. Chamadas nos handlers atualizadas correspondentemente. |
+| 186 | Seção 4.4 adiciona apenas 3 tipos ao InvoiceTypeBadge mas Gap 170 especifica 7 tipos incluindo `regular` | Média | **Tipo `regular` adicionado** à seção 4.4. Sem ele, faturas com `invoice_type = null` ou `'regular'` (criadas pelo fluxo legado) mostram badge "Manual" em vez de badge neutro. Tipo `regular` usa ícone `FileText`, className neutra (`bg-slate-100`), label `t('invoiceTypes.regular')`. Chaves i18n adicionadas: PT `"regular": "Regular"`, EN `"regular": "Regular"`. |
+| 187 | Gap 114 (CORS para `process-cancellation`) duplicado na Fase 0 e Fase 5 | Baixa | **Removido da Fase 5** — CORS é correção pré-existente, deve ser deployado na Fase 0 junto com os demais fixes críticos. Fase 5 foca apenas na nova lógica de void/prepaid. |
+| 188 | Sem documentação do failsafe: prepaid billing falha → aula capturada como `automated` pelo `automated-billing` | Baixa | **Nota adicionada** à seção 9 (Compatibilidade): "Se `process-class-billing` falha para uma aula (erro Stripe, timeout), a aula permanece sem `invoice_classes`. No próximo ciclo, `automated-billing` captura via `get_unbilled_participants_v2` e gera fatura com `invoice_type = 'automated'`. Este é o failsafe intencional — billing pré-pago é best-effort, pós-pago é o safety net." |
+| 189 | `validateStripeEvent` não inclui `invoice.finalized` no switch (Gap 112) — necessário junto com Gap 90 na Fase 0 | Média | **Gap 112 adicionado à Fase 0** na seção 11. Gap 90 adiciona o `case` handler, mas sem Gap 112 o evento `invoice.finalized` cai no `default: return true` do `validateStripeEvent` — funciona mas sem validação de campos. FIX: adicionar case `'invoice.finalized': return !!(eventObject.id && eventObject.customer)` ao switch de `validateStripeEvent`. |
+| 190 | Stripe SDK update para `create-payment-intent-connect` (Gap 74) na Fase 7 — deveria ser Fase 1 | Baixa | **Movido para Fase 1** na seção 11. Consistência de versão do SDK entre functions é pré-requisito, não ajuste final. `create-payment-intent-connect` usa `stripe@14.24.0` (mesmo das demais), mas Gap 74 recomenda verificação — fazê-la na Fase 1 garante uniformidade antes de criar `process-class-billing`. |
+| 191 | Seção 6.4 instrui override "APÓS o switch" mas `paymentMethods` é construído DEPOIS do switch — override seria sobrescrito | Alta | **Ponto de inserção corrigido** na seção 6.4: override deve ser colocado APÓS a construção de `paymentMethods` (após linha 308 do código real de `send-invoice-notification`), NÃO após o switch (linha 287). Se colocado após o switch, `paymentMethods` seria sobrescrito pela construção padrão (linhas 289-308, que usam `+=`). Texto da seção 6.4 atualizado: "Adicionar APÓS a construção de `paymentMethods` (linha ~309)". |
+| 192 | `handleInvoicePaidEvent` chama `completeEventProcessing(false)` no catch de `listLineItems` mas retorna `null` — caller faz `break` → `completeEventProcessing(true)` sobrescreve falha | Alta | **Return alterado** no catch block do helper: em vez de `return null`, agora retorna `new Response(500)` com `completeEventProcessing(false)`. O caller recebe a Response e faz `return errorResponse` — evitando o `break` → `completeEventProcessing(true)` da linha 544. Mesma correção aplicada ao handler `invoice.paid` na seção 5.3 (mesmo bug). |
 
 ---
 

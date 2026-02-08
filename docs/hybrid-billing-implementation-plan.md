@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.5 (Revisada — 202 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.6 (Revisada — 207 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -455,6 +455,28 @@ Sem esta correção, faturas com `invoice_type = null` ou tipo desconhecido most
 
 **NOTA**: Os tipos `cancellation`, `orphan_charges` e `regular` já existem no sistema mas não estão mapeados no `InvoiceTypeBadge`. Aproveitar para adicionar todos os 7 tipos.
 
+**[CORREÇÃO v3.6 - Gap 204]**: O componente `InvoiceStatusBadge.tsx` (seção separada) exibe o
+`paymentOrigin` como sufixo do badge de status quando a fatura está paga. O arquivo de traduções
+`financial.json` (seção 6.3) adiciona `paymentOrigin.prepaid: "Pré-paga"`. Porém, o próprio
+`InvoiceStatusBadge.tsx` (linhas 29-44 do código real) só verifica `isManual` e `isAutomatic` —
+**NÃO verifica `paymentOrigin === 'prepaid'`**. Sem atualização, faturas pré-pagas pagas
+mostrariam o badge "Paga" sem o sufixo "(Pré-paga)", e a chave i18n `paymentOrigin.prepaid`
+ficaria sem uso.
+
+**FIX**: Adicionar ao `InvoiceStatusBadge.tsx`:
+```typescript
+// Após as verificações existentes de isManual e isAutomatic:
+const isPrepaid = paymentOrigin === 'prepaid';
+
+// Em getPaymentIcon():
+if (isPaid && isPrepaid) return <Zap className="h-3 w-3" />; // Mesmo ícone do InvoiceTypeBadge prepaid
+
+// Em getPaymentSuffix():
+if (isPaid && isPrepaid) return <span className="text-xs opacity-80">({t('paymentOrigin.prepaid')})</span>;
+```
+
+Mover para **Fase 2** (junto com InvoiceTypeBadge).
+
 ### 4.5 Indicador Visual na Agenda (Aulas com Fatura Emitida)
 
 > **CORREÇÃO v1.2 (Gap 8)**: Adicionada especificação de indicador visual para aulas pré-pagas no calendário.
@@ -487,6 +509,48 @@ Sem esta correção, faturas com `invoice_type = null` ou tipo desconhecido most
 3. **Ao abrir detalhes da aula**, mostrar badge "Fatura emitida" usando `<InvoiceTypeBadge invoiceType="prepaid_class" />` se aplicável.
 
 4. **Tooltip**: Ao passar o mouse sobre o ícone, exibir "Aula com fatura pré-paga emitida".
+
+**[CORREÇÃO v3.6 - Gap 205]**: A seção acima descreve o indicador visual em texto descritivo mas
+não fornece code block TypeScript concreto. O implementador precisaria deduzir onde e como
+integrar na renderização existente da Agenda. Code block explícito:
+
+```typescript
+// Em Agenda.tsx — buscar IDs de aulas com fatura pré-paga emitida
+// Executar após carregar aulas do período (dentro de useEffect ou useQuery existente)
+const fetchBilledClassIds = async (classIds: string[]) => {
+  if (classIds.length === 0) return new Set<string>();
+  
+  const { data } = await supabase
+    .from('invoice_classes')
+    .select('class_id')
+    .eq('item_type', 'prepaid_class')
+    .in('class_id', classIds);
+  
+  return new Set((data || []).map(ic => ic.class_id));
+};
+
+// Estado para armazenar IDs de aulas faturadas
+const [billedClassIds, setBilledClassIds] = useState<Set<string>>(new Set());
+
+// Na renderização do card da aula no calendário:
+{billedClassIds.has(classEvent.id) && (
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Receipt className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+    </TooltipTrigger>
+    <TooltipContent>
+      {t('financial:prepaidIndicator.tooltip')}
+    </TooltipContent>
+  </Tooltip>
+)}
+
+// Nos detalhes da aula (modal/drawer):
+{billedClassIds.has(selectedClass.id) && (
+  <InvoiceTypeBadge invoiceType="prepaid_class" />
+)}
+```
+
+Mover referências de `Tooltip`, `TooltipTrigger`, `TooltipContent` e `Receipt` para os imports.
 
 ### 4.6 ClassForm.tsx - Nenhuma Alteração
 
@@ -852,6 +916,13 @@ logStep(`Unbilled participations found for ${studentInfo.student_name}`, {
 ```
 
 ### 5.3 Ajustes no webhook-stripe-connect
+
+> **[CORREÇÃO v3.6 - Gap 203]**: O handler inline `invoice.paid` abaixo (linhas 932-1061) é
+> **SUPERSEDIDO** pela helper function `handleInvoicePaidEvent` documentada mais abaixo (Gap 181).
+> O código inline é mantido apenas como **referência de lógica** para compreensão do fluxo.
+> Na implementação final, ambos `invoice.paid` e `invoice.payment_succeeded` DEVEM usar a
+> helper `handleInvoicePaidEvent` — NÃO copiar o handler inline. Sem esta nota, o implementador
+> poderia implementar o handler inline E a helper, resultando em código duplicado ou conflitante.
 
 **Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts`
 
@@ -1304,6 +1375,17 @@ case 'invoice.paid': {
 > **[CORREÇÃO v2.9 - Gap 156]**: Gap 153 ERRONEAMENTE afirmava que o import já existia.
 > Verificação do código real (linhas 1-2 de `process-cancellation/index.ts`) confirma
 > que NÃO há import de Stripe. O import DEVE ser adicionado como documentado aqui.
+
+> **[CORREÇÃO v3.6 - Gap 207]**: `process-cancellation` NÃO está listada em `config.toml`,
+> portanto usa o default `verify_jwt = true` (gateway rejeita sem JWT válido). Porém, o código
+> atual (linhas 33-40) aceita `cancelled_by` diretamente do body da request **sem validar**
+> se o ID corresponde ao JWT autenticado. Diferente de `process-class-billing` (Gap 61/96),
+> onde o `teacher_id` é explicitamente ignorado e substituído pelo JWT. Para consistência:
+> - **Opção A (recomendada para Fase 5)**: Manter `verify_jwt = true` (gateway valida JWT),
+>   mas adicionar validação in-code: `const { data: { user } } = await supabaseClient.auth.getUser(token);`
+>   e comparar `user.id` com `cancelled_by` (para `cancelled_by_type === 'student'`) ou
+>   verificar que o JWT pertence ao professor da aula (para `cancelled_by_type === 'teacher'`).
+> - **Opção B**: Aceitar risco menor (cancelamento ≠ cobrança) e documentar como limitação.
 
 > **CORREÇÃO v1.2 (Gap 7)**: A verificação de fatura pré-paga foi **movida do frontend** 
 > (`CancellationModal.tsx`) para cá. O backend faz a verificação completa usando 
@@ -1890,7 +1972,7 @@ case "payment_intent.succeeded": {
 | `automated-billing` (mensalidades) | **Médio** | [Gap 76] Alunos COM mensalidade ativa NÃO devem ser cobrados pré-pago. `process-class-billing` deve verificar `student_monthly_subscriptions.is_active` antes de criar invoice. Sem isso, aula é cobrada pré-pago E não entra na franquia da mensalidade (double-billing). |
 | `create-invoice` (manual) | Nenhum | Continua funcionando independentemente |
 | `create-payment-intent-connect` | Nenhum | Continua para pagamentos de faturas existentes |
-| `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista |
+| `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista. **[v3.6 Gap 206]**: O alerta de taxas Stripe (linhas 424-446 do código real) assume APENAS taxa fixa de Boleto (R$ 3,49). Com o modelo híbrido, faturas pré-pagas usam Stripe Invoice que aceita PIX, Boleto e Cartão — cada um com taxas diferentes. O alerta deve ser atualizado ou condicionado. |
 | `Faturas.tsx` (aluno) | **Médio** | [Gap 78] `Faturas.tsx` NÃO usa `PaymentOptionsCard` (verificação de código confirma 0 referências). O fluxo existente `handlePayNow → openExternalUrl(hosted_invoice_url)` já funciona para faturas pré-pagas. A correção real é: ocultar o botão `change-payment-method` (RefreshCw icon) para `invoice_type === 'prepaid_class'`, pois troca de método via `change-payment-method` edge function não se aplica ao Invoice flow do Stripe. **[v3.1 Ponta Solta 5/173]**: Atualizar `canChangePaymentMethod()` conforme Apêndice C. |
 | `Faturas.tsx` (aluno) — Fluxo "Escolher Método" | **Nenhum** | **[v3.1 Ponta Solta 9/177]**: O fluxo `handleChoosePaymentMethod → openExternalUrl(stripe_hosted_invoice_url)` JÁ funciona para faturas `prepaid_class`. Quando fatura não tem `boleto_url`/`pix_qr_code` mas TEM `stripe_hosted_invoice_url`, o aluno é redirecionado para a página do Stripe onde escolhe o método. Nenhuma alteração necessária. Ver Apêndice D. |
 | `InvoiceTypeBadge.tsx` | **Alto** | **[v3.1 Ponta Solta 2/170]**: Componente atual mapeia apenas 3 tipos (`monthly_subscription`, `automated`, `manual`). DEVE ser atualizado para TODOS os 7 tipos: `monthly_subscription`, `automated`, `manual`, `prepaid_class`, `cancellation`, `orphan_charges`, `regular`. Sem isso, novas faturas aparecem com badge incorreto. |
@@ -1901,6 +1983,7 @@ case "payment_intent.succeeded": {
 | Professores sem business_profile | Nenhum | Sem Stripe, cobrança não se aplica |
 | `materialize-virtual-class` (edge) | Nenhum | Materialização server-side não dispara billing |
 | `process-cancellation` CORS | **Médio** | **[v3.1 Ponta Solta 6/174]**: CORS headers atuais (linha 4-7) estão incompletos. Atualizar para headers Supabase completos conforme Gap 114. |
+| `process-cancellation` JWT | **Médio** | **[v3.6 Gap 207]**: `process-cancellation` NÃO está em `config.toml` (default `verify_jwt = true`), mas NÃO faz validação manual de JWT via `auth.getUser(token)` no código. O `cancelled_by` vem do body sem verificação contra o JWT autenticado. Diferente de `process-class-billing` (Gap 96/61), onde JWT é validado in-code. Para `process-cancellation`, o risco é menor (cancelamento, não cobrança), mas há inconsistência. |
 
 ---
 
@@ -2023,7 +2106,9 @@ FASE 2: Frontend - BillingSettings + Financeiro refactor
 │  - Card "Momento da Cobrança"
 │  - Estado, load, save
 │  - [v3.1 Ponta Solta 2] Atualizar InvoiceTypeBadge com TODOS os 7 tipos
+│  - [v3.6 Gap 204] Atualizar InvoiceStatusBadge para suportar paymentOrigin 'prepaid'
 │  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline (linhas 30-45, usos 581/716) por InvoiceTypeBadge
+│  - [v3.6 Gap 206] Financeiro.tsx: atualizar alerta de taxas Stripe para refletir múltiplos métodos (não apenas Boleto)
 │  - [v3.1 Ponta Solta 5] Faturas.tsx: canChangePaymentMethod deve excluir prepaid_class (ver Apêndice C)
 │
 ▼
@@ -2050,6 +2135,7 @@ FASE 5: Cancelamento - process-cancellation (backend only)
 │  - [v3.5 Gap 200] Instanciar Stripe ANTES do loop de void (não dentro)
 │  - Lógica de void/delete condicional no Stripe
 │  - Proteção contra void de faturas já pagas
+│  - [v3.6 Gap 207] Validar cancelled_by contra JWT autenticado (consistência com process-class-billing)
 │  - CancellationModal.tsx: SEM alteração
 │
 ▼
@@ -2301,6 +2387,14 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v3.4] Verificar que code block da seção 4.4 inclui tipo `regular` com className `bg-slate-100` (Gap 195)
 - [ ] [v3.4] Verificar que `financial.json` PT e EN incluem chave `"regular": "Regular"` em `invoiceTypes` (Gap 196)
 - [ ] [v3.4] Verificar que `webhook-stripe-subscriptions` está na lista de SDK update (seção 12) e na Fase 1 (seção 11) para atualização de `v14.21.0` → `v14.24.0` (Gap 197)
+
+### Itens v3.6 — Gaps 203-207
+
+- [ ] [v3.6] Verificar que o handler inline `invoice.paid` da seção 5.3 tem nota explícita de que é supersedido pela helper `handleInvoicePaidEvent` (Gap 181). Implementar APENAS a helper, não o handler inline. (Gap 203)
+- [ ] [v3.6] Verificar que `InvoiceStatusBadge.tsx` suporta `paymentOrigin === 'prepaid'` com ícone `Zap` e sufixo `(Pré-paga)` via i18n `paymentOrigin.prepaid` (Gap 204)
+- [ ] [v3.6] Verificar que seção 4.5 (indicador visual na Agenda) tem code block TypeScript concreto com `fetchBilledClassIds`, estado `billedClassIds`, e JSX com `Tooltip` + `Receipt` icon (Gap 205)
+- [ ] [v3.6] Verificar que alerta de taxas Stripe em `Financeiro.tsx` (linhas 424-446) é atualizado ou condicionado para refletir múltiplos métodos (Boleto R$ 3,49 + PIX + Cartão), não apenas taxa fixa de Boleto (Gap 206)
+- [ ] [v3.6] Verificar que `process-cancellation` valida `cancelled_by` contra JWT autenticado (ou documenta como limitação aceita) para consistência com `process-class-billing` Gap 61 (Gap 207)
 
 ### Deploy
 
@@ -2685,6 +2779,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 200 | Seção 5.4: instanciação do Stripe (`new Stripe(...)`) DENTRO do loop `for (const prepaidInvoice of prepaidInvoices)` | Baixa | **Stripe movido para ANTES do loop**. Cada iteração chamava `Deno.env.get("STRIPE_SECRET_KEY")` e `new Stripe(stripeKey, ...)` redundantemente. Para N faturas pré-pagas, eram N instanciações desnecessárias. Agora é 1 instanciação antes do loop, reutilizada em todas as iterações. Adicionado à Fase 5 na sequência. |
 | 201 | Seção 6.3: `paymentOrigins` (plural) proposto com 3 chaves sobrescreveria bloco existente com 4 chaves | Alta | **Namespace corrigido** de `paymentOrigins` (plural) para `paymentOrigin` (singular). O `financial.json` existente JÁ possui `paymentOrigins` (plural) com chaves `manual`, `stripe`, `automatic`, `unspecified`. Se implementado como proposto, `stripe` e `unspecified` seriam PERDIDOS. Além disso, o `InvoiceStatusBadge.tsx` (linhas 42-43) usa `paymentOrigin` (singular). FIX: adicionar APENAS `"prepaid"` ao namespace `paymentOrigin` (singular), sem tocar no `paymentOrigins` (plural). |
 | 202 | Sequência Fase 3 lista `voidResult` como tarefa mas variável pertence a `process-cancellation` (Fase 5) | Média | **Task movida** de Fase 3 (`process-class-billing`) para Fase 5 (`process-cancellation`). A variável `voidResult` é usada exclusivamente na lógica de void de faturas pré-pagas em `process-cancellation/index.ts`. Listá-la na Fase 3 levaria o implementador a procurar no arquivo errado. Fase 5 agora inclui a declaração junto com as demais tarefas de `process-cancellation`. |
+
+---
+
+### Revisão v3.6 — Gaps 203-207
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 203 | Seção 5.3: handler inline `invoice.paid` (linhas 932-1061) coexiste com helper `handleInvoicePaidEvent` (Gap 181) sem indicação de qual usar | Média | **Nota de supersedência adicionada** ao topo da seção 5.3. O handler inline é mantido como referência de lógica, mas a implementação DEVE usar a helper `handleInvoicePaidEvent`. Sem esta nota, o implementador poderia implementar AMBOS — o handler inline E a helper — resultando em código duplicado, handlers conflitantes ou lógica de fallthrough incorreta no switch statement. |
+| 204 | `InvoiceStatusBadge.tsx` não suporta `paymentOrigin === 'prepaid'` apesar de chave i18n `paymentOrigin.prepaid` existir (seção 6.3) | Média | **FIX documentado na seção 4.4**: adicionar verificação `isPrepaid = paymentOrigin === 'prepaid'` ao componente. Sem isso, faturas pré-pagas pagas exibem badge "Paga" sem sufixo "(Pré-paga)", e a chave i18n `paymentOrigin.prepaid` adicionada na seção 6.3 fica sem uso. O professor não consegue distinguir visualmente uma fatura paga automaticamente de uma pré-paga. Movido para Fase 2. |
+| 205 | Seção 4.5 (indicador visual na Agenda) descreve funcionalidade em texto mas não fornece code block TypeScript concreto | Média | **Code block TypeScript adicionado** à seção 4.5 com: `fetchBilledClassIds()` helper function, estado React `billedClassIds` (Set), JSX com `Tooltip` + `Receipt` icon para renderização no card do calendário, e `InvoiceTypeBadge` nos detalhes da aula. Sem code block, o implementador precisaria deduzir toda a integração com a renderização existente da Agenda, aumentando risco de implementação incorreta. |
+| 206 | Alerta de taxas Stripe em `Financeiro.tsx` (linhas 424-446) assume apenas taxa fixa de Boleto (R$ 3,49) | Baixa | **Nota adicionada** à seção 9 (Compatibilidade). Com o modelo híbrido, faturas pré-pagas usam Stripe Invoice que aceita Boleto (R$ 3,49), PIX (taxa variável) e Cartão (% sobre valor). O cálculo `stripeFees = paidInvoices.length * 3.49` e o texto "taxa fixa do Stripe de R$ 3,49 por transação" são imprecisos para faturas pagas via PIX ou cartão. FIX para Fase 2: condicionar alerta ao `payment_method` real da fatura, ou generalizar texto para "taxas variam por método". |
+| 207 | `process-cancellation` não valida `cancelled_by` contra JWT autenticado | Média | **Nota de segurança adicionada** à seção 5.4. A função aceita `cancelled_by` do body sem verificar se corresponde ao JWT. Diferente de `process-class-billing` (Gaps 61/96) onde JWT é validado in-code. Risco menor (cancelamento ≠ cobrança), mas inconsistente. FIX recomendado para Fase 5: adicionar validação `auth.getUser(token)` e comparar com `cancelled_by`. Adicionado à sequência da Fase 5. |
 
 ---
 

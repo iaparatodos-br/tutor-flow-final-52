@@ -1,8 +1,8 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.7 (Revisada — 212 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.8 FINAL (Revisada — 217 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
-> **Status**: Aprovado - Pronto para Implementação
+> **Status**: ✅ APROVADO FINAL — Pronto para Implementação
 
 > **CORS**: Webhook existente (webhook-stripe-connect) usa CORS headers incompletos (Gap 100)
 > **IMPORTANTE**: Leia a Seção 11.0 (Fase 0) sobre correções críticas no webhook ANTES de implementar novas features.
@@ -2829,6 +2829,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 210 | Gap 206 (alerta de taxas em `Financeiro.tsx`) não fornece code block concreto nem chaves i18n para PIX (~1,19%) e Cartão (~3,2% + R$ 0,39) | Média | **Code block TypeScript e chaves i18n detalhados** a serem adicionados na Fase 2. O alerta atual calcula `stripeFees = paidInvoices.length * STRIPE_BOLETO_FEE` (R$ 3,49). FIX: agrupar faturas pagas por `payment_method`, calcular taxa real por método (`boleto`: R$ 3,49 fixo; `pix`: 1,19% do valor; `card`: 3,2% + R$ 0,39), e exibir breakdown por método. Chaves i18n: `financial.feeBreakdown.boleto`, `financial.feeBreakdown.pix`, `financial.feeBreakdown.card`, `financial.feeBreakdown.mixed`. |
 | 211 | `send-invoice-notification` usa `.single()` para lookup de invoice (linha 57), student (linha 69) e teacher (linha 99) | Baixa | **FIX recomendado**: substituir `.single()` por `.maybeSingle()` com early return e log warning nos 3 lookups. Se uma fatura for void/deletada entre a criação e o envio da notificação (cenário possível em cancelamentos rápidos), `.single()` lança exceção não tratada que polui os logs e impede a notificação de faturas válidas processadas na mesma execução. O lookup de `teacher_student_relationships` (linha 112) já usa `.maybeSingle()` corretamente. Adicionado como tarefa opcional na Fase 7. |
 | 212 | `automated-billing` não seta `original_amount` no objeto `invoiceData` ao criar faturas — discrepância com `process-class-billing` (Gap 142/167) | Baixa | **FIX documentado na Fase 7**: adicionar `original_amount: amount` ao INSERT de invoices em `automated-billing`. Sem isso, faturas automáticas têm `original_amount: null` enquanto pré-pagas têm o valor correto, quebrando relatórios que comparam `original_amount` vs `amount` para detectar descontos ou estornos parciais. A correção é trivial (1 linha) e mantém paridade entre os dois fluxos de billing. |
+
+---
+
+### Revisão v3.8 FINAL — Gaps 213-217
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 213 | Seção 6.3 (i18n) propõe adicionar chaves ao `invoiceTypes` que já existem em `financial.json` (PT) — merge sobrescreveria `cancellation`, `orphanCharges` e `regular` | Média | **Instrução de merge refinada** na seção 6.3: implementador deve adicionar APENAS a chave `"prepaidClass": "Aula Pré-paga"` (PT) e `"prepaidClass": "Prepaid Class"` (EN) ao objeto `invoiceTypes`. As demais chaves (`regular`, `cancellation`, `orphanCharges`, `automated`, `manual`, `monthlySubscription`) JÁ existem no arquivo e não devem ser tocadas. |
+| 214 | Seção 4.2.2 (materialização de recorrência) não inclui toast de erro quando billing falha — inconsistente com Gap 143 | Baixa | **Toast de erro adicionado** ao fluxo de materialização. Chave i18n `billingError` adicionada: PT `"Erro ao gerar cobrança"`, EN `"Billing error"`. |
+| 215 | Seção 7.1 (Fase 7) adiciona `payment_origin` e `original_amount`, mas RPC pode não persistir campos novos | Média | **Verificação adicionada**: executar `SELECT pg_get_functiondef(oid) FROM pg_proc WHERE proname = 'create_invoice_and_mark_classes_billed';` antes do FIX. Se RPC usar parâmetros posicionais, atualizar para incluir novos campos. |
+| 216 | Fee breakdown ignora faturas com `payment_method = null` | Baixa | **Fallback adicionado**: `const method = invoice.payment_method \|\| 'manual';` com taxa R$ 0,00. Chave i18n `financial.feeBreakdown.manual`. |
+| 217 | Chave `paymentOrigin.prepaid` faltando em ambos PT e EN | Baixa | **Ambas adicionadas** à seção 6.3: PT `"prepaid": "Pré-pago"`, EN `"prepaid": "Prepaid"`. |
 
 ---
 

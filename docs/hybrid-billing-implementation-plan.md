@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.4 (Revisada — 197 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.5 (Revisada — 202 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -443,6 +443,15 @@ regular: {
   className: 'bg-slate-100 text-slate-800 border-slate-200 dark:bg-slate-800/50 dark:text-slate-300 dark:border-slate-600'
 },
 ```
+
+**[CORREÇÃO v3.5 - Gap 199]**: Atualizar o fallback do componente (linha 30 do código atual):
+```typescript
+// DE:
+const config = typeConfig[invoiceType as keyof typeof typeConfig] || typeConfig.manual;
+// PARA:
+const config = typeConfig[invoiceType as keyof typeof typeConfig] || typeConfig.regular;
+```
+Sem esta correção, faturas com `invoice_type = null` ou tipo desconhecido mostrariam badge "Manual" em vez do badge neutro "Regular". O tipo `regular` foi criado especificamente como fallback para faturas legadas (Gap 186/195).
 
 **NOTA**: Os tipos `cancellation`, `orphan_charges` e `regular` já existem no sistema mas não estão mapeados no `InvoiceTypeBadge`. Aproveitar para adicionar todos os 7 tipos.
 
@@ -1322,6 +1331,10 @@ Adicionar lógica de void/delete de fatura pré-paga. Inserir ANTES da seção d
 // [Gap 12] Usar queries sequenciais em vez de FK join
 // [Gap 65] Para cancelamento individual, filtrar por participante específico
 // [Gap 70] Para dependentes, DEVE filtrar por dependent_id para evitar ambiguidade
+// [CORREÇÃO v3.5 - Gap 198] Declarar voidResult ANTES do loop (Gaps 157/175 descreviam
+// a correção mas o code block não incluía a declaração — causaria ReferenceError)
+let voidResult: any = null;
+
 let invoiceClassQuery = supabaseClient
   .from('invoice_classes')
   .select('id, stripe_invoice_item_id, invoice_id, participant_id')
@@ -1369,6 +1382,11 @@ if (invoiceClassesForClass && invoiceClassesForClass.length > 0) {
   prepaidInvoices = invoicesData || [];
 }
 
+// [CORREÇÃO v3.5 - Gap 200] Instanciar Stripe ANTES do loop (era dentro do loop,
+// redundante para cada iteração — N chamadas desnecessárias a Deno.env.get)
+const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+
 // Iterar sobre TODAS as faturas pré-pagas (pode haver múltiplas em aulas em grupo)
 for (const prepaidInvoice of prepaidInvoices) {
   // Só pode anular faturas não-pagas
@@ -1376,9 +1394,6 @@ for (const prepaidInvoice of prepaidInvoices) {
     console.log('📋 Voiding prepaid invoice:', prepaidInvoice.stripe_invoice_id);
     
     try {
-      const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-      const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-      
       // [CORREÇÃO v2.2 - Gap 95] Buscar stripe_connect_id da fatura sendo anulada,
       // NÃO do perfil genérico do professor. Se professor tem múltiplos business_profiles,
       // a busca por `user_id = teacher_id` pode retornar o perfil ERRADO (ex: PF em vez de PJ),
@@ -1535,10 +1550,8 @@ return new Response(JSON.stringify({
     "orphanCharges": "Cobranças pendentes",
     "regular": "Regular"
   },
-  "paymentOrigins": {
-    "prepaid": "Pré-paga",
-    "automatic": "Automática",
-    "manual": "Manual"
+  "paymentOrigin": {
+    "prepaid": "Pré-paga"
   },
   "prepaidIndicator": {
     "tooltip": "Aula com fatura pré-paga emitida",
@@ -1547,6 +1560,19 @@ return new Response(JSON.stringify({
     "addParticipantBlocked": "Não é possível adicionar participantes a uma aula com fatura pré-paga."
   }
 }
+```
+
+> **[CORREÇÃO v3.5 - Gap 201]**: A seção anterior propunha `paymentOrigins` (plural) com 3 chaves
+> (`prepaid`, `automatic`, `manual`). Porém, o `financial.json` EXISTENTE já possui AMBOS os
+> namespaces: `paymentOrigin` (singular, usado por `InvoiceStatusBadge.tsx` linhas 42-43) com
+> chaves `automatic`, `manual`, `system`, E `paymentOrigins` (plural) com chaves `manual`, `stripe`,
+> `automatic`, `unspecified`. Se implementado como proposto, o bloco `paymentOrigins` seria
+> SOBRESCRITO, perdendo as chaves `stripe` e `unspecified`. Além disso, labels divergiriam
+> (`automatic` = "Automática" vs existente "Cobrança Automática").
+>
+> **FIX**: Adicionar APENAS a nova chave `prepaid` ao namespace `paymentOrigin` (singular),
+> que é o usado pelo `InvoiceStatusBadge.tsx`. NÃO alterar o bloco `paymentOrigins` (plural)
+> existente. Implementar como merge (adicionar chave), não como substituição de bloco.
 ```
 
 **Arquivo**: `src/i18n/locales/en/financial.json` - Adicionar em `invoiceTypes`:
@@ -1559,10 +1585,8 @@ return new Response(JSON.stringify({
     "orphanCharges": "Pending charges",
     "regular": "Regular"
   },
-  "paymentOrigins": {
-    "prepaid": "Prepaid",
-    "automatic": "Automatic",
-    "manual": "Manual"
+  "paymentOrigin": {
+    "prepaid": "Prepaid"
   },
   "prepaidIndicator": {
     "tooltip": "Class with prepaid invoice issued",
@@ -2009,7 +2033,6 @@ FASE 3: Backend - Edge Function process-class-billing
 │  - Integração Stripe Connect (Invoice Items + Invoice)
 │  - Criação de customer no Connected Account
 │  - Registros em invoices + invoice_classes
-│  - [v3.1 Ponta Solta 7] Declarar let voidResult: any = null; no ponto correto
 │
 ▼
 FASE 4: Integração - Agenda.tsx
@@ -2022,7 +2045,9 @@ FASE 4: Integração - Agenda.tsx
 FASE 5: Cancelamento - process-cancellation (backend only)
 │  - [Gap 7] Verificação de fatura pré-paga movida para backend
 │  - [Gap 156] Adicionar import Stripe (NÃO existe no código atual — Gap 153 incorreto)
+│  - [v3.5 Gap 202] Declarar let voidResult: any = null; (movido da Fase 3 — pertence a process-cancellation)
 │  - [v3.1 Ponta Solta 6] CORS headers completos em process-cancellation
+│  - [v3.5 Gap 200] Instanciar Stripe ANTES do loop de void (não dentro)
 │  - Lógica de void/delete condicional no Stripe
 │  - Proteção contra void de faturas já pagas
 │  - CancellationModal.tsx: SEM alteração
@@ -2648,6 +2673,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 195 | Seção 4.4: code block de `InvoiceTypeBadge` não inclui tipo `regular` apesar do Gap 186 afirmar que foi adicionado | Média | **Tipo `regular` adicionado** ao code block da seção 4.4 com `icon: FileText`, `className: 'bg-slate-100 ...'` e `label: t('invoiceTypes.regular')`. Sem ele, faturas legadas (com `invoice_type = null` ou `'regular'`) mostrariam badge "Manual" em vez de badge neutro. |
 | 196 | Seção 6.3: `financial.json` PT/EN não inclui chave `"regular": "Regular"` apesar do Gap 186 afirmar que i18n foi adicionado | Baixa | **Chave `regular` adicionada** em ambos os blocos `invoiceTypes` de `financial.json` (PT e EN) na seção 6.3. Sem a tradução, `InvoiceTypeBadge` mostraria `financial:invoiceTypes.regular` como texto literal. |
 | 197 | `webhook-stripe-subscriptions/index.ts` usa `stripe@14.21.0` mas não está na lista de SDK update (seção 12) | Média | **Adicionado à seção 12** como Fase 1 e à sequência de implementação (Fase 1). Embora `webhook-stripe-subscriptions` trate do webhook de assinaturas da plataforma (não Connect), manter versões divergentes do SDK causa riscos de incompatibilidade de tipos e comportamento. A memory do projeto (`infrastructure/stripe-sdk-version-standard`) exige uniformidade em `v14.24.0`. |
+
+---
+
+### Revisão v3.5 — Gaps 198-202
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 198 | Seção 5.4: code block de `process-cancellation` atribui `voidResult = {...}` (linha 1436) sem declaração `let voidResult` no bloco | Alta | **Declaração `let voidResult: any = null;` adicionada** ao topo do code block da seção 5.4, ANTES de `let invoiceClassQuery`. Gaps 157 e 175 descreviam o fix em texto (ponto de inserção), mas o code block copiável não incluía a declaração — implementador que copiasse o bloco receberia `ReferenceError: voidResult is not defined` em runtime. |
+| 199 | Seção 4.4: fallback de `InvoiceTypeBadge` ainda mapeia para `typeConfig.manual` em vez de `typeConfig.regular` | Média | **Fallback atualizado** na seção 4.4 de `\|\| typeConfig.manual` para `\|\| typeConfig.regular`. Com a adição do tipo `regular` (Gaps 186/195), o fallback para `invoice_type = null` ou tipo desconhecido deve ser o badge neutro "Regular", não "Manual". Sem correção, faturas legadas sem tipo definido apareceriam incorretamente como "Manual". |
+| 200 | Seção 5.4: instanciação do Stripe (`new Stripe(...)`) DENTRO do loop `for (const prepaidInvoice of prepaidInvoices)` | Baixa | **Stripe movido para ANTES do loop**. Cada iteração chamava `Deno.env.get("STRIPE_SECRET_KEY")` e `new Stripe(stripeKey, ...)` redundantemente. Para N faturas pré-pagas, eram N instanciações desnecessárias. Agora é 1 instanciação antes do loop, reutilizada em todas as iterações. Adicionado à Fase 5 na sequência. |
+| 201 | Seção 6.3: `paymentOrigins` (plural) proposto com 3 chaves sobrescreveria bloco existente com 4 chaves | Alta | **Namespace corrigido** de `paymentOrigins` (plural) para `paymentOrigin` (singular). O `financial.json` existente JÁ possui `paymentOrigins` (plural) com chaves `manual`, `stripe`, `automatic`, `unspecified`. Se implementado como proposto, `stripe` e `unspecified` seriam PERDIDOS. Além disso, o `InvoiceStatusBadge.tsx` (linhas 42-43) usa `paymentOrigin` (singular). FIX: adicionar APENAS `"prepaid"` ao namespace `paymentOrigin` (singular), sem tocar no `paymentOrigins` (plural). |
+| 202 | Sequência Fase 3 lista `voidResult` como tarefa mas variável pertence a `process-cancellation` (Fase 5) | Média | **Task movida** de Fase 3 (`process-class-billing`) para Fase 5 (`process-cancellation`). A variável `voidResult` é usada exclusivamente na lógica de void de faturas pré-pagas em `process-cancellation/index.ts`. Listá-la na Fase 3 levaria o implementador a procurar no arquivo errado. Fase 5 agora inclui a declaração junto com as demais tarefas de `process-cancellation`. |
 
 ---
 

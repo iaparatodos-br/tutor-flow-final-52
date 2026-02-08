@@ -1,8 +1,8 @@
 
 
-# Plano de Implementação: Cobrança Híbrida Global — Status v3.2
+# Plano de Implementação: Cobrança Híbrida Global — Status v3.3
 
-**Documento principal**: `docs/hybrid-billing-implementation-plan.md` (v3.2, 183 gaps corrigidos, 15 pontas soltas resolvidas)
+**Documento principal**: `docs/hybrid-billing-implementation-plan.md` (v3.3, 192 gaps corrigidos, 15 pontas soltas resolvidas)
 
 **Status**: ✅ Aprovado — Pronto para Implementação
 
@@ -10,26 +10,29 @@
 
 ## Resumo Executivo
 
-O plano v3.2 resolve 183 gaps identificados em 15 revisões cruzadas exaustivas entre o documento de implementação e o código-fonte real do projeto. As 15 pontas soltas (6 ALTA, 6 MÉDIA, 1 CRÍTICA, 2 BAIXA) foram todas incorporadas ao documento.
+O plano v3.3 resolve 192 gaps identificados em 17 revisões cruzadas exaustivas entre o documento de implementação e o código-fonte real do projeto.
 
-### Atualizações v3.2 (Gaps 178-183)
+### Atualizações v3.3 (Gaps 184-192)
 
-| # | Ponta Solta | Gravidade | Resolução |
-|---|-------------|-----------|-----------|
-| 178 | `payment_intent.succeeded` sem handler completo | Alta | Handler COMPLETO de substituição na seção 8.4 |
-| 179 | SELECT sem `stripe_invoice_id` | Alta | SELECT expandido para 4 campos no handler |
-| 180 | `invoice.payment_failed` sem check `payment_origin` | Média | Verificação `manual` adicionada ao handler |
-| 181 | `invoice.payment_succeeded` sem código concreto | Média | Helper function `handleInvoicePaidEvent` extraída |
-| 182 | Label "Pagar com Cartão" enganoso para prepaid | Média | Seção de métodos substituída em 6.4 |
-| 183 | Fase 0 sem Gap 90 (`invoice.finalized`) | Baixa | Adicionado à Fase 0 |
+| # | Gap | Gravidade | Resolução |
+|---|-----|-----------|-----------|
+| 184 | `invoice.voided` incorretamente descrito como Gap 82 | Baixa | Descrição corrigida — usa pattern Gap 67 (if/else) |
+| 185 | `handleInvoicePaidEvent` params redundantes | Baixa | Signature simplificada (4 params em vez de 7) |
+| 186 | InvoiceTypeBadge sem tipo `regular` | Média | Tipo `regular` adicionado à seção 4.4 |
+| 187 | Gap 114 duplicado na Fase 0 e Fase 5 | Baixa | Removido da Fase 5 |
+| 188 | Sem doc do failsafe prepaid → automated | Baixa | Nota adicionada à seção 9 |
+| 189 | `validateStripeEvent` sem `invoice.finalized` | Média | Gap 112 adicionado à Fase 0 |
+| 190 | SDK update na fase errada | Baixa | Gap 74 movido para Fase 1 |
+| 191 | Override de `paymentMethods` no ponto errado | Alta | Ponto de inserção corrigido (após linha 308) |
+| 192 | `completeEventProcessing(true)` sobrescreve falha | Alta | Return Response no catch em vez de null |
 
 ### Fases de Implementação
 
 ```
 FASE 0: Correções Críticas (webhook existente) — ANTES de tudo
-  → Gaps 82, 83, 86, 90, 98, 99, 103-106, 114, 115, 178-181, 183
+  → Gaps 82, 83, 86, 90, 98, 99, 103-106, 112, 114, 115, 178-181, 183, 189
 
-FASE 1: Migração SQL + i18n
+FASE 1: Migração SQL + i18n + SDK check (Gap 190)
 FASE 2: Frontend (BillingSettings + InvoiceTypeBadge + Financeiro)
 FASE 3: Backend (process-class-billing)
 FASE 4: Integração (Agenda.tsx)

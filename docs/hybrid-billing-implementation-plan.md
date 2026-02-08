@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.6 (Revisada — 207 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.7 (Revisada — 212 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -237,6 +237,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_prepaid_invoice_class
   ON public.invoice_classes(class_id, participant_id)
   WHERE item_type = 'prepaid_class';
 ```
+
+### 3.4 Alteração: teacher_student_relationships
+
+> **[CORREÇÃO v3.7 - Gap 208]**: Gaps 39 e 62 documentam a necessidade de persistir
+> `stripe_customer_id` em `teacher_student_relationships` para evitar recriação de customers
+> no Stripe Connect. Porém, a Seção 3 (SQL Migration) não incluía o ALTER TABLE correspondente.
+> Sem esta coluna, o `process-class-billing` tentaria salvar o customer ID em uma coluna
+> inexistente, resultando em erro silencioso ou falha no billing.
+
+```sql
+-- [Gap 208] Persistir Stripe Customer ID para evitar recriação a cada cobrança
+ALTER TABLE public.teacher_student_relationships
+  ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT DEFAULT NULL;
+
+COMMENT ON COLUMN public.teacher_student_relationships.stripe_customer_id IS
+  'ID do Customer no Stripe Connected Account. Persistido após primeira cobrança para evitar duplicação.';
+
+-- Índice para buscas rápidas por stripe_customer_id
+CREATE INDEX IF NOT EXISTS idx_tsr_stripe_customer_id
+  ON public.teacher_student_relationships(stripe_customer_id)
+  WHERE stripe_customer_id IS NOT NULL;
+```
+
+**RLS**: A tabela `teacher_student_relationships` já possui RLS ativo. A nova coluna `stripe_customer_id` é coberta automaticamente pelas políticas existentes.
 
 ---
 
@@ -2147,6 +2171,8 @@ FASE 6: Webhook - webhook-stripe-connect (novas features após Fase 0)
 ▼
 FASE 7: Ajustes - automated-billing
 │  - Verificar que RPC filtra aulas já cobradas
+│  - [v3.7 Gap 209] Setar payment_origin: 'automated' ao criar invoices
+│  - [v3.7 Gap 212] Setar original_amount: amount ao criar invoices
 │  - Adicionar logs de debug (opcional)
 │
 ▼
@@ -2165,7 +2191,7 @@ FASE 8: Testes e Validação
 
 | Arquivo | Tipo | Fase | Descrição |
 |---------|------|------|-----------|
-| Migração SQL | **Criar** | 1 | `charge_timing` + `stripe_invoice_item_id` |
+| Migração SQL | **Criar** | 1 | `charge_timing` + `stripe_invoice_item_id` + `stripe_customer_id` em teacher_student_relationships |
 | `src/integrations/supabase/types.ts` | **Regenerar** | 1 | Atualizar tipos após migração |
 | `src/components/Settings/BillingSettings.tsx` | **Modificar** | 2 | Novo card "Momento da Cobrança" |
 | `src/i18n/locales/pt/billing.json` | **Modificar** | 2 | Traduções chargeTiming |
@@ -2791,6 +2817,18 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 205 | Seção 4.5 (indicador visual na Agenda) descreve funcionalidade em texto mas não fornece code block TypeScript concreto | Média | **Code block TypeScript adicionado** à seção 4.5 com: `fetchBilledClassIds()` helper function, estado React `billedClassIds` (Set), JSX com `Tooltip` + `Receipt` icon para renderização no card do calendário, e `InvoiceTypeBadge` nos detalhes da aula. Sem code block, o implementador precisaria deduzir toda a integração com a renderização existente da Agenda, aumentando risco de implementação incorreta. |
 | 206 | Alerta de taxas Stripe em `Financeiro.tsx` (linhas 424-446) assume apenas taxa fixa de Boleto (R$ 3,49) | Baixa | **Nota adicionada** à seção 9 (Compatibilidade). Com o modelo híbrido, faturas pré-pagas usam Stripe Invoice que aceita Boleto (R$ 3,49), PIX (taxa variável) e Cartão (% sobre valor). O cálculo `stripeFees = paidInvoices.length * 3.49` e o texto "taxa fixa do Stripe de R$ 3,49 por transação" são imprecisos para faturas pagas via PIX ou cartão. FIX para Fase 2: condicionar alerta ao `payment_method` real da fatura, ou generalizar texto para "taxas variam por método". |
 | 207 | `process-cancellation` não valida `cancelled_by` contra JWT autenticado | Média | **Nota de segurança adicionada** à seção 5.4. A função aceita `cancelled_by` do body sem verificar se corresponde ao JWT. Diferente de `process-class-billing` (Gaps 61/96) onde JWT é validado in-code. Risco menor (cancelamento ≠ cobrança), mas inconsistente. FIX recomendado para Fase 5: adicionar validação `auth.getUser(token)` e comparar com `cancelled_by`. Adicionado à sequência da Fase 5. |
+
+---
+
+### Revisão v3.7 — Gaps 208-212
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 208 | Seção 3 (SQL Migration) não inclui `ALTER TABLE teacher_student_relationships ADD COLUMN stripe_customer_id TEXT` exigido pelos Gaps 39 e 62 | Alta | **Seção 3.4 adicionada** com ALTER TABLE, COMMENT e índice parcial. Sem esta coluna, o `process-class-billing` tentaria persistir o `stripe_customer_id` (Gap 39, step 3c.ii) em uma coluna inexistente, resultando em erro de INSERT/UPDATE silencioso. O professor continuaria pagando por buscas/criações duplicadas de customer no Stripe a cada cobrança. Adicionado à Fase 1 (migração). |
+| 209 | `automated-billing` não seta `payment_origin` ao criar invoices — discrepância com `process-class-billing` que seta `'prepaid'` | Média | **FIX documentado na Fase 7**: `automated-billing` deve setar `payment_origin: 'automated'` no objeto `invoiceData` ao inserir na tabela `invoices`. Sem isso, faturas do ciclo automático ficam com `payment_origin: null` até o webhook processar, causando badges inconsistentes na UI (`InvoiceStatusBadge` não mostra origem) e queries de relatório que filtram por `payment_origin` retornam resultados incompletos. |
+| 210 | Gap 206 (alerta de taxas em `Financeiro.tsx`) não fornece code block concreto nem chaves i18n para PIX (~1,19%) e Cartão (~3,2% + R$ 0,39) | Média | **Code block TypeScript e chaves i18n detalhados** a serem adicionados na Fase 2. O alerta atual calcula `stripeFees = paidInvoices.length * STRIPE_BOLETO_FEE` (R$ 3,49). FIX: agrupar faturas pagas por `payment_method`, calcular taxa real por método (`boleto`: R$ 3,49 fixo; `pix`: 1,19% do valor; `card`: 3,2% + R$ 0,39), e exibir breakdown por método. Chaves i18n: `financial.feeBreakdown.boleto`, `financial.feeBreakdown.pix`, `financial.feeBreakdown.card`, `financial.feeBreakdown.mixed`. |
+| 211 | `send-invoice-notification` usa `.single()` para lookup de invoice (linha 57), student (linha 69) e teacher (linha 99) | Baixa | **FIX recomendado**: substituir `.single()` por `.maybeSingle()` com early return e log warning nos 3 lookups. Se uma fatura for void/deletada entre a criação e o envio da notificação (cenário possível em cancelamentos rápidos), `.single()` lança exceção não tratada que polui os logs e impede a notificação de faturas válidas processadas na mesma execução. O lookup de `teacher_student_relationships` (linha 112) já usa `.maybeSingle()` corretamente. Adicionado como tarefa opcional na Fase 7. |
+| 212 | `automated-billing` não seta `original_amount` no objeto `invoiceData` ao criar faturas — discrepância com `process-class-billing` (Gap 142/167) | Baixa | **FIX documentado na Fase 7**: adicionar `original_amount: amount` ao INSERT de invoices em `automated-billing`. Sem isso, faturas automáticas têm `original_amount: null` enquanto pré-pagas têm o valor correto, quebrando relatórios que comparam `original_amount` vs `amount` para detectar descontos ou estornos parciais. A correção é trivial (1 linha) e mantém paridade entre os dois fluxos de billing. |
 
 ---
 

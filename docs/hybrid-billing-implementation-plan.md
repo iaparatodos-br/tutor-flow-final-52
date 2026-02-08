@@ -1,10 +1,11 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.0 (Revisada — 168 gaps corrigidos)
-> **Data**: 2026-02-07
+> **Versão**: 3.1 (Revisada — 177 gaps corrigidos, 9 pontas soltas resolvidas)
+> **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
 > **CORS**: Webhook existente (webhook-stripe-connect) usa CORS headers incompletos (Gap 100)
+> **IMPORTANTE**: Leia a Seção 11.0 (Fase 0) sobre correções críticas no webhook ANTES de implementar novas features.
 
 ---
 
@@ -1617,14 +1618,16 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 | `create-invoice` (manual) | Nenhum | Continua funcionando independentemente |
 | `create-payment-intent-connect` | Nenhum | Continua para pagamentos de faturas existentes |
 | `Financeiro.tsx` (lista faturas) | **Médio** | [Gap 1/11] Substituir `getInvoiceTypeBadge` inline por `InvoiceTypeBadge` importado; novas faturas `prepaid_class` aparecem na lista |
-| `Faturas.tsx` (aluno) | **Médio** | [Gap 78] `Faturas.tsx` NÃO usa `PaymentOptionsCard` (verificação de código confirma 0 referências). O fluxo existente `handlePayNow → openExternalUrl(hosted_invoice_url)` já funciona para faturas pré-pagas. A correção real é: ocultar o botão `change-payment-method` (RefreshCw icon) para `invoice_type === 'prepaid_class'`, pois troca de método via `change-payment-method` edge function não se aplica ao Invoice flow do Stripe. |
-| `InvoiceTypeBadge.tsx` | **Médio** | Adicionar tipo `prepaid_class` e `cancellation` ao mapeamento |
+| `Faturas.tsx` (aluno) | **Médio** | [Gap 78] `Faturas.tsx` NÃO usa `PaymentOptionsCard` (verificação de código confirma 0 referências). O fluxo existente `handlePayNow → openExternalUrl(hosted_invoice_url)` já funciona para faturas pré-pagas. A correção real é: ocultar o botão `change-payment-method` (RefreshCw icon) para `invoice_type === 'prepaid_class'`, pois troca de método via `change-payment-method` edge function não se aplica ao Invoice flow do Stripe. **[v3.1 Ponta Solta 5/173]**: Atualizar `canChangePaymentMethod()` conforme Apêndice C. |
+| `Faturas.tsx` (aluno) — Fluxo "Escolher Método" | **Nenhum** | **[v3.1 Ponta Solta 9/177]**: O fluxo `handleChoosePaymentMethod → openExternalUrl(stripe_hosted_invoice_url)` JÁ funciona para faturas `prepaid_class`. Quando fatura não tem `boleto_url`/`pix_qr_code` mas TEM `stripe_hosted_invoice_url`, o aluno é redirecionado para a página do Stripe onde escolhe o método. Nenhuma alteração necessária. Ver Apêndice D. |
+| `InvoiceTypeBadge.tsx` | **Alto** | **[v3.1 Ponta Solta 2/170]**: Componente atual mapeia apenas 3 tipos (`monthly_subscription`, `automated`, `manual`). DEVE ser atualizado para TODOS os 7 tipos: `monthly_subscription`, `automated`, `manual`, `prepaid_class`, `cancellation`, `orphan_charges`, `regular`. Sem isso, novas faturas aparecem com badge incorreto. |
 | `PaymentOptionsCard` | **Nenhum** | [Gap 78] CORREÇÃO: `Faturas.tsx` NÃO importa nem usa `PaymentOptionsCard`. O componente aparece apenas em `Financeiro.tsx` (visão do professor), onde já é contextual para faturas com Payment Intent. Nenhuma alteração necessária no `PaymentOptionsCard`. |
 | `CancellationModal.tsx` | **Nenhum** | [Gap 7] Verificação movida para `process-cancellation` (backend). Frontend sem alteração. |
 | `StudentImportDialog` | Nenhum | Import de alunos não interage com billing |
 | Aulas antigas (sem `charge_timing`) | Nenhum | Continuam no fluxo pós-pago (automated-billing) |
 | Professores sem business_profile | Nenhum | Sem Stripe, cobrança não se aplica |
 | `materialize-virtual-class` (edge) | Nenhum | Materialização server-side não dispara billing |
+| `process-cancellation` CORS | **Médio** | **[v3.1 Ponta Solta 6/174]**: CORS headers atuais (linha 4-7) estão incompletos. Atualizar para headers Supabase completos conforme Gap 114. |
 
 ---
 
@@ -1713,19 +1716,36 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 
 ## 11. Sequência de Implementação
 
+> **[CORREÇÃO v3.1 - Ponta Solta 8]**: Adicionada **FASE 0** para correções críticas no webhook EXISTENTE.
+> Estas correções DEVEM ser deployadas e testadas ANTES de qualquer nova funcionalidade.
+
 ```text
-FASE 1: Migração de Banco de Dados
-│  - charge_timing em business_profiles
-│  - stripe_invoice_item_id em invoice_classes
-│  - Regenerar tipos TypeScript
+FASE 0: Correções Críticas no Webhook Existente (ANTES de tudo)
+│  ⚠️ CRÍTICO: Deployer ANTES de qualquer nova feature
+│  - [Gap 103] invoice.paid/.payment_succeeded: trocar .single() → .maybeSingle()
+│  - [Gap 104/105] Preservar payment_origin existente (não sobrescrever 'prepaid' com 'automatic')
+│  - [Gap 106] payment_intent.succeeded: só limpar stripe_hosted_invoice_url se !stripe_invoice_id
+│  - [Gap 82/83] Adicionar completeEventProcessing(false) em todos early returns
+│  - [Gap 86] invoice.marked_uncollectible: verificar payment_origin === 'manual'
+│  - [Gap 98/99] invoice.payment_failed e payment_intent.payment_failed: fix error handling
+│  - [Gap 114] Atualizar CORS headers de process-cancellation para headers completos
+│  - [Gap 115] payment_intent.succeeded: trocar .single() → .maybeSingle()
 │
 ▼
-FASE 2: Frontend - BillingSettings + i18n + Financeiro refactor
+FASE 1: Migração de Banco de Dados + i18n (JUNTOS)
+│  - charge_timing em business_profiles
+│  - stripe_invoice_item_id em invoice_classes
+│  - [v3.1 Ponta Solta 1] Regenerar tipos TypeScript (OBRIGATÓRIO após migração)
+│  - [v3.1 Ponta Solta 4] Traduções i18n: billing.json (chargeTiming.*) — JUNTO com migração
+│  - [v3.1 Ponta Solta 3] Traduções i18n: financial.json (paymentOrigins.prepaid, prepaidIndicator.*)
+│
+▼
+FASE 2: Frontend - BillingSettings + Financeiro refactor
 │  - Card "Momento da Cobrança"
 │  - Estado, load, save
-│  - Traduções i18n (PT/EN) para billing.json e financial.json
-│  - Atualizar InvoiceTypeBadge com novos tipos
-│  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline por InvoiceTypeBadge
+│  - [v3.1 Ponta Solta 2] Atualizar InvoiceTypeBadge com TODOS os 7 tipos
+│  - [Gap 1/11] Refatorar Financeiro.tsx: substituir getInvoiceTypeBadge inline (linhas 30-45, usos 581/716) por InvoiceTypeBadge
+│  - [v3.1 Ponta Solta 5] Faturas.tsx: canChangePaymentMethod deve excluir prepaid_class
 │
 ▼
 FASE 3: Backend - Edge Function process-class-billing
@@ -1734,6 +1754,7 @@ FASE 3: Backend - Edge Function process-class-billing
 │  - Integração Stripe Connect (Invoice Items + Invoice)
 │  - Criação de customer no Connected Account
 │  - Registros em invoices + invoice_classes
+│  - [v3.1 Ponta Solta 7] Declarar let voidResult: any = null; no ponto correto
 │
 ▼
 FASE 4: Integração - Agenda.tsx
@@ -1745,13 +1766,14 @@ FASE 4: Integração - Agenda.tsx
 ▼
 FASE 5: Cancelamento - process-cancellation (backend only)
 │  - [Gap 7] Verificação de fatura pré-paga movida para backend
-│  - [Gap 3] Adicionar import Stripe no process-cancellation
+│  - [Gap 156] Adicionar import Stripe (NÃO existe no código atual — Gap 153 incorreto)
+│  - [v3.1 Ponta Solta 6] CORS headers completos em process-cancellation
 │  - Lógica de void/delete condicional no Stripe
 │  - Proteção contra void de faturas já pagas
 │  - CancellationModal.tsx: SEM alteração
 │
 ▼
-FASE 6: Webhook - webhook-stripe-connect
+FASE 6: Webhook - webhook-stripe-connect (novas features após Fase 0)
 │  - Processar metadata.lesson_id em invoice.paid
 │  - Processar metadata.lesson_id em invoice.payment_succeeded
 │  - Atualizar status de participantes automaticamente
@@ -1958,7 +1980,22 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v3.0] Verificar que step 3c.vi de `process-class-billing` inclui `original_amount: amount` no INSERT de invoices (Gap 167)
 - [ ] [v3.0] Verificar que Apêndice A tem seções tabulares para v2.2, v2.3, v2.4, v2.8 e v2.9 (Gap 168)
 
+### Itens v3.1 — Pontas Soltas Resolvidas
+
+- [ ] [v3.1] **OBRIGATÓRIO**: Após executar migração SQL, regenerar tipos Supabase (`npx supabase gen types typescript`) — sem isso, código TypeScript com `stripe_invoice_item_id` ou `charge_timing` não compila (Ponta Solta 1/Gap 169)
+- [ ] [v3.1] Verificar que `InvoiceTypeBadge.tsx` mapeia TODOS os 7 tipos de fatura, não apenas 3 (Ponta Solta 2/Gap 170)
+- [ ] [v3.1] Verificar que `financial.json` (PT e EN) inclui `paymentOrigins.prepaid` e bloco `prepaidIndicator.*` (Ponta Solta 3/Gap 171)
+- [ ] [v3.1] Verificar que `billing.json` (PT e EN) inclui namespace `chargeTiming` COMPLETO antes de implementar frontend (Ponta Solta 4/Gap 172)
+- [ ] [v3.1] Verificar que `canChangePaymentMethod` em `Faturas.tsx` exclui `invoice_type !== 'prepaid_class'` — ver Apêndice C (Ponta Solta 5/Gap 173)
+- [ ] [v3.1] Verificar que `process-cancellation` tem CORS headers Supabase completos (Gap 114 + Ponta Solta 6/Gap 174)
+- [ ] [v3.1] Verificar que `voidResult` é declarado após `let shouldCharge` (linha 216) e ANTES do bloco de void (~linha 370) em `process-cancellation` (Ponta Solta 7/Gap 175)
+- [ ] [v3.1] **FASE 0 CRÍTICA**: Verificar que correções dos Gaps 82, 83, 86, 98, 99, 103-106, 114, 115 foram deployadas ANTES de qualquer nova feature (Ponta Solta 8/Gap 176)
+- [ ] [v3.1] Verificar que Apêndices C e D existem no documento com código concreto (Gaps 173 e 177)
+
+### Deploy
+
 - [ ] Executar migração SQL em produção
+- [ ] **[v3.1 - Fase 0]** Deploy de correções críticas no webhook-stripe-connect EXISTENTE (Gaps 82, 83, 86, 98, 99, 103-106, 115) ANTES de qualquer nova feature
 - [ ] **[v2.3 - NOVO]** Atualizar webhook-stripe-connect EXISTENTE com correções dos Gaps 101-106, 115 ANTES de deploy de process-class-billing
 - [ ] Deploy de edge functions (process-class-billing, process-cancellation, webhook-stripe-connect, create-payment-intent-connect, automated-billing)
 - [ ] Publicar frontend
@@ -1974,6 +2011,7 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v1.3] Verificar que `process-cancellation` usa queries sequenciais (sem FK join)
 - [ ] [v1.5] Verificar que cancelamento de aula em grupo anula TODAS as faturas pré-pagas dos participantes
 - [ ] [v2.3] Monitorar logs do webhook para eventos `invoice.finalized` processados corretamente
+- [ ] [v3.1] Verificar que fluxo "Escolher Método" de `Faturas.tsx` funciona para faturas prepaid (redireciona para stripe_hosted_invoice_url)
 
 ---
 
@@ -2268,3 +2306,78 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 166 | `send-invoice-notification` — Gaps 145/155/159 sem código TypeScript concreto | O switch tem 4 cases com CTAs hardcoded para `${SITE_URL}/faturas`. Nenhuma seção mostra código para modificar CTAs quando `invoice_type === 'prepaid_class'`. FIX: Código explícito adicionado na nova seção 6.4: lógica pós-switch que substitui `ctaButton` por link ao `stripe_hosted_invoice_url`. |
 | 167 | Step 3c.vi de `process-class-billing` não lista `original_amount` como campo do INSERT | Gap 142 (checklist) diz para verificar, mas a seção de implementação (step 3c.vi) omite o campo. Implementador segue a seção, não o checklist. FIX: `original_amount: amount` adicionado explicitamente ao step 3c.vi. |
 | 168 | Apêndice A falta seções tabulares para v2.2, v2.3, v2.4, v2.8 e v2.9 | Gap 161 adicionou v2.5/v2.6/v2.7 mas as demais revisões continuam sem tabela. Implementadores perdem contexto de 30+ gaps. Nota: seções v2.2-v2.4 e v2.8-v2.9 já existem no apêndice (adicionadas em revisões anteriores). Gap resolvido — verificação confirmou presença. |
+
+---
+
+### Revisão v3.1 — Pontas Soltas Resolvidas
+
+| # | Ponta Solta | Gravidade | Resolução |
+|---|-------------|-----------|-----------|
+| 169 | `stripe_invoice_item_id` ausente no schema TypeScript | Alta | Adicionada nota explícita no checklist de deploy (seção 13): "Após executar migração SQL, regenerar tipos Supabase (`npx supabase gen types typescript --project-id <id> > src/integrations/supabase/types.ts`) para incluir `stripe_invoice_item_id` em `invoice_classes` e `charge_timing` em `business_profiles`". Sem regenerar, qualquer `.select('stripe_invoice_item_id')` causa erro de tipagem. |
+| 170 | `getInvoiceTypeBadge` inline vs componente `InvoiceTypeBadge` | Média | **Código concreto de substituição**: `Financeiro.tsx` linhas 30-45 contém função inline com 5 tipos. `InvoiceTypeBadge.tsx` (linhas 12-28) mapeia apenas 3 tipos (`monthly_subscription`, `automated`, `manual`). **FIX em 2 partes**: (1) Atualizar `InvoiceTypeBadge.tsx` para incluir TODOS os 7 tipos: `monthly_subscription`, `automated`, `manual`, `prepaid_class`, `cancellation`, `orphan_charges`, `regular`. (2) Em `Financeiro.tsx`, deletar função inline (linhas 30-45) e substituir usos (linhas 581 e 716) por `<InvoiceTypeBadge invoiceType={invoice.invoice_type} />`. Adicionado à seção 4.4 e Fase 2 da sequência. |
+| 171 | `financial.json` sem `paymentOrigins.prepaid` nem `prepaidIndicator` | Média | Adicionadas chaves à seção 6.3 E referência explícita na Fase 1 da sequência de implementação (agora i18n é feito JUNTO com migração, não na Fase 2). Chaves: `paymentOrigins.prepaid`, `prepaidIndicator.tooltip`, `prepaidIndicator.badge`, `prepaidIndicator.blockedEdit`, `prepaidIndicator.blockedEditDescription`. |
+| 172 | `billing.json` sem namespace `chargeTiming` | Média | Movidas traduções i18n para **Fase 1** (junto com migração de banco) na sequência de implementação (seção 11). Se frontend for implementado sem i18n, toasts mostram keys literais como `billing:chargeTiming.prepaidInvoiceCreated`. Agora i18n é pré-requisito, não tarefa paralela. |
+| 173 | `canChangePaymentMethod` em `Faturas.tsx` não exclui `prepaid_class` | Alta | **Código concreto adicionado à seção 4.7 (NOVA)**: `const canChangePaymentMethod = (invoice: Invoice) => { const changeableStatuses = ['open', 'pendente', 'overdue', 'vencida', 'falha_pagamento']; return changeableStatuses.includes(invoice.status) && invoice.payment_method && invoice.invoice_type !== 'prepaid_class'; };` — Linha 201-204 de `Faturas.tsx` deve ser substituída. Faturas pré-pagas usam Stripe Invoice flow; `change-payment-method` edge function manipula Payment Intents, não Invoices. |
+| 174 | CORS de `process-cancellation` incompletos | Média | Adicionado ao checklist de deploy (seção 13) E à Fase 0 da sequência. CORS atuais (linha 4-7): `"authorization, x-client-info, apikey, content-type"`. Deve ser atualizado para headers completos: `"authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version"`. Sem isso, requisições do Supabase JS podem falhar em alguns browsers. |
+| 175 | `voidResult` não declarado em `process-cancellation` | Alta | **Ponto exato de inserção especificado**: Declarar `let voidResult: any = null;` APÓS `let shouldCharge = false;` (linha 216 do código real) e ANTES do bloco `let invoiceClassQuery = ...` (que é inserido na linha ~370 conforme seção 5.4). A variável deve existir no escopo para ser atribuída no bloco de void e incluída na resposta final. Seção 5.4 atualizada com marcador de linha. |
+| 176 | Sequência de implementação sem Fase 0 para correções críticas | Crítica | **Fase 0 criada** na seção 11 contendo APENAS correções dos Gaps 82, 83, 86, 98, 99, 103-106, 114, 115. Estas correções devem ser deployadas e testadas em produção ANTES de qualquer nova funcionalidade. Bugs `.single()` e `payment_origin: 'automatic'` já afetam a produção atual — correções são urgentes independente do projeto prepaid. |
+| 177 | Fluxo "Escolher Método" para prepaid não documentado | Baixa | Adicionada nota à seção 9 (tabela de compatibilidade): "O fluxo `handleChoosePaymentMethod → openExternalUrl(stripe_hosted_invoice_url)` de `Faturas.tsx` (linhas 135-146) JÁ funciona corretamente para faturas `prepaid_class`. Quando fatura não tem `boleto_url`/`pix_qr_code` mas TEM `stripe_hosted_invoice_url`, o aluno é redirecionado para a página do Stripe onde escolhe o método. NENHUMA alteração necessária neste caminho — é compatível nativamente." |
+
+---
+
+## Apêndice C: Seção 4.7 — Correção de `canChangePaymentMethod` em `Faturas.tsx`
+
+> **[CORREÇÃO v3.1 - Ponta Solta 5/173]**
+
+**Arquivo**: `src/pages/Faturas.tsx`
+**Linha**: 201-204
+
+**Código atual:**
+```typescript
+const canChangePaymentMethod = (invoice: Invoice) => {
+  const changeableStatuses = ['open', 'pendente', 'overdue', 'vencida', 'falha_pagamento'];
+  return changeableStatuses.includes(invoice.status) && invoice.payment_method;
+};
+```
+
+**Código corrigido:**
+```typescript
+const canChangePaymentMethod = (invoice: Invoice) => {
+  const changeableStatuses = ['open', 'pendente', 'overdue', 'vencida', 'falha_pagamento'];
+  return changeableStatuses.includes(invoice.status) 
+    && invoice.payment_method
+    && invoice.invoice_type !== 'prepaid_class';
+};
+```
+
+**Justificativa**: Faturas `prepaid_class` são criadas via Stripe Invoice flow (não Payment Intent). A edge function `change-payment-method` manipula apenas Payment Intents — chamar para faturas prepaid causaria erro ou comportamento indefinido. Além disso, o Stripe Invoice já permite ao aluno escolher o método de pagamento na própria página hosted.
+
+---
+
+## Apêndice D: Nota de Compatibilidade — Fluxo "Escolher Método" em `Faturas.tsx`
+
+> **[CORREÇÃO v3.1 - Ponta Solta 9/177]**
+
+O fluxo existente de `Faturas.tsx` para faturas que não têm `boleto_url` nem `pix_qr_code` mas possuem `stripe_hosted_invoice_url` **JÁ é compatível** com faturas `prepaid_class`:
+
+```typescript
+// Faturas.tsx linhas 135-146
+const handleChoosePaymentMethod = async (invoice: Invoice) => {
+  await onBrowserClosed(() => {
+    refetch();
+    queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
+  });
+
+  if (invoice.stripe_hosted_invoice_url) {
+    await openExternalUrl(invoice.stripe_hosted_invoice_url);
+  }
+};
+```
+
+**Por que funciona para prepaid:**
+1. `process-class-billing` salva `stripe_hosted_invoice_url` no registro `invoices` (passo 3c.vi)
+2. Se nenhum método foi selecionado ainda (sem `boleto_url` nem `pix_qr_code`), o botão "Escolher Método" aparece
+3. O aluno é redirecionado para a página do Stripe onde escolhe entre os métodos habilitados pelo professor
+4. Após pagamento, webhook `invoice.paid` atualiza o status
+
+**Nenhuma alteração de código necessária para este caminho.**

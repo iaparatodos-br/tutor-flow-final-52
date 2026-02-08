@@ -1,6 +1,6 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.1 (Revisada — 177 gaps corrigidos, 9 pontas soltas resolvidas)
+> **Versão**: 3.2 (Revisada — 183 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
 > **Status**: Aprovado - Pronto para Implementação
 
@@ -1013,38 +1013,161 @@ case 'invoice.paid': {
 > }
 > ```
 
-**Handler `invoice.payment_succeeded` (linha 337-369)**: [CORREÇÃO v1.4 - Gap 43] Deve conter a MESMA lógica completa do handler `invoice.paid` acima. Aplicar:
-- [Gap 53] Preservar `payment_origin` existente (não sobrescrever 'prepaid' com 'automatic')
-- [Gap 57] Usar `autoPagingToArray` em vez de `for await` para compatibilidade Deno
-- [Gap 56] Chamar `completeEventProcessing(false, error)` em TODOS os caminhos de erro
-- [Gap 40] Usar `stripe.invoices.listLineItems` com auto-paginação (não `expand: ['lines']`)
-- [Gap 14] Não confiar no payload do webhook para lines
-- [Gap 13] Filtrar por `participant_id` do metadata, não por `class_id`
+**Handler `invoice.payment_succeeded` (linha 337-369)**: [CORREÇÃO v1.4 - Gap 43] [CORREÇÃO v3.2 - Gap 181] Deve conter a MESMA lógica completa do handler `invoice.paid` acima.
+
+> **[CORREÇÃO v3.2 - Gap 181]**: Para evitar divergência de código e erros de cópia manual,
+> **EXTRAIR** a lógica compartilhada entre `invoice.paid` e `invoice.payment_succeeded` em uma
+> **helper function** `handleInvoicePaidEvent`. Ambos handlers chamarão esta função.
+>
+> ```typescript
+> // Helper function — declarar ANTES do switch statement
+> async function handleInvoicePaidEvent(
+>   supabaseClient: any,
+>   stripe: Stripe,
+>   event: Stripe.Event,
+>   paidInvoice: Stripe.Invoice,
+>   logStep: Function,
+>   completeEventProcessing: Function,
+>   corsHeaders: Record<string, string>
+> ): Promise<Response | null> {
+>   // 1. Buscar invoice local com .maybeSingle() [Gap 75/103]
+>   const { data: currentInvoice } = await supabaseClient
+>     .from('invoices')
+>     .select('id, payment_origin, invoice_type')
+>     .eq('stripe_invoice_id', paidInvoice.id)
+>     .maybeSingle();
+>
+>   if (!currentInvoice) {
+>     logStep("Invoice not found in local database, skipping", { stripeInvoiceId: paidInvoice.id });
+>     return null; // caller does break
+>   }
+>
+>   // 2. Preservar payment_origin 'manual' [Gap 53/104]
+>   if (currentInvoice.payment_origin === 'manual') {
+>     logStep("Invoice marked as manual payment, skipping webhook", { invoiceId: paidInvoice.id });
+>     return null;
+>   }
+>
+>   // 3. Build update data
+>   const updateData: Record<string, any> = { 
+>     status: 'paid',
+>     updated_at: new Date().toISOString()
+>   };
+>   if (!currentInvoice.payment_origin) {
+>     updateData.payment_origin = 'automatic';
+>   }
+>
+>   // 4. Extract real payment_method from charge [Gap 94/149]
+>   const stripeAccountId = (event as any).account || (paidInvoice as any).account;
+>   let paymentMethod = 'stripe_invoice';
+>   const chargeId = typeof paidInvoice.charge === 'string' 
+>     ? paidInvoice.charge 
+>     : (paidInvoice.charge as any)?.id;
+>   if (chargeId && stripeAccountId) {
+>     try {
+>       const charge = await stripe.charges.retrieve(chargeId, { stripeAccount: stripeAccountId });
+>       paymentMethod = (charge as any).payment_method_details?.type || 'stripe_invoice';
+>     } catch (chargeError) {
+>       logStep("Could not retrieve charge for payment method", { chargeId, error: chargeError });
+>     }
+>   }
+>   updateData.payment_method = paymentMethod;
+>   
+>   // 5. Update invoice status
+>   const { error: paidError } = await supabaseClient
+>     .from('invoices')
+>     .update(updateData)
+>     .eq('stripe_invoice_id', paidInvoice.id);
+>
+>   if (paidError) {
+>     logStep("Error updating invoice status to paid", paidError);
+>     await completeEventProcessing(supabaseClient, event.id, false, paidError);
+>     return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { 
+>       status: 500,
+>       headers: { ...corsHeaders, "Content-Type": "application/json" }
+>     });
+>   }
+>   logStep("Invoice marked as paid", { invoiceId: paidInvoice.id });
+>
+>   // 6. Process line items for participant confirmation [Gap 13/14/40/57]
+>   if (stripeAccountId) {
+>     try {
+>       const allLines = await stripe.invoices.listLineItems(
+>         paidInvoice.id,
+>         { limit: 100 },
+>         { stripeAccount: stripeAccountId }
+>       ).autoPagingToArray({ limit: 10000 });
+>       
+>       if (allLines.length > 0) {
+>         for (const line of allLines) {
+>           const lessonId = line.metadata?.lesson_id;
+>           const participantId = line.metadata?.participant_id;
+>           
+>           if (lessonId && participantId) {
+>             const { error: participantUpdateError } = await supabaseClient
+>               .from('class_participants')
+>               .update({ 
+>                 status: 'confirmada', 
+>                 confirmed_at: new Date().toISOString() 
+>               })
+>               .eq('id', participantId)
+>               .neq('status', 'cancelada')
+>               .neq('status', 'concluida'); // [Gap 84]
+>             
+>             if (participantUpdateError) {
+>               logStep(`Error updating participant ${participantId} for lesson ${lessonId}`, participantUpdateError);
+>             } else {
+>               logStep(`Participant ${participantId} confirmed via invoice payment`);
+>             }
+>           } else if (lessonId && !participantId) {
+>             logStep(`Warning: lesson ${lessonId} has no participant_id in metadata - skipping participant update`);
+>           }
+>         }
+>       }
+>     } catch (retrieveError) {
+>       logStep('Error retrieving full invoice for line processing', retrieveError);
+>       await completeEventProcessing(supabaseClient, event.id, false, retrieveError);
+>     }
+>   }
+>
+>   return null; // success — caller does break
+> }
+> ```
+>
+> **Uso nos handlers:**
+> ```typescript
+> case 'invoice.paid': {
+>   const paidInvoice = eventObject as Stripe.Invoice;
+>   logStep("Invoice paid", { invoiceId: paidInvoice.id });
+>   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, paidInvoice, logStep, completeEventProcessing, corsHeaders);
+>   if (errorResponse) return errorResponse;
+>   break;
+> }
+>
+> case 'invoice.payment_succeeded': {
+>   const succeededInvoice = eventObject as Stripe.Invoice;
+>   logStep("Invoice payment succeeded", { invoiceId: succeededInvoice.id });
+>   const errorResponse = await handleInvoicePaidEvent(supabaseClient, stripe, event, succeededInvoice, logStep, completeEventProcessing, corsHeaders);
+>   if (errorResponse) return errorResponse;
+>   break;
+> }
+> ```
 
 > **[CORREÇÃO v1.7 - Gap 67]**: O handler `invoice.payment_succeeded` (linhas 354-362) 
 > atual NÃO chama `completeEventProcessing(false, error)` quando o update falha — apenas 
-> faz `logStep` e cai no `break`. O erro cai no fluxo normal e o evento é marcado como 
-> `success: true` na linha 544, quando deveria ser `false`. Isso corrompe o sistema de 
-> idempotência: o evento NÃO será re-processado em retries.
-> 
-> **FIX**: Substituir o pattern `if (error) { log } else { log }` por:
-> ```typescript
-> if (succeededError) {
->   logStep("Error updating invoice payment succeeded", succeededError);
->   await completeEventProcessing(supabaseClient, event.id, false, succeededError);
->   return new Response(JSON.stringify({ error: 'Failed' }), { 
->     status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
->   });
-> }
-> ```
-> Aplicar o MESMO pattern em TODOS os handlers que atualmente usam `if/else` sem return.
+> faz `logStep` e cai no `break`. Resolvido pela helper function acima.
 
 > **[CORREÇÃO v2.2 - Gap 98]**: O handler `invoice.payment_failed` (linhas 380-393) tem o 
 > MESMO problema do Gap 67. O update `status: 'falha_pagamento'` pode falhar, mas o handler
 > apenas faz `logStep("Error...")` e cai no `break` → `completeEventProcessing(true)`.
 > O evento falho é marcado como sucesso, impedindo retries.
 >
-> **FIX explícito** (faltava no Gap 79 que apenas mencionava no checklist):
+> **[CORREÇÃO v3.2 - Gap 180]**: Adicionada verificação de `payment_origin === 'manual'`
+> no handler `invoice.payment_failed`. Mesma vulnerabilidade do Gap 86 (`invoice.marked_uncollectible`):
+> se professor marcou pagamento manualmente e boleto expira depois, Stripe enviaria
+> `invoice.payment_failed` que sobrescreveria `paid` com `falha_pagamento`.
+>
+> **FIX completo** (Gap 98 + Gap 180):
 > ```typescript
 > case 'invoice.payment_failed': {
 >   const failedInvoice = eventObject as Stripe.Invoice;
@@ -1052,6 +1175,23 @@ case 'invoice.paid': {
 >     invoiceId: failedInvoice.id, 
 >     reason: failedInvoice.last_payment_error?.message 
 >   });
+>
+>   // [CORREÇÃO v3.2 - Gap 180] Verificar payment_origin === 'manual' antes de atualizar
+>   const { data: existingFailed } = await supabaseClient
+>     .from('invoices')
+>     .select('payment_origin')
+>     .eq('stripe_invoice_id', failedInvoice.id)
+>     .maybeSingle();
+>
+>   if (!existingFailed) {
+>     logStep("Invoice not found in local database for payment_failed, skipping", { stripeInvoiceId: failedInvoice.id });
+>     break;
+>   }
+>
+>   if (existingFailed.payment_origin === 'manual') {
+>     logStep("Invoice marked as manual payment, skipping payment_failed webhook", { invoiceId: failedInvoice.id });
+>     break;
+>   }
 >
 >   const { error: failedError } = await supabaseClient
 >     .from('invoices')
@@ -1406,7 +1546,7 @@ return new Response(JSON.stringify({
 
 ---
 
-### 6.4 CTA condicional em send-invoice-notification (Gap 166)
+### 6.4 CTA condicional em send-invoice-notification (Gap 166 + Gap 182)
 
 **Arquivo**: `supabase/functions/send-invoice-notification/index.ts`
 
@@ -1414,24 +1554,37 @@ return new Response(JSON.stringify({
 > para `${SITE_URL}/faturas`. Para faturas `prepaid_class`, o CTA principal deve ser o
 > `stripe_hosted_invoice_url` (página de pagamento do Stripe). Adicionar APÓS o switch:
 
+> **[CORREÇÃO v3.2 - Gap 182]**: A seção de métodos de pagamento (linhas 289-312) também
+> deve ser corrigida para faturas `prepaid_class`. O label "💳 Cartão de Crédito: Pagar com
+> Cartão" é enganoso quando `stripe_hosted_invoice_url` na verdade permite PIX, Boleto e
+> Cartão. Para faturas prepaid, a seção de métodos deve mostrar um link único genérico.
+
 ```typescript
-// [CORREÇÃO v3.0 - Gap 166] CTA condicional para faturas pré-pagas
-// Para prepaid_class, usar stripe_hosted_invoice_url como CTA principal
-// (exceto para invoice_paid que é apenas confirmação)
+// [CORREÇÃO v3.0 - Gap 166] + [CORREÇÃO v3.2 - Gap 182]
+// CTA condicional + seção de métodos para faturas pré-pagas
 if (
   invoice.invoice_type === 'prepaid_class' &&
   invoice.stripe_hosted_invoice_url &&
   payload.notification_type !== 'invoice_paid'
 ) {
+  // Substituir CTA principal
   ctaButton = `<a href="${invoice.stripe_hosted_invoice_url}" class="button">Pagar Agora</a>`;
-  // Também atualizar paymentMethods para priorizar o link do Stripe
-  // O hosted_invoice_url do Stripe já apresenta todos os métodos disponíveis
+  
+  // [Gap 182] Substituir seção de métodos de pagamento
+  // O stripe_hosted_invoice_url do Stripe já apresenta TODOS os métodos disponíveis
+  // (cartão, boleto, PIX) — não devemos listar individualmente com labels enganosos
+  paymentMethods = `
+    <p><strong>💳 Pagamento:</strong></p>
+    <a href="${invoice.stripe_hosted_invoice_url}" class="payment-link">Escolher Método de Pagamento</a>
+    <small style="color: #6b7280;">Você poderá escolher entre cartão, boleto ou PIX na página de pagamento</small>
+  `;
 }
 ```
 
-> Isso garante que faturas pré-pagas levem o aluno diretamente à página de pagamento
-> do Stripe (que mostra cartão, boleto, PIX conforme configurado), em vez da página
-> genérica `/faturas` do app.
+> Isso garante que faturas pré-pagas:
+> 1. Levem o aluno diretamente à página de pagamento do Stripe (CTA principal)
+> 2. NÃO mostrem label "Pagar com Cartão" enganoso na seção de métodos
+> 3. Apresentem um link único "Escolher Método de Pagamento" que é preciso
 
 ---
 
@@ -1552,30 +1705,97 @@ Handler já existe (linha 420-438). Quando o Stripe notifica void:
 - Atualizar status da invoice no banco para `cancelada`
 - **Nenhuma ação adicional necessária** sobre aulas — o void é resultado do cancelamento que já tratou a aula.
 
-### 8.4 payment_intent.succeeded (existente)
+### 8.4 payment_intent.succeeded (existente) — Handler Completo de Substituição
 
-> **[CORREÇÃO v1.6 - Gap 59]**: O handler existente de `payment_intent.succeeded` TAMBÉM 
-> sobrescreve `payment_origin` incondicionalmente. Aplicar a mesma correção do Gap 53:
-> verificar o valor atual de `payment_origin` e só definir `'automatic'` se for null.
+> **[CORREÇÃO v3.2 - Gap 178/179]**: O handler `payment_intent.succeeded` (linhas 441-501 do código real)
+> tinha 6+ patches incrementais dispersos no documento (Gaps 53, 59, 68, 105, 106, 115).
+> Seguindo a mesma abordagem do Gap 125 (que forneceu handler completo para `invoice.paid`),
+> fornecer handler COMPLETO de substituição. O código abaixo **SUBSTITUI inteiramente** o
+> handler existente (linhas 441-501), NÃO é uma adição incremental.
+>
+> **[CORREÇÃO v3.2 - Gap 179]**: O SELECT DEVE incluir `id, payment_origin, stripe_invoice_id, invoice_type`
+> para que a lógica condicional de limpeza do Gap 68 funcione. O SELECT anterior buscava
+> apenas `payment_origin`, fazendo `stripe_invoice_id` ser sempre `undefined`.
 
-> **[CORREÇÃO v1.7 - Gap 68]**: O handler `payment_intent.succeeded` (linhas 464-501) 
-> também faz `stripe_hosted_invoice_url: null` (linha 481). Para faturas pré-pagas que 
-> usam Stripe Invoice, o `hosted_invoice_url` é a URL do "Pagar Agora". Embora faturas 
-> pré-pagas normalmente disparem `invoice.paid` (não `payment_intent.succeeded`), proteger 
-> contra edge cases:
-> ```typescript
-> // [Gap 68] Só limpar campos temporários se a fatura NÃO é do tipo Stripe Invoice
-> // (faturas pré-pagas usam Invoice flow e precisam preservar hosted_invoice_url)
-> const invoiceToUpdate = existingPI; // já buscado acima
-> const clearFields: Record<string, any> = {
->   pix_qr_code: null, pix_copy_paste: null, pix_expires_at: null,
->   boleto_url: null, linha_digitavel: null, boleto_expires_at: null, barcode: null,
-> };
-> // Só limpar stripe_hosted_invoice_url se não é fatura de Stripe Invoice
-> if (!invoiceToUpdate?.stripe_invoice_id) {
->   clearFields.stripe_hosted_invoice_url = null;
-> }
-> ```
+```typescript
+case "payment_intent.succeeded": {
+  const paymentIntent = eventObject as Stripe.PaymentIntent;
+  logStep("Payment intent succeeded", { paymentIntentId: paymentIntent.id });
+
+  // [Gap 115] Usar .maybeSingle() — PI pode não existir no nosso banco
+  // [Gap 179] SELECT expandido para incluir stripe_invoice_id e invoice_type
+  const { data: existingPI } = await supabaseClient
+    .from('invoices')
+    .select('id, payment_origin, stripe_invoice_id, invoice_type')
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .maybeSingle();
+
+  // [Gap 115] Null guard — PI de outra integração ou Dashboard Stripe
+  if (!existingPI) {
+    logStep("No invoice found for payment intent, skipping", { paymentIntentId: paymentIntent.id });
+    break;
+  }
+
+  // [Gap 53/59/105] Preservar payment_origin existente
+  const updateData: Record<string, any> = {
+    status: "paid",
+    updated_at: new Date().toISOString(),
+  };
+  if (!existingPI.payment_origin) {
+    updateData.payment_origin = "automatic";
+  }
+
+  // [Gap 68/106] Limpar campos temporários condicionalmente
+  const clearFields: Record<string, any> = {
+    pix_qr_code: null,
+    pix_copy_paste: null,
+    pix_expires_at: null,
+    boleto_url: null,
+    linha_digitavel: null,
+    boleto_expires_at: null,
+    barcode: null,
+  };
+  // [Gap 68/179] Só limpar stripe_hosted_invoice_url se NÃO é fatura de Stripe Invoice
+  // (faturas pré-pagas usam Invoice flow e precisam preservar hosted_invoice_url)
+  if (!existingPI.stripe_invoice_id) {
+    clearFields.stripe_hosted_invoice_url = null;
+  }
+
+  // Extrair payment_method do charge
+  const stripeAccountId = (event as any).account;
+  let paymentMethod = paymentIntent.payment_method_types?.[0] || 'card';
+  const latestCharge = typeof paymentIntent.latest_charge === 'string'
+    ? paymentIntent.latest_charge
+    : (paymentIntent.latest_charge as any)?.id;
+  if (latestCharge && stripeAccountId) {
+    try {
+      const charge = await stripe.charges.retrieve(latestCharge, { stripeAccount: stripeAccountId });
+      paymentMethod = (charge as any).payment_method_details?.type || paymentMethod;
+    } catch (chargeError) {
+      logStep("Could not retrieve charge for payment method", { chargeId: latestCharge, error: chargeError });
+    }
+  }
+  updateData.payment_method = paymentMethod;
+
+  const { error: piUpdateError } = await supabaseClient
+    .from("invoices")
+    .update({ ...updateData, ...clearFields })
+    .eq("stripe_payment_intent_id", paymentIntent.id);
+
+  if (piUpdateError) {
+    logStep("Error updating invoice for payment intent succeeded", piUpdateError);
+    // [Gap 83] Completar processamento em caso de erro
+    await completeEventProcessing(supabaseClient, event.id, false, piUpdateError);
+    return new Response(JSON.stringify({ error: 'Failed to update invoice' }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+
+  logStep("Invoice updated via payment intent succeeded", { invoiceId: existingPI.id });
+  break;
+}
+```
 
 > **[CORREÇÃO v2.0 - Gap 83]**: O `catch` externo do webhook (linhas 551-558) NÃO chama
 > `completeEventProcessing(false, error)`. Se um erro não capturado ocorre dentro de um 
@@ -1727,9 +1947,13 @@ FASE 0: Correções Críticas no Webhook Existente (ANTES de tudo)
 │  - [Gap 106] payment_intent.succeeded: só limpar stripe_hosted_invoice_url se !stripe_invoice_id
 │  - [Gap 82/83] Adicionar completeEventProcessing(false) em todos early returns
 │  - [Gap 86] invoice.marked_uncollectible: verificar payment_origin === 'manual'
+│  - [Gap 90/183] Adicionar case explícito para invoice.finalized (reduz ruído de log)
 │  - [Gap 98/99] invoice.payment_failed e payment_intent.payment_failed: fix error handling
 │  - [Gap 114] Atualizar CORS headers de process-cancellation para headers completos
 │  - [Gap 115] payment_intent.succeeded: trocar .single() → .maybeSingle()
+│  - [Gap 178/179] payment_intent.succeeded: handler completo de substituição (SELECT expandido)
+│  - [Gap 180] invoice.payment_failed: verificar payment_origin === 'manual'
+│  - [Gap 181] Extrair helper handleInvoicePaidEvent para invoice.paid e invoice.payment_succeeded
 │
 ▼
 FASE 1: Migração de Banco de Dados + i18n (JUNTOS)
@@ -1991,6 +2215,15 @@ ser adicionadas manualmente em `supabase/config.toml`. Sem ela, a função retor
 - [ ] [v3.1] Verificar que `voidResult` é declarado após `let shouldCharge` (linha 216) e ANTES do bloco de void (~linha 370) em `process-cancellation` (Ponta Solta 7/Gap 175)
 - [ ] [v3.1] **FASE 0 CRÍTICA**: Verificar que correções dos Gaps 82, 83, 86, 98, 99, 103-106, 114, 115 foram deployadas ANTES de qualquer nova feature (Ponta Solta 8/Gap 176)
 - [ ] [v3.1] Verificar que Apêndices C e D existem no documento com código concreto (Gaps 173 e 177)
+
+### Itens v3.2 — Pontas Soltas 10-15 Resolvidas
+
+- [ ] [v3.2] **FASE 0**: Verificar que handler `payment_intent.succeeded` foi SUBSTITUÍDO inteiramente pelo handler completo da seção 8.4 (Ponta Solta 10/Gap 178)
+- [ ] [v3.2] Verificar que SELECT de `payment_intent.succeeded` inclui `id, payment_origin, stripe_invoice_id, invoice_type` — não apenas `payment_origin` (Ponta Solta 11/Gap 179)
+- [ ] [v3.2] **FASE 0**: Verificar que handler `invoice.payment_failed` verifica `payment_origin === 'manual'` antes de atualizar status (Ponta Solta 12/Gap 180)
+- [ ] [v3.2] **FASE 0**: Verificar que helper function `handleInvoicePaidEvent` é extraída e usada por AMBOS `invoice.paid` e `invoice.payment_succeeded` (Ponta Solta 13/Gap 181)
+- [ ] [v3.2] Verificar que `send-invoice-notification` seção de métodos de pagamento mostra "Escolher Método de Pagamento" (não "Pagar com Cartão") para faturas `prepaid_class` (Ponta Solta 14/Gap 182)
+- [ ] [v3.2] **FASE 0**: Verificar que Fase 0 inclui Gap 90 (`invoice.finalized` case explícito) para reduzir ruído de log (Ponta Solta 15/Gap 183)
 
 ### Deploy
 
@@ -2322,6 +2555,19 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 175 | `voidResult` não declarado em `process-cancellation` | Alta | **Ponto exato de inserção especificado**: Declarar `let voidResult: any = null;` APÓS `let shouldCharge = false;` (linha 216 do código real) e ANTES do bloco `let invoiceClassQuery = ...` (que é inserido na linha ~370 conforme seção 5.4). A variável deve existir no escopo para ser atribuída no bloco de void e incluída na resposta final. Seção 5.4 atualizada com marcador de linha. |
 | 176 | Sequência de implementação sem Fase 0 para correções críticas | Crítica | **Fase 0 criada** na seção 11 contendo APENAS correções dos Gaps 82, 83, 86, 98, 99, 103-106, 114, 115. Estas correções devem ser deployadas e testadas em produção ANTES de qualquer nova funcionalidade. Bugs `.single()` e `payment_origin: 'automatic'` já afetam a produção atual — correções são urgentes independente do projeto prepaid. |
 | 177 | Fluxo "Escolher Método" para prepaid não documentado | Baixa | Adicionada nota à seção 9 (tabela de compatibilidade): "O fluxo `handleChoosePaymentMethod → openExternalUrl(stripe_hosted_invoice_url)` de `Faturas.tsx` (linhas 135-146) JÁ funciona corretamente para faturas `prepaid_class`. Quando fatura não tem `boleto_url`/`pix_qr_code` mas TEM `stripe_hosted_invoice_url`, o aluno é redirecionado para a página do Stripe onde escolhe o método. NENHUMA alteração necessária neste caminho — é compatível nativamente." |
+
+---
+
+### Revisão v3.2 — Pontas Soltas 10-15 Resolvidas
+
+| # | Ponta Solta | Gravidade | Resolução |
+|---|-------------|-----------|-----------|
+| 178 | `payment_intent.succeeded` descrito como patches incrementais — sem handler completo | Alta | **Handler COMPLETO de substituição** fornecido na seção 8.4. Substitui inteiramente linhas 441-501 do código real. Inclui: `.maybeSingle()` (Gap 115), preservação de `payment_origin` (Gap 59/105), limpeza condicional de `stripe_hosted_invoice_url` (Gap 68/106), extração de `payment_method` do charge, `completeEventProcessing` em erros (Gap 83). Segue mesma abordagem do Gap 125 (handler completo para `invoice.paid`). |
+| 179 | SELECT de `payment_intent.succeeded` não incluía `stripe_invoice_id` | Alta | **SELECT expandido** no handler completo (seção 8.4) para `id, payment_origin, stripe_invoice_id, invoice_type`. Sem `stripe_invoice_id`, a lógica condicional do Gap 68 falhava silenciosamente — `existingPI.stripe_invoice_id` era sempre `undefined`, e `stripe_hosted_invoice_url` era limpo incondicionalmente. |
+| 180 | `invoice.payment_failed` sem verificação de `payment_origin === 'manual'` | Média | **Verificação adicionada** ao handler completo na seção 5.3 (Gap 98 atualizado). Antes do update, busca `payment_origin` com `.maybeSingle()`. Se `payment_origin === 'manual'`, faz break sem alterar status. Protege contra cenário: professor marca pagamento manualmente → boleto expira → Stripe envia `payment_failed` → status `paid` seria sobrescrito com `falha_pagamento`. Mesma abordagem do Gap 86 (`invoice.marked_uncollectible`). |
+| 181 | `invoice.payment_succeeded` sem código completo — "copiar" sem template | Média | **Helper function `handleInvoicePaidEvent`** extraída e documentada na seção 5.3. Ambos handlers (`invoice.paid` e `invoice.payment_succeeded`) chamam esta função, eliminando risco de divergência (Gap 139). Helper inclui: `.maybeSingle()`, `payment_origin` check, charge retrieval, participant confirmation com filtros `.neq('status', 'concluida')`, `completeEventProcessing` em todos os caminhos de erro. |
+| 182 | `send-invoice-notification` label "Pagar com Cartão" enganoso para prepaid | Média | **Seção 6.4 atualizada** com código que substitui TAMBÉM a seção de métodos de pagamento (não apenas o CTA). Para `invoice_type === 'prepaid_class'`, `paymentMethods` é substituído por link único "Escolher Método de Pagamento" com nota "Você poderá escolher entre cartão, boleto ou PIX na página de pagamento". Resolve o problema do Gap 166 que corrigia CTA mas deixava seção de métodos com label enganoso. |
+| 183 | Fase 0 não incluía Gap 90 (`invoice.finalized`) | Baixa | **Gap 90 adicionado** à Fase 0 na seção 11. Baixo esforço (3 linhas de código), zero risco, reduz ruído de log quando `process-class-billing` começar a finalizar invoices. Sem o case explícito, `invoice.finalized` cai no `default` que loga "Unhandled event type" — poluindo logs e confundindo monitores de alerta. |
 
 ---
 

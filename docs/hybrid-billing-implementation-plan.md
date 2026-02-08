@@ -1,8 +1,8 @@
 # Plano de Implementação: Cobrança Híbrida Global (Pré-paga / Pós-paga)
 
-> **Versão**: 3.9 FINAL (Revisada — 225 gaps corrigidos, 15 pontas soltas resolvidas)
+> **Versão**: 3.10 FINAL (Revisada — 228 gaps corrigidos, 15 pontas soltas resolvidas)
 > **Data**: 2026-02-08
-> **Status**: ✅ APROVADO FINAL — Pronto para Implementação
+> **Status**: ✅ APROVADO FINAL — Pronto para Implementação (Fase 0)
 
 > **CORS**: Webhook existente (webhook-stripe-connect) usa CORS headers incompletos (Gap 100)
 > **IMPORTANTE**: Leia a Seção 11.0 (Fase 0) sobre correções críticas no webhook ANTES de implementar novas features.
@@ -2856,6 +2856,16 @@ Portanto, `handleCompleteClass` (linha ~1537-1581 em Agenda.tsx) **permanece ina
 | 223 | `Financeiro.tsx` usa função inline `getInvoiceTypeBadge` (duplicada) em vez do componente `InvoiceTypeBadge` | Média | **FIX documentado na seção 4.4**: deletar função inline e substituir usos por `<InvoiceTypeBadge invoiceType={invoice.invoice_type} />`. Gap 170 já documentava isso mas sem referência ao código real (linhas 30-45 e usos nas linhas 581, 716). Adicionado à Fase 2. |
 | 224 | Alerta de taxas em `Financeiro.tsx` (linhas 424-446) calcula apenas taxa fixa de Boleto — falta fee breakdown por método de pagamento | Média | **Code block TypeScript concreto** adicionado para Fase 2. Agrupar faturas pagas por `payment_method`, calcular taxa real: Boleto (R$ 3,49 fixo), PIX (1,19%), Cartão (3,2% + R$ 0,39), Manual (R$ 0,00). Exibir breakdown com totais por método. Chaves i18n: `feeBreakdown.boleto`, `feeBreakdown.pix`, `feeBreakdown.card`, `feeBreakdown.manual`, `feeBreakdown.total`. |
 | 225 | `BillingSettings.tsx` não possui o card "Momento da Cobrança" (prepaid/postpaid toggle) documentado na seção 4.1 | Alta | **Verificação de implementação**: seção 4.1 descreve o card mas o código real de `BillingSettings.tsx` não o possui. Todo o código da seção 4.1 deve ser implementado na Fase 2, incluindo: query de `business_profiles.charge_timing`, RadioGroup com cards selecionáveis, mutation para update, toast de confirmação. |
+
+---
+
+### Revisão v3.10 FINAL — Gaps 226-228
+
+| # | Gap Identificado | Gravidade | Resolução |
+|---|------------------|-----------|-----------|
+| 226 | `Financeiro.tsx` `loadInvoices` query não inclui `payment_method` no SELECT — impossibilita fee breakdown variável (Gap 224) | Média | **FIX para Fase 2**: (1) Adicionar `payment_method` ao SELECT da query `loadInvoices` (linhas 243-261). (2) Adicionar `payment_method?: string` à interface `InvoiceWithStudent` (linhas 46-74). (3) Substituir cálculo hardcoded `stripeFees = paidInvoices.length * 3.49` (linha 398) pelo cálculo variável por método: Boleto (R$ 3,49 fixo), PIX (1,19% do valor), Cartão (3,2% + R$ 0,39), Manual/null (R$ 0,00). Sem correção, o fee breakdown do Gap 224 exibiria R$ 0,00 para todas as faturas (campo `payment_method` ausente no resultado da query). |
+| 227 | `Financeiro.tsx` usa função inline `getStatusBadge` (linhas 346-385) em vez do componente compartilhado `InvoiceStatusBadge` | Média | **FIX para Fase 2**: (1) Importar `InvoiceStatusBadge` em `Financeiro.tsx`. (2) Adicionar `payment_origin` ao SELECT da query `loadInvoices` (complementa Gap 226). (3) Adicionar `payment_origin?: string` à interface `InvoiceWithStudent`. (4) Substituir chamadas `getStatusBadge(invoice.status)` (linhas 584, 719) por `<InvoiceStatusBadge status={invoice.status} paymentOrigin={invoice.payment_origin} />`. (5) Remover função inline `getStatusBadge` (linhas 346-385). Inconsistências da função inline: status `falha_pagamento` não tratado (cai no fallback exibindo "Pendente"), não exibe `paymentOrigin` (sufixos Manual/Automático/Pré-paga), e inconsistência visual com `Faturas.tsx` que já usa o componente compartilhado. |
+| 228 | RPC `create_invoice_and_mark_classes_billed` (migration `20251030141339`): Gap 218 documenta verificação mas NÃO fornece SQL concreto de correção | Alta | **SQL concreto para Fase 7** (executar ANTES dos Gaps 209/212): `CREATE OR REPLACE FUNCTION public.create_invoice_and_mark_classes_billed(p_invoice_data jsonb, p_class_items jsonb) RETURNS jsonb` com INSERT expandido incluindo `payment_origin` (extraído via `p_invoice_data->>'payment_origin'`) e `original_amount` (extraído via `(p_invoice_data->>'original_amount')::numeric`). Restante da função (loop `invoice_classes`, `v_result`, exception handler) permanece idêntico. Sem o SQL concreto, implementador precisaria deduzir quais colunas adicionar e como extraí-las do JSONB, arriscando erros de casting ou omissão de campos. |
 
 ---
 

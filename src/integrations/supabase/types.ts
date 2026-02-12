@@ -128,6 +128,7 @@ export type Database = {
       business_profiles: {
         Row: {
           business_name: string
+          charge_timing: string
           cnpj: string | null
           created_at: string
           enabled_payment_methods: string[] | null
@@ -138,6 +139,7 @@ export type Database = {
         }
         Insert: {
           business_name: string
+          charge_timing?: string
           cnpj?: string | null
           created_at?: string
           enabled_payment_methods?: string[] | null
@@ -148,6 +150,7 @@ export type Database = {
         }
         Update: {
           business_name?: string
+          charge_timing?: string
           cnpj?: string | null
           created_at?: string
           enabled_payment_methods?: string[] | null
@@ -553,6 +556,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean | null
           notes: string | null
           parent_class_id: string | null
@@ -578,6 +582,7 @@ export type Database = {
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_paid_class?: boolean
           is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
@@ -603,6 +608,7 @@ export type Database = {
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_paid_class?: boolean
           is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
@@ -2229,6 +2235,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean | null
           notes: string | null
           parent_class_id: string | null

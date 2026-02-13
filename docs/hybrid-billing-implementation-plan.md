@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.2
+# Plano de Cobrança Híbrida — v4.3
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas. Esta v4.2 adiciona 7 novas pontas soltas (#17-#23) e 4 melhorias (M1-M4) identificadas em revisão profunda do código.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). Esta v4.3 adiciona 6 novas pontas soltas (#24-#29) e 3 melhorias (M5-M7) identificadas em revisão dos edge functions e fluxos de cancelamento.
 
 Principais mudanças desde v3.10:
 
@@ -62,6 +62,9 @@ Principais mudanças desde v3.10:
 
 ### Aulas em grupo + prepaid
 - Para aulas em grupo com `charge_timing = 'prepaid'` e `is_paid_class = true`, gerar **uma fatura por participante** (student_id). Cada participante recebe sua própria fatura individual no momento do agendamento.
+
+### Invariante de segurança: faturas de cancelamento + prepaid
+- **Faturas de cancelamento (`invoice_type = 'cancellation'`) NUNCA devem existir para aulas pré-pagas.** O `process-cancellation` força `shouldCharge = false` quando `charge_timing = 'prepaid'`, impedindo a criação dessas faturas. Se por bug uma fatura de cancelamento for criada para aula prepaid, a anistia a cancelaria normalmente — mas esse cenário não deve ocorrer.
 
 ---
 
@@ -129,10 +132,12 @@ Todos devem incluir `is_paid_class` no payload de inserção.
   ```
   const classInsertResult = await supabase.from('classes').insert(...)
   if (chargeTiming === 'prepaid' && formData.is_paid_class && !formData.is_experimental) {
-    const { error } = await supabase.functions.invoke('create-invoice', {
-      body: { student_id, class_id, invoice_type: 'prepaid_class', ... }
-    })
-    if (error) toast({ title: t('...'), variant: 'destructive' })
+    for (const participant of participantsToInsert) {
+      const { error } = await supabase.functions.invoke('create-invoice', {
+        body: { student_id: participant.student_id, class_id, invoice_type: 'prepaid_class', amount: servicePrice, ... }
+      })
+      if (error) toast({ title: t('...'), variant: 'destructive' })
+    }
   }
   ```
 
@@ -148,46 +153,78 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 - `create-invoice` usa `getUser(token)` — funciona com token do usuário autenticado no frontend
 - Confirmar que aceita `invoice_type = 'prepaid_class'` sem validação que rejeite esse tipo
 
+#### 4.5 Validação de valor mínimo no create-invoice (Ponta #24)
+- `create-invoice` (linha 58-69) **rejeita faturas com valor < R$ 5,00** assumindo boleto
+- Para faturas pré-pagas de serviços baratos (ex: R$ 3,00), a rejeição é incorreta se PIX (mínimo R$ 1,00) estiver habilitado
+- **Ação**: A validação de valor mínimo deve ser condicional ao método de pagamento efetivo, não um hard-block universal. Verificar `enabled_payment_methods` antes de rejeitar:
+  - Se boleto habilitado e >= R$ 5,00: OK
+  - Se PIX habilitado e >= R$ 1,00: OK
+  - Se apenas cartão: sem mínimo
+  - Se nenhum método suporta o valor: rejeitar com mensagem específica
+
+#### 4.6 FK join syntax no create-invoice (Ponta #25)
+- `create-invoice` (linha 148) usa `business_profile:business_profiles!teacher_student_relationships_business_profile_id_fkey(...)` — FK join syntax
+- Isso viola a constraint `edge-functions-pattern-sequential-queries` (evitar FK joins no Deno para prevenir schema cache issues)
+- **Ação**: Refatorar para queries sequenciais independentes (buscar relationship, depois business_profile separadamente)
+
 ### 5. Backend — Cancelamento
 
 #### 5.1 Aula não paga (Pontas #5.1, #19)
-- `process-cancellation` deve buscar `is_paid_class` na query da aula
+- `process-cancellation` deve buscar `is_paid_class` na query da aula (linha 45: adicionar `is_paid_class` ao select)
 - Quando `is_paid_class = false`: forçar `shouldCharge = false`
 
 #### 5.2 Aula pré-paga (Pontas #5.2, #19)
-- `process-cancellation` deve buscar `charge_timing` do `business_profiles` do professor
+- `process-cancellation` deve buscar `charge_timing` do `business_profiles` do professor (query sequencial)
 - Quando `charge_timing = 'prepaid'` E `is_paid_class = true`: forçar `shouldCharge = false`
 - Mensagem: "Esta aula já foi cobrada antecipadamente. Eventuais ajustes devem ser combinados diretamente com o aluno."
 
-#### 5.3 CancellationModal (Pontas #19, #20)
+#### 5.3 CancellationModal (Pontas #19, #20, #29)
 - Query da aula (~linha 113) deve incluir `is_paid_class`
 - Buscar `charge_timing` do `business_profiles` do professor
+- Interface `VirtualClassData` (linhas 14-24) **não inclui `is_paid_class`** — adicionar campo opcional
 - Lógica de `willBeCharged` (~linha 179):
   - Se `is_paid_class = false`: `willBeCharged = false` (igual a experimental)
   - Se `charge_timing = 'prepaid'` e `is_paid_class = true`: `willBeCharged = false` com mensagem distinta
 
-#### 5.4 Aula pós-paga
+#### 5.4 Guard clause no bloco de criação de fatura (M6)
+- `process-cancellation` (linhas 375-473): o bloco que cria faturas de cancelamento está dentro de `if (shouldCharge)`
+- Com as alterações em #5.1 e #5.2, `shouldCharge` já será `false` para aulas gratuitas e pré-pagas
+- **Verificação**: a guard clause `if (shouldCharge)` na linha 375 é **suficiente** — não é necessário duplicar a validação dentro do bloco. Documentar essa invariante.
+
+#### 5.5 Aula pós-paga
 - Cancelamento com política de cobrança (já funciona)
 - Anistia disponível via AmnestyButton com nova validação
 
 ### 6. Frontend — AmnestyButton.tsx
 
-#### 6.1 Verificação de faturamento (Ponta #6.1)
+#### 6.1 Verificação de faturamento (Pontas #6.1, #28)
 - Antes de exibir o botão, consultar `invoice_classes WHERE class_id = :classId`
 - **Não faturada**: mostrar botão de anistia
 - **Já faturada**: mostrar label "Não é possível conceder anistia. Esta aula já foi incluída em uma fatura."
 - **Aula pré-paga cancelada**: NÃO mostrar botão (precisa de `is_paid_class` e `charge_timing`)
+- **Invariante**: Faturas `invoice_type = 'cancellation'` nunca devem existir para aulas prepaid (garantido pelo `shouldCharge = false` no `process-cancellation`)
 
 ### 7. Backend — automated-billing + materialize-virtual-class
 
 #### 7.1 Filtrar aulas gratuitas (Ponta #7.1)
 - RPC `get_unbilled_participants_v2`: adicionar `AND c.is_paid_class = true` ao lado de `AND c.is_experimental = false`
 
-#### 7.2 Propagar is_paid_class na materialização (Pontas #8.1, #17)
+#### 7.2 Propagar is_paid_class na materialização (Pontas #8.1, #17, #27)
 - Edge function `materialize-virtual-class` (~linha 252): adicionar `is_paid_class: template.is_paid_class`
+  - **Nota**: A query do template já usa `select('*')` (linha 88), portanto `template.is_paid_class` já está disponível no resultado. Não é necessário alterar a query, apenas o objeto de inserção.
 - Frontend `materializeVirtualClass` (Agenda.tsx, ~linha 1288): adicionar `is_paid_class` ao `realClassData`
+  - **Nota**: O `virtualClass` no frontend pode não ter `is_paid_class` se foi construído antes da migração. Usar fallback: `is_paid_class: virtualClass.is_paid_class ?? true`
 
-#### 7.3 Teste de regressão (M3)
+#### 7.3 Decisão sobre automated-billing e charge_timing (Ponta #26, M5)
+- O `automated-billing` processa **todos** os relacionamentos cujo `billing_day = today` (linha 90), independente do `charge_timing`
+- Com a cobrança híbrida, professores prepaid já terão suas aulas faturadas no agendamento. No ciclo automatizado, essas aulas já estarão em `invoice_classes` e serão filtradas naturalmente pela RPC (`ic.id IS NULL`)
+- **Decisão**: O `automated-billing` continua processando todos os professores. A proteção contra duplicação é garantida pela RPC + `invoice_classes`. Isso é mais seguro que filtrar por `charge_timing`, pois:
+  - Professores podem mudar de timing entre ciclos
+  - Mensalidades são processadas independente do timing
+  - A RPC já é a fonte única de verdade para aulas não faturadas
+- **Ação na Fase 5**: O `automated-billing` deve buscar `charge_timing` do `business_profiles` (atualmente `select('id, business_name')` na linha 133) para **logging** e métricas, mas não para filtrar
+
+#### 7.4 Teste de regressão (M3)
 - Após alterar a RPC, executar `automated-billing` para professor existente
 - Verificar que nenhuma aula existente (todas com `is_paid_class = true` por default) é perdida
 
@@ -195,11 +232,16 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 #### 8.1 Consolidar InvoiceTypeBadge (Ponta #21)
 - `InvoiceTypeBadge.tsx` (componente compartilhado) suporta apenas 3 tipos: `monthly_subscription`, `automated`, `manual`
-- `Financeiro.tsx` (inline) já suporta 5 tipos: inclui `cancellation` e `orphan_charges`
+- `Financeiro.tsx` (inline `getInvoiceTypeBadge`, linhas 30-44) já suporta 5 tipos: inclui `cancellation` e `orphan_charges`
 - **Decisão**: migrar `Financeiro.tsx` para usar `InvoiceTypeBadge` como fonte única de verdade
 - Adicionar ao `InvoiceTypeBadge`: `prepaid_class`, `cancellation`, `orphan_charges`
 
-#### 8.2 Chaves i18n necessárias (Ponta #10.1)
+#### 8.2 Type safety do handleClassSubmit (M7)
+- `Agenda.tsx` linha 1392: `handleClassSubmit` tipifica parâmetro como `any`
+- Quando `is_paid_class` for adicionado ao `ClassFormData`, a tipagem `any` ocultará erros
+- **Ação**: Alterar `(formData: any)` para `(formData: ClassFormData)` e importar a interface do ClassForm
+
+#### 8.3 Chaves i18n necessárias (Ponta #10.1)
 **billing.json (PT e EN)**:
 - `billing.chargeTiming.title` — "Modelo de Cobrança" / "Billing Model"
 - `billing.chargeTiming.prepaid` — "Cobrar Antes" / "Charge Before"
@@ -243,11 +285,55 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1 | Pendente |
-| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20 | Pendente |
-| 7 | AmnestyButton: verificação de faturamento + label | #6.1 | Pendente |
+| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, M3 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #26, M5, M7 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, M6 | Pendente |
+| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28 | Pendente |
 | 8 | InvoiceTypeBadge consolidação + i18n + testes | #9.1, #21, #10.1, #16 | Pendente |
+
+---
+
+## Índice de Pontas Soltas
+
+| # | Descrição | Fase | Arquivo(s) |
+|---|-----------|------|------------|
+| 2.3 | ClassFormData sem `is_paid_class` | 3 | ClassForm.tsx |
+| 2.4 | Agenda.tsx handleClassSubmit sem `is_paid_class` no insert | 5 | Agenda.tsx |
+| 3.2 | BillingSettings não lê `charge_timing` | 2 | Settings/BillingSettings.tsx |
+| 4.3 | Grupo prepaid: 1 fatura por participante | 5 | Agenda.tsx |
+| 5.1 | process-cancellation não busca `is_paid_class` | 6 | process-cancellation/index.ts |
+| 5.2 | process-cancellation não busca `charge_timing` | 6 | process-cancellation/index.ts |
+| 6.1 | AmnestyButton sem consulta a `invoice_classes` | 7 | AmnestyButton.tsx |
+| 7.1 | RPC sem filtro `is_paid_class` | 4 | migration SQL |
+| 8.1 | materialize-virtual-class não propaga `is_paid_class` | 4 | materialize-virtual-class/index.ts |
+| 9.1 | InvoiceTypeBadge faltam 3 tipos | 8 | InvoiceTypeBadge.tsx |
+| 10.1 | Chaves i18n faltantes | 8 | billing.json, classes.json, etc. |
+| 16 | CHECK constraint em `invoices.invoice_type` | 8 | migration SQL |
+| 17 | Frontend materializeVirtualClass sem `is_paid_class` | 4,5 | Agenda.tsx |
+| 18 | handleClassSubmit sem lógica de fatura pré-paga | 5 | Agenda.tsx |
+| 19 | CancellationModal não busca `is_paid_class` | 6 | CancellationModal.tsx |
+| 20 | willBeCharged ignora `is_paid_class` e `charge_timing` | 6 | CancellationModal.tsx |
+| 21 | InvoiceTypeBadge vs getInvoiceTypeBadge inconsistência | 8 | InvoiceTypeBadge.tsx, Financeiro.tsx |
+| 22 | Dois BillingSettings — qual recebe charge_timing | 2 | Settings/BillingSettings.tsx |
+| 23 | create-invoice aceita `prepaid_class` como invoice_type | 5 | create-invoice/index.ts |
+| 24 | create-invoice rejeita valor < R$5 mesmo com PIX habilitado | 5 | create-invoice/index.ts |
+| 25 | create-invoice usa FK join syntax (schema cache risk) | 5 | create-invoice/index.ts |
+| 26 | automated-billing não filtra por charge_timing | 4 | automated-billing/index.ts |
+| 27 | materialize template query já tem `is_paid_class` via `select('*')` | 4 | materialize-virtual-class/index.ts |
+| 28 | AmnestyButton não valida invariante prepaid + cancellation | 7 | AmnestyButton.tsx |
+| 29 | VirtualClassData interface sem `is_paid_class` | 6 | CancellationModal.tsx |
+
+## Índice de Melhorias
+
+| # | Descrição | Fase |
+|---|-----------|------|
+| M1 | ClassForm busca `charge_timing` diretamente (sem props) | 3 |
+| M2 | Reordenação de fases (RPC antes de prepaid) | — |
+| M3 | Teste de regressão do automated-billing | 4 |
+| M4 | Conteúdo do card informativo definido | 2 |
+| M5 | automated-billing buscar `charge_timing` para logging | 5 |
+| M6 | Guard clause suficiente no process-cancellation | 6 |
+| M7 | Type safety: handleClassSubmit `any` → `ClassFormData` | 5 |
 
 ---
 
@@ -268,6 +354,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
 | v4.1 | 2026-02-13 | 16 pontas soltas identificadas e incorporadas |
 | v4.2 | 2026-02-13 | +7 pontas soltas (#17-#23), +4 melhorias (M1-M4), reordenação de fases |
+| v4.3 | 2026-02-13 | +6 pontas soltas (#24-#29), +3 melhorias (M5-M7), decisão sobre automated-billing + charge_timing, invariante prepaid+cancellation, índices consolidados |
 
 ## Memórias do Projeto a Atualizar
 

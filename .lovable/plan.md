@@ -1,125 +1,195 @@
 
 
-# Plano de Cobranca Hibrida -- v5.3
+# Plano de Cobranca Hibrida -- v5.4
 
-**Novas Pontas Soltas: #80-#85 | Novas Melhorias: M32-M34**
-**Totais acumulados: 85 pontas soltas, 34 melhorias**
+**Novas Pontas Soltas: #86-#91 | Novas Melhorias: M35-M37**
+**Totais acumulados: 91 pontas soltas, 37 melhorias**
 
 ---
 
-## Novas Pontas Soltas v5.3 (#80-#85)
+## Novas Pontas Soltas v5.4 (#86-#91)
 
-### 80. process-cancellation invoca create-invoice com `service_role_key` como Bearer token -- BUG de autenticacao (Fase 6)
+### 86. automated-billing usa FK join syntax na query principal -- viola constraint de infraestrutura (Fase 5)
 
-**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 451-457)
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 72-89)
 
-O `process-cancellation` invoca `create-invoice` passando o `SUPABASE_SERVICE_ROLE_KEY` como Authorization header:
+A query principal que busca `relationshipsToBill` usa FK join syntax extensivamente:
 ```javascript
-headers: {
-  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
-}
+.select(`
+  id, student_id, teacher_id, billing_day, business_profile_id,
+  teacher:profiles!teacher_id ( id, name, email, payment_due_days ),
+  student:profiles!student_id ( id, name, email )
+`)
 ```
 
-Porem, `create-invoice` (linha 45) usa `supabaseClient.auth.getUser(token)` para autenticar o usuario. O service_role_key **nao e um JWT de usuario** -- o `getUser()` retornara erro ou um objeto invalido, impedindo a identificacao do `teacher_id`. Isso significa que faturas de cancelamento geradas pelo `process-cancellation` podem falhar silenciosamente ou usar um user.id incorreto.
+Isso viola diretamente a constraint documentada em `constraints/edge-functions-pattern-sequential-queries`: "avoid foreign key join syntax (e.g., 'table!fk(...)') and instead use sequential independent supabaseClient calls". O schema cache do Deno pode falhar silenciosamente, retornando `null` para `teacher` ou `student` e causando billing para o aluno errado ou skipping silencioso.
 
-**Impacto**: Toda fatura de cancelamento gerada automaticamente (aluno cancela tardiamente) pode estar falhando sem log visivel, pois o catch block do `create-invoice` retorna HTTP 500 (ponta #72).
+**Impacto**: Toda execucao do `automated-billing` depende dessa query. Uma falha de cache causaria zero faturas processadas sem erro explicito (apenas logs "Skipping" por falta de dados do professor).
 
-**Acao**: O `create-invoice` precisa de um modo alternativo de autenticacao para chamadas server-to-server. Opcoes:
-1. Aceitar `teacher_id` no body quando chamada com service_role_key (validando que o role e `service_role`)
-2. Criar um supabaseClient com service_role no `process-cancellation` e inserir a fatura diretamente (sem invocar `create-invoice`)
-3. Adicionar deteccao de service_role no `create-invoice`: se o token e service_role, usar `teacher_id` do body
+**Acao**: Refatorar para buscar relationships primeiro (sem joins), depois fazer queries sequenciais para `profiles` usando os IDs retornados.
 
-### 81. process-cancellation hard-coded `chargeAmount >= 5` ignora PIX (Fase 6)
+### 87. webhook-stripe-connect `invoice.paid` e `invoice.payment_succeeded` usam `.single()` para lookup de `payment_origin` (Fase 7)
 
-**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linha 434)
-
-Ja documentado como ponta #30, mas com uma nuance adicional nao capturada: quando `chargeAmount < 5`, o codigo faz `console.log` e **pula completamente** a criacao da fatura (linha 472). Nao tenta PIX (minimo R$ 1,00), nao cria fatura sem pagamento para rastreamento, e nao seta `charge_applied = false` no participante. Isso resulta em:
-1. Participante com `charge_applied = true` mas sem fatura correspondente
-2. `automated-billing` pode capturar esse participante no proximo ciclo e cobrar novamente (duplicacao)
-3. Professor ve "cobranca aplicada" mas nao encontra fatura
-
-**Acao critica**: Alem de aplicar a hierarquia PIX (ponta #30), quando o valor esta abaixo de TODOS os minimos, o sistema deve setar `charge_applied = false` no participante para evitar inconsistencia de dados.
-
-### 82. check-overdue-invoices usa `class_notifications` com `class_id = invoice.id` -- colisao de IDs (Fase 8)
-
-**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 47-51)
-
-A verificacao de idempotencia armazena o **invoice ID** no campo `class_id` da tabela `class_notifications`:
-```javascript
-.eq("class_id", invoice.id)
-.eq("notification_type", "invoice_overdue")
-```
-
-Isso cria dois problemas:
-1. **Colisao de namespace**: Se um UUID de fatura coincidir com um UUID de aula (estatisticamente improvavel mas semanticamente incorreto), o sistema pode pular notificacoes reais de aula.
-2. **FK constraint potencial**: Se `class_notifications.class_id` tiver uma foreign key para `classes.id`, inserir um `invoice.id` nesse campo causara erro de constraint. Verificando o schema, `class_notifications` nao tem FK explicita, mas a semantica esta errada.
-
-Isso complementa a ponta #47/#71 (falta de INSERT) e #41 (uso semantico incorreto). O INSERT que sera adicionado para resolver #71 perpetuara essa colisao se nao for corrigido primeiro.
-
-**Acao**: Implementar a coluna `overdue_notification_sent` em `invoices` (conforme M15 e a memoria `database/invoice-overdue-notification-tracking`) ANTES de resolver #71. Isso elimina a necessidade de usar `class_notifications` para faturas.
-
-### 83. automated-billing nao envia notificacao para faturamento tradicional (Fase 5)
-
-**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 560-566)
-
-Ja documentado como ponta #67, mas verificacao do codigo confirma: o bloco de faturamento tradicional (linhas 510-566) termina com `processedCount++` sem chamar `send-invoice-notification`. Em contraste:
-- Faturamento de mensalidade (linha 884): chama `send-invoice-notification`
-- Faturamento fora do ciclo (linha 998): chama `send-invoice-notification`
-- `create-invoice` (linha 532): chama `send-invoice-notification`
-
-**Impacto**: Alunos sem mensalidade que sao faturados automaticamente nunca recebem email de cobranca. Eles so descobrem a fatura se acessarem o app ou receberem o lembrete de vencimento (que tambem esta bugado pela ponta #71).
-
-**Acao**: Adicionar chamada a `send-invoice-notification` apos a geracao de pagamento (apos linha 558), usando o padrao fire-and-forget ja usado nos outros fluxos.
-
-### 84. process-cancellation catch block retorna HTTP 500 -- viola constraint (Fase 6)
-
-**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 493-499)
-
-O catch block generico retorna `status: 500`. Quando chamado pelo frontend (`CancellationModal.tsx`), o SDK do Supabase lanca excecao generica e a mensagem amigavel (ex: "Esta aula ja foi cancelada anteriormente", "Voce nao tem permissao") e perdida.
-
-Isso e o mesmo problema da ponta #72 (`create-invoice`) e #76 (`automated-billing`), mas no `process-cancellation`.
-
-**Acao**: Alterar para `status: 200` com `success: false` e manter a mensagem de erro no body.
-
-### 85. send-invoice-notification `monthly_subscriptions` lookup usa `.single()` (Fase 8)
-
-**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 157-161)
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 308-311 e 343-347)
 
 ```javascript
-const { data: subscription, error: subError } = await supabase
-  .from("monthly_subscriptions")
-  .select("name, price, max_classes, overage_price")
-  .eq("id", invoice.monthly_subscription_id)
+// invoice.paid (linha 310)
+const { data: existingInvoice } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_invoice_id', paidInvoice.id)
+  .single();
+
+// invoice.payment_succeeded (linha 346)
+const { data: existingSucceeded } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_invoice_id', succeededInvoice.id)
   .single();
 ```
 
-Se a mensalidade foi deletada entre a criacao da fatura e o envio da notificacao (cenario raro mas possivel via desativacao de plano), o `.single()` lanca excecao e impede o envio do email. Como o `monthly_subscription_id` na fatura e apenas referencia informativa (nao FK com cascade), a exclusao do plano nao limpa a referencia.
+Quando o Stripe envia um evento para uma fatura que nao existe no banco (evento orfao de outra integracao, fatura deletada, ou fatura criada por outro sistema), o `.single()` lanca excecao. Como o catch geral (linha 551-558) retorna HTTP 500, o Stripe reprocessa o evento indefinidamente.
 
-**Acao**: Substituir por `.maybeSingle()`. Se `subscription` for null, usar fallback com dados da descricao da fatura (que ja contem o nome do plano).
+Isso e distinto da ponta #74 (que trata `payment_intent.succeeded`) -- aqui o problema esta nos handlers de `invoice.paid` e `invoice.payment_succeeded`.
+
+**Acao**: Substituir por `.maybeSingle()`. Se `existingInvoice` for `null`, logar "No local invoice found for stripe_invoice_id" e fazer `break` (evento orfao).
+
+### 88. process-cancellation nao verifica `is_paid_class` nem `charge_timing` -- aulas prepaid pagas recebem cobranca de cancelamento (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 216-225)
+
+A logica de `shouldCharge` so verifica `is_experimental`:
+```javascript
+if (classData.is_experimental === true) {
+  shouldCharge = false;
+} else if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
+  shouldCharge = true;
+}
+```
+
+Faltam duas verificacoes criticas documentadas no plano:
+1. **`is_paid_class = false`**: Aulas gratuitas/reposicao NUNCA devem gerar cobranca de cancelamento
+2. **`charge_timing = 'prepaid'`**: A regra de negocio diz "sem reembolso/credito/anistia" para prepaid -- mas tambem nao deve gerar nova fatura de cancelamento (invariante de seguranca da linha 67 do plano)
+
+A query da aula (linha 46) tambem nao busca `is_paid_class`:
+```javascript
+.select('id, teacher_id, class_date, status, is_group_class, service_id, is_experimental')
+```
+
+**Impacto**: 
+- Aulas gratuitas canceladas tardiamente geram cobranca indevida
+- Aulas prepaid canceladas geram fatura de cancelamento duplicada (aluno ja pagou antes)
+
+**Acao**: 
+1. Adicionar `is_paid_class` ao SELECT da aula
+2. Buscar `charge_timing` do `business_profiles` do professor
+3. Adicionar condicoes: `if (!classData.is_paid_class) shouldCharge = false` e `if (chargeTiming === 'prepaid') shouldCharge = false`
+
+### 89. automated-billing fluxo tradicional hardcoda `payment_method: 'boleto'` ignorando hierarquia de metodos habilitados (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linha 527)
+
+```javascript
+body: {
+  invoice_id: invoiceId,
+  payment_method: 'boleto' // Default to boleto for automated billing
+}
+```
+
+O mesmo problema existe no fluxo de mensalidade (linha 855) e no fluxo outside-cycle (linha 969). Todos passam `payment_method: 'boleto'` sem consultar `business_profiles.enabled_payment_methods`.
+
+Se o professor desabilitou boleto e habilitou apenas PIX, o `create-payment-intent-connect` tentara criar um boleto no Stripe Connect, que pode falhar ou criar um metodo de pagamento que o professor nao aceita.
+
+**Impacto**: Faturas automatizadas podem ficar sem metodo de pagamento funcional se o professor so aceita PIX. Diferente da ponta #75 (que trata valor abaixo do minimo), aqui o problema e que **nenhum** dos 3 fluxos consulta os metodos habilitados.
+
+**Acao**: Antes de gerar pagamento, buscar `enabled_payment_methods` do `business_profiles` e aplicar a hierarquia: Boleto (se habilitado e >= R$5) -> PIX (se habilitado e >= R$1) -> Nenhum.
+
+### 90. check-overdue-invoices idempotencia quebrada -- nunca faz INSERT do tracking record (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 43-74)
+
+Confirmacao por inspecao direta: o fluxo de faturas vencidas (linhas 43-75) faz SELECT de `class_notifications` para verificar se ja notificou (linha 47-52), mas NUNCA faz INSERT apos enviar a notificacao. O bloco apos `if (!existingNotification)` (linhas 54-70) envia a notificacao e incrementa o contador, mas nao insere nenhum registro de tracking.
+
+Isso ja foi documentado nas pontas #47 e #71, mas a confirmacao por codigo mostra que **ambos** os fluxos (overdue e reminder, linhas 96-122) sofrem o mesmo problema -- o fluxo de reminder (linhas 99-105) tambem faz SELECT sem INSERT posterior.
+
+**Resultado concreto**: Cada execucao do cron re-envia TODAS as notificacoes de vencimento e lembretes para TODAS as faturas elegíveis, indefinidamente. Um aluno com 3 faturas vencidas recebe 3 emails por execucao do cron.
+
+**Acao**: Implementar `overdue_notification_sent` em `invoices` (conforme M15/#82) e adicionar INSERT/UPDATE apos envio bem-sucedido. Tambem adicionar campo `reminder_notification_sent` para o fluxo de lembrete.
+
+### 91. webhook-stripe-connect retorna HTTP 500 para falhas de update em `invoice.paid` e `invoice.marked_uncollectible` (Fase 7)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 326-332 e 409-415)
+
+```javascript
+// invoice.paid (linhas 328-332)
+if (paidError) {
+  return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { 
+    status: 500,
+  });
+}
+
+// invoice.marked_uncollectible (linhas 410-415)
+if (overdueError) {
+  return new Response(JSON.stringify({ error: 'Failed to update invoice to overdue' }), { 
+    status: 500,
+  });
+}
+```
+
+Em ambos os casos, um erro de UPDATE no banco (ex: invoice nao encontrada, RLS bloqueou, conexao temporaria) causa HTTP 500. O Stripe reprocessa eventos com 500 ate 3x com backoff, gerando logs de erro repetidos e mascarando o problema real.
+
+Diferente da ponta #77 (que trata erros nao-criticos genericos), aqui o `return` dentro do `case` impede que o evento seja marcado como processado pelo `completeEventProcessing` (linha 544), criando inconsistencia na tabela de idempotencia.
+
+**Acao**: Substituir `return` com HTTP 500 por log do erro + `break` (continuar para `completeEventProcessing`). Se o update falhou porque a invoice nao existe localmente, isso nao e critico -- o evento pode ser ignorado com seguranca.
 
 ---
 
-## Novas Melhorias v5.3 (M32-M34)
+## Novas Melhorias v5.4 (M35-M37)
 
-### M32. process-cancellation deveria criar fatura diretamente em vez de invocar create-invoice (Fase 6)
+### M35. automated-billing consulta `cancellation_policies` dentro do loop de cancelamentos -- duplicacao de queries (Fase 5)
 
-Relacionada a ponta #80. A invocacao de `create-invoice` via `functions.invoke` com service_role_key e fragil e adiciona latencia (chamada HTTP interna). Como `process-cancellation` ja tem acesso ao `supabaseClient` com service_role, a criacao da fatura e dos itens de `invoice_classes` pode ser feita diretamente, reutilizando a logica de resolucao de dependentes e a hierarquia de pagamento.
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 351-356 e 413-418)
 
-Beneficios:
-1. Elimina o bug de autenticacao (#80)
-2. Remove dependencia circular entre edge functions
-3. Permite controle mais granular do `invoice_type` e dos campos
-4. Reduz latencia do cancelamento (1 round-trip a menos)
+A `cancellation_policies` do professor e consultada **duas vezes** para cada aula cancelada: uma vez no loop de calculo de valor (linha 351) e outra no loop de criacao de itens (linha 413). Para um aluno com 5 cancelamentos, isso gera 10 queries identicas.
 
-### M33. check-overdue-invoices deveria filtrar por `teacher_id` nas queries (Seguranca)
+**Acao**: Mover a query para fora dos loops (antes da linha 335), armazenar em variavel, e reutilizar nos dois loops. Isso reduz queries de `2 * N_cancelamentos` para `1`.
 
-As queries de faturas vencidas (linhas 27-31) e proximas ao vencimento (linhas 79-84) nao filtram por `teacher_id`. Embora a funcao use service_role (acesso total), ela processa **todos** os professores de uma vez. Se a funcao falhar no meio do loop, faturas de alguns professores podem ficar como "overdue" sem notificacao enquanto outros ja foram notificados. 
+### M36. send-invoice-notification student e teacher lookups usam `.single()` sem fallback (Fase 8)
 
-**Acao**: Embora nao seja um bug funcional, adicionar paginacao (LIMIT 100 + loop) para evitar timeouts em escala com muitas faturas vencidas simultaneamente.
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 66-69 e 96-99)
 
-### M34. automated-billing `invoiceData` nao inclui `payment_method` -- confirmacao e extensao de #48 (Fase 5)
+```javascript
+// Student lookup (linha 69)
+.eq("id", invoice.student_id)
+.single();
 
-Confirmacao por inspecao direta do codigo: o `invoiceData` em tres pontos (linhas 472-481, 801-812, 932-941) nao inclui `payment_method`. Isso foi documentado como ponta #48, mas a extensao e que o fluxo de outside-cycle (linhas 932-941) tambem nao inclui `payment_method`, elevando o impacto para 3 faturas potencialmente sem metodo de pagamento ate o webhook processar.
+// Teacher lookup (linha 99)
+.eq("id", invoice.teacher_id)
+.single();
+```
+
+Se o perfil do aluno ou professor foi deletado (cenario raro mas possivel em contas desativadas), o `.single()` lanca excecao com "Row not found". O `throw new Error("Student not found")` subsequente retorna HTTP 500 para o caller.
+
+Quando chamado pelo `automated-billing` (fire-and-forget), o erro e silencioso. Quando chamado pelo `check-overdue-invoices`, pode interromper o loop de processamento.
+
+**Acao**: Substituir por `.maybeSingle()` com fallback para dados da fatura (`invoice.description` contem informacoes suficientes para um email generico).
+
+### M37. validateTeacherCanBill usa FK join syntax `subscription_plans!inner` (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 1030-1038)
+
+```javascript
+const { data: subscription } = await supabaseAdmin
+  .from('user_subscriptions')
+  .select(`status, subscription_plans!inner ( features )`)
+  .eq('user_id', teacher.id)
+  .eq('status', 'active')
+  .maybeSingle();
+```
+
+Mesma violacao da ponta #86 (FK join syntax). Se o schema cache falhar, `subscription_plans` retorna null e o professor e considerado sem modulo financeiro, pulando completamente o faturamento.
+
+**Acao**: Separar em duas queries sequenciais: buscar `user_subscriptions`, depois buscar `subscription_plans` pelo `plan_id`.
 
 ---
 
@@ -127,18 +197,18 @@ Confirmacao por inspecao direta do codigo: o `invoiceData` em tres pontos (linha
 
 | # | Descricao | Fase | Arquivo(s) |
 |---|-----------|------|------------|
-| 80 | process-cancellation invoca create-invoice com service_role_key como JWT | 6 | process-cancellation/index.ts |
-| 81 | process-cancellation chargeAmount < 5 deixa charge_applied = true sem fatura | 6 | process-cancellation/index.ts |
-| 82 | check-overdue-invoices armazena invoice.id em class_notifications.class_id | 8 | check-overdue-invoices/index.ts |
-| 83 | automated-billing tradicional nao envia notificacao de fatura | 5 | automated-billing/index.ts |
-| 84 | process-cancellation catch block retorna HTTP 500 | 6 | process-cancellation/index.ts |
-| 85 | send-invoice-notification monthly_subscriptions lookup usa .single() | 8 | send-invoice-notification/index.ts |
+| 86 | automated-billing usa FK join syntax na query principal | 5 | automated-billing/index.ts |
+| 87 | webhook invoice.paid/payment_succeeded usa .single() para payment_origin | 7 | webhook-stripe-connect/index.ts |
+| 88 | process-cancellation nao verifica is_paid_class nem charge_timing | 6 | process-cancellation/index.ts |
+| 89 | automated-billing hardcoda boleto ignorando enabled_payment_methods | 5 | automated-billing/index.ts |
+| 90 | check-overdue-invoices nunca faz INSERT do tracking record (confirmacao #71) | 8 | check-overdue-invoices/index.ts |
+| 91 | webhook retorna HTTP 500 para falhas de update em invoice.paid e marked_uncollectible | 7 | webhook-stripe-connect/index.ts |
 
 | # | Descricao | Fase |
 |---|-----------|------|
-| M32 | process-cancellation criar fatura diretamente (sem invocar create-invoice) | 6 |
-| M33 | check-overdue-invoices adicionar paginacao para escala | 8 |
-| M34 | automated-billing outside-cycle invoiceData sem payment_method | 5 |
+| M35 | automated-billing cancellation_policies consultada 2x por cancelamento no loop | 5 |
+| M36 | send-invoice-notification student/teacher lookups com .single() sem fallback | 8 |
+| M37 | validateTeacherCanBill usa FK join syntax subscription_plans!inner | 5 |
 
 ---
 
@@ -146,19 +216,24 @@ Confirmacao por inspecao direta do codigo: o `invoiceData` em tres pontos (linha
 
 | Versao | Data | Mudancas |
 |--------|------|----------|
-| v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +3 melhorias (M32-M34): process-cancellation auth bug com service_role, charge_applied inconsistente sem fatura, check-overdue colisao de IDs, automated-billing sem notificacao no fluxo tradicional, process-cancellation HTTP 500, send-invoice-notification .single() em monthly_subscriptions |
+| v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M35-M37): automated-billing FK join syntax em query principal e validateTeacherCanBill, webhook .single() em invoice.paid/payment_succeeded, process-cancellation sem verificar is_paid_class/charge_timing, automated-billing hardcoda boleto, check-overdue-invoices confirmacao de idempotencia quebrada em ambos fluxos, webhook HTTP 500 em invoice.paid e marked_uncollectible |
 
 ---
 
 ## Secao Tecnica: Resumo de Severidade
 
 **CRITICOS (bloqueiam funcionalidade):**
-- #80: Faturas de cancelamento provavelmente falhando silenciosamente
-- #81: charge_applied = true sem fatura = dados inconsistentes e risco de duplicacao
-- #83: Alunos tradicionais nao recebem email de cobranca
+- #86: Query principal do automated-billing usa FK join proibido -- pode falhar silenciosamente
+- #88: Aulas gratuitas e prepaid recebem cobranca de cancelamento indevida
+- #90: Notificacoes de vencimento enviadas infinitamente a cada execucao do cron
 
 **ALTOS (dados incorretos ou UX degradada):**
-- #82: Colisao semantica de IDs em class_notifications
-- #84: Mensagens de erro perdidas no cancelamento
-- #85: Notificacao de mensalidade falha se plano deletado
+- #87: Webhook crash em eventos orfaos de invoice.paid/payment_succeeded
+- #89: Faturas automatizadas ignoram metodos de pagamento habilitados pelo professor
+- #91: HTTP 500 no webhook causa retries infinitos do Stripe e quebra idempotencia
+
+**MEDIOS (otimizacao e resiliencia):**
+- M35: Queries duplicadas de cancellation_policies no loop
+- M36: send-invoice-notification crash se perfil deletado
+- M37: validateTeacherCanBill com FK join fragil
 

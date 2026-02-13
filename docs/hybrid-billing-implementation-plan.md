@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.3
+# Plano de Cobrança Híbrida — v5.4
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.2 acumulou 79 pontas soltas e 31 melhorias. Esta v5.3 adiciona 6 novas pontas soltas (#80-#85) e 4 melhorias (M32-M35), totalizando **85 pontas soltas** e **35 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.3 acumulou 85 pontas soltas e 35 melhorias. Esta v5.4 adiciona 6 novas pontas soltas (#86-#91) e 3 melhorias (M36-M38), totalizando **91 pontas soltas** e **38 melhorias**.
 
-Principais mudanças na v5.3: process-cancellation usa SERVICE_ROLE_KEY como Bearer token (viola constraint de autenticação), check-overdue-invoices sem guard clause contra race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation retorna HTTP 500, process-cancellation `.single()` em lookup de dependente, automated-billing não salva `payment_method` nos 3 updates de pagamento.
+Principais mudanças na v5.4: webhook-stripe-connect `payment_intent.succeeded` apaga dados de boleto/PIX da fatura paga (#86), handlers `invoice.*` nunca encontram faturas internas por buscar apenas `stripe_invoice_id` (#87 — CRÍTICA), automated-billing mensalidade sem filtro de datas na RPC (#88), create-invoice sem verificação de `charges_enabled` do Stripe Connect (#89), decisão de negócio sobre mensalidade sem aulas não documentada (#90), send-invoice-notification label "Cartão" para URL de boleto (#91 — ALTA).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -289,7 +289,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 ---
 
@@ -461,6 +461,12 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **83** | **process-cancellation catch geral retorna HTTP 500 — viola constraint** | **6** | **process-cancellation/index.ts** |
 | **84** | **process-cancellation usa `.single()` para buscar dependente — pode falhar** | **6** | **process-cancellation/index.ts** |
 | **85** | **automated-billing não salva `payment_method` nos 3 updates de pagamento** | **8** | **automated-billing/index.ts** |
+| **86** | **webhook-stripe-connect `payment_intent.succeeded` apaga dados de boleto/PIX da fatura paga** | **8** | **webhook-stripe-connect/index.ts** |
+| **87** | **webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas (busca por `stripe_invoice_id` inexistente)** | **1** | **webhook-stripe-connect/index.ts** |
+| **88** | **automated-billing mensalidade sem filtro de datas na RPC — performance** | **4** | **automated-billing/index.ts** |
+| **89** | **create-invoice não verifica `charges_enabled` do Stripe Connect antes de gerar pagamento** | **5** | **create-invoice/index.ts** |
+| **90** | **Documentação: decisão sobre cobrança de mensalidade sem aulas não documentada** | **—** | **Documentação** |
+| **91** | **send-invoice-notification label "Pagar com Cartão" quando link é de boleto** | **8** | **send-invoice-notification/index.ts** |
 
 ## Índice de Melhorias
 
@@ -495,6 +501,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **M33** | **send-cancellation-notification não busca nome do serviço — email incompleto** | **6** |
 | **M34** | **Agenda.tsx handleClassSubmit — participantes de grupo sem `confirmed_at`** | **5** |
 | **M35** | **Idempotência no create-invoice para faturas prepaid — verificação de duplicidade** | **5** |
+| **M36** | **automated-billing tradicional não envia notificação para faturas com boleto abaixo do mínimo** | **4** |
+| **M37** | **BillingSettings.tsx não busca nem exibe `charge_timing` — confirmação técnica da ponta #3.2** | **2** |
+| **M38** | **create-invoice duplica `stripe_hosted_invoice_url` com `boleto_url` — raiz do bug #91/M22** | **5** |
 
 ---
 
@@ -1489,6 +1498,182 @@ A memória `features/billing/create-invoice-idempotency-constraint` define que o
 
 ---
 
+## Novas Pontas Soltas v5.4 (#86-#91)
+
+### 86. webhook-stripe-connect `payment_intent.succeeded` apaga dados de boleto/PIX da fatura paga (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 464-482)
+
+Quando um `payment_intent.succeeded` é recebido, o handler define:
+```javascript
+pix_qr_code: null,
+pix_copy_paste: null,
+pix_expires_at: null,
+boleto_url: null,
+linha_digitavel: null,
+boleto_expires_at: null,
+barcode: null,
+stripe_hosted_invoice_url: null,
+```
+
+Isso **apaga permanentemente** a URL do boleto e os dados do PIX da fatura. Embora o pagamento já tenha sido confirmado, esses dados são necessários para:
+1. O aluno consultar o comprovante na página `/faturas` (CTA "Ver Boleto" desaparece)
+2. Auditoria histórica e resolução de disputas financeiras
+3. O professor verificar qual método foi usado no painel financeiro
+
+A ponta #74 identificou que `invoice.payment_succeeded` sobrescreve `payment_method`, mas esta ponta é distinta: aqui o `payment_intent.succeeded` **apaga fisicamente** os dados de pagamento.
+
+**Severidade**: ALTA — perda de dados de auditoria.
+
+**Ação**: Remover a limpeza de `boleto_url`, `linha_digitavel`, `stripe_hosted_invoice_url` e `pix_copy_paste` do handler `payment_intent.succeeded`. Manter apenas a limpeza de dados temporários de expiração (`pix_expires_at`, `boleto_expires_at`). Se necessário limpar por segurança, usar flag `payment_data_archived: true` em vez de deletar.
+
+### 87. webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas — reconciliação falha (Fase 1 — CRÍTICA)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 306-331)
+
+O handler `invoice.paid` busca a fatura com `.eq('stripe_invoice_id', paidInvoice.id)` (linha 309). Porém, faturas criadas pelo `create-invoice` e pelo `automated-billing` **não preenchem `stripe_invoice_id`** — elas preenchem apenas `stripe_payment_intent_id`.
+
+A memória `payment/alvo-reconciliacao-webhook-stripe-connect` confirma: "Buscar apenas pelo ID da fatura resulta em falhas de processamento para pagamentos originados de aulas."
+
+Isso significa que o handler `invoice.paid` **nunca encontra** faturas criadas internamente. O pagamento só é processado pelo handler `payment_intent.succeeded` (linhas 441-501), que busca por `stripe_payment_intent_id`. Se o Stripe enviar `invoice.paid` sem um `payment_intent.succeeded` correspondente, a fatura permanecerá `pendente` indefinidamente.
+
+O mesmo bug afeta os handlers `invoice.payment_succeeded` (linha 347) e `invoice.payment_failed` (linha 386).
+
+**Severidade**: CRÍTICA — reconciliação de pagamentos completamente quebrada para handlers `invoice.*`.
+
+**Ação**: Em cada handler de invoice (`invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `invoice.marked_uncollectible`, `invoice.voided`), adicionar fallback de busca por `stripe_payment_intent_id` quando a busca por `stripe_invoice_id` não encontrar resultados:
+```javascript
+let invoice = existingInvoice;
+if (!invoice) {
+  const piId = paidInvoice.payment_intent;
+  if (piId) {
+    const { data } = await supabaseClient
+      .from('invoices')
+      .select('payment_origin')
+      .eq('stripe_payment_intent_id', piId)
+      .maybeSingle();
+    invoice = data;
+  }
+}
+```
+
+### 88. automated-billing `processMonthlySubscriptionBilling` sem filtro de datas na RPC — performance (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 674-680)
+
+A chamada a `get_unbilled_participants_v2` no fluxo de mensalidade **não passa** os parâmetros `p_start_date` e `p_end_date`:
+```javascript
+const { data: completedParticipations } = await supabaseAdmin
+  .rpc('get_unbilled_participants_v2', {
+    p_teacher_id: studentInfo.teacher_id,
+    p_student_id: studentInfo.student_id,
+    p_status: 'concluida'
+  });
+```
+
+A filtragem por ciclo é feita **depois** no JavaScript (linhas 709-718). Embora funcional, busca TODAS as aulas não faturadas do histórico inteiro. Se houver centenas de aulas históricas não faturadas, a RPC sobrecarregará a memória.
+
+A RPC `get_unbilled_participants_v2` já suporta `p_start_date` e `p_end_date` (parâmetros opcionais) mas não estão sendo usados.
+
+**Severidade**: MÉDIA — performance degradada para professores com histórico longo.
+
+**Ação**: Passar `p_start_date` como lookback de 6 meses antes do `cycleStart` e `p_end_date` como `cycleEnd + 1 dia` para limitar o volume. Manter filtragem JavaScript como segunda camada.
+
+### 89. create-invoice não verifica `charges_enabled` do Stripe Connect antes de gerar pagamento (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 141-177, 365-415)
+
+O `create-invoice` busca `business_profile_id` e `enabled_payment_methods`, valida que `business_profile_id` existe, e gera pagamento via `create-payment-intent-connect`. Porém, **não verifica** se o `business_profile` tem `stripe_connect_id` válido com `charges_enabled = true`.
+
+Se o professor desconectou a conta Stripe ou teve o onboarding rejeitado, a geração de pagamento falhará no `create-payment-intent-connect`, resultando em fatura sem método de pagamento — o aluno recebe email sem CTA.
+
+O mesmo problema existe no `automated-billing` (linhas 132-142) que busca apenas `id, business_name` do business_profile.
+
+**Severidade**: MÉDIA — UX degradada, fatura sem pagamento.
+
+**Ação**: Antes de invocar `create-payment-intent-connect`, buscar `stripe_connect_id` do `business_profiles` e verificar se `charges_enabled = true`. Se não, logar warning e criar fatura sem pagamento (permitindo pagamento manual posterior).
+
+### 90. Decisão de negócio: mensalidade cobrada sem aulas no ciclo (Documentação)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 736-747, 814-819)
+
+A função **sempre** cria fatura com item `monthly_base` (valor da mensalidade), independentemente de o aluno ter feito aulas no ciclo. Isso é um comportamento de design, porém **não está documentado** como decisão explícita.
+
+Se a mensalidade do aluno foi desativada (`sms.is_active = false`) no meio do ciclo, a RPC `get_student_active_subscription` retornará null e o aluno cairia no fluxo tradicional — mas aulas já concluídas no ciclo atual ficariam sem faturamento por nenhum dos dois fluxos.
+
+**Severidade**: BAIXA — documentação.
+
+**Ação**: Adicionar ao plano decisão explícita: "Mensalidades são cobradas integralmente independente do número de aulas realizadas. Se a mensalidade for desativada no meio do ciclo, o último faturamento inclui o valor integral." Verificar se a desativação mid-cycle está coberta pela lógica atual.
+
+### 91. send-invoice-notification label "Pagar com Cartão" quando link é de boleto (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 291-295)
+
+Bug parcialmente identificado como M22, mas com impacto maior:
+```javascript
+if (invoice.stripe_hosted_invoice_url) {
+  paymentMethods += `
+    <p><strong>💳 Cartão de Crédito:</strong></p>
+    <a href="${invoice.stripe_hosted_invoice_url}" class="payment-link">Pagar com Cartão</a>
+  `;
+}
+```
+
+No `create-invoice` (linha 443), `stripe_hosted_invoice_url` é preenchida com `paymentResult.boleto_url`:
+```javascript
+updateFields.stripe_hosted_invoice_url = paymentResult.boleto_url;
+```
+
+Resultado: **todos** os emails de fatura de boleto exibem o link do boleto sob o rótulo "Pagar com Cartão de Crédito". Como boletos são o método padrão para a maioria das faturas automatizadas, praticamente todos os emails contêm informação enganosa.
+
+Além disso, o email mostra o **mesmo link** em dois lugares: como "Pagar com Cartão" (via `stripe_hosted_invoice_url`) e como "Gerar Boleto" (via `boleto_url`), pois ambos apontam para a mesma URL.
+
+**Severidade**: ALTA — UX confusa para todos os alunos que recebem faturas.
+
+**Ação**: No `send-invoice-notification`, verificar `payment_method` ou comparar `stripe_hosted_invoice_url === boleto_url`. Se iguais, não renderizar a seção de cartão. Melhor solução: no `create-invoice`, **não copiar** `boleto_url` para `stripe_hosted_invoice_url` (M38).
+
+---
+
+## Novas Melhorias v5.4 (M36-M38)
+
+### M36. automated-billing tradicional não envia notificação para faturas com valor abaixo do mínimo (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 559-566)
+
+Quando `skipBoletoGeneration = true` (valor < R$5), a fatura é criada mas nenhuma notificação é enviada (confirma #67). Porém, mesmo sem boleto, o aluno deveria ser notificado da existência da fatura e orientado a buscar alternativas de pagamento.
+
+**Ação**: Enviar `send-invoice-notification` independentemente do `skipBoletoGeneration`. O email já lida com faturas sem métodos de pagamento (exibe apenas CTA "Ver Fatura" genérico).
+
+### M37. BillingSettings.tsx não busca nem exibe `charge_timing` — confirmação técnica da ponta #3.2 (Fase 2)
+
+**Arquivo**: `src/components/Settings/BillingSettings.tsx` (linhas 73-76)
+
+A query de `business_profiles` busca apenas `id, enabled_payment_methods`:
+```javascript
+.select('id, enabled_payment_methods')
+```
+
+Não busca `charge_timing`. O componente não tem estado, select/radio, nem lógica de salvamento para `charge_timing`. A implementação da Fase 2 precisa adicionar:
+1. `charge_timing` ao SELECT
+2. Estado `chargeTiming` com useState
+3. Radio/Select com opções 'prepaid'/'postpaid'
+4. Card informativo condicional (M4)
+5. Lógica de UPDATE no `onSubmit` ou em handler separado
+
+### M38. create-invoice duplica `stripe_hosted_invoice_url` com `boleto_url` — raiz do bug #91/M22 (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 443)
+
+```javascript
+updateFields.stripe_hosted_invoice_url = paymentResult.boleto_url;
+```
+
+O campo `stripe_hosted_invoice_url` foi originalmente criado para armazenar a URL da página de pagamento hospedada pelo Stripe (que suporta cartão). Reutilizá-lo para boleto causa os bugs descritos em #91 e M22.
+
+**Ação**: Remover a cópia de `boleto_url` para `stripe_hosted_invoice_url` no `create-invoice`. Atualizar `send-invoice-notification` e o frontend (`Financeiro.tsx`, `PaymentOptionsCard.tsx`) para usar `boleto_url` diretamente em vez de depender de `stripe_hosted_invoice_url` como campo genérico.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -1507,6 +1692,7 @@ A memória `features/billing/create-invoice-idempotency-constraint` define que o
 | v5.1 | 2026-02-13 | +6 pontas soltas (#68-#73), +3 melhorias (M26-M28): bug crítico mensalidade sem cancelamentos, FK join em alerta de aulas antigas, SDK inconsistente, confirmação bug idempotência, HTTP 500 no create-invoice, .single() em send-invoice-notification |
 | v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31): webhook dupla atualização payment_method, automated-billing sem PIX fallback, HTTP 500 em catch geral, webhook retorna 500 para updates não-críticos, create-invoice guardian .single(), outsideCycleInvoiceId não logado |
 | v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35): process-cancellation SERVICE_ROLE_KEY como Bearer token, check-overdue-invoices race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation HTTP 500, .single() em dependente, automated-billing payment_method ausente nos updates |
+| v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38): webhook apaga dados boleto/PIX (#86), handlers invoice.* nunca encontram faturas internas (#87 CRÍTICA), RPC sem filtro datas mensalidade (#88), create-invoice sem charges_enabled (#89), decisão mensalidade sem aulas (#90), label "Cartão" para boleto (#91), notificação valores baixos (M36), BillingSettings sem charge_timing (M37), duplicação stripe_hosted_invoice_url (M38) |
 
 ## Memórias do Projeto a Atualizar
 

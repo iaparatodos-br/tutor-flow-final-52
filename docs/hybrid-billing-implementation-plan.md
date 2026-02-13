@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.4
+# Plano de Cobrança Híbrida — v4.5
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). Esta v4.4 adiciona 6 novas pontas soltas (#30-#35) e 3 melhorias (M8-M10) identificadas em revisão cruzada dos fluxos de notificação, cálculo de taxas e consistência de payment methods.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). Esta v4.5 adiciona 5 novas pontas soltas (#36-#40) e 2 melhorias (M11-M12) identificadas em revisão cruzada do fluxo de anistia pós-pago, labels de email e duplicação de hard-code de boleto.
 
 Principais mudanças desde v3.10:
 
@@ -286,10 +286,10 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
 | 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #26, #31, #33, M5, M7, M9 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #33, #36, #38, #40, M5, M7, M9 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, M6 | Pendente |
-| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, M10 | Pendente |
+| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, M11 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, #39, M10, M12 | Pendente |
 
 ---
 
@@ -404,11 +404,16 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | 28 | AmnestyButton não valida invariante prepaid + cancellation | 7 | AmnestyButton.tsx |
 | 29 | VirtualClassData interface sem `is_paid_class` | 6 | CancellationModal.tsx |
 | 30 | process-cancellation hard-coded minimum R$5 ignora PIX | 6 | process-cancellation/index.ts |
-| 31 | automated-billing hard-coded `payment_method: 'boleto'` | 5 | automated-billing/index.ts |
+| 31 | automated-billing hard-coded `payment_method: 'boleto'` (fluxo tradicional) | 5 | automated-billing/index.ts |
 | 32 | send-invoice-notification sem tratamento para `prepaid_class` | 8 | send-invoice-notification/index.ts |
 | 33 | create-invoice não dispara notificação por email | 5 | create-invoice/index.ts |
 | 34 | Financeiro.tsx taxa Stripe hard-coded R$3,49 | 8 | Financeiro.tsx |
 | 35 | automated-billing usa FK join syntax | 4 | automated-billing/index.ts |
+| 36 | automated-billing monthly subscription hard-coded boleto (linha 854) | 5 | automated-billing/index.ts |
+| 37 | AmnestyButton busca fatura por `class_id` — incompatível com pós-pago consolidado | 7 | AmnestyButton.tsx |
+| 38 | create-invoice FK joins em class_participants query (linhas 233-238) | 5 | create-invoice/index.ts |
+| 39 | send-invoice-notification label "Pagar com Cartão" para hosted URL genérica | 8 | send-invoice-notification/index.ts |
+| 40 | automated-billing outside-cycle invoice hard-coded boleto (linha 969) | 5 | automated-billing/index.ts |
 
 ## Índice de Melhorias
 
@@ -424,6 +429,107 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | M8 | ClassWithParticipants interface incluir `is_paid_class` | 3 |
 | M9 | create-invoice chamar send-invoice-notification | 5 |
 | M10 | Financeiro.tsx taxa dinâmica por método de pagamento | 8 |
+| M11 | AmnestyButton refatorar para suportar faturas consolidadas | 7 |
+| M12 | send-invoice-notification CTA baseado no `payment_method` real | 8 |
+
+---
+
+## Novas Pontas Soltas v4.5 (#36-#40)
+
+### 36. automated-billing — monthly subscription também hard-coded boleto (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 854-855)
+
+A ponta #31 identificou o hard-code de `payment_method: 'boleto'` no fluxo tradicional (linha 527), mas o mesmo problema existe em mais dois locais:
+- `processMonthlySubscriptionBilling` (linha 854): gera boleto para fatura de mensalidade
+- Fatura de aulas fora do ciclo (linha 969): gera boleto para aulas avulsas pré-mensalidade
+
+**Ação**: Aplicar a mesma correção da ponta #31 em todos os 3 pontos onde `payment_method: 'boleto'` é hard-coded. Extrair uma função helper `selectPaymentMethod(businessProfileId)` que busca `enabled_payment_methods` do `business_profiles` e aplica a hierarquia (Boleto → PIX → Nenhum).
+
+### 37. AmnestyButton busca fatura por `class_id` — incompatível com faturamento pós-pago (Fase 7)
+
+**Arquivo**: `src/components/AmnestyButton.tsx` (linhas 48-55)
+
+**Bug crítico**: O `AmnestyButton` cancela faturas usando `.eq('class_id', classId).eq('invoice_type', 'cancellation')`. Isso funciona quando o `process-cancellation` cria uma fatura standalone do tipo `cancellation`. Porém, no fluxo **pós-pago** (automated-billing), cobranças de cancelamento são incluídas como itens (`item_type: 'cancellation_charge'`) dentro de uma fatura `automated` ou `monthly_subscription` via `invoice_classes`. Nesse cenário:
+
+1. Não existe fatura com `invoice_type = 'cancellation'` e `class_id = X` — a query retorna 0 resultados
+2. A anistia atualiza `classes.charge_applied = false` mas **não remove o item da fatura consolidada**
+3. Se a anistia é concedida antes do ciclo de faturamento, a aula deveria ser excluída pelo `automated-billing` (via `charge_applied = false`), mas se concedida **depois** da fatura ser criada, o item já está incluído
+
+**Ação** (ver M11): Refatorar `AmnestyButton` para:
+1. Primeiro buscar em `invoices` com `class_id` e `invoice_type = 'cancellation'` (cenário standalone — já funciona)
+2. Se não encontrar, buscar em `invoice_classes` com `class_id` e `item_type = 'cancellation_charge'`
+3. Se encontrar item em fatura consolidada: exibir label "Não é possível conceder anistia — cobrança já incluída em fatura" (mesmo comportamento de #6.1)
+4. Se não encontrar nenhum: anistia concedida normalmente (remove `charge_applied`, aula será excluída do próximo ciclo)
+
+### 38. create-invoice — FK joins em class_participants query (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 226-241)
+
+Além da FK join na ponta #25 (relationship query, linha 148), a query de `class_participants` (linha 228) também usa FK join syntax aninhada:
+```
+classes!inner (id, class_date, service_id, class_services (name, price))
+```
+
+Isso viola a constraint `edge-functions-pattern-sequential-queries` e pode causar falhas intermitentes no Deno.
+
+**Ação**: Refatorar para 3 queries sequenciais: (1) buscar `class_participants`, (2) buscar `classes` pelos IDs, (3) buscar `class_services` pelos service_ids.
+
+### 39. send-invoice-notification — label "Pagar com Cartão" para hosted URL genérica (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 291-295)
+
+A seção de métodos de pagamento mostra `stripe_hosted_invoice_url` com o label fixo "Pagar com Cartão". No entanto, para faturas geradas via boleto ou PIX, o `stripe_hosted_invoice_url` aponta para a página Stripe hosted que pode conter qualquer método de pagamento. O label é confuso quando o aluno clica em "Pagar com Cartão" e vê um boleto.
+
+A memória `notificacoes-pre-pago-cta-logic` define que o CTA principal para faturas pré-pagas deve ser `stripe_hosted_invoice_url` com label "Pagar Agora" ou "Escolher Método de Pagamento".
+
+**Ação** (ver M12): Substituir o label "Pagar com Cartão" por lógica baseada no `payment_method` da fatura:
+- Se `payment_method = 'boleto'`: "Ver Boleto"
+- Se `payment_method = 'pix'`: "Ver PIX"
+- Se `payment_method = 'card'` ou null: "Pagar com Cartão"
+- Fallback genérico: "Escolher Método de Pagamento"
+
+### 40. automated-billing outside-cycle invoice hard-coded boleto (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linha 969)
+
+Relacionada a #36. A fatura de aulas fora do ciclo (traditional per-class billing dentro de `processMonthlySubscriptionBilling`) também usa `payment_method: 'boleto'` hard-coded. Mesma correção via helper `selectPaymentMethod`.
+
+---
+
+## Novas Melhorias v4.5 (M11-M12)
+
+### M11. AmnestyButton refatorar para suportar faturas consolidadas (Fase 7)
+
+Relacionada à ponta #37. O fluxo de anistia precisa distinguir entre dois cenários:
+
+**Cenário A — Fatura standalone de cancelamento** (existente, funciona):
+- Professor usa cobrança imediata no cancelamento (`process-cancellation` → `create-invoice`)
+- `AmnestyButton` encontra fatura com `class_id` e `invoice_type = 'cancellation'`
+- Cancela a fatura → funciona
+
+**Cenário B — Cobrança de cancelamento em fatura consolidada** (não funciona):
+- Aluno cancela aula tardiamente, mas professor usa pós-pago
+- `charge_applied = true` no participant, mas nenhuma fatura standalone
+- No ciclo de faturamento, o `automated-billing` inclui como `cancellation_charge` em fatura `automated`
+- Se anistia for concedida **antes** do ciclo: basta `charge_applied = false` (aula será ignorada pelo billing)
+- Se anistia for concedida **depois** do ciclo: item já está na fatura → não é possível reverter sem estornar
+
+**Implementação**:
+1. Buscar em `invoice_classes WHERE class_id = X AND item_type = 'cancellation_charge'`
+2. Se encontrar: mostrar "Anistia não disponível — cobrança já incluída na fatura"
+3. Se não encontrar: prosseguir com anistia normalmente (seta `charge_applied = false`)
+
+### M12. send-invoice-notification CTA baseado no `payment_method` real (Fase 8)
+
+Relacionada à ponta #39. O email de notificação deve usar labels de CTA que correspondam ao método de pagamento real da fatura. A query da fatura (linha 41-55) precisa incluir `payment_method` no select para que a lógica funcione. Opções de label:
+
+| `payment_method` | Label do CTA | Link |
+|---|---|---|
+| `boleto` | "Ver Boleto" | `boleto_url` |
+| `pix` | "Pagar via PIX" | QR code inline + copia/cola |
+| `card` | "Pagar com Cartão" | `stripe_hosted_invoice_url` |
+| null / `prepaid_class` | "Escolher Método" | `stripe_hosted_invoice_url` |
 
 ---
 
@@ -446,6 +552,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | v4.2 | 2026-02-13 | +7 pontas soltas (#17-#23), +4 melhorias (M1-M4), reordenação de fases |
 | v4.3 | 2026-02-13 | +6 pontas soltas (#24-#29), +3 melhorias (M5-M7), decisão sobre automated-billing + charge_timing, invariante prepaid+cancellation, índices consolidados |
 | v4.4 | 2026-02-13 | +6 pontas soltas (#30-#35), +3 melhorias (M8-M10): notificações prepaid, payment_method dinâmico no automated-billing, taxa Stripe variável, FK joins no automated-billing |
+| v4.5 | 2026-02-13 | +5 pontas soltas (#36-#40), +2 melhorias (M11-M12): bug crítico no AmnestyButton com faturas consolidadas, FK joins adicionais no create-invoice, labels de email incorretos, hard-coded boleto em 3 locais do automated-billing |
 
 ## Memórias do Projeto a Atualizar
 
@@ -454,3 +561,4 @@ Após implementação, atualizar:
 2. `features/billing/arquitetura-implementacao-hibrida` — referencia `process-class-billing` como "roteador central"
 3. `features/billing/prepaid-cancellation-refund-policy` — menciona "void automático no Stripe"
 4. `payment/stripe-pix-configuration-logic` — menciona taxa fixa de R$3,49 por boleto (atualizar para taxas variáveis)
+5. `features/teacher-inbox/amnesty-flow-calendar` — deve documentar a limitação da anistia para faturas consolidadas (#37/M11)

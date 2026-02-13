@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.5
+# Plano de Cobrança Híbrida — v5.6
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.4 acumulou 91 pontas soltas e 38 melhorias. Esta v5.5 adiciona 6 novas pontas soltas (#92-#97) e 3 melhorias (M39-M41), totalizando **97 pontas soltas** e **41 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.5 acumulou 97 pontas soltas e 41 melhorias. Esta v5.6 adiciona 6 novas pontas soltas (#98-#103) e 3 melhorias (M42-M44), totalizando **103 pontas soltas** e **44 melhorias**.
 
-Principais mudanças na v5.5: automated-billing hardcoda `payment_method: 'boleto'` ignorando preferências do professor (#92 — ALTA), faturas automatizadas sem campo `payment_method` (#93 — ALTA), mensalidade sem geração de pagamento Stripe (#94 — CRÍTICA), check-overdue-invoices race condition paid→overdue (#95 — CRÍTICA), process-cancellation service_role auth falha (#96 — CRÍTICA), clientes Stripe duplicados platform vs connected (#97 — MÉDIA).
+Principais mudanças na v5.6: cancel-payment-intent status 'paid' vs 'paga' (#98 — ALTA), send-invoice-notification misusa class_notifications (#99 — MÉDIA), AmnestyButton cancela faturas de outros alunos em grupo (#100 — ALTA), Financeiro.tsx calcula taxas incorretamente (#101 — MÉDIA), verify-payment-status sem autenticação (#102 — ALTA), generate-boleto-for-invoice usa FK joins (#103 — MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação de pagamento existente (M44).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -1808,6 +1808,101 @@ O campo `stripe_hosted_invoice_url` foi originalmente criado para armazenar a UR
 
 ---
 
+## Novas Pontas Soltas v5.6 (#98-#103)
+
+### 98. cancel-payment-intent define status 'paid' em inglês em vez de 'paga' (Fase 3)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts`
+
+Quando o professor marca uma fatura como "paga manualmente" via `cancel-payment-intent`, o status é atualizado para `'paid'` (inglês). O restante do sistema usa `'paga'` (português): `Financeiro.tsx` filtra por `'paga'`, `check-overdue-invoices` exclui `'paga'`, `trg_remove_invoice_notification` verifica `'paga'`. Uma fatura marcada como `'paid'` via esta função será invisível para esses filtros — pode aparecer como pendente/overdue indevidamente.
+
+**Severidade**: ALTA — faturas pagas manualmente podem ser marcadas como vencidas pelo cron job.
+
+**Ação**: Alterar `status: 'paid'` para `status: 'paga'` no update da fatura. Verificar se existem faturas com `status = 'paid'` no banco e migrar para `'paga'`.
+
+### 99. send-invoice-notification armazena invoice.id no campo class_id de class_notifications (Fase 3)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 435-442)
+
+O código registra notificações na tabela `class_notifications` usando `class_id: invoice.id`. Isso viola a semântica da tabela (class_id deveria referenciar classes) e provavelmente falha com a FK constraint `class_notifications_class_id_fkey` que aponta para `classes.id`.
+
+**Severidade**: MÉDIA — notificações de fatura provavelmente nunca são registradas (FK violation silenciosa ou erro), sem impacto funcional direto mas perde rastreabilidade.
+
+**Ação**: Criar tabela `invoice_notifications` dedicada ou usar `teacher_notifications` para rastrear envios de email de faturas. Alternativa mínima: remover o insert em `class_notifications` e confiar apenas nos logs.
+
+### 100. AmnestyButton cancela faturas de todos os participantes em aulas de grupo (Fase 7)
+
+**Arquivo**: `src/components/AmnestyButton.tsx`
+
+Ao conceder anistia, o `AmnestyButton` busca faturas de cancelamento filtrando apenas por `class_id` e `invoice_type = 'cancellation'`. Em aulas de grupo, isso retorna faturas de **todos** os participantes daquela aula, e o código cancela todas elas. O professor pode querer conceder anistia a apenas um aluno específico.
+
+**Severidade**: ALTA — anistia para um aluno em grupo cancela cobranças de todos os outros alunos.
+
+**Ação**: Adicionar filtro `student_id` na query de busca de faturas de cancelamento. O `student_id` deve vir do participante específico que está recebendo a anistia, não apenas do `class_id`.
+
+### 101. Financeiro.tsx calcula taxas Stripe com valor fixo de boleto para todos os métodos (Fase 8)
+
+**Arquivo**: `src/pages/Financeiro.tsx`
+
+O cálculo de taxas usa `STRIPE_BOLETO_FEE` (R$ 3,49) multiplicado pelo número de faturas pagas, independentemente do método de pagamento real. Faturas pagas via PIX (taxa diferente), cartão (percentual, não fixo), ou manualmente (sem taxa) são incorretamente calculadas.
+
+**Severidade**: MÉDIA — dashboard financeiro exibe valores de taxas incorretos.
+
+**Ação**: Calcular taxas por fatura individual usando o campo `payment_method` (quando disponível após #93). PIX: ~1.19%, Cartão: ~3.49% + R$0,39, Boleto: R$3,49 fixo, Manual: R$0,00. Alternativamente, armazenar a taxa real paga em cada fatura.
+
+### 102. verify-payment-status e auto-verify-pending-invoices sem autenticação (Fase 1)
+
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts`, `supabase/functions/auto-verify-pending-invoices/index.ts`
+
+Ambas as funções não verificam se o caller está autenticado. `verify-payment-status` aceita qualquer `invoice_id` sem validar ownership. `auto-verify-pending-invoices` é chamada por cron mas não valida service_role. Um ator malicioso poderia verificar status de faturas de outros professores ou triggerar verificações em massa.
+
+**Severidade**: ALTA — exposição de dados de pagamento e possível abuso de API Stripe.
+
+**Ação**: `verify-payment-status`: adicionar auth check e validar que o caller é teacher_id ou student_id da fatura. `auto-verify-pending-invoices`: verificar que o caller tem role `service_role` ou é chamado via cron authorization header.
+
+### 103. generate-boleto-for-invoice usa FK joins no Deno (Fase 5)
+
+**Arquivo**: `supabase/functions/generate-boleto-for-invoice/index.ts`
+
+Usa FK join syntax (`profiles!invoices_student_id_fkey`) para buscar dados do aluno e professor junto com a fatura. Isso viola o padrão documentado de evitar FK joins em Edge Functions Deno para prevenir schema cache issues (mesma classe de bugs que #25, #52, #57, #58, #69).
+
+**Severidade**: MÉDIA — pode causar falhas intermitentes de geração de boleto em deploys.
+
+**Ação**: Refatorar para queries sequenciais: buscar fatura, depois profile do aluno, depois profile do professor em queries independentes.
+
+---
+
+## Novas Melhorias v5.6 (M42-M44)
+
+### M42. Financeiro.tsx query incompleta — falta monthly_subscription_id, payment_method, payment_origin (Fase 8)
+
+**Arquivo**: `src/pages/Financeiro.tsx`
+
+A query `loadInvoices` não inclui `monthly_subscription_id`, `payment_method` nem `payment_origin` no SELECT. Isso impede:
+1. Exibir o nome do plano de mensalidade nas faturas do tipo `monthly_subscription`
+2. Calcular taxas Stripe corretas por método de pagamento (#101)
+3. Diferenciar faturas geradas automaticamente vs manualmente
+
+**Ação**: Adicionar os três campos ao SELECT e usar `monthly_subscription_id` para buscar o nome do plano (JOIN ou query sequencial).
+
+### M43. check-overdue-invoices envia apenas um lembrete sem tracking de re-envio (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts`
+
+O cron job marca faturas como overdue e envia uma notificação única. Se o aluno não vê o email, não há mecanismo de re-envio ou escalação. Combinado com o bug #99 (notificação possivelmente não registrada), não há como saber se o aluno foi efetivamente notificado.
+
+**Ação**: Implementar tracking de notificações enviadas por fatura (tabela `invoice_notifications` ou campo `last_reminder_sent_at` na fatura). Permitir re-envio periódico (ex: a cada 3 dias) enquanto a fatura permanecer overdue.
+
+### M44. cancel-payment-intent não verifica se fatura já tem pagamento Stripe bem-sucedido (Fase 6)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts`
+
+Quando o professor "marca como paga manualmente", a função cancela o Payment Intent Stripe existente e marca a fatura como paga. Porém, não verifica se o Payment Intent já foi pago (`status = 'succeeded'`). Se o aluno pagou via Stripe momentos antes do professor marcar manualmente, o pagamento Stripe é cancelado/perdido e o dinheiro não é transferido.
+
+**Ação**: Antes de cancelar o Payment Intent, verificar seu status via `stripe.paymentIntents.retrieve()`. Se `status === 'succeeded'`, não cancelar e apenas atualizar a fatura como paga. Se `status === 'processing'` (boleto em compensação), alertar o professor.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -1828,6 +1923,7 @@ O campo `stripe_hosted_invoice_url` foi originalmente criado para armazenar a UR
 | v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35): process-cancellation SERVICE_ROLE_KEY como Bearer token, check-overdue-invoices race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation HTTP 500, .single() em dependente, automated-billing payment_method ausente nos updates |
 | v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38): webhook apaga dados boleto/PIX (#86), handlers invoice.* nunca encontram faturas internas (#87 CRÍTICA), RPC sem filtro datas mensalidade (#88), create-invoice sem charges_enabled (#89), decisão mensalidade sem aulas (#90), label "Cartão" para boleto (#91), notificação valores baixos (M36), BillingSettings sem charge_timing (M37), duplicação stripe_hosted_invoice_url (M38) |
 | v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41): automated-billing hardcoda boleto (#92 ALTA), payment_method NULL em faturas automatizadas (#93 ALTA), mensalidade sem geração de pagamento (#94 CRÍTICA), check-overdue-invoices race condition (#95 CRÍTICA), process-cancellation service_role auth (#96 CRÍTICA), clientes Stripe duplicados platform vs connected (#97 MÉDIA), notificação skipBoletoGeneration (M39), change-payment-method auth redundante (M40), create-invoice sem whitelist invoice_type (M41) |
+| v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
 
 ## Memórias do Projeto a Atualizar
 

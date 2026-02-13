@@ -1,11 +1,11 @@
 
 
 
-# Revisao do Plano de Cobranca Hibrida v5.5
+# Revisao do Plano de Cobranca Hibrida v5.6
 
 ## Status Atual
 
-O plano v5.5 documenta **97 pontas soltas** e **41 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes.
+O plano v5.6 documenta **103 pontas soltas** e **44 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes.
 
 ## Pontas Soltas CRITICAS (risco financeiro ou de dados)
 
@@ -14,9 +14,9 @@ O plano v5.5 documenta **97 pontas soltas** e **41 melhorias** no sistema de cob
 3. **#80**: Service role key como Bearer token (pode falhar a qualquer momento)
 4. **#81**: Race condition overdue vs paid (fatura paga revertida)
 5. **#87**: Handlers invoice.* nunca encontram faturas internas (reconciliacao quebrada) -- **MAIS CRITICA**
-6. **#94**: Mensalidade sem geracao de pagamento Stripe (faturas sem mecanismo de pagamento) -- **NOVA**
-7. **#95**: check-overdue-invoices race condition paid→overdue (codigo exato sem guard clause) -- **NOVA**
-8. **#96**: process-cancellation service_role auth falha (receita cancelamentos perdida) -- **NOVA**
+6. **#94**: Mensalidade sem geracao de pagamento Stripe (faturas sem mecanismo de pagamento)
+7. **#95**: check-overdue-invoices race condition paid→overdue (codigo exato sem guard clause)
+8. **#96**: process-cancellation service_role auth falha (receita cancelamentos perdida)
 
 ## Pontas Soltas ALTAS
 
@@ -26,19 +26,22 @@ O plano v5.5 documenta **97 pontas soltas** e **41 melhorias** no sistema de cob
 - **#85**: payment_method ausente no automated-billing
 - **#86**: payment_intent.succeeded apaga dados de boleto/PIX
 - **#91**: Email "Pagar com Cartao" quando link e de boleto
-- **#92**: automated-billing hardcoda boleto ignorando enabled_payment_methods -- **NOVA**
-- **#93**: automated-billing nao salva payment_method na fatura -- **NOVA**
+- **#92**: automated-billing hardcoda boleto ignorando enabled_payment_methods
+- **#93**: automated-billing nao salva payment_method na fatura
+- **#98**: cancel-payment-intent status 'paid' vs 'paga' (faturas pagas manualmente ficam invisiveis)
+- **#100**: AmnestyButton cancela faturas de todos os participantes em aulas de grupo
+- **#102**: verify-payment-status e auto-verify-pending-invoices sem autenticacao
 
 ## Roadmap de Implementacao (6 batches)
 
 | Batch | Descricao | Pontas Chave |
 |-------|-----------|--------------|
-| 1 | Financial Criticals (Idempotency, runtime checks, service_role auth, webhook reconciliation) | #80, #81, #87, #95, #96, M35 |
+| 1 | Financial Criticals (Idempotency, runtime checks, service_role auth, webhook reconciliation) | #80, #81, #87, #95, #96, #102, M35 |
 | 2 | HTTP Status standardization (200+success:false) | #72, #76, #83, M32 |
-| 3 | Notifications and Status translations | #32, #39, #91, M33, M36, M39 |
+| 3 | Notifications and Status translations | #32, #39, #91, #98, #99, M33, M36, M39 |
 | 4 | Data/Schema integrity + automated-billing fixes | #85, #86, #88, #92, #93, #94, M34, M37, M38 |
-| 5 | FK Join refactoring + validation | #57, #58, #52, #69, M40, M41 |
-| 6 | Performance/Stripe optimizations | #75, #89, #97, M31 |
+| 5 | FK Join refactoring + validation | #57, #58, #52, #69, #103, M40, M41 |
+| 6 | Performance/Stripe optimizations + UI fixes | #75, #89, #97, #100, #101, M31, M42, M43, M44 |
 
 ## Documentos Relacionados
 

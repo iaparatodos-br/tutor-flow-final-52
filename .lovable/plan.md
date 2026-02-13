@@ -1,267 +1,259 @@
 
 
-# Plano de Cobranca Hibrida -- v5.5
+# Plano de Cobranca Hibrida -- v5.6
 
-**Novas Pontas Soltas: #92-#99 | Novas Melhorias: M38-M42**
-**Totais acumulados: 99 pontas soltas, 42 melhorias**
+**Novas Pontas Soltas: #100-#107 | Novas Melhorias: M43-M47**
+**Totais acumulados: 107 pontas soltas, 47 melhorias**
 
 ---
 
-## Novas Pontas Soltas v5.5 (#92-#99)
+## Novas Pontas Soltas v5.6 (#100-#107)
 
-### 92. create-invoice usa FK join syntax em `teacher_student_relationships` -- viola constraint (Fase 5)
+### 100. change-payment-method usa FK join syntax `profiles!invoices_student_id_fkey` e `profiles!invoices_teacher_id_fkey` (Fase 5)
 
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 143-154)
-
-```javascript
-const { data: relationship } = await supabaseClient
-  .from('teacher_student_relationships')
-  .select(`
-    business_profile_id, 
-    teacher_id,
-    business_profile:business_profiles!teacher_student_relationships_business_profile_id_fkey(
-      enabled_payment_methods
-    )
-  `)
-  .eq('student_id', billingStudentId)
-  .eq('teacher_id', user.id)
-  .single();
-```
-
-Mesma violacao das pontas #86/#87 (FK join syntax). O acesso a `relationship.business_profile.enabled_payment_methods` (linha 367) depende do schema cache funcionar. Se falhar, `enabledMethods` defaulta para `['boleto', 'pix', 'card']`, que pode ser incorreto se o professor desabilitou algum metodo.
-
-**Impacto**: Faturas manuais podem gerar pagamentos com metodos que o professor desabilitou.
-
-**Acao**: Separar em duas queries: buscar `teacher_student_relationships` sem join, depois buscar `business_profiles` pelo `business_profile_id`.
-
-### 93. create-invoice `class_participants` query usa FK join syntax `classes!inner` (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 226-241)
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 45-53)
 
 ```javascript
-const { data: classData } = await supabaseClient
-  .from('class_participants')
-  .select(`
-    id, class_id, student_id, dependent_id,
-    classes!inner (
-      id, class_date, service_id,
-      class_services (name, price)
-    )
-  `)
-  .in('class_id', body.class_ids)
-  .or(`student_id.eq.${billingStudentId},dependent_id.not.is.null`);
-```
-
-Triple join aninhado: `class_participants -> classes!inner -> class_services`. Se qualquer nivel do cache falhar, `classInfo.class_services` retorna null e o `service?.price` cai para divisao proporcional (linha 315), gerando valores incorretos nos itens da fatura.
-
-**Impacto**: Itens de fatura com valores incorretos quando o schema cache falha.
-
-**Acao**: Refatorar para queries sequenciais: buscar participantes, depois buscar dados das aulas e servicos separadamente.
-
-### 94. create-payment-intent-connect usa FK join syntax triplo na query de invoice (Fase 5)
-
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 37-51)
-
-```javascript
-const { data: invoice } = await supabaseClient
+const { data: invoice, error: invoiceError } = await supabaseClient
   .from("invoices")
   .select(`
     *,
-    student:profiles!invoices_student_id_fkey(...),
-    teacher:profiles!invoices_teacher_id_fkey(...),
-    business_profile:business_profiles!invoices_business_profile_id_fkey(...)
+    student:profiles!invoices_student_id_fkey(id, name, email),
+    teacher:profiles!invoices_teacher_id_fkey(id, name)
   `)
   .eq("id", invoice_id)
   .single();
 ```
 
-Tres FK joins em uma unica query. Se o cache falhar em qualquer um:
-- `invoice.student` null -> `finalPayerTaxId` null -> boleto falha com "CPF obrigatorio"
-- `invoice.teacher` null -> `payment_due_days` undefined -> boleto expira em NaN dias
-- `invoice.business_profile` null -> `stripeConnectAccountId` null -> erro critico
+Mesma violacao FK join das pontas #86/#92/#94/#95. Porem, neste caso o `invoice.student` e `invoice.teacher` nao sao usados para nenhuma logica de negocio -- a funcao so precisa de `invoice.student_id` e `invoice.teacher_id` (que ja existem no `*`). Os dados do join sao completamente desperdiciados.
 
-**Impacto**: Qualquer falha de cache no `create-payment-intent-connect` bloqueia a geracao de TODOS os pagamentos (PIX, boleto e cartao).
+**Impacto**: Baixo (dados do join nao sao usados), mas contribui para o padrao inconsistente e risco de cache.
 
-**Acao**: Buscar invoice sem joins, depois fazer 3 queries sequenciais para profiles (student), profiles (teacher) e business_profiles.
+**Acao**: Remover os FK joins do select -- usar apenas `*` (ou melhor, selecionar apenas os campos necessarios).
 
-### 95. generate-boleto-for-invoice usa FK join syntax duplo (Fase 5)
+### 101. change-payment-method logica de autorizacao de guardian esta incorreta (Fase 6)
 
-**Arquivo**: `supabase/functions/generate-boleto-for-invoice/index.ts` (linhas 34-45)
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 73-91)
 
 ```javascript
-const { data: invoice } = await supabaseClient
-  .from("invoices")
-  .select(`
-    *,
-    student:profiles!invoices_student_id_fkey(...),
-    teacher:profiles!invoices_teacher_id_fkey(name, email)
-  `)
-  .eq("id", invoice_id)
-  .single();
-```
-
-Se `invoice.student` retornar null por falha de cache, as validacoes de CPF e endereco (linhas 79-93) usam o objeto null e lancam excecao com mensagem enganosa ("Dados incompletos do aluno") quando na verdade o problema e o cache.
-
-**Impacto**: Boletos falham intermitentemente com mensagem de erro que leva o usuario a acreditar que faltam dados cadastrais.
-
-**Acao**: Buscar invoice sem joins, depois buscar profiles separadamente.
-
-### 96. create-invoice valida minimo de R$5 incondicionalmente -- bloqueia faturas PIX validas (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 58-69)
-
-```javascript
-const MINIMUM_BOLETO_AMOUNT = 5.00;
-if (body.amount < MINIMUM_BOLETO_AMOUNT) {
-  return new Response(JSON.stringify({
-    success: false,
-    error: `O valor mínimo para geração de fatura com boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2)...}`
-  }), ...);
+// Check if user is a guardian of a dependent whose invoice this is
+let isGuardian = false;
+if (!isStudent) {
+  const { data: dependentCheck } = await supabaseClient
+    .from('dependents')
+    .select('id, responsible_id')
+    .eq('responsible_id', user.id)
+    .limit(1);
+  
+  if (dependentCheck && dependentCheck.length > 0) {
+    const { data: responsibleRelation } = await supabaseClient
+      .from('dependents')
+      .select('id')
+      .eq('responsible_id', invoice.student_id)  // BUG: compara responsible_id com student_id da fatura
+      .eq('responsible_id', user.id)              // BUG: dois .eq no mesmo campo -- segundo sobrescreve
+      .limit(1);
+    
+    if (responsibleRelation && responsibleRelation.length > 0) {
+      isGuardian = true;
+    }
+  }
 }
 ```
 
-Esta validacao impede a criacao de faturas com valor entre R$1 e R$4,99. Porem, o PIX aceita valores a partir de R$1 e o sistema ja implementa a hierarquia Boleto->PIX->Nenhum (linhas 392-401). Uma fatura de R$3 deveria ser criada e gerar PIX automaticamente, mas a validacao na entrada bloqueia antes.
+Tres bugs interligados:
+1. **Linha 84**: `.eq('responsible_id', invoice.student_id)` -- compara `responsible_id` do dependente com `student_id` da fatura. Mas `student_id` da fatura JA e o responsavel (billing resolution do `create-invoice` resolve dependente->responsavel). Portanto, esta query sempre falharia exceto quando `invoice.student_id === user.id` -- que ja e capturado por `isStudent`.
+2. **Linha 85**: `.eq('responsible_id', user.id)` -- segundo `.eq` no mesmo campo sobrescreve o anterior, tornando a query: `WHERE responsible_id = user.id`. Isso sempre retorna resultados se o usuario tem dependentes, independente da fatura.
+3. **Linhas 96-108**: O bloco `isResponsible` tambem e redundante -- `if (invoice.student_id === user.id)` ja foi verificado por `isStudent` na linha 68.
 
-**Impacto**: Professores que usam apenas PIX nao conseguem criar faturas entre R$1 e R$4,99 (ex: taxa de cancelamento de 10% sobre aula de R$30 = R$3).
+**Resultado**: A autorizacao funciona "por acidente" porque as faturas sao sempre emitidas para `responsible_id` (billing resolution). Mas se a logica de billing mudar, qualquer responsavel com dependentes poderia alterar o metodo de pagamento de faturas de OUTROS alunos.
 
-**Acao**: Remover a validacao de minimo R$5 no `create-invoice` (ou reduzir para R$1 que e o minimo do PIX). A validacao de minimo por metodo ja e feita corretamente no `create-payment-intent-connect` (linhas 85-120).
+**Acao**: Simplificar para: `isStudent || invoice.student_id === user.id`. Remover toda a logica de guardian/responsible que e redundante com o billing resolution.
 
-### 97. send-invoice-notification insere `invoice.id` em `class_notifications.class_id` -- perpetua colisao semantica (Fase 8)
+### 102. process-cancellation usa R$5 como minimo para gerar fatura de cancelamento -- ignora PIX (Fase 6)
 
-**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 435-442)
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linha 434)
 
 ```javascript
-await supabase
-  .from("class_notifications")
-  .insert({
-    class_id: invoice.id, // Usando invoice_id como class_id
-    student_id: invoice.student_id,
-    notification_type: payload.notification_type,
-    status: "sent",
-  });
+if (chargeAmount >= 5) { // Mínimo para boleto: R$ 5,00
 ```
 
-Confirmacao por codigo da ponta #82: `send-invoice-notification` insere o `invoice.id` no campo `class_id` da tabela `class_notifications`. Este e o INSERT que `check-overdue-invoices` verifica na sua idempotencia (ponta #90). Porem, como `send-invoice-notification` ja faz esse INSERT para `invoice_created`, a idempotencia do `check-overdue-invoices` para `invoice_overdue` depende de um INSERT DIFERENTE que nunca acontece.
+A mesma ponta #96 do `create-invoice` se repete aqui: o minimo e hardcoded em R$5 (boleto) sem considerar que PIX aceita R$1+. Uma taxa de cancelamento de 10% sobre uma aula de R$30 = R$3 deveria gerar fatura com PIX, mas e silenciosamente ignorada.
 
-**Cascata de bugs**:
-1. `check-overdue-invoices` busca `notification_type: 'invoice_overdue'` (linha 51)
-2. `send-invoice-notification` insere com `notification_type: payload.notification_type` (que pode ser `invoice_overdue`)
-3. MAS o `check-overdue-invoices` chama `send-invoice-notification` com `notification_type: 'invoice_overdue'`
-4. ENTAO `send-invoice-notification` insere `notification_type: 'invoice_overdue'` em `class_notifications`
-5. Na proxima execucao, `check-overdue-invoices` encontra o registro e pula a fatura
+**Impacto**: Taxas de cancelamento entre R$1 e R$4,99 nunca sao cobradas, mesmo quando o professor aceita PIX.
 
-**Conclusao**: A idempotencia do `check-overdue-invoices` funciona PARCIALMENTE por acidente -- mas apenas porque `send-invoice-notification` faz o INSERT que o `check-overdue-invoices` verifica. Se `send-invoice-notification` falhar por qualquer razao (ponta #85, #36, email invalido), o INSERT nao acontece e a fatura recebe notificacoes duplicadas.
+**Acao**: Reduzir o minimo para R$1 (ou buscar `enabled_payment_methods` e usar o minimo do metodo mais acessivel).
 
-**Acao**: Mover o controle de idempotencia para `invoices.overdue_notification_sent` (conforme M15) para garantir atomicidade.
+### 103. verify-payment-status nao envia notificacao ao marcar fatura como paga (Fase 7)
 
-### 98. automated-billing fluxo tradicional query de `class_participants` com `classes!inner` FK join (Fase 5)
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linhas 82-104)
 
-**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 212-226)
+Quando o `verify-payment-status` detecta que um `PaymentIntent` mudou para `succeeded` e atualiza a fatura para `paga` (linhas 89-93), nenhuma notificacao e enviada ao aluno. Diferente do webhook (que processa o evento em tempo real), esta funcao e chamada sob demanda (ex: usuario clica "Verificar pagamento") e nao invoca `send-invoice-notification` com `notification_type: 'invoice_paid'`.
+
+**Resultado**: Se o webhook falhar e o professor usar `verify-payment-status` para reconciliar, o aluno nunca recebe confirmacao de pagamento.
+
+**Acao**: Adicionar invocacao fire-and-forget de `send-invoice-notification` com `notification_type: 'invoice_paid'` apos atualizar status para `paga`.
+
+### 104. webhook-stripe-connect `payment_intent.succeeded` usa `.select()` apos `.update()` sem tratar retorno vazio (Fase 7)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 466-500)
 
 ```javascript
-const { data: oldConfirmedParticipations } = await supabaseAdmin
-  .from('class_participants')
-  .select(`
-    id,
-    classes!inner (
-      id, class_date, status, teacher_id
-    )
-  `)
-  .eq('student_id', studentInfo.student_id)
-  .eq('classes.teacher_id', studentInfo.teacher_id)
-  .eq('status', 'confirmada')
-  .lt('classes.class_date', thirtyDaysAgo.toISOString());
+const { data: updatedInvoices, error } = await supabaseClient
+  .from("invoices")
+  .update({ status: "paid", ... })
+  .eq("stripe_payment_intent_id", paymentIntent.id)
+  .select();
 ```
 
-Alem da ponta #86 (query principal), esta query auxiliar de alerta tambem usa FK join syntax `classes!inner`. Se o cache falhar, o alerta de "aulas confirmadas nao marcadas como concluidas" nunca dispara, mascarando um problema operacional.
+Se nenhuma fatura corresponder ao `stripe_payment_intent_id` (evento orfao), `updatedInvoices` sera um array vazio e a funcao loga "No invoice found" (linha 496) mas **continua normalmente ate `completeEventProcessing`**. Ate aqui, correto.
 
-**Impacto**: Baixo (apenas log de alerta), mas contribui para o padrao de uso inconsistente de FK joins na funcao.
+Porem, o handler de `payment_intent.payment_failed` (linhas 514-536) usa o mesmo padrao mas NAO limpa os campos temporarios (pix_qr_code, boleto_url, etc.). Quando um pagamento falha, o aluno ve dados de pagamento expirados na interface.
 
-**Acao**: Refatorar junto com a ponta #86 para queries sequenciais.
+**Impacto**: Apos falha de pagamento, o aluno ainda ve QR code PIX ou link de boleto expirados, gerando confusao.
 
-### 99. create-payment-intent-connect customer.create usa campo inexistente `guardian_name` (Fase 5)
+**Acao**: No handler de `payment_intent.payment_failed`, limpar campos temporarios (pix_qr_code, pix_copy_paste, pix_expires_at, boleto_url, linha_digitavel, boleto_expires_at, barcode).
 
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linha 308)
+### 105. webhook-stripe-connect `invoice.payment_succeeded` sobrescreve `payment_method` com 'stripe_invoice' (Fase 7)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 354-362)
 
 ```javascript
-const customer = await stripe.customers.create({
-  email: customerEmail,
-  name: invoice.student?.guardian_name || invoice.student?.name,
-  ...
+const { error: succeededError } = await supabaseClient
+  .from('invoices')
+  .update({ 
+    status: 'paid',
+    payment_origin: 'automatic',
+    payment_method: 'stripe_invoice',  // <-- SOBRESCREVE o método específico
+    updated_at: new Date().toISOString()
+  })
+  .eq('stripe_invoice_id', succeededInvoice.id);
+```
+
+Confirmacao direta da ponta #78 documentada no plano: o handler de `invoice.payment_succeeded` sobrescreve `payment_method` com `'stripe_invoice'`, perdendo o rotulo especifico (boleto, pix, card). Isso viola a constraint documentada em `webhook-payment-method-persistence-logic`.
+
+O handler de `payment_intent.succeeded` (linha 471) faz CORRETAMENTE: `payment_method: paymentIntent.payment_method_types[0]`.
+
+**Impacto**: Faturas pagas via `invoice.payment_succeeded` aparecem como "stripe_invoice" no Financeiro em vez de "Boleto" ou "PIX".
+
+**Acao**: Remover `payment_method: 'stripe_invoice'` do update. Se necessario preservar o metodo, buscar o payment_method da fatura existente antes do update e manter.
+
+### 106. create-payment-intent-connect retorna HTTP 400 para validacoes de metodo habilitado -- viola constraint (Fase 5)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 74-81)
+
+```javascript
+return new Response(JSON.stringify({
+  error: `O método de pagamento "${payment_method}" não está habilitado...`,
+  success: false
+}), {
+  headers: { ...corsHeaders, "Content-Type": "application/json" },
+  status: 400,  // <-- VIOLA constraint error-handling-user-friendly-messages
 });
 ```
 
-O campo `guardian_name` nao existe no SELECT de `profiles` (linha 41-44 seleciona `name, email, cpf, address_*`). Alem disso, `guardian_name` nunca existiu na tabela `profiles` -- os dados do responsavel estao em `teacher_student_relationships`. O `?.` previne erro, mas o nome do customer no Stripe sera sempre `invoice.student?.name` (o nome do aluno, nao do responsavel), mesmo quando existe um responsavel.
+A constraint `error-handling-user-friendly-messages` diz: "Edge functions should return HTTP 200 status with success:false in JSON body for validation/business logic errors". Esta funcao retorna HTTP 400 para validacoes de negocio (linhas 79, 93, 104, 118), causando perda de mensagem no frontend quando `functions.invoke()` captura o erro.
 
-**Impacto**: Customers no Stripe sao criados com nome do aluno em vez do responsavel. Embora nao bloqueie pagamentos, causa confusao em reconciliacao e relatorios do Stripe.
+As mesmas validacoes de minimo/maximo para boleto e PIX (linhas 86-120) tambem retornam HTTP 400.
 
-**Acao**: Substituir por `relationship?.student_guardian_name || invoice.student?.name` (o `relationship` ja foi buscado na linha 123-128).
+**Impacto**: O frontend nao mostra a mensagem de erro detalhada ao usuario -- apenas um "Internal error" generico.
 
----
+**Acao**: Alterar todos os retornos de validacao de HTTP 400 para HTTP 200 com `success: false`.
 
-## Novas Melhorias v5.5 (M38-M42)
+### 107. generate-boleto-for-invoice retorna HTTP 500 no catch -- viola constraint (Fase 5)
 
-### M38. create-invoice re-busca `teacher_student_relationships` desnecessariamente (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 377-382)
-
-Apos buscar o `relationship` na linha 143-154 (com `business_profile_id` e `enabled_payment_methods`), a funcao faz uma SEGUNDA query para `teacher_student_relationships` (linhas 377-382) para buscar dados do responsavel (guardian):
-```javascript
-const { data: relationshipData } = await supabaseClient
-  .from('teacher_student_relationships')
-  .select('student_guardian_cpf, student_guardian_name, ...')
-  .eq('student_id', billingStudentId)
-  .eq('teacher_id', user.id)
-  .single();
-```
-
-Isso e redundante -- a primeira query poderia incluir os campos do guardian.
-
-**Acao**: Consolidar os campos do guardian na primeira query (ao separar o FK join da ponta #92, adicionar os campos de guardian nessa mesma query).
-
-### M39. create-payment-intent-connect cria customer na conta platform E na conta connected para PIX -- inconsistencia (Fase 5)
-
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 296-315 e 421-441)
-
-Para boleto (destination charges), o customer e criado na conta platform (linha 296-315). Para PIX (direct charges), um customer separado e criado na conta connected (linhas 421-441). Isso resulta em dois registros de customer para o mesmo aluno no Stripe, dificultando reconciliacao e potencialmente causando problemas se o metodo for alterado de PIX para boleto (customer diferente).
-
-**Acao**: Documentar essa limitacao como decisao tecnica (Stripe exige customer na conta correta para cada tipo de charge). Adicionar log explicativo.
-
-### M40. process-cancellation catch block retorna HTTP 500 -- confirma ponta #84 (Fase 6)
-
-**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 493-499)
+**Arquivo**: `supabase/functions/generate-boleto-for-invoice/index.ts` (linhas 146-156)
 
 ```javascript
 } catch (error) {
-  return new Response(JSON.stringify({ error: error.message }), {
+  ...
+  return new Response(JSON.stringify({ error: errorMessage, success: false }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
     status: 500,
   });
 }
 ```
 
-Confirmacao por codigo: o catch retorna `status: 500`. Quando mensagens de validacao especificas sao lancadas (linhas 162, 169, 175, 191), elas sao encapsuladas em HTTP 500, e o frontend do Supabase `functions.invoke()` perde a mensagem original.
+Mesma violacao da constraint `error-handling-user-friendly-messages`. Erros de validacao como "Dados incompletos do aluno" (linha 93) ou "valor minimo para boleto" (linha 57) sao lancados via `throw` e capturados pelo catch geral, retornando HTTP 500. O frontend perde a mensagem detalhada.
 
-**Acao**: Alterar para `status: 200` com `success: false`, mantendo a mensagem de erro no body (mesmo padrao do `create-invoice`).
+**Acao**: Para erros de validacao conhecidos, retornar HTTP 200 com `success: false` dentro do bloco de validacao (antes do `throw`). O catch geral pode manter HTTP 500 para erros inesperados.
 
-### M41. automated-billing hardcoded R$100 como preco de fallback -- risco de cobranca incorreta (Fase 5)
+---
 
-**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 337, 348, 387, 410)
+## Novas Melhorias v5.6 (M43-M47)
+
+### M43. check-overdue-invoices atualiza status para 'overdue' sem verificar se fatura ja esta paga (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
 
 ```javascript
-const amount = service?.price || defaultServicePrice || 100; // R$100 como último recurso
+// Atualizar status da fatura
+await supabase
+  .from("invoices")
+  .update({ status: "overdue" })
+  .eq("id", invoice.id);
 ```
 
-Quando uma aula nao tem servico associado E o professor nao tem servico padrao, o sistema usa R$100. Embora seja um ultimo recurso, esse valor arbitrario pode cobrar mais ou menos do que o esperado.
+O update nao inclui `.eq('status', 'pendente')` como condicao. Se uma fatura foi paga pelo webhook APOS ser carregada pelo SELECT (race condition com ~1 segundo de janela), o update reverte o status de 'paga' para 'overdue'.
 
-**Acao**: Em vez de usar R$100 como fallback silencioso, logar um warning critico e considerar pular essa aula com um registro de "aula sem preco definido -- requer acao manual do professor".
+**Impacto**: Raro (race condition), mas pode causar fatura paga ser revertida para vencida.
 
-### M42. create-payment-intent-connect nao persiste `stripe_customer_id` no relationship ou profile (Fase 5)
+**Acao**: Adicionar `.eq('status', 'pendente')` ao update para garantir que so faturas ainda pendentes sejam marcadas como vencidas.
 
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 296-315)
+### M44. create-payment-intent-connect error response usa HTTP 500 para TODOS os erros (Fase 5)
 
-Ao criar um novo customer no Stripe (linhas 303-314), o `customerId` retornado nao e salvo em nenhuma tabela do banco. O campo `teacher_student_relationships.stripe_customer_id` existe no schema mas nunca e populado por esta funcao. Na proxima geracao de pagamento, `stripe.customers.list({ email })` e chamado novamente, dependendo do email para match -- se o email mudar, um novo customer e criado, deixando o antigo orfao.
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 647-658)
 
-**Acao**: Apos criar o customer, persistir `customerId` em `teacher_student_relationships.stripe_customer_id`. Na proxima execucao, buscar pelo `stripe_customer_id` armazenado em vez de listar por email.
+O catch geral retorna HTTP 500 para todos os erros, incluindo erros do Stripe que podem conter mensagens uteis (ex: "PIX nao habilitado"). A traducao especifica para PIX (linhas 650-651) e uma excecao, mas outros erros do Stripe (ex: "account restricted", "invalid parameter") sao retornados como HTTP 500 generico.
+
+**Acao**: Identificar erros de validacao do Stripe (ex: `stripeError.type === 'StripeInvalidRequestError'`) e retorna-los como HTTP 200 com `success: false` e mensagem traduzida.
+
+### M45. cancel-payment-intent marca fatura como 'paid' sem verificar status anterior (Fase 7)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 169-179)
+
+```javascript
+const { error: updateError } = await supabase
+  .from('invoices')
+  .update({
+    status: 'paid',
+    payment_origin: 'manual',
+    ...
+  })
+  .eq('id', invoice_id);
+```
+
+O update nao verifica se a fatura ja esta paga (via webhook que processou entre a busca e o update). Se o webhook marcou como 'paid' com `payment_origin: 'automatic'`, o `cancel-payment-intent` sobrescreve para `payment_origin: 'manual'`, perdendo a informacao de que o pagamento foi automatico.
+
+**Acao**: Adicionar `.in('status', ['pendente', 'open', 'falha_pagamento'])` ao update para evitar sobrescrever faturas ja pagas.
+
+### M46. webhook-stripe-connect `invoice.paid` e `invoice.payment_succeeded` atualizam por `stripe_invoice_id` mas faturas locais usam `stripe_payment_intent_id` (Fase 7)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 317-324 e 354-362)
+
+Os handlers de `invoice.paid` e `invoice.payment_succeeded` fazem:
+```javascript
+.eq('stripe_invoice_id', paidInvoice.id)
+```
+
+Porem, as faturas locais sao criadas por `create-invoice` e `automated-billing`, que populam `stripe_payment_intent_id` (via `create-payment-intent-connect`) mas NUNCA populam `stripe_invoice_id`. O campo `stripe_invoice_id` so e populado por fluxos de Stripe Billing (subscricoes da plataforma), nao por Connect.
+
+**Resultado**: Os updates `.eq('stripe_invoice_id', ...)` nunca encontram faturas de Connect, fazendo com que `invoice.paid` e `invoice.payment_succeeded` sejam efetivamente no-ops para faturas de aulas. O pagamento so e processado pelo `payment_intent.succeeded`.
+
+**Impacto**: Baixo (as faturas sao processadas pelo handler correto `payment_intent.succeeded`), mas os handlers `invoice.paid/payment_succeeded` geram logs enganosos e a query `.single()` pode lancar excecao (#87).
+
+**Acao**: Documentar que esses handlers sao para Stripe Billing (subscricoes) e nao para Connect (faturas de aulas). Alterar `.single()` para `.maybeSingle()` conforme #87.
+
+### M47. send-invoice-notification nao verifica se invoice esta com status valido antes de enviar (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 39-62)
+
+A funcao busca a fatura e envia a notificacao sem verificar se o `invoice.status` e compativel com o `notification_type`. Por exemplo:
+- `notification_type: 'invoice_overdue'` pode ser enviado para uma fatura com `status: 'paga'` (se o webhook pagou a fatura entre o SELECT do `check-overdue-invoices` e a invocacao do `send-invoice-notification`)
+- `notification_type: 'invoice_created'` pode ser enviado para uma fatura ja cancelada
+
+**Impacto**: Raro (race condition), mas pode enviar "Sua fatura esta vencida" para uma fatura ja paga.
+
+**Acao**: Adicionar validacao: se `notification_type === 'invoice_overdue'` e `invoice.status === 'paga'`, logar e retornar `success: true, skipped: true`.
 
 ---
 
@@ -269,22 +261,22 @@ Ao criar um novo customer no Stripe (linhas 303-314), o `customerId` retornado n
 
 | # | Descricao | Fase | Arquivo(s) |
 |---|-----------|------|------------|
-| 92 | create-invoice FK join em teacher_student_relationships | 5 | create-invoice/index.ts |
-| 93 | create-invoice FK join triplo class_participants->classes->class_services | 5 | create-invoice/index.ts |
-| 94 | create-payment-intent-connect FK join triplo invoice->profiles->business_profiles | 5 | create-payment-intent-connect/index.ts |
-| 95 | generate-boleto-for-invoice FK join duplo invoice->profiles | 5 | generate-boleto-for-invoice/index.ts |
-| 96 | create-invoice bloqueia faturas < R$5 mesmo quando PIX aceita >= R$1 | 5 | create-invoice/index.ts |
-| 97 | send-invoice-notification perpetua colisao invoice.id em class_notifications.class_id | 8 | send-invoice-notification/index.ts |
-| 98 | automated-billing FK join auxiliar class_participants->classes!inner | 5 | automated-billing/index.ts |
-| 99 | create-payment-intent-connect usa campo inexistente guardian_name | 5 | create-payment-intent-connect/index.ts |
+| 100 | change-payment-method FK join desnecessario | 5 | change-payment-method/index.ts |
+| 101 | change-payment-method autorizacao de guardian incorreta | 6 | change-payment-method/index.ts |
+| 102 | process-cancellation minimo R$5 hardcoded ignora PIX | 6 | process-cancellation/index.ts |
+| 103 | verify-payment-status nao envia notificacao ao reconciliar pagamento | 7 | verify-payment-status/index.ts |
+| 104 | webhook payment_intent.payment_failed nao limpa campos temporarios | 7 | webhook-stripe-connect/index.ts |
+| 105 | webhook invoice.payment_succeeded sobrescreve payment_method com 'stripe_invoice' | 7 | webhook-stripe-connect/index.ts |
+| 106 | create-payment-intent-connect HTTP 400 para validacoes viola constraint | 5 | create-payment-intent-connect/index.ts |
+| 107 | generate-boleto-for-invoice HTTP 500 no catch viola constraint | 5 | generate-boleto-for-invoice/index.ts |
 
 | # | Descricao | Fase |
 |---|-----------|------|
-| M38 | create-invoice query duplicada de teacher_student_relationships | 5 |
-| M39 | create-payment-intent-connect customer duplicado platform vs connected | 5 |
-| M40 | process-cancellation HTTP 500 no catch (confirmacao #84) | 6 |
-| M41 | automated-billing fallback R$100 como preco padrao | 5 |
-| M42 | create-payment-intent-connect nao persiste stripe_customer_id | 5 |
+| M43 | check-overdue-invoices race condition ao atualizar status overdue | 8 |
+| M44 | create-payment-intent-connect catch geral HTTP 500 para erros do Stripe | 5 |
+| M45 | cancel-payment-intent sobrescreve payment_origin de fatura ja paga | 7 |
+| M46 | webhook invoice.paid/payment_succeeded nunca encontra faturas de Connect | 7 |
+| M47 | send-invoice-notification envia notificacao sem validar status compativel | 8 |
 
 ---
 
@@ -292,36 +284,38 @@ Ao criar um novo customer no Stripe (linhas 303-314), o `customerId` retornado n
 
 | Versao | Data | Mudancas |
 |--------|------|----------|
-| v5.5 | 2026-02-13 | +8 pontas soltas (#92-#99), +5 melhorias (M38-M42): FK join violations em create-invoice, create-payment-intent-connect, generate-boleto-for-invoice; create-invoice bloqueia PIX valido com minimo R$5; send-invoice-notification perpetua colisao de IDs; automated-billing FK join auxiliar; guardian_name inexistente no Stripe customer; query duplicada, customer duplicado, HTTP 500 no catch, fallback R$100, stripe_customer_id nao persistido |
+| v5.6 | 2026-02-13 | +8 pontas soltas (#100-#107), +5 melhorias (M43-M47): change-payment-method FK join + autorizacao guardian bugada, process-cancellation minimo R$5 ignora PIX, verify-payment-status sem notificacao, webhook payment_failed nao limpa campos, webhook payment_succeeded sobrescreve payment_method, create-payment-intent-connect e generate-boleto HTTP status incorretos, race conditions em overdue/cancel-payment, webhook invoice handlers nunca matcham faturas Connect, send-invoice-notification sem validacao de status |
+| v5.5 | 2026-02-13 | +8 pontas soltas (#92-#99), +5 melhorias (M38-M42) |
+| v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M35-M37) |
 
 ---
 
-## Secao Tecnica: Resumo de Severidade v5.5
+## Secao Tecnica: Resumo de Severidade v5.6
 
 **CRITICOS (bloqueiam funcionalidade):**
-- #94: FK join triplo no create-payment-intent-connect bloqueia TODOS os pagamentos se cache falhar
-- #96: Faturas entre R$1-R$4,99 bloqueadas incondicionalmente (afeta PIX)
+- #101: Autorizacao de guardian no change-payment-method esta fundamentalmente incorreta -- qualquer responsavel com dependentes pode alterar metodo de pagamento de faturas de OUTROS alunos
+- #106: Validacoes de negocio retornam HTTP 400, frontend perde mensagem detalhada
 
 **ALTOS (dados incorretos ou UX degradada):**
-- #92: create-invoice FK join pode gerar pagamento com metodo desabilitado
-- #93: FK join triplo gera valores incorretos nos itens de fatura
-- #95: generate-boleto-for-invoice falha intermitente com mensagem enganosa
-- #97: Idempotencia de notificacoes depende de INSERT acidental no send-invoice-notification
-- #99: Customer no Stripe criado com nome errado (aluno vs responsavel)
+- #102: Taxas de cancelamento R$1-R$4,99 silenciosamente ignoradas
+- #103: Reconciliacao manual de pagamento nao notifica aluno
+- #104: Dados de pagamento expirados permanecem visiveis apos falha
+- #105: `payment_method` sobrescrito com 'stripe_invoice' (confirmacao #78)
+- #107: Erros de validacao de boleto retornam HTTP 500 generico
 
 **MEDIOS (otimizacao e resiliencia):**
-- #98: FK join auxiliar no alerta de aulas antigas
-- M38: Query duplicada de teacher_student_relationships
-- M39: Customer duplicado no Stripe (platform vs connected)
-- M40: HTTP 500 no catch do process-cancellation
-- M41: Fallback R$100 silencioso para aulas sem preco
-- M42: stripe_customer_id nao persistido causa busca por email
+- #100: FK join desnecessario no change-payment-method
+- M43: Race condition overdue vs paga
+- M44: Catch geral HTTP 500 para erros do Stripe tratáveis
+- M45: cancel-payment-intent sobrescreve payment_origin
+- M46: webhook invoice handlers sao no-ops para faturas Connect
+- M47: Notificacao enviada sem validar status compativel
 
 ---
 
-## Panorama Consolidado: FK Join Violations
+## Panorama Consolidado: FK Join Violations (atualizado)
 
-A constraint `edge-functions-pattern-sequential-queries` e violada em **8 locais** distribuidos por 5 edge functions:
+A constraint `edge-functions-pattern-sequential-queries` e violada em **9 locais** distribuidos por 6 edge functions:
 
 | Funcao | Linhas | Joins | Ponta |
 |--------|--------|-------|-------|
@@ -332,6 +326,36 @@ A constraint `edge-functions-pattern-sequential-queries` e violada em **8 locais
 | create-invoice | 226-241 | classes!inner -> class_services | #93 |
 | create-payment-intent-connect | 37-51 | profiles!fkey x2, business_profiles!fkey | #94 |
 | generate-boleto-for-invoice | 34-45 | profiles!fkey x2 | #95 |
-| webhook-stripe-connect | 453-457 | .select('payment_origin').single() | #87 (nao FK, mas .single()) |
+| change-payment-method | 45-53 | profiles!fkey x2 (desnecessario) | #100 |
+| webhook-stripe-connect | 306-310, 343-347 | .single() em invoices (nao FK, mas fragil) | #87 |
 
-**Recomendacao**: Resolver todas as violacoes de FK join como um batch unico (Sprint de Refatoracao), pois compartilham o mesmo padrao de correcao.
+---
+
+## Panorama Consolidado: HTTP Status Violations
+
+A constraint `error-handling-user-friendly-messages` e violada em **6 locais**:
+
+| Funcao | Linhas | Status Incorreto | Ponta |
+|--------|--------|------------------|-------|
+| create-payment-intent-connect | 74-81, 88-94, 98-105, 110-118 | 400 | #106 |
+| create-payment-intent-connect | 647-658 | 500 (catch geral) | M44 |
+| generate-boleto-for-invoice | 146-156 | 500 (catch geral) | #107 |
+| process-cancellation | 493-499 | 500 (catch geral) | M40 |
+| change-payment-method | 245-251 | 500 (catch geral) | novo |
+| check-overdue-invoices | 139-150 | 500 (catch geral) | novo |
+| send-invoice-notification | 455-463 | 500 (catch geral) | M36 |
+
+**Recomendacao**: Resolver todas as violacoes de HTTP status como um batch unico (Sprint de Resiliencia).
+
+---
+
+## Panorama Consolidado: Minimo R$5 Hardcoded (ignora PIX)
+
+A validacao de minimo R$5 (boleto) e aplicada incondicionalmente em 2 locais, bloqueando PIX valido (>= R$1):
+
+| Funcao | Linhas | Ponta |
+|--------|--------|-------|
+| create-invoice | 58-69 | #96 |
+| process-cancellation | 434 | #102 |
+
+O `create-payment-intent-connect` ja implementa corretamente a validacao separada por metodo (R$5 boleto, R$1 PIX) nas linhas 85-120.

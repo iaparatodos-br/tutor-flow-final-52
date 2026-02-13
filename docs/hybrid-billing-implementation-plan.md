@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.1
+# Plano de Cobrança Híbrida — v5.2
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). A v4.8 adicionou 5 pontas soltas (#52-#56) e 2 melhorias (M18-M19). A v4.9 adicionou 5 pontas soltas (#57-#61) e 3 melhorias (M20-M22). Esta v5.0 adiciona 6 novas pontas soltas (#62-#67) e 3 melhorias (M23-M25).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.1 acumulou 73 pontas soltas e 28 melhorias. Esta v5.2 adiciona 6 novas pontas soltas (#74-#79) e 3 melhorias (M29-M31), totalizando **79 pontas soltas** e **31 melhorias**.
 
-Principais mudanças desde v3.10: A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). A v4.8 adicionou 5 pontas soltas (#52-#56) e 2 melhorias (M18-M19). A v4.9 adicionou 5 pontas soltas (#57-#61) e 3 melhorias (M20-M22). A v5.0 adicionou 6 pontas soltas (#62-#67) e 3 melhorias (M23-M25). Esta v5.1 adiciona 6 novas pontas soltas (#68-#73) e 3 melhorias (M26-M28).
+Principais mudanças na v5.2: webhook-stripe-connect com dupla atualização `invoice.paid`/`invoice.payment_succeeded`, automated-billing sem fallback PIX quando valor < R$5, retorno HTTP 500 no catch geral do automated-billing, create-invoice guardian lookup com `.single()`, processMonthlySubscriptionBilling retorno não utilizado pelo caller, webhook retorna 500 para falhas de update não-críticas.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -289,7 +289,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, M6, M14 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #21, #10.1, #16, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #21, #10.1, #16, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31 | Pendente |
 
 ---
 
@@ -449,6 +449,12 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **71** | **check-overdue-invoices bug #47 confirmado — falta INSERT de tracking** | **8** | **check-overdue-invoices/index.ts** |
 | **72** | **create-invoice catch block retorna HTTP 500 em vez de 200+success:false** | **5** | **create-invoice/index.ts** |
 | **73** | **send-invoice-notification usa `.single()` em lookup de aluno e professor** | **8** | **send-invoice-notification/index.ts** |
+| **74** | **webhook-stripe-connect `invoice.paid` e `invoice.payment_succeeded` dupla atualização sobrescreve `payment_method`** | **8** | **webhook-stripe-connect/index.ts** |
+| **75** | **automated-billing `skipBoletoGeneration` não tenta PIX como fallback** | **5** | **automated-billing/index.ts** |
+| **76** | **automated-billing catch geral retorna HTTP 500** | **8** | **automated-billing/index.ts** |
+| **77** | **webhook-stripe-connect retorna HTTP 500 para falhas de update não-críticas** | **8** | **webhook-stripe-connect/index.ts** |
+| **78** | **create-invoice guardian lookup usa `.single()` em query não garantida** | **5** | **create-invoice/index.ts** |
+| **79** | **processMonthlySubscriptionBilling `outsideCycleInvoiceId` não logado pelo caller** | **4** | **automated-billing/index.ts** |
 
 ## Índice de Melhorias
 
@@ -476,6 +482,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **M26** | **processMonthlySubscriptionBilling deve buscar e processar cancelamentos com cobrança** | **4** |
 | **M27** | **Extrair helper `generatePaymentForInvoice` unificado (resolve #31, #36, #40, #60)** | **4** |
 | **M28** | **create-invoice deve validar `invoice_type` contra lista de tipos permitidos** | **5** |
+| **M29** | **webhook-stripe-connect deve retornar HTTP 200 para falhas de update não-críticas** | **8** |
+| **M30** | **processMonthlySubscriptionBilling caller deve logar `outsideCycleInvoiceId` explicitamente** | **4** |
+| **M31** | **automated-billing `skipBoletoGeneration` deve verificar PIX antes de pular geração** | **5** |
 
 ---
 
@@ -1236,6 +1245,118 @@ Linha 197 aceita qualquer string como `invoice_type` sem validação. Adicionar 
 
 ---
 
+## Novas Pontas Soltas v5.2 (#74-#79)
+
+### 74. webhook-stripe-connect `invoice.paid` e `invoice.payment_succeeded` sobrescrevem `payment_method` — BUG (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 300-369)
+
+O Stripe pode enviar **ambos** `invoice.paid` e `invoice.payment_succeeded` para a mesma fatura. Os dois handlers atualizam status para `paid`, mas `invoice.payment_succeeded` (linha 359) define `payment_method: 'stripe_invoice'`, sobrescrevendo o método real (boleto/pix) já salvo pelo handler `payment_intent.succeeded` (linha 471).
+
+Para faturas pré-pagas pagas via boleto, a sequência `payment_intent.succeeded → invoice.payment_succeeded` resultará em `payment_method` mudando de `'boleto'` para `'stripe_invoice'`, quebrando:
+1. CTAs de email (M12) que dependem do `payment_method` correto
+2. Cálculo de taxas Stripe no Financeiro.tsx (#34/M10)
+3. Métricas e relatórios de métodos de pagamento
+
+**Ação**: No handler `invoice.payment_succeeded`, usar `.maybeSingle()` e **não sobrescrever `payment_method`** se já estiver preenchido. Alterar para: `payment_method: existingSucceeded?.payment_method || 'stripe_invoice'`.
+
+### 75. automated-billing `skipBoletoGeneration` não tenta PIX como fallback (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 374-376, 513-519, 783, 848, 925)
+
+Quando `totalAmount < R$ 5,00`, o código define `skipBoletoGeneration = true` e **pula toda geração de pagamento** (linhas 513-519). Porém, PIX tem mínimo de R$ 1,00 — faturas entre R$ 1,00 e R$ 4,99 poderiam ter PIX gerado se habilitado pelo professor.
+
+O mesmo problema ocorre em 3 pontos:
+1. Fluxo tradicional (linha 374): `totalAmount < MINIMUM_BOLETO_AMOUNT` → skip tudo
+2. Fluxo mensalidade (linha 783): idem
+3. Fluxo outside-cycle (linha 925): idem
+
+**Ação** (M31): Renomear `skipBoletoGeneration` para `skipPaymentGeneration`. Antes de skipar, verificar `enabled_payment_methods` do professor: se PIX habilitado e valor >= R$ 1,00, gerar PIX. Resolver via helper `generatePaymentForInvoice` (M27) que já encapsula essa hierarquia.
+
+### 76. automated-billing catch geral retorna HTTP 500 — viola constraint (Fase 8)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 588-596)
+
+O catch block geral retorna `status: 500`. Para chamadas via cron (server-to-server), o impacto é menor, mas se invocado manualmente pelo professor via frontend (ex: botão "Faturar agora"), o HTTP 500 impede que o frontend extraia a mensagem de erro amigável.
+
+Memória `constraints/error-handling-user-friendly-messages` define retorno 200 + `success: false` para erros de negócio.
+
+**Ação**: Alterar para `status: 200` com `success: false` no body. Manter logs de erro para diagnóstico.
+
+### 77. webhook-stripe-connect retorna HTTP 500 para falhas de update não-críticas (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 328-331, 411-414)
+
+Dois handlers retornam HTTP 500 quando falham ao atualizar status de fatura:
+- `invoice.paid` (linha 328): `return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { status: 500 })`
+- `invoice.marked_uncollectible` (linha 411): idem
+
+Retornar 500 ao Stripe causa **retries automáticos**, que por sua vez podem causar processamento duplicado em handlers não-idempotentes. Se a fatura simplesmente não existe no banco (evento orphan), o retry nunca será bem-sucedido, gerando logs de erro infinitos.
+
+**Ação** (M29): Retornar HTTP 200 com `{ received: true, warning: '...' }` para falhas de update. Logar como warning (não error). HTTP 500 deve ser reservado para falhas de validação de assinatura do webhook.
+
+### 78. create-invoice guardian lookup usa `.single()` — pode falhar (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 382)
+
+A query de guardian data:
+```javascript
+const { data: relationshipData } = await supabaseClient
+  .from('teacher_student_relationships')
+  .select('student_guardian_cpf, ...')
+  .eq('student_id', billingStudentId)
+  .eq('teacher_id', user.id)
+  .single();
+```
+
+Usa `.single()` que lançará exceção se não encontrar o relacionamento (ex: relação deletada entre criação da fatura e lookup de guardian). Como essa query é usada apenas para **logging** (linhas 384-390), uma exceção aqui interrompe todo o fluxo de pagamento desnecessariamente.
+
+**Ação**: Substituir por `.maybeSingle()`. Se `relationshipData` for null, continuar sem dados de guardian (já é opcional).
+
+### 79. processMonthlySubscriptionBilling `outsideCycleInvoiceId` não logado pelo caller (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 184-195, 1012-1016)
+
+A função retorna `{ success, invoiceId, outsideCycleInvoiceId }` mas o caller (linhas 184-195) apenas verifica `subscriptionResult.success` e loga `subscriptionResult` genericamente:
+```javascript
+logStep(`✅ Monthly subscription billing completed`, subscriptionResult);
+```
+
+O `outsideCycleInvoiceId` se perde no log genérico. Quando um aluno tem aulas **antes** e **depois** do início da mensalidade, duas faturas são criadas, mas sem log explícito do segundo ID, a auditoria de faturamento dual fica difícil.
+
+**Ação** (M30): O caller deve logar explicitamente ambos os IDs:
+```javascript
+if (subscriptionResult.outsideCycleInvoiceId) {
+  logStep(`📦 Also created traditional invoice for pre-subscription classes`, {
+    outsideCycleInvoiceId: subscriptionResult.outsideCycleInvoiceId
+  });
+}
+```
+
+---
+
+## Novas Melhorias v5.2 (M29-M31)
+
+### M29. webhook-stripe-connect deve retornar HTTP 200 para falhas de update não-críticas (Fase 8)
+
+Relacionada à ponta #77. Handlers de webhook devem distinguir entre:
+1. **Falhas críticas** (assinatura inválida, evento corrompido): retornar HTTP 400/500
+2. **Falhas de processamento** (fatura não encontrada, update falhou): retornar HTTP 200 com warning
+
+O padrão atual retorna 500 em dois handlers (`invoice.paid`, `invoice.marked_uncollectible`), causando retries desnecessários. Todos os outros handlers (`invoice.payment_succeeded`, `invoice.voided`, `payment_intent.succeeded`) já retornam 200 mesmo em caso de falha — inconsistência.
+
+### M30. processMonthlySubscriptionBilling caller deve logar `outsideCycleInvoiceId` explicitamente (Fase 4)
+
+Relacionada à ponta #79. O caller deve extrair e logar especificamente `outsideCycleInvoiceId` para facilitar auditoria de cenários de faturamento dual (mensalidade + aulas pré-mensalidade).
+
+### M31. automated-billing `skipBoletoGeneration` deve verificar PIX antes de pular geração (Fase 5)
+
+Relacionada à ponta #75. A lógica de `skipBoletoGeneration` (3 pontos no código) deve ser substituída por chamada ao helper `generatePaymentForInvoice` (M27), que já implementa a hierarquia Boleto → PIX → None com valores mínimos corretos.
+
+Isso resolve simultaneamente #75 e complementa #31, #36, #40, #60.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -1252,6 +1373,7 @@ Linha 197 aceita qualquer string como `invoice_type` sem validação. Adicionar 
 | v4.9 | 2026-02-13 | +5 pontas soltas (#57-#61), +3 melhorias (M20-M22) |
 | v5.0 | 2026-02-13 | +6 pontas soltas (#62-#67), +3 melhorias (M23-M25), 1 duplicata resolvida |
 | v5.1 | 2026-02-13 | +6 pontas soltas (#68-#73), +3 melhorias (M26-M28): bug crítico mensalidade sem cancelamentos, FK join em alerta de aulas antigas, SDK inconsistente, confirmação bug idempotência, HTTP 500 no create-invoice, .single() em send-invoice-notification |
+| v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31): webhook dupla atualização payment_method, automated-billing sem PIX fallback, HTTP 500 em catch geral, webhook retorna 500 para updates não-críticos, create-invoice guardian .single(), outsideCycleInvoiceId não logado |
 
 ## Memórias do Projeto a Atualizar
 
@@ -1268,4 +1390,5 @@ Após implementação, atualizar:
 10. `database/billing-rpc-filters-experimental-dependents` — deve documentar adição de filtro `is_paid_class = true` (#65)
 11. `style/invoice-display-badges` — deve documentar consolidação do InvoiceTypeBadge com 7 tipos (M24)
 12. `features/monthly-subscriptions/billing-logic` — deve documentar processamento de cancelamentos com cobrança dentro da mensalidade (#68/M26)
-13. `constraints/error-handling-user-friendly-messages` — deve listar create-invoice (#72) como exemplo de correção
+13. `constraints/error-handling-user-friendly-messages` — deve listar create-invoice (#72), automated-billing (#76) e webhook-stripe-connect (#77) como exemplos de correção
+14. `infrastructure/stripe-webhook-error-handling` — NOVA: documentar padrão de retorno HTTP 200 para falhas de update vs 500 para falhas de validação (#77/M29)

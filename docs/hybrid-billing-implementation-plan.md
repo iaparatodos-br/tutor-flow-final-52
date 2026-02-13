@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.9
+# Plano de Cobrança Híbrida — v5.0
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). A v4.8 adicionou 5 pontas soltas (#52-#56) e 2 melhorias (M18-M19). Esta v4.9 adiciona 5 novas pontas soltas (#57-#61) e 3 melhorias (M20-M22).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). A v4.8 adicionou 5 pontas soltas (#52-#56) e 2 melhorias (M18-M19). A v4.9 adicionou 5 pontas soltas (#57-#61) e 3 melhorias (M20-M22). Esta v5.0 adiciona 6 novas pontas soltas (#62-#67) e 3 melhorias (M23-M25).
 
 Principais mudanças desde v3.10:
 
@@ -977,6 +977,136 @@ O campo `stripe_hosted_invoice_url` está sendo usado para armazenar URLs de bol
 
 ---
 
+## Novas Pontas Soltas v5.0 (#62-#67)
+
+### 62. handleClassSubmit não inclui `is_paid_class` no insert de aulas (Fase 3)
+
+**Arquivo**: `src/pages/Agenda.tsx` (linhas 1419-1430)
+
+O `baseClassData` construído no `handleClassSubmit` inclui `teacher_id, service_id, class_date, duration_minutes, notes, status, is_experimental, is_group_class, recurrence_pattern` mas **não inclui `is_paid_class`**. Sem esse campo, todas as aulas criadas usarão o default do banco (`true`), ignorando a seleção do professor no ClassForm.
+
+Isso é a raiz de múltiplas pontas soltas downstream (#17, #18, #59, #61). Sem propagar `is_paid_class` na criação, toda a lógica de faturamento condicional é inútil.
+
+**Ação**: Adicionar `is_paid_class: formData.is_paid_class ?? true` ao `baseClassData` (linha 1430). Verificar que `ClassFormData` interface inclui `is_paid_class: boolean`.
+
+### 63. materializeVirtualClass frontend não inclui `is_paid_class` no insert (Fase 3)
+
+**Arquivo**: `src/pages/Agenda.tsx` (linhas 1288-1299)
+
+O `realClassData` do `materializeVirtualClass` inclui campos do `virtualClass` mas **não inclui `is_paid_class`**. Como a propriedade `is_paid_class` pode existir no objeto `virtualClass` (vindo do template), ela deve ser propagada.
+
+**Ação**: Adicionar `is_paid_class: virtualClass.is_paid_class ?? true` ao `realClassData` (linha 1299). Confirmar que a query de templates em `loadClasses` inclui `is_paid_class` no SELECT.
+
+### 64. webhook `payment_intent.succeeded` usa `.single()` no lookup de `payment_origin` (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 453-457)
+
+```javascript
+const { data: existingPI } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_payment_intent_id', paymentIntent.id)
+  .single();
+```
+
+Se nenhuma fatura existir com esse `payment_intent_id` (evento órfão ou race condition), `.single()` lança exceção. Embora o `.data` resultante possa ser ignorado, a exceção pode interromper o handler e causar retry do Stripe.
+
+**Ação**: Substituir por `.maybeSingle()`. Se `existingPI` for `null`, continuar normalmente (update não encontrará nada — é seguro).
+
+### 65. automated-billing `processMonthlySubscriptionBilling` não filtra por `is_paid_class` (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 674-680)
+
+A RPC `get_unbilled_participants_v2` é chamada para buscar aulas concluídas, mas a RPC **não filtra por `is_paid_class`**. Se um professor usa modelo pós-pago e tem aulas marcadas como `is_paid_class = false` (gratuitas/reposição), essas aulas serão contabilizadas como uso da franquia de mensalidade, reduzindo o limite de aulas pagas.
+
+Memória `database/billing-rpc-filters-experimental-dependents` confirma que a RPC filtra `is_experimental = false`, mas **não menciona filtro de `is_paid_class`**.
+
+**Ação**: Atualizar a RPC `get_unbilled_participants_v2` para adicionar `AND c.is_paid_class = true` na cláusula WHERE. Isso garante que apenas aulas pagas consumam a franquia e sejam faturadas.
+
+### 66. ClassFormData interface não inclui `is_paid_class` (Fase 3)
+
+**Arquivo**: `src/components/ClassForm/ClassForm.tsx` (linhas 47-63)
+
+A interface `ClassFormData` define os campos retornados pelo formulário:
+```typescript
+interface ClassFormData {
+  selectedStudents: string[];
+  selectedParticipants: ParticipantSelection[];
+  service_id: string;
+  class_date: string;
+  time: string;
+  duration_minutes: number;
+  notes: string;
+  is_experimental: boolean;
+  is_group_class: boolean;
+  recurrence?: { ... };
+}
+```
+
+O campo `is_paid_class` **não existe** na interface. Antes de implementar o switch no ClassForm (Fase 3), a interface precisa ser estendida. Sem isso, TypeScript bloqueará `formData.is_paid_class` no `handleClassSubmit`.
+
+**Ação**: Adicionar `is_paid_class: boolean;` à interface `ClassFormData`.
+
+### 67. automated-billing fatura tradicional não envia notificação para todas as faturas criadas (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 560-566)
+
+No fluxo tradicional (sem mensalidade), após criar a fatura e gerar o boleto (linhas 484-558), **não há chamada a `send-invoice-notification`**. A notificação só existe no fluxo de mensalidade (linha 884) e no fluxo de aulas fora do ciclo (linha 998). O aluno que recebe fatura avulsa automatizada **não recebe email**.
+
+Compare com `create-invoice` (linha 532) que sempre envia notificação. O `automated-billing` deveria fazer o mesmo para faturas tradicionais.
+
+**Ação**: Adicionar chamada fire-and-forget a `send-invoice-notification` após a linha 565 (antes do `processedCount++`):
+```javascript
+supabaseAdmin.functions.invoke('send-invoice-notification', {
+  body: { invoice_id: invoiceId, notification_type: 'invoice_created' }
+}).catch(err => logStep('⚠️ Failed to send notification', err));
+```
+
+---
+
+## Novas Melhorias v5.0 (M23-M25)
+
+### M23. CORS headers desatualizados em 4+ edge functions (Infraestrutura)
+
+Memória `infrastructure/edge-functions-cors-headers` define que os CORS headers devem incluir `x-supabase-client-platform`, etc. As seguintes funções usam headers incompletos:
+- `create-invoice` (linha 5)
+- `process-cancellation` (linha 5)
+- `automated-billing` (linha 5)
+- `check-overdue-invoices` (linha 5)
+- `materialize-virtual-class` (linha 5)
+- `send-invoice-notification` (linha 5)
+- `webhook-stripe-connect` (linha 5)
+
+Todas usam apenas `"authorization, x-client-info, apikey, content-type"`.
+
+**Ação**: Padronizar para: `"authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version"`. Para webhooks e cron jobs (server-to-server), o impacto é menor, mas a padronização reduz risco de regressão quando funções mudam de contexto.
+
+### M24. Financeiro.tsx `getInvoiceTypeBadge` e `InvoiceTypeBadge.tsx` estão desincronizados (Fase 7)
+
+Confirmado pela ponta #21 e verificação do código:
+- `Financeiro.tsx` (linhas 30-44): suporta 5 tipos (`monthly_subscription`, `automated`, `manual`, `cancellation`, `orphan_charges`) + default
+- `InvoiceTypeBadge.tsx` (linhas 12-28): suporta apenas 3 tipos (`monthly_subscription`, `automated`, `manual`)
+
+Nenhum dos dois suporta `prepaid_class`. Após implementação, haverá 7 tipos no banco mas apenas suporte parcial na UI.
+
+**Ação**: Consolidar em `InvoiceTypeBadge.tsx` como componente único (SSoT). Adicionar todos os 7 tipos: `monthly_subscription`, `automated`, `manual`, `cancellation`, `orphan_charges`, `prepaid_class`, `regular`. Atualizar `Financeiro.tsx` para usar `<InvoiceTypeBadge>` em vez da função inline. Adicionar traduções i18n faltantes.
+
+### M25. Cancellation policy buscada múltiplas vezes no automated-billing (Performance)
+
+No fluxo tradicional do `automated-billing`, a `cancellation_policies` é buscada **dentro do loop** de `cancelledChargeable` (linhas 351-356 e 413-418), resultando em N queries para N cancelamentos do mesmo professor. Como a política é a mesma para todos os cancelamentos do mesmo professor, deveria ser buscada **uma única vez** antes do loop.
+
+**Ação**: Mover a query de `cancellation_policies` para antes do loop de processamento (após a linha 307), armazenando em variável `teacherPolicy`. Usar `teacherPolicy?.charge_percentage || 50` dentro do loop.
+
+---
+
+## Pontas Soltas Resolvidas no Código (Correções v5.0)
+
+### ~~#25. FK join syntax no create-invoice~~ → Substituída por #57
+
+A ponta #25 e #57 são a mesma observação. Consolidar como #57 (mais detalhada).
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -991,6 +1121,7 @@ O campo `stripe_hosted_invoice_url` está sendo usado para armazenar URLs de bol
 | v4.7 | 2026-02-13 | +5 pontas soltas (#47-#51), +2 melhorias (M16-M17), 2 resolvidas (#33, M9): notificações duplicadas, .single() no webhook |
 | v4.8 | 2026-02-13 | +5 pontas soltas (#52-#56), +2 melhorias (M18-M19): FK join em validateTeacherCanBill, .single() em send-invoice-notification, payment_method no SELECT de notificação, dependent_id perdido na materialização, status atualizado antes do envio |
 | v4.9 | 2026-02-13 | +5 pontas soltas (#57-#61), +3 melhorias (M20-M22): FK join em create-invoice e automated-billing principal, process-cancellation sem is_paid_class, boleto hardcoded, materialize sem is_paid_class, label incorreto no email |
+| v5.0 | 2026-02-13 | +6 pontas soltas (#62-#67), +3 melhorias (M23-M25), 1 duplicata resolvida (#25→#57): handleClassSubmit sem is_paid_class, ClassFormData sem campo, RPC sem filtro is_paid_class, webhook .single(), notificação ausente no billing tradicional, CORS desatualizados |
 
 ## Memórias do Projeto a Atualizar
 
@@ -1004,3 +1135,5 @@ Após implementação, atualizar:
 7. `database/invoice-overdue-notification-tracking` — deve documentar solução da ponta #47 (bug de idempotência crítico)
 8. `infrastructure/supabase-query-patterns` — deve listar #52, #57, #58 como exemplos de FK joins a corrigir
 9. `features/billing/ui-feedback-constraints` — deve documentar que stripe_hosted_invoice_url armazena boleto_url (M22)
+10. `database/billing-rpc-filters-experimental-dependents` — deve documentar adição de filtro `is_paid_class = true` (#65)
+11. `style/invoice-display-badges` — deve documentar consolidação do InvoiceTypeBadge com 7 tipos (M24)

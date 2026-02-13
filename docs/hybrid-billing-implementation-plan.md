@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.2
+# Plano de Cobrança Híbrida — v5.3
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.1 acumulou 73 pontas soltas e 28 melhorias. Esta v5.2 adiciona 6 novas pontas soltas (#74-#79) e 3 melhorias (M29-M31), totalizando **79 pontas soltas** e **31 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.2 acumulou 79 pontas soltas e 31 melhorias. Esta v5.3 adiciona 6 novas pontas soltas (#80-#85) e 4 melhorias (M32-M35), totalizando **85 pontas soltas** e **35 melhorias**.
 
-Principais mudanças na v5.2: webhook-stripe-connect com dupla atualização `invoice.paid`/`invoice.payment_succeeded`, automated-billing sem fallback PIX quando valor < R$5, retorno HTTP 500 no catch geral do automated-billing, create-invoice guardian lookup com `.single()`, processMonthlySubscriptionBilling retorno não utilizado pelo caller, webhook retorna 500 para falhas de update não-críticas.
+Principais mudanças na v5.3: process-cancellation usa SERVICE_ROLE_KEY como Bearer token (viola constraint de autenticação), check-overdue-invoices sem guard clause contra race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation retorna HTTP 500, process-cancellation `.single()` em lookup de dependente, automated-billing não salva `payment_method` nos 3 updates de pagamento.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -286,10 +286,10 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
 | 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, #52, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, M6, M14 | Pendente |
-| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #21, #10.1, #16, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13, M35 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, M6, M14, M33 | Pendente |
+| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, M11 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34 | Pendente |
 
 ---
 
@@ -455,6 +455,12 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **77** | **webhook-stripe-connect retorna HTTP 500 para falhas de update não-críticas** | **8** | **webhook-stripe-connect/index.ts** |
 | **78** | **create-invoice guardian lookup usa `.single()` em query não garantida** | **5** | **create-invoice/index.ts** |
 | **79** | **processMonthlySubscriptionBilling `outsideCycleInvoiceId` não logado pelo caller** | **4** | **automated-billing/index.ts** |
+| **80** | **process-cancellation usa SERVICE_ROLE_KEY como Bearer token para create-invoice — viola constraint** | **6** | **process-cancellation/index.ts** |
+| **81** | **check-overdue-invoices sem guard clause `status = 'pendente'` no update — race condition paid→overdue** | **8** | **check-overdue-invoices/index.ts** |
+| **82** | **AmnestyButton não verifica `is_paid_class` — permite anistia em aulas pré-pagas** | **7** | **AmnestyButton.tsx** |
+| **83** | **process-cancellation catch geral retorna HTTP 500 — viola constraint** | **6** | **process-cancellation/index.ts** |
+| **84** | **process-cancellation usa `.single()` para buscar dependente — pode falhar** | **6** | **process-cancellation/index.ts** |
+| **85** | **automated-billing não salva `payment_method` nos 3 updates de pagamento** | **8** | **automated-billing/index.ts** |
 
 ## Índice de Melhorias
 
@@ -485,6 +491,10 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **M29** | **webhook-stripe-connect deve retornar HTTP 200 para falhas de update não-críticas** | **8** |
 | **M30** | **processMonthlySubscriptionBilling caller deve logar `outsideCycleInvoiceId` explicitamente** | **4** |
 | **M31** | **automated-billing `skipBoletoGeneration` deve verificar PIX antes de pular geração** | **5** |
+| **M32** | **check-overdue-invoices catch geral retorna HTTP 500 — padronizar para 200+success:false** | **8** |
+| **M33** | **send-cancellation-notification não busca nome do serviço — email incompleto** | **6** |
+| **M34** | **Agenda.tsx handleClassSubmit — participantes de grupo sem `confirmed_at`** | **5** |
+| **M35** | **Idempotência no create-invoice para faturas prepaid — verificação de duplicidade** | **5** |
 
 ---
 
@@ -1357,6 +1367,128 @@ Isso resolve simultaneamente #75 e complementa #31, #36, #40, #60.
 
 ---
 
+## Novas Pontas Soltas v5.3 (#80-#85)
+
+### 80. process-cancellation usa SERVICE_ROLE_KEY como Bearer token para create-invoice — viola constraint de autenticação (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 451-457)
+
+O `process-cancellation` invoca `create-invoice` passando `SUPABASE_SERVICE_ROLE_KEY` como Bearer token:
+```javascript
+headers: {
+  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+}
+```
+
+A memória `auth/limite-autenticacao-service-role-edge-functions` documenta explicitamente que a `SUPABASE_SERVICE_ROLE_KEY` **não pode ser passada como Bearer token para `supabase.auth.getUser()`**, pois não é um JWT de usuário válido. O `create-invoice` (linha 45) chama `supabase.auth.getUser(token)` e usará o service role key como se fosse um token de usuário.
+
+Na prática, o `user` retornado por `getUser` será `null` ou inválido, fazendo o fluxo falhar na linha 49 (`if (!user) throw`). Se faturas de cancelamento estão sendo criadas com sucesso hoje, é possível que o SDK esteja aceitando como JWT válido — comportamento não documentado e frágil.
+
+**Severidade**: CRÍTICA — pode falhar silenciosamente em atualizações do SDK.
+
+**Ação**: Refatorar `process-cancellation` para criar a fatura diretamente via `supabaseClient` (que já tem service role) em vez de invocar `create-invoice` como edge function. Alternativamente, adicionar ao `create-invoice` um bypass de autenticação quando chamado com service role (verificando `auth.role() === 'service_role'`).
+
+### 81. check-overdue-invoices sem guard clause `status = 'pendente'` no update — race condition paid→overdue (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
+
+A função busca faturas com `status = 'pendente'` e `due_date < now`, depois atualiza para `overdue`. Porém, entre a busca (linha 27-31) e o update (linha 57-59), um webhook Stripe pode ter processado o pagamento e atualizado o status para `paid`. O update `.eq('id', invoice.id)` **não verifica** o status atual — sobrescreve para `overdue` mesmo que a fatura já esteja `paid`.
+
+A memória `payment/protecao-reversao-status-fatura` define: "Transições de estado devem incluir uma verificação de guarda para garantir que o status atual não seja 'paga'".
+
+**Severidade**: ALTA — fatura paga revertida para overdue.
+
+**Ação**: Adicionar `.eq('status', 'pendente')` ao update:
+```javascript
+await supabase
+  .from("invoices")
+  .update({ status: "overdue" })
+  .eq("id", invoice.id)
+  .eq("status", "pendente"); // Guard clause
+```
+
+### 82. AmnestyButton não verifica `is_paid_class` — permite anistia em aulas pré-pagas (Fase 7)
+
+**Arquivo**: `src/components/AmnestyButton.tsx` (linhas 28-80)
+
+O `AmnestyButton` concede anistia atualizando `classes.charge_applied = false` e cancelando a fatura `invoice_type = 'cancellation'`. O plano define que para aulas pré-pagas, a anistia **não deve ser oferecida** (tratamento manual entre professor e aluno).
+
+Atualmente, o componente **não recebe** nem verifica `is_paid_class` ou `charge_timing`. As props (`AmnestyButtonProps`) não incluem esses campos.
+
+**Severidade**: MÉDIA — mitigado pelo invariante no backend (`shouldCharge = false` para prepaid).
+
+**Ação**: Adicionar props `isPaidClass` e `chargeTiming` ao `AmnestyButton`. Se `chargeTiming === 'prepaid' && isPaidClass`, renderizar label informativo em vez do botão.
+
+### 83. process-cancellation catch geral retorna HTTP 500 — viola constraint (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 493-499)
+
+O catch block genérico retorna `status: 500`. Quando chamado pelo frontend (`CancellationModal.tsx`), o Supabase SDK lança exceção genérica e a mensagem de erro amigável é perdida. O usuário vê apenas "Erro ao cancelar aula" em vez da mensagem específica.
+
+Mesmo cenário das pontas #72 (`create-invoice`) e #76 (`automated-billing`).
+
+**Severidade**: MÉDIA — UX degradada, sem perda de dados.
+
+**Ação**: Alterar para `status: 200` com body `{ success: false, error: message }`.
+
+### 84. process-cancellation usa `.single()` para buscar dependente — pode falhar (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 103-107)
+
+A query de dependente usa `.single()`. Se o `dependent_id` passado for inválido ou o dependente tiver sido deletado entre a seleção no frontend e o processamento, o `.single()` lança exceção e interrompe todo o cancelamento.
+
+**Severidade**: BAIXA — edge case raro mas possível.
+
+**Ação**: Substituir por `.maybeSingle()`. Se `dependent` for null, continuar o cancelamento sem dados de dependente (já é um campo opcional).
+
+### 85. automated-billing não salva `payment_method` nos 3 updates de pagamento (Fase 8)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 534-542, 861-869, 978-984)
+
+O `invoiceData` passado a `create_invoice_and_mark_classes_billed` não inclui `payment_method`. Os 3 fluxos (tradicional, mensalidade, fora-ciclo) geram o pagamento após a criação e atualizam a fatura com `boleto_url`, `linha_digitavel`, `stripe_payment_intent_id`, etc., mas **nenhum** inclui `payment_method: 'boleto'` (ou o método selecionado).
+
+Em contraste, o `create-invoice` (linhas 437-439) **já salva** `payment_method: selectedPaymentMethod`.
+
+Isso é distinto da ponta #48 (que identifica o problema na criação) — aqui o problema é nos **updates subsequentes** após geração de pagamento.
+
+**Severidade**: ALTA — faturas sem `payment_method` quebra CTAs de email e cálculo de taxas.
+
+**Ação**: Adicionar `payment_method: selectedPaymentMethod` (via helper `generatePaymentForInvoice` de M27) em cada um dos 3 updates de pagamento.
+
+---
+
+## Novas Melhorias v5.3 (M32-M35)
+
+### M32. check-overdue-invoices catch geral retorna HTTP 500 — padronizar (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 139-151)
+
+O catch block retorna `status: 500`. Para funções invocadas via cron, o impacto é menor, mas se invocada manualmente (ex: painel admin), o HTTP 500 impede que o frontend extraia a mensagem de erro. Padronizar para `status: 200` com `success: false`.
+
+### M33. send-cancellation-notification não busca nome do serviço — email incompleto (Fase 6)
+
+**Arquivo**: `supabase/functions/send-cancellation-notification/index.ts` (linhas 52-57)
+
+A query de `classes` busca apenas `id, class_date, teacher_id, service_id` mas não busca o nome do serviço. O email de cancelamento diz "sua aula foi cancelada" sem indicar qual serviço/matéria. Para professores com múltiplos serviços, isso é confuso.
+
+**Ação**: Buscar `class_services.name` via query sequencial após obter `service_id`.
+
+### M34. Agenda.tsx handleClassSubmit — participantes de grupo sem `confirmed_at` (Fase 5)
+
+**Arquivo**: `src/pages/Agenda.tsx` (linhas 1487-1492)
+
+Na criação de aulas em grupo, participantes são inseridos com `status: 'confirmada'` mas sem `confirmed_at`. Em aulas individuais (linhas 1320-1328), o `confirmed_at` é definido. Inconsistência nos dados.
+
+**Ação**: Adicionar `confirmed_at: new Date().toISOString()` ao insert de participantes de grupo.
+
+### M35. Idempotência no create-invoice para faturas prepaid — verificação de duplicidade (Fase 5)
+
+A memória `features/billing/create-invoice-idempotency-constraint` define que o `create-invoice` deve verificar faturas existentes para a combinação `participant_id + class_id` antes da inserção. O código atual (linhas 188-208) **não realiza** essa verificação. Um duplo clique ou retentativa de rede pode criar faturas duplicadas.
+
+**Ação**: Antes de inserir a fatura, verificar se já existe uma fatura com `class_id = X` e `student_id = Y` e `invoice_type = 'prepaid_class'` e `status != 'cancelada'`. Se existir, retornar a fatura existente em vez de criar nova.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -1374,6 +1506,7 @@ Isso resolve simultaneamente #75 e complementa #31, #36, #40, #60.
 | v5.0 | 2026-02-13 | +6 pontas soltas (#62-#67), +3 melhorias (M23-M25), 1 duplicata resolvida |
 | v5.1 | 2026-02-13 | +6 pontas soltas (#68-#73), +3 melhorias (M26-M28): bug crítico mensalidade sem cancelamentos, FK join em alerta de aulas antigas, SDK inconsistente, confirmação bug idempotência, HTTP 500 no create-invoice, .single() em send-invoice-notification |
 | v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31): webhook dupla atualização payment_method, automated-billing sem PIX fallback, HTTP 500 em catch geral, webhook retorna 500 para updates não-críticos, create-invoice guardian .single(), outsideCycleInvoiceId não logado |
+| v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35): process-cancellation SERVICE_ROLE_KEY como Bearer token, check-overdue-invoices race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation HTTP 500, .single() em dependente, automated-billing payment_method ausente nos updates |
 
 ## Memórias do Projeto a Atualizar
 

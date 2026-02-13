@@ -1,359 +1,211 @@
 
-
 # Plano de Cobranca Hibrida -- v5.7
 
-**Novas Pontas Soltas: #108-#118 | Novas Melhorias: M48-M52**
-**Totais acumulados: 118 pontas soltas, 52 melhorias**
+**Totais acumulados: 118 pontas soltas | 52 melhorias**
+**Ultima atualizacao: 2026-02-13**
+
+> Detalhes completos de cada item: ver `.lovable/plan-details.md`
 
 ---
 
-## Novas Pontas Soltas v5.7 (#108-#118)
-
-### 108. create-invoice NAO implementa validacao de whitelist de invoice_type (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 197)
-
-A memoria `features/billing/create-invoice-type-validation-whitelist` documenta que a funcao DEVE implementar uma whitelist `VALID_INVOICE_TYPES` com os tipos: 'regular', 'manual', 'automated', 'monthly_subscription', 'prepaid_class', 'cancellation', 'orphan_charges'. Porem, inspecao direta do codigo confirma que **nenhuma validacao existe** -- a linha 197 aceita qualquer valor:
-
-```javascript
-invoice_type: body.invoice_type || 'manual',
-```
-
-Qualquer chamada com `invoice_type: 'xyz_invalido'` sera aceita e inserida no banco, quebrando o `InvoiceTypeBadge` no frontend e os filtros financeiros.
-
-**Impacto**: Dados inconsistentes no banco e badges quebrados no Financeiro.
-
-**Acao**: Adicionar validacao de whitelist antes da insercao, retornando `success: false` para tipos invalidos.
-
-### 109. create-invoice NAO implementa verificacao de idempotencia por participant_id + class_id (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 190-208)
-
-A memoria `features/billing/create-invoice-idempotency-constraint` documenta que a funcao DEVE realizar "verificacao previa de faturas existentes para a combinacao especifica de participant_id e class_id antes da insercao". Inspecao direta confirma que **nenhuma verificacao de duplicidade existe** -- a funcao insere a fatura diretamente sem checar se ja existe uma para o mesmo class_id.
-
-**Impacto**: Retentativas de rede ou cliques multiplos podem gerar faturas duplicadas.
-
-**Acao**: Antes de inserir, verificar se ja existe fatura com `class_id = body.class_id` AND `student_id = billingStudentId` AND `status != 'cancelada'`. Se existir, retornar a fatura existente com `success: true, already_exists: true`.
-
-### 110. create-invoice catch block retorna HTTP 500 -- viola constraint (Fase 5)
-
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 564-574)
-
-```javascript
-} catch (error) {
-    ...
-    return new Response(JSON.stringify({ 
-      success: false,
-      error: errorMessage 
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
-}
-```
-
-Erros de validacao como "student_id and amount are required" (linha 56) e "Relacionamento professor-aluno nao encontrado" (linha 158) sao lancados via `throw` e capturados pelo catch geral, retornando HTTP 500. Quando chamado pelo `process-cancellation` (#80), o error.message e perdido.
-
-Ja documentado parcialmente na ponta #72, mas confirmacao direta mostra que TODOS os throws internos (linhas 42, 46, 55, 158, 212, 247, 276, 356) sao capturados pelo mesmo catch com HTTP 500.
-
-**Acao**: Alterar catch geral para HTTP 200 com `success: false`.
-
-### 111. create-payment-intent-connect usa `invoice.student?.guardian_name` que NAO existe no schema (Fase 5)
-
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 308, 433)
-
-```javascript
-name: invoice.student?.guardian_name || invoice.student?.name,
-```
-
-O campo `guardian_name` NAO existe na tabela `profiles` (conforme schema e memoria `database/responsible-party-contact-teacher-student-relationships`). O select da fatura (linhas 41-44) busca `name, email, cpf, address_*` de `profiles` -- nenhum `guardian_name`. O resultado e que `invoice.student?.guardian_name` e sempre `undefined`, e o fallback `invoice.student?.name` e usado.
-
-Isso nao causa erro funcional (fallback funciona), mas gera confusao semantica e viola a constraint de que dados de responsaveis devem vir de `teacher_student_relationships`.
-
-**Impacto**: Baixo (fallback funciona). Mas o Stripe customer sera criado com o nome do aluno em vez do responsavel quando o guardian data nao vem da request.
-
-**Acao**: Substituir `invoice.student?.guardian_name` por `finalPayerName` (que ja resolve guardian vs student corretamente nas linhas 267-269).
-
-### 112. automated-billing fluxo tradicional NAO envia notificacao de fatura criada (Fase 5) -- CONFIRMACAO DIRETA
-
-**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 559-566)
-
-Confirmacao definitiva por inspecao do codigo: o bloco do fluxo tradicional (linhas 499-566) termina com:
-```javascript
-logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`, {...});
-processedCount++;
-```
-
-Nenhuma chamada a `send-invoice-notification` existe neste bloco. Em contraste:
-- Fluxo de mensalidade (linha 884): chama `send-invoice-notification`
-- Fluxo outside-cycle (linha 998): chama `send-invoice-notification`
-
-Isso e a confirmacao definitiva das pontas #67 e #83.
-
-**Acao**: Adicionar chamada fire-and-forget a `send-invoice-notification` apos linha 566, antes do `processedCount++`.
-
-### 113. send-invoice-notification insere `invoice.id` em `class_notifications.class_id` -- colisao semantica ATIVA (Fase 8)
-
-**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 435-442)
-
-```javascript
-const { error: notificationError } = await supabase
-  .from("class_notifications")
-  .insert({
-    class_id: invoice.id, // Usando invoice_id como class_id para aproveitar a estrutura
-    student_id: invoice.student_id,
-    notification_type: payload.notification_type,
-    status: "sent",
-  });
-```
-
-O comentario "Usando invoice_id como class_id" confirma que esta e uma decisao intencional mas problematica. Diferente de `check-overdue-invoices` (#82/#90) que NAO faz o INSERT (e portanto nao causa colisao real), o `send-invoice-notification` ATIVAMENTE insere invoice IDs no campo `class_id`.
-
-**Impacto**: Toda notificacao de fatura (criacao, pagamento, vencimento, lembrete) cria um registro em `class_notifications` com um `invoice.id` no campo `class_id`. Se uma query futura listar notificacoes "de aulas", faturas aparecerao como aulas inexistentes.
-
-**Acao**: Migrar para tabela dedicada ou usar a coluna `overdue_notification_sent` em `invoices` (conforme M15). Alternativamente, adicionar um campo `reference_type` em `class_notifications` para distinguir 'class' de 'invoice'.
-
-### 114. process-cancellation NAO verifica `is_paid_class` -- CONFIRMACAO DIRETA (Fase 6)
-
-Confirmacao definitiva: busca por `is_paid_class` no arquivo `process-cancellation/index.ts` retorna zero resultados. A query da aula (linha 45) nao inclui `is_paid_class` no SELECT. A logica `shouldCharge` (linhas 216-225) nao consulta esse campo.
-
-Resultado: Aulas gratuitas (`is_paid_class = false`) canceladas tardiamente por alunos geram cobranca de cancelamento indevida.
-
-Isso confirma definitivamente a ponta #88.
-
-### 115. process-cancellation NAO verifica `charge_timing` -- CONFIRMACAO DIRETA (Fase 6)
-
-Confirmacao definitiva: busca por `charge_timing` em todas as edge functions retorna zero resultados. Nenhuma funcao do sistema consulta o campo `charge_timing` de `business_profiles`.
-
-Resultado: O sistema foi planejado para diferenciar comportamento prepaid vs postpaid, mas nenhuma logica runtime implementa essa diferenciacao. Especificamente:
-- `process-cancellation`: nao verifica se a aula ja foi paga antecipadamente
-- `automated-billing`: nao filtra aulas prepaid (que ja teriam fatura individual)
-- `ClassForm`: nao bloqueia recorrencia para aulas prepaid pagas
-
-**Impacto CRITICO**: Aulas prepaid podem ser duplamente cobradas -- uma vez pela fatura individual gerada na criacao e novamente pelo faturamento automatizado no final do ciclo.
-
-**Acao**: Implementar verificacao de `charge_timing` em:
-1. `process-cancellation`: nao cobrar cancelamento para aulas prepaid
-2. `automated-billing`: filtrar aulas que ja possuem fatura prepaid (via `invoice_classes.class_id`)
-3. Frontend (ClassForm): consultar `charge_timing` para decidir recorrencia
-
-### 116. automated-billing usa R$100 como fallback de preco de servico sem alerta critico (Fase 5)
-
-**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 337, 348, 387, 410)
-
-```javascript
-const amount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
-```
-
-Este fallback aparece em 4 locais. Se uma aula nao tem servico associado E nao ha servico padrao, o sistema cobra R$100 silenciosamente. Nao ha log de warning, nao ha alerta ao professor, nao ha marcacao na fatura indicando que o valor foi estimado.
-
-Ja documentado como M41 no plano anterior, mas a confirmacao mostra que o problema existe em 4 locais (nao apenas 2) e que nenhum deles gera log de warning.
-
-**Acao**: Em todos os 4 locais, adicionar `logStep("WARNING: Using fallback price R$100")`. Considerar rejeitar a cobranca em vez de usar fallback, ou notificar o professor.
-
-### 117. check-overdue-invoices marca fatura como 'overdue' mas send-invoice-notification exibe status original da fatura no email (Fase 8)
-
-**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59) e `send-invoice-notification/index.ts` (linha 393)
-
-O fluxo e:
-1. `check-overdue-invoices` atualiza status para 'overdue' (linha 57)
-2. `check-overdue-invoices` invoca `send-invoice-notification` com `notification_type: 'invoice_overdue'` (linha 62)
-3. `send-invoice-notification` busca a fatura APOS o update (linha 39-57)
-4. `send-invoice-notification` exibe `invoice.status` no email (linha 393): `<p><strong>Status:</strong> ${invoice.status}</p>`
-
-O problema: como o update e feito ANTES da invocacao, o email mostrara "Status: overdue". Porem, o campo `status` no banco e 'overdue' em ingles, enquanto o resto da interface usa termos em portugues ('pendente', 'paga', 'cancelada'). O email exibira "Status: overdue" em vez de "Status: Vencida".
-
-**Impacto**: Inconsistencia linguistica no email enviado ao aluno.
-
-**Acao**: Adicionar mapeamento de status para portugues no `send-invoice-notification` antes de exibir no email.
-
-### 118. verify-payment-status NAO atualiza `payment_method` nem limpa campos temporarios ao reconciliar (Fase 7)
-
-**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linhas 89-93)
-
-```javascript
-const { error: updateError } = await supabaseClient
-  .from("invoices")
-  .update({ status: newStatus })
-  .eq("id", invoice_id);
-```
-
-Quando `verify-payment-status` detecta que o `PaymentIntent` foi pago (`succeeded`), atualiza APENAS o `status` para 'paga'. Nao atualiza:
-- `payment_method` (permanece como o metodo original, ok)
-- `payment_origin` (deveria ser 'automatic' para indicar pagamento via Stripe)
-- Campos temporarios (pix_qr_code, boleto_url, etc.) nao sao limpos
-- Nenhuma notificacao e enviada (#103)
-
-Em contraste, o webhook `payment_intent.succeeded` (linhas 466-485) faz tudo isso corretamente.
-
-**Acao**: Alinhar o update do `verify-payment-status` com o do webhook: incluir `payment_origin: 'automatic'`, limpar campos temporarios, e enviar notificacao.
+## Roadmap de Implementação por Batches (Ordem Recomendada)
+
+### Batch 1: Críticos Financeiros (Previnem dano monetário)
+
+| # | Descrição | Arquivo | Esforço |
+|---|-----------|---------|---------|
+| #109 | Idempotência create-invoice (duplicatas) | create-invoice | Médio |
+| #115 | charge_timing NUNCA implementado (prepaid 2x) | automated-billing, process-cancellation, ClassForm | Alto |
+| #114 | is_paid_class ignorado no cancelamento (#88 confirmado) | process-cancellation | Baixo |
+| #80 | process-cancellation usa service_role como Bearer | process-cancellation | Médio |
+| M52 | Fatura cancelamento sem business_profile_id (amplifica #80) | process-cancellation | Baixo |
+| #116 | Fallback R$100 silencioso em 4 locais | automated-billing | Baixo |
+| #102 | Minimum R$5 hardcoded bloqueia PIX R$1 | process-cancellation, create-payment-intent | Baixo |
+
+### Batch 2: HTTP Status Violations (10 locais -- batch único)
+
+| Função | Status Atual → Correto | Ponta |
+|--------|----------------------|-------|
+| create-invoice catch | 500 → 200+success:false | #110 |
+| process-cancellation catch | 500 → 200+success:false | #84 |
+| automated-billing catch | 500 → 200+success:false | #76 |
+| create-payment-intent-connect validation | 400 → 200+success:false | #106 |
+| create-payment-intent-connect catch | 500 → 200+success:false | M44 |
+| generate-boleto-for-invoice catch | 500 → 200+success:false | #107 |
+| verify-payment-status catch | 500 → 200+success:false | #118 |
+| send-invoice-notification catch | 500 → 200+success:false | M51 |
+| webhook-stripe-connect invoice.paid | 500 (return) → break+log | #91 |
+| webhook-stripe-connect marked_uncollectible | 500 (return) → break+log | #91 |
+
+### Batch 3: Notificações & Emails
+
+| # | Descrição | Arquivo |
+|---|-----------|---------|
+| #112 | Fluxo tradicional sem send-invoice-notification (#67/#83 confirmado) | automated-billing |
+| #117 | Status em inglês no email (overdue → Vencida) | send-invoice-notification |
+| #103 | verify-payment-status não envia notificação ao reconciliar | verify-payment-status |
+| #118 | verify-payment-status reconciliação incompleta vs webhook | verify-payment-status |
+| #104 | payment_intent.payment_failed não limpa campos temporários | webhook-stripe-connect |
+
+### Batch 4: Validações & Dados
+
+| # | Descrição | Arquivo |
+|---|-----------|---------|
+| #108 | invoice_type sem whitelist | create-invoice |
+| #111 | guardian_name inexistente no schema | create-payment-intent-connect |
+| #113 | Colisão invoice.id em class_notifications.class_id | send-invoice-notification |
+| #101 | change-payment-method guardian check quebrado (.eq consecutivos) | change-payment-method |
+| #82/#90 | Colunas overdue/reminder_notification_sent ausentes no schema | Migração DB |
+
+### Batch 5: FK Joins → Queries Sequenciais
+
+| Função | Linhas | Join Problemático | Ponta |
+|--------|--------|-------------------|-------|
+| automated-billing (trad) | 320-330 | classes→class_services | #93 |
+| automated-billing (trad) | 340-345 | classes→class_participants | #93 |
+| automated-billing (mensal) | 700-710 | monthly_subscriptions→profiles | #93 |
+| automated-billing (outside) | 900-910 | classes→class_services | #93 |
+| create-invoice | 226-241 | class_participants→classes→class_services | M48 |
+| create-payment-intent-connect | 41-44 | invoices→profiles | #93 |
+| process-cancellation | 45-60 | classes→class_participants | #93 |
+| check-overdue-invoices | 30-40 | invoices→profiles | #93 |
+| change-payment-method | varies | invoices→profiles | #100 |
+
+### Batch 6: Otimizações & Payment Method Hierarchy
+
+| # | Descrição | Arquivo |
+|---|-----------|---------|
+| #89/M50 | Hierarquia payment_method (hardcoded boleto → enabled_payment_methods) | automated-billing |
+| M49 | Stripe customer não reutilizado (stripe_customer_id) | create-payment-intent-connect |
+| M48 | FK join triplo no create-invoice | create-invoice |
+| #105/M46 | Webhook invoice.paid/payment_succeeded são no-ops para Connect | webhook-stripe-connect |
 
 ---
 
-## Novas Melhorias v5.7 (M48-M52)
+## Índice Consolidado: Todas as Pontas Soltas (#1-#118)
 
-### M48. create-invoice aceita `class_id` no body mas usa FK join syntax no SELECT de participants (Fase 5)
+### Pontas Soltas por Função
 
-**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 226-241)
+#### create-invoice (#108, #109, #110, #72)
+- **#108**: Sem validação whitelist invoice_type
+- **#109**: Sem idempotência participant_id+class_id → faturas duplicadas
+- **#110**: Catch HTTP 500 (deveria 200+success:false)
+- **#72**: Throws internos capturados por catch genérico
 
-```javascript
-const { data: classData, error: classDataError } = await supabaseClient
-  .from('class_participants')
-  .select(`
-    id, class_id, student_id, dependent_id,
-    classes!inner (
-      id, class_date, service_id,
-      class_services (name, price)
-    )
-  `)
-```
+#### automated-billing (#67, #76, #83, #89, #93, #112, #116)
+- **#67/#83/#112**: Fluxo tradicional não envia notificação (CONFIRMADO)
+- **#76**: Catch HTTP 500
+- **#89/M50**: payment_method hardcoded 'boleto' nos 3 fluxos
+- **#93**: FK joins em múltiplos locais
+- **#116**: Fallback R$100 silencioso em 4 locais
 
-Este e o FK join #93 ja documentado, mas a confirmacao mostra que o join e **triplo**: `class_participants -> classes!inner -> class_services`. Se o cache falhar em qualquer nivel, o preco do servico sera `undefined` e o fallback `body.amount / filteredClassData.length` sera usado, potencialmente gerando valores incorretos por item.
+#### process-cancellation (#80, #84, #88, #114, #115, M52)
+- **#80**: Usa service_role_key como Bearer → auth incorreta
+- **#84**: Catch HTTP 500
+- **#88/#114**: Não verifica is_paid_class (CONFIRMADO)
+- **#115**: Não verifica charge_timing → prepaid cobrado 2x
+- **M52**: Não inclui business_profile_id na fatura de cancelamento
+- **#102**: Mínimo R$5 hardcoded
 
-### M49. create-payment-intent-connect cria Stripe Customer com dados potencialmente desatualizados (Fase 5)
+#### create-payment-intent-connect (#93, #101, #106, #111, M44, M49)
+- **#106**: Validation retorna HTTP 400 (deveria 200)
+- **#111**: Usa guardian_name inexistente no schema
+- **M44**: Catch HTTP 500
+- **M49**: Stripe customer não reutilizado
+- **#93**: FK join em invoices→profiles
+- **#102**: Mínimo R$5 hardcoded
 
-**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 297-315)
+#### verify-payment-status (#103, #118)
+- **#103**: Não envia notificação ao reconciliar
+- **#118**: Update incompleto vs webhook (falta payment_origin, limpeza campos)
 
-O fluxo de criacao de customer (linhas 297-315) busca por email e cria se nao existir. Porem:
-1. Usa `invoice.student?.guardian_name` (que nao existe no schema -- ponta #111)
-2. Nao atualiza o customer existente se os dados mudaram (nome, email)
-3. Nao armazena o `customerId` no banco para reuso futuro
+#### send-invoice-notification (#113, #117, M51)
+- **#113**: Insere invoice.id em class_notifications.class_id (colisão ativa)
+- **#117**: Status em inglês no email
+- **M51**: Catch HTTP 500
 
-Cada geracao de boleto/PIX faz uma chamada `stripe.customers.list` + potencialmente `stripe.customers.create`. Para professores com muitos alunos, isso gera dezenas de chamadas ao Stripe por execucao do billing.
+#### webhook-stripe-connect (#91, #104, #105, M46)
+- **#91**: invoice.paid e marked_uncollectible retornam HTTP 500 em vez de break
+- **#104**: payment_intent.payment_failed não limpa campos temporários
+- **#105/M46**: Handlers invoice.paid/payment_succeeded são no-ops para billing via Connect
 
-**Acao**: Armazenar `stripe_customer_id` em `profiles` ou `teacher_student_relationships` apos criacao e reutilizar em chamadas futuras (confirma M42 do plano anterior).
+#### check-overdue-invoices (#82, #90, M43, M45)
+- **#82/#90**: Não usa overdue_notification_sent (coluna ausente)
+- **M43**: Race condition com pagamento paralelo
+- **M45**: cancel-payment-intent race condition similar
 
-### M50. automated-billing nao inclui `payment_method` no invoiceData em nenhum dos 3 fluxos (Fase 5)
+#### generate-boleto-for-invoice (#107)
+- **#107**: Catch HTTP 500
 
-Confirmacao final e consolidacao das pontas #48 e M34:
-
-| Fluxo | Linhas | Inclui payment_method? |
-|-------|--------|----------------------|
-| Tradicional | 472-481 | NAO |
-| Mensalidade | 801-812 | NAO |
-| Outside-cycle | 932-941 | NAO |
-
-Alem disso, os 3 fluxos hardcodam `payment_method: 'boleto'` na chamada ao `create-payment-intent-connect` (linhas 527, 855, 969), ignorando `enabled_payment_methods` do business profile.
-
-### M51. send-invoice-notification catch block retorna HTTP 500 (Fase 8)
-
-**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 455-463)
-
-```javascript
-} catch (error) {
-    ...
-    return new Response(
-      JSON.stringify({ error: ... }),
-      { ..., status: 500 }
-    );
-}
-```
-
-Quando chamado pelo `check-overdue-invoices` ou `automated-billing` em modo fire-and-forget, o HTTP 500 e ignorado. Mas quando chamado sincronamente, pode interromper o fluxo do caller.
-
-### M52. process-cancellation nao busca `business_profile_id` para associar a fatura de cancelamento (Fase 6)
-
-**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 437-446)
-
-O `invoicePayload` enviado ao `create-invoice` nao inclui `business_profile_id`. O `create-invoice` resolve isso via `teacher_student_relationships`, mas como a chamada usa `service_role_key` como Bearer (#80), o `user.id` do `create-invoice` nao sera o teacher. Resultado: a query de `teacher_student_relationships` (linha 143-154) usara um `teacher_id` incorreto (o da service_role) e nao encontrara o relacionamento.
-
-Isso amplifica o impacto da ponta #80: nao apenas a autenticacao falha, mas o roteamento de pagamento tambem seria incorreto mesmo se a autenticacao fosse contornada.
+#### change-payment-method (#100, #101)
+- **#100**: FK join em invoices→profiles
+- **#101**: Guardian check quebrado (.eq consecutivos sobrescrevem)
 
 ---
 
-## Indice Atualizado (apenas novos itens)
+## Panorama: Features Planejadas mas Ausentes no Código
 
-| # | Descricao | Fase | Arquivo(s) |
-|---|-----------|------|------------|
-| 108 | create-invoice sem validacao de whitelist de invoice_type | 5 | create-invoice/index.ts |
-| 109 | create-invoice sem verificacao de idempotencia por participant+class | 5 | create-invoice/index.ts |
-| 110 | create-invoice catch block HTTP 500 | 5 | create-invoice/index.ts |
-| 111 | create-payment-intent-connect usa guardian_name inexistente no schema | 5 | create-payment-intent-connect/index.ts |
-| 112 | automated-billing fluxo tradicional sem notificacao (confirmacao #83) | 5 | automated-billing/index.ts |
-| 113 | send-invoice-notification insere invoice.id em class_notifications.class_id | 8 | send-invoice-notification/index.ts |
-| 114 | process-cancellation nao verifica is_paid_class (confirmacao #88) | 6 | process-cancellation/index.ts |
-| 115 | charge_timing NAO implementado em nenhuma funcao runtime | 6 | Todas |
-| 116 | automated-billing fallback R$100 sem warning em 4 locais | 5 | automated-billing/index.ts |
-| 117 | send-invoice-notification exibe status em ingles no email | 8 | send-invoice-notification/index.ts |
-| 118 | verify-payment-status reconciliacao incompleta vs webhook | 7 | verify-payment-status/index.ts |
-
-| # | Descricao | Fase |
-|---|-----------|------|
-| M48 | create-invoice FK join triplo em class_participants | 5 |
-| M49 | create-payment-intent-connect nao reutiliza stripe_customer_id | 5 |
-| M50 | automated-billing 3 fluxos sem payment_method + hardcoded boleto (consolidacao) | 5 |
-| M51 | send-invoice-notification catch HTTP 500 | 8 |
-| M52 | process-cancellation fatura de cancelamento sem business_profile_id amplifica #80 | 6 |
-
----
-
-## Historico de Versoes (atualizado)
-
-| Versao | Data | Mudancas |
-|--------|------|----------|
-| v5.7 | 2026-02-13 | +11 pontas soltas (#108-#118), +5 melhorias (M48-M52): create-invoice sem whitelist invoice_type e sem idempotencia, create-payment-intent-connect guardian_name inexistente, confirmacao direta de is_paid_class e charge_timing nao implementados, automated-billing fallback R$100 em 4 locais, send-invoice-notification colisao ativa de IDs e status em ingles, verify-payment-status reconciliacao incompleta, process-cancellation sem business_profile_id |
-
----
-
-## Secao Tecnica: Resumo de Severidade v5.7
-
-**CRITICOS (bloqueiam funcionalidade ou causam dano financeiro):**
-- #109: Faturas duplicadas possiveis por retentativa de rede
-- #115: `charge_timing` NUNCA implementado -- aulas prepaid podem ser cobradas 2x (billing automatico + fatura individual)
-- #114: Aulas gratuitas cobram taxa de cancelamento (confirmacao #88)
-- #112: Alunos tradicionais nunca recebem email de cobranca (confirmacao #83)
-- M52: Fatura de cancelamento sem business_profile_id (amplifica #80)
-
-**ALTOS (dados incorretos ou UX degradada):**
-- #108: invoice_type sem validacao permite dados invalidos
-- #110: HTTP 500 no create-invoice perde mensagens de erro
-- #113: Colisao ativa de invoice.id em class_notifications.class_id
-- #116: Fallback R$100 silencioso pode cobrar valor errado
-- #117: Status em ingles no email de fatura
-- #118: verify-payment-status incompleto vs webhook
-
-**MEDIOS (inconsistencias e otimizacoes):**
-- #111: guardian_name inexistente (fallback funciona)
-- M48: FK join triplo no create-invoice
-- M49: Stripe customer nao reutilizado
-- M50: Consolidacao de payment_method hardcoded
-- M51: send-invoice-notification HTTP 500
-
----
-
-## Panorama Consolidado: Pontas Soltas NAO Implementadas (Planejadas mas Ausentes)
-
-Verificacao cruzada entre o que foi planejado no documento e o que existe no codigo:
-
-| Feature Planejada | Status no Codigo | Ponta(s) |
+| Feature | Status | Ponta(s) |
 |---|---|---|
-| Whitelist de `invoice_type` em `create-invoice` | NAO implementada | #108 |
-| Idempotencia por `participant_id + class_id` em `create-invoice` | NAO implementada | #109 |
-| Coluna `overdue_notification_sent` em `invoices` | NAO existe no schema | #82, #90, #113 |
-| Coluna `reminder_notification_sent` em `invoices` | NAO existe no schema | #90 |
-| Verificacao de `charge_timing` em runtime | NAO implementada em NENHUMA funcao | #115 |
-| Verificacao de `is_paid_class` em `process-cancellation` | NAO implementada | #114 |
-| Hierarquia de metodos de pagamento em `automated-billing` | NAO implementada (hardcoded boleto) | #89, M50 |
-| Notificacao no fluxo tradicional do `automated-billing` | NAO implementada | #112 |
-| Limpeza de campos temporarios em `payment_intent.payment_failed` | NAO implementada | #104 |
-| Notificacao em `verify-payment-status` ao reconciliar | NAO implementada | #103, #118 |
+| Whitelist invoice_type em create-invoice | NÃO implementada | #108 |
+| Idempotência participant_id+class_id | NÃO implementada | #109 |
+| Coluna overdue_notification_sent em invoices | NÃO existe no schema | #82, #90, #113 |
+| Coluna reminder_notification_sent em invoices | NÃO existe no schema | #90 |
+| Verificação charge_timing em runtime | NÃO implementada em NENHUMA função | #115 |
+| Verificação is_paid_class em process-cancellation | NÃO implementada | #114 |
+| Hierarquia payment_method (enabled_payment_methods) | NÃO implementada (hardcoded boleto) | #89, M50 |
+| Notificação no fluxo tradicional do automated-billing | NÃO implementada | #112 |
+| Limpeza campos temporários em payment_failed | NÃO implementada | #104 |
+| Notificação em verify-payment-status | NÃO implementada | #103, #118 |
 
 ---
 
-## Panorama Consolidado: HTTP Status Violations (atualizado)
+## Resumo de Severidade Consolidado (todos os itens)
 
-| Funcao | Linhas | Status Retornado | Deveria Ser | Ponta |
-|--------|--------|-----------------|-------------|-------|
-| create-invoice | 564-574 | 500 | 200 + success:false | #110 |
-| process-cancellation | 493-499 | 500 | 200 + success:false | #84 |
-| automated-billing | 588-596 | 500 | 200 + success:false | #76 |
-| create-payment-intent-connect | 74-81 | 400 | 200 + success:false | #106 |
-| create-payment-intent-connect | 647-658 | 500 | 200 + success:false | M44 |
-| generate-boleto-for-invoice | 146-155 | 500 | 200 + success:false | #107 |
-| verify-payment-status | 117-122 | 500 | 200 + success:false | #118 |
-| send-invoice-notification | 455-463 | 500 | 200 + success:false | M51 |
-| webhook-stripe-connect (invoice.paid) | 328-332 | 500 (return) | break + log | #91 |
-| webhook-stripe-connect (marked_uncollectible) | 410-415 | 500 (return) | break + log | #91 |
+### CRÍTICOS (dano financeiro direto)
+| # | Descrição | Batch |
+|---|-----------|-------|
+| #109 | Faturas duplicadas por retentativa | 1 |
+| #115 | charge_timing não implementado → prepaid cobrado 2x | 1 |
+| #114 | Aulas gratuitas cobram cancelamento | 1 |
+| #80 | process-cancellation auth incorreta (service_role) | 1 |
+| M52 | Fatura cancelamento sem business_profile_id | 1 |
+| #112 | Alunos tradicionais nunca recebem email de cobrança | 3 |
+| #116 | Fallback R$100 silencioso | 1 |
+| #101 | change-payment-method guardian check quebrado | 4 |
 
-**Total: 10 locais com HTTP status incorreto.**
+### ALTOS (dados incorretos / UX degradada)
+| # | Descrição | Batch |
+|---|-----------|-------|
+| #108 | invoice_type sem validação | 4 |
+| #110 | HTTP 500 perde mensagens de erro | 2 |
+| #113 | Colisão invoice.id em class_notifications | 4 |
+| #117 | Status inglês no email | 3 |
+| #118 | verify-payment-status incompleto | 3 |
+| #91 | webhook handlers retornam 500 em vez de break | 2 |
+| #104 | Campos temporários não limpos em payment_failed | 3 |
+| #82/#90 | Notificações overdue sem controle de duplicatas | 4 |
 
+### MÉDIOS (otimizações / inconsistências)
+| # | Descrição | Batch |
+|---|-----------|-------|
+| #111 | guardian_name inexistente (fallback funciona) | 4 |
+| #93 | FK joins em múltiplas funções | 5 |
+| M48 | FK join triplo create-invoice | 5 |
+| M49 | Stripe customer não reutilizado | 6 |
+| M50 | payment_method hardcoded boleto | 6 |
+| M51 | send-invoice-notification HTTP 500 | 2 |
+| #102 | Mínimo R$5 hardcoded | 1 |
+| #105/M46 | Webhook handlers no-ops para Connect | 6 |
+
+---
+
+## Histórico de Versões
+
+| Versão | Data | Mudanças |
+|--------|------|----------|
+| v5.0 | 2026-02 | Plano inicial com arquitetura híbrida |
+| v5.1-5.4 | 2026-02 | Identificação progressiva de pontas soltas #1-#79, melhorias M1-M30 |
+| v5.5 | 2026-02 | +20 pontas (#80-#99), +12 melhorias (M31-M42) |
+| v5.6 | 2026-02-13 | +8 pontas (#100-#107), +5 melhorias (M43-M47): change-payment-method auth quebrada, FK joins, mínimo R$5, HTTP status violations, webhook no-ops |
+| v5.7 | 2026-02-13 | +11 pontas (#108-#118), +5 melhorias (M48-M52): create-invoice validações ausentes, charge_timing/is_paid_class não implementados, fallback R$100, colisão IDs, status inglês email, verify-payment-status incompleto |

@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.4
+# Plano de Cobrança Híbrida — v5.5
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.3 acumulou 85 pontas soltas e 35 melhorias. Esta v5.4 adiciona 6 novas pontas soltas (#86-#91) e 3 melhorias (M36-M38), totalizando **91 pontas soltas** e **38 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.4 acumulou 91 pontas soltas e 38 melhorias. Esta v5.5 adiciona 6 novas pontas soltas (#92-#97) e 3 melhorias (M39-M41), totalizando **97 pontas soltas** e **41 melhorias**.
 
-Principais mudanças na v5.4: webhook-stripe-connect `payment_intent.succeeded` apaga dados de boleto/PIX da fatura paga (#86), handlers `invoice.*` nunca encontram faturas internas por buscar apenas `stripe_invoice_id` (#87 — CRÍTICA), automated-billing mensalidade sem filtro de datas na RPC (#88), create-invoice sem verificação de `charges_enabled` do Stripe Connect (#89), decisão de negócio sobre mensalidade sem aulas não documentada (#90), send-invoice-notification label "Cartão" para URL de boleto (#91 — ALTA).
+Principais mudanças na v5.5: automated-billing hardcoda `payment_method: 'boleto'` ignorando preferências do professor (#92 — ALTA), faturas automatizadas sem campo `payment_method` (#93 — ALTA), mensalidade sem geração de pagamento Stripe (#94 — CRÍTICA), check-overdue-invoices race condition paid→overdue (#95 — CRÍTICA), process-cancellation service_role auth falha (#96 — CRÍTICA), clientes Stripe duplicados platform vs connected (#97 — MÉDIA).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -1634,6 +1634,140 @@ Além disso, o email mostra o **mesmo link** em dois lugares: como "Pagar com Ca
 
 ---
 
+## Novas Pontas Soltas v5.5 (#92-#97)
+
+### 92. automated-billing hardcoda `payment_method: 'boleto'` ignorando `enabled_payment_methods` do professor (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts`
+
+Tanto o fluxo tradicional quanto o de mensalidade hardcodam `payment_method: 'boleto'` ao chamar `create-payment-intent-connect`, ignorando completamente o array `enabled_payment_methods` do `business_profiles` do professor. Se o professor desabilitou boleto e habilitou apenas PIX e cartão, o sistema ainda tenta gerar boleto.
+
+O `create-invoice` (pré-pago) implementa corretamente a hierarquia de fallback (Boleto → PIX → nenhum), mas o `automated-billing` não replica essa lógica.
+
+**Severidade**: ALTA — professor pode não receber pagamentos se desabilitou boleto.
+
+**Ação**: Replicar a lógica de seleção de método de pagamento do `create-invoice` no `automated-billing`, consultando `enabled_payment_methods` do `business_profiles` e seguindo a hierarquia: Boleto (se habilitado e >= R$5) → PIX (se habilitado e >= R$1) → nenhum (fatura manual).
+
+### 93. automated-billing não salva `payment_method` na fatura após geração de pagamento (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts`
+
+Após chamar `create-payment-intent-connect` com sucesso, o `automated-billing` atualiza a fatura com `stripe_payment_intent_id`, `boleto_url`, `linha_digitavel`, etc., mas **não salva o campo `payment_method`** (ex: 'boleto', 'pix'). O campo fica `NULL` na tabela `invoices`.
+
+Isso impacta:
+1. Frontend `Financeiro.tsx` que exibe o método de pagamento
+2. `send-invoice-notification` que condiciona CTAs baseado em `payment_method`
+3. Filtros e relatórios financeiros
+
+A ponta #85 já identificou parcialmente este problema, mas a análise confirma que é mais abrangente: afeta **todas** as faturas geradas pelo `automated-billing`.
+
+**Severidade**: ALTA — campo essencial não preenchido em todas as faturas automatizadas.
+
+**Ação**: Após chamada bem-sucedida a `create-payment-intent-connect`, salvar `payment_method` com o valor do método escolhido ('boleto', 'pix' ou null) no UPDATE da fatura.
+
+### 94. automated-billing fluxo de mensalidade não gera pagamento via Stripe (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (fluxo `processMonthlySubscriptionBilling`)
+
+O fluxo de mensalidade cria a fatura e os `invoice_classes` items mas **não chama** `create-payment-intent-connect` para gerar o boleto/PIX. A fatura é criada com status 'pendente' e sem nenhum dado de pagamento (`stripe_payment_intent_id`, `boleto_url`, etc. ficam NULL).
+
+O fluxo tradicional (`processTraditionalBilling`) chama `create-payment-intent-connect` (quando não há `skipBoletoGeneration`), mas o fluxo de mensalidade omite completamente essa etapa.
+
+O aluno recebe uma fatura sem nenhum CTA de pagamento funcional.
+
+**Severidade**: CRÍTICA — faturas de mensalidade não têm mecanismo de pagamento.
+
+**Ação**: Após criar a fatura de mensalidade e inserir os `invoice_classes`, replicar a lógica de geração de pagamento do fluxo tradicional: consultar `enabled_payment_methods`, selecionar método apropriado, chamar `create-payment-intent-connect` e atualizar a fatura com os dados de pagamento.
+
+### 95. check-overdue-invoices race condition: atualiza para 'overdue' sem verificar status atual (Fase 1)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
+
+O UPDATE para marcar faturas como 'overdue' não inclui condição de status:
+```javascript
+await supabase
+  .from("invoices")
+  .update({ status: "overdue" })
+  .eq("id", invoice.id);
+```
+
+Se entre o SELECT inicial (linha 27, `.eq("status", "pendente")`) e o UPDATE, o webhook do Stripe processar o pagamento e mudar o status para 'pago', este UPDATE **reverterá** o status para 'overdue'. A ponta #81 já identificou este risco genericamente, mas aqui está o código exato sem a guard clause.
+
+**Severidade**: CRÍTICA — fatura paga pode ser revertida para overdue.
+
+**Ação**: Adicionar `.eq("status", "pendente")` ao UPDATE para garantir atomicidade:
+```javascript
+await supabase
+  .from("invoices")
+  .update({ status: "overdue" })
+  .eq("id", invoice.id)
+  .eq("status", "pendente");
+```
+
+### 96. process-cancellation passa SERVICE_ROLE_KEY como Bearer token para create-invoice (Fase 1)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts`
+
+Quando há cobrança de cancelamento, `process-cancellation` invoca `create-invoice` passando `SUPABASE_SERVICE_ROLE_KEY` como Bearer token no header Authorization. Conforme a memória `auth/limite-autenticacao-service-role-edge-functions`, o `create-invoice` faz `supabase.auth.getUser(token)` que **falha** com service_role key pois não é um JWT de usuário válido.
+
+Resultado: **nenhuma fatura de cancelamento com cobrança é gerada**. O professor marca "cancelar com cobrança" mas o aluno nunca recebe a fatura correspondente.
+
+A ponta #80 identificou o uso de service_role key como Bearer genericamente, mas #96 documenta o impacto específico: perda de receita em cancelamentos tardios.
+
+**Severidade**: CRÍTICA — receita de cancelamentos com cobrança completamente perdida.
+
+**Ação**: Refatorar `create-invoice` para aceitar chamadas via service_role (verificar `auth.role() === 'service_role'` como alternativa ao `auth.getUser()`) ou refatorar `process-cancellation` para criar a fatura diretamente no banco via service_role client em vez de invocar `create-invoice`.
+
+### 97. Clientes Stripe duplicados: platform vs connected account (Fase 6)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts`
+
+O sistema cria clientes Stripe em dois contextos diferentes:
+1. Na conta **platform** (para Boletos via Destination Charges)
+2. Na conta **connected** (para PIX via Direct Charges)
+
+Se um aluno paga uma fatura com boleto (cria customer na platform) e outra com PIX (cria customer na connected account), existem dois registros Stripe Customer para o mesmo aluno. O campo `stripe_customer_id` no `profiles` armazena apenas um deles.
+
+Isso pode causar: falhas em cobranças futuras se o customer_id armazenado não corresponde ao tipo de charge sendo usado, dados inconsistentes no dashboard Stripe do professor.
+
+**Severidade**: MÉDIA — inconsistência de dados que pode causar falhas esporádicas.
+
+**Ação**: Armazenar ambos os IDs (platform e connected) separadamente, ou padronizar o tipo de charge para usar apenas um modelo. Documentar a decisão arquitetural sobre Destination vs Direct Charges.
+
+---
+
+## Novas Melhorias v5.5 (M39-M41)
+
+### M39. automated-billing tradicional não envia notificação quando skipBoletoGeneration = true (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts`
+
+Complementa M36. No fluxo tradicional, quando `skipBoletoGeneration = true` (valor < R$5), a fatura é criada mas a notificação via `send-invoice-notification` é completamente pulada. O aluno não sabe que tem uma fatura pendente.
+
+**Ação**: Mover a chamada `send-invoice-notification` para fora do bloco condicional de geração de pagamento, garantindo que notificações são enviadas independentemente do valor da fatura.
+
+### M40. change-payment-method lógica de autorização guardian/responsible redundante e bugada (Fase 5)
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 71-108)
+
+A verificação `isGuardian` (linhas 71-92) contém lógica incorreta: busca dependentes do user (`responsible_id = user.id`) e depois verifica se `responsible_id = invoice.student_id AND responsible_id = user.id` — duas condições conflitantes na mesma query. A verificação `isResponsible` (linhas 95-108) simplesmente re-verifica `invoice.student_id === user.id`, que já é coberto por `isStudent`.
+
+Na prática, apenas `isStudent` funciona corretamente. As verificações de guardian e responsible são dead code.
+
+**Ação**: Simplificar para verificar: (1) `isStudent` (student_id === user.id), (2) `isGuardian` via query correta em `dependents` onde o `responsible_id = user.id` e o `student_id` da fatura corresponde ao responsável do dependente. Remover `isResponsible` redundante.
+
+### M41. create-invoice não valida invoice_type contra whitelist (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts`
+
+Conforme a memória `features/billing/create-invoice-type-validation-whitelist`, o `create-invoice` deve implementar uma validação de lista branca para `invoice_type`. A memória documenta os tipos permitidos: 'regular', 'manual', 'automated', 'monthly_subscription', 'prepaid_class', 'cancellation', 'orphan_charges'.
+
+Porém, a validação atual pode não estar implementada ou pode aceitar valores arbitrários. Sem a validação, valores inválidos de `invoice_type` podem ser inseridos, quebrando badges no frontend e filtros financeiros.
+
+**Ação**: Verificar se a CHECK constraint de banco (#16) já cobre esta validação. Se não, adicionar validação no edge function antes do INSERT.
+
+---
+
 ## Novas Melhorias v5.4 (M36-M38)
 
 ### M36. automated-billing tradicional não envia notificação para faturas com valor abaixo do mínimo (Fase 4)
@@ -1693,6 +1827,7 @@ O campo `stripe_hosted_invoice_url` foi originalmente criado para armazenar a UR
 | v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31): webhook dupla atualização payment_method, automated-billing sem PIX fallback, HTTP 500 em catch geral, webhook retorna 500 para updates não-críticos, create-invoice guardian .single(), outsideCycleInvoiceId não logado |
 | v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35): process-cancellation SERVICE_ROLE_KEY como Bearer token, check-overdue-invoices race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation HTTP 500, .single() em dependente, automated-billing payment_method ausente nos updates |
 | v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38): webhook apaga dados boleto/PIX (#86), handlers invoice.* nunca encontram faturas internas (#87 CRÍTICA), RPC sem filtro datas mensalidade (#88), create-invoice sem charges_enabled (#89), decisão mensalidade sem aulas (#90), label "Cartão" para boleto (#91), notificação valores baixos (M36), BillingSettings sem charge_timing (M37), duplicação stripe_hosted_invoice_url (M38) |
+| v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41): automated-billing hardcoda boleto (#92 ALTA), payment_method NULL em faturas automatizadas (#93 ALTA), mensalidade sem geração de pagamento (#94 CRÍTICA), check-overdue-invoices race condition (#95 CRÍTICA), process-cancellation service_role auth (#96 CRÍTICA), clientes Stripe duplicados platform vs connected (#97 MÉDIA), notificação skipBoletoGeneration (M39), change-payment-method auth redundante (M40), create-invoice sem whitelist invoice_type (M41) |
 
 ## Memórias do Projeto a Atualizar
 

@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.5
+# Plano de Cobrança Híbrida — v4.6
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). Esta v4.5 adiciona 5 novas pontas soltas (#36-#40) e 2 melhorias (M11-M12) identificadas em revisão cruzada do fluxo de anistia pós-pago, labels de email e duplicação de hard-code de boleto.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). Esta v4.6 adiciona 6 novas pontas soltas (#41-#46) e 3 melhorias (M13-M15) identificadas em revisão cruzada do fluxo de vencimento, geração virtual, notificações de cancelamento e consistência da RPC.
 
 Principais mudanças desde v3.10:
 
@@ -285,11 +285,11 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
-| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #33, #36, #38, #40, M5, M7, M9 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, M6 | Pendente |
+| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, M3 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #33, #36, #38, #40, #42, #44, M5, M7, M9, M13 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #41, #43, M6, M14 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, #39, M10, M12 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, #39, #46, M10, M12, M15 | Pendente |
 
 ---
 
@@ -414,6 +414,12 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | 38 | create-invoice FK joins em class_participants query (linhas 233-238) | 5 | create-invoice/index.ts |
 | 39 | send-invoice-notification label "Pagar com Cartão" para hosted URL genérica | 8 | send-invoice-notification/index.ts |
 | 40 | automated-billing outside-cycle invoice hard-coded boleto (linha 969) | 5 | automated-billing/index.ts |
+| 41 | check-overdue-invoices usa `class_notifications` para idempotência de faturas | 8 | check-overdue-invoices/index.ts |
+| 42 | handleClassSubmit — rollback incompleto se fatura pré-paga falhar | 5 | Agenda.tsx |
+| 43 | send-cancellation-notification não recebe `is_paid_class` / `charge_timing` | 6 | process-cancellation/index.ts |
+| 44 | create-invoice — `due_date` fallback 15 dias não considera `payment_due_days` do professor | 5 | create-invoice/index.ts |
+| 45 | get_classes_with_participants RPC não retorna `is_paid_class` | 4 | migration SQL / Agenda.tsx |
+| 46 | Financeiro.tsx `getInvoiceTypeBadge` falta tipo `prepaid_class` | 8 | Financeiro.tsx |
 
 ## Índice de Melhorias
 
@@ -431,6 +437,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | M10 | Financeiro.tsx taxa dinâmica por método de pagamento | 8 |
 | M11 | AmnestyButton refatorar para suportar faturas consolidadas | 7 |
 | M12 | send-invoice-notification CTA baseado no `payment_method` real | 8 |
+| M13 | create-invoice deve respeitar `payment_due_days` do perfil do professor | 5 |
+| M14 | send-cancellation-notification deveria informar sobre modelo de cobrança | 6 |
+| M15 | check-overdue-invoices deveria usar tabela própria de idempotência | 8 |
 
 ---
 
@@ -533,6 +542,102 @@ Relacionada à ponta #39. O email de notificação deve usar labels de CTA que c
 
 ---
 
+## Novas Pontas Soltas v4.6 (#41-#46)
+
+### 41. check-overdue-invoices usa `class_notifications` para idempotência de faturas (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 47-52, 100-105)
+
+**Bug semântico**: A função usa a tabela `class_notifications` para rastrear se uma notificação de fatura já foi enviada, usando `class_id = invoice.id` e `notification_type = 'invoice_overdue'`. Isso é semanticamente incorreto — `class_notifications.class_id` referencia aulas, não faturas. Funciona porque UUIDs não colidem na prática, mas:
+1. Viola integridade referencial (FK aponta para `classes`, não `invoices`)
+2. `class_notifications.student_id` é obrigatório no schema mas não é fornecido nessa query (usa `maybeSingle` para silenciar)
+3. Se alguém adicionar FK validation, o sistema quebra
+
+**Ação**: Para v4.6, documentar como tech debt. Na implementação futura (M15), criar uma tabela dedicada `invoice_notification_log` ou adicionar coluna nullable `invoice_id` a `class_notifications`.
+
+### 42. handleClassSubmit — rollback incompleto se fatura pré-paga falhar (Fase 5)
+
+**Arquivo**: `src/pages/Agenda.tsx` (~linha 1500)
+
+O plano define que após `handleClassSubmit` criar a aula, deve chamar `create-invoice` para aulas pré-pagas. Porém, se a criação da fatura falhar:
+- A aula já estará persistida no banco com participantes
+- O toast destructive será exibido (conforme memória `ui-feedback-constraints`)
+- Mas a aula fica "órfã" — agendada sem fatura
+
+**Decisão**: Não fazer rollback da aula. A aula existe e é válida. O professor verá o toast de erro e pode gerar a fatura manualmente em `Financeiro.tsx`. O plano deve documentar esse comportamento como **intencional**, não como bug. Adicionar nota ao toast: "A aula foi agendada, mas a fatura não foi gerada. Crie a fatura manualmente."
+
+### 43. send-cancellation-notification não recebe `is_paid_class` / `charge_timing` (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 352-369)
+
+O `process-cancellation` chama `send-cancellation-notification` com payload que inclui `charge_applied`, `cancellation_reason`, `is_group_class` e `participants`, mas **não inclui `is_paid_class` nem `charge_timing`**. Com o modelo híbrido, o email de cancelamento deveria contextualizar:
+- Aula gratuita: "Cancelamento sem impacto financeiro"
+- Aula pré-paga: "Cancelamento registrado. O pagamento já realizado deve ser tratado diretamente com o professor."
+- Aula pós-paga sem cobrança: "Cancelamento dentro do prazo, sem cobrança"
+- Aula pós-paga com cobrança: "Cancelamento tardio, taxa aplicada" (já funciona)
+
+**Ação**: Passar `is_paid_class` e `charge_timing` ao payload do `send-cancellation-notification`. Atualizar a edge function para contextualizar a mensagem. Ver M14.
+
+### 44. create-invoice — `due_date` fallback 15 dias não consulta `payment_due_days` do professor (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 180)
+
+O `create-invoice` usa fallback `Date.now() + 15 * 24 * 60 * 60 * 1000` quando `due_date` não é fornecido. Porém, o professor pode ter configurado `payment_due_days` diferente (ex: 7 ou 30 dias) em seu perfil. O `automated-billing` já respeita isso, mas chamadas diretas do frontend (faturas manuais e pré-pagas) usam o default hard-coded.
+
+**Ação** (M13): Buscar `payment_due_days` do perfil do professor quando `due_date` não for fornecido. A query do perfil do professor já está disponível via `user.id`. Fallback: 15 dias se não encontrar.
+
+### 45. get_classes_with_participants RPC não retorna `is_paid_class` (Fase 4)
+
+**Arquivo**: RPC SQL + `src/pages/Agenda.tsx` (linha 341)
+
+A Agenda.tsx usa `supabase.rpc('get_classes_with_participants', ...)` para carregar aulas. Se a RPC não inclui `is_paid_class` no resultado, o campo não estará disponível nas instâncias de `ClassWithParticipants`, tornando impossível:
+- Exibir indicador visual no calendário
+- Propagar `is_paid_class` para modais (CancellationModal, ClassForm em modo edição)
+- Decidir se deve mostrar o AmnestyButton
+
+**Ação**: Atualizar a RPC `get_classes_with_participants` para incluir `is_paid_class` no SELECT. Atualizar a interface `ClassWithParticipants` (M8). As instâncias virtuais herdam via spread (`...templateClass`), então funcionarão automaticamente.
+
+### 46. Financeiro.tsx `getInvoiceTypeBadge` falta tipo `prepaid_class` (Fase 8)
+
+**Arquivo**: `src/pages/Financeiro.tsx` (linhas 30-44)
+
+O `getInvoiceTypeBadge` inline suporta `monthly_subscription`, `automated`, `manual`, `cancellation` e `orphan_charges` — mas **não suporta `prepaid_class`**. Faturas pré-pagas cairão no caso `default` e exibirão badge genérico "Regular", confundindo o professor.
+
+**Ação**: Adicionar case `'prepaid_class'` com badge distinto (ex: `<Badge className="bg-emerald-100 text-emerald-800">Pré-paga</Badge>`). Alinhar com a consolidação do `InvoiceTypeBadge` (ponta #21). Adicionar chave i18n `financial.invoiceTypes.prepaidClass`.
+
+---
+
+## Novas Melhorias v4.6 (M13-M15)
+
+### M13. create-invoice deve respeitar `payment_due_days` do perfil do professor (Fase 5)
+
+Relacionada à ponta #44. Quando `due_date` não for fornecido, o `create-invoice` deve:
+1. Buscar `payment_due_days` do perfil do professor (`profiles.payment_due_days`)
+2. Calcular `due_date = Date.now() + payment_due_days * 24 * 60 * 60 * 1000`
+3. Fallback: 15 dias se `payment_due_days` não estiver configurado
+
+Isso garante consistência entre faturas automáticas (que já usam `payment_due_days`) e manuais/pré-pagas.
+
+### M14. send-cancellation-notification deveria informar sobre modelo de cobrança (Fase 6)
+
+Relacionada à ponta #43. O email de cancelamento deve contextualizar o impacto financeiro baseado no modelo de cobrança:
+- Para aulas gratuitas (`is_paid_class = false`): mensagem neutra sem menção a cobrança
+- Para aulas pré-pagas (`charge_timing = 'prepaid'`): informar que ajustes financeiros devem ser combinados diretamente
+- Para aulas pós-pagas: manter comportamento atual (já funciona com `charge_applied`)
+
+A edge function `send-cancellation-notification` precisa aceitar e processar `is_paid_class` e `charge_timing` no payload.
+
+### M15. check-overdue-invoices deveria usar tabela própria de idempotência (Fase 8)
+
+Relacionada à ponta #41. Três opções de implementação:
+1. **Simples (recomendada)**: Adicionar coluna `last_overdue_notified_at` ou `overdue_notification_sent` na tabela `invoices` — elimina need de tabela secundária
+2. **Normalizada**: Criar tabela `invoice_notification_log(invoice_id, notification_type, sent_at)`
+3. **Manter (tech debt)**: Documentar o uso semântico incorreto de `class_notifications` e aceitar o risco
+
+A opção 1 é a mais pragmática — uma coluna boolean `overdue_notification_sent` na tabela `invoices` resolve o problema sem adicionar complexidade.
+
+---
+
 ## O que foi REMOVIDO do plano v3.10
 
 1. Edge function `process-class-billing` (nunca existiu no código)
@@ -553,6 +658,7 @@ Relacionada à ponta #39. O email de notificação deve usar labels de CTA que c
 | v4.3 | 2026-02-13 | +6 pontas soltas (#24-#29), +3 melhorias (M5-M7), decisão sobre automated-billing + charge_timing, invariante prepaid+cancellation, índices consolidados |
 | v4.4 | 2026-02-13 | +6 pontas soltas (#30-#35), +3 melhorias (M8-M10): notificações prepaid, payment_method dinâmico no automated-billing, taxa Stripe variável, FK joins no automated-billing |
 | v4.5 | 2026-02-13 | +5 pontas soltas (#36-#40), +2 melhorias (M11-M12): bug crítico no AmnestyButton com faturas consolidadas, FK joins adicionais no create-invoice, labels de email incorretos, hard-coded boleto em 3 locais do automated-billing |
+| v4.6 | 2026-02-13 | +6 pontas soltas (#41-#46), +3 melhorias (M13-M15): idempotência de notificações de fatura vencida, rollback de fatura pré-paga, email de cancelamento sem contexto de modelo, due_date hard-coded, RPC sem is_paid_class, prepaid_class faltando no Financeiro |
 
 ## Memórias do Projeto a Atualizar
 
@@ -562,3 +668,4 @@ Após implementação, atualizar:
 3. `features/billing/prepaid-cancellation-refund-policy` — menciona "void automático no Stripe"
 4. `payment/stripe-pix-configuration-logic` — menciona taxa fixa de R$3,49 por boleto (atualizar para taxas variáveis)
 5. `features/teacher-inbox/amnesty-flow-calendar` — deve documentar a limitação da anistia para faturas consolidadas (#37/M11)
+6. `features/billing/prazo-vencimento-padrao-consistencia` — deve documentar que create-invoice agora respeita payment_due_days (#44/M13)

@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.8
+# Plano de Cobrança Híbrida — v4.9
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). Esta v4.8 adiciona 5 novas pontas soltas (#52-#56) e 2 melhorias (M18-M19).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). A v4.7 adicionou 5 pontas soltas (#47-#51) e 2 melhorias (M16-M17). A v4.8 adicionou 5 pontas soltas (#52-#56) e 2 melhorias (M18-M19). Esta v4.9 adiciona 5 novas pontas soltas (#57-#61) e 3 melhorias (M20-M22).
 
 Principais mudanças desde v3.10:
 
@@ -854,6 +854,129 @@ A query (linhas 27-31) não inclui `invoice_type`. Adicionar ao SELECT e passar 
 
 ---
 
+## Novas Pontas Soltas v4.9 (#57-#61)
+
+### 57. create-invoice usa FK join `business_profiles!teacher_student_relationships_business_profile_id_fkey` (Fase 4)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 143-154)
+
+A query de `teacher_student_relationships` usa FK join syntax:
+```
+.select(`
+  business_profile_id, 
+  teacher_id,
+  business_profile:business_profiles!teacher_student_relationships_business_profile_id_fkey(
+    enabled_payment_methods
+  )
+`)
+```
+
+Isso viola a constraint `edge-functions-pattern-sequential-queries`. Se o schema cache do Deno ficar desatualizado, o `create-invoice` retornará erro 500 — tanto para faturas manuais quanto para pré-pagas e cancelamentos. Impacto crítico pois `create-invoice` é chamada por `process-cancellation` server-to-server e pelo frontend.
+
+**Ação**: Refatorar para duas queries sequenciais: (1) buscar `teacher_student_relationships` com `business_profile_id`, (2) buscar `business_profiles` pelo `id` retornado para obter `enabled_payment_methods`.
+
+### 58. automated-billing usa FK joins `teacher:profiles!teacher_id` e `student:profiles!student_id` (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 71-89)
+
+A query principal de `teacher_student_relationships` usa **dois** FK joins simultâneos:
+```
+.select(`
+  id, student_id, teacher_id, billing_day, business_profile_id,
+  teacher:profiles!teacher_id (id, name, email, payment_due_days),
+  student:profiles!student_id (id, name, email)
+`)
+```
+
+Isso já foi identificado parcialmente na ponta #52 (validateTeacherCanBill), mas a query **principal** do fluxo de billing (linha 71) também viola a constraint e tem impacto muito maior — se falhar, **nenhum aluno é faturado**.
+
+**Ação**: Refatorar para: (1) buscar `teacher_student_relationships` com campos básicos, (2) buscar `profiles` do teacher e student separadamente.
+
+### 59. process-cancellation não verifica `is_paid_class` nem `charge_timing` (Fase 5)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 43-46)
+
+A query de `classes` busca `id, teacher_id, class_date, status, is_group_class, service_id, is_experimental` mas **não busca `is_paid_class`**. O plano v4.1 define que:
+- Se `is_paid_class = false`: `shouldCharge = false` (igual a experimental)
+- Se `charge_timing = 'prepaid'` e `is_paid_class = true`: `shouldCharge = false` (cobrança já feita)
+
+Sem buscar `is_paid_class` e `charge_timing`, o `process-cancellation` pode gerar faturas de cancelamento para aulas pré-pagas, violando o invariante de segurança definido na seção "Invariante de segurança: faturas de cancelamento + prepaid".
+
+**Ação**: 
+1. Adicionar `is_paid_class` ao SELECT de `classes` (linha 45)
+2. Buscar `charge_timing` do `business_profiles` do professor (query sequencial)
+3. Adicionar lógica: `if (!classData.is_paid_class) shouldCharge = false;` e `if (chargeTiming === 'prepaid' && classData.is_paid_class) shouldCharge = false;`
+
+### 60. automated-billing hardcoded `payment_method: 'boleto'` ignora `enabled_payment_methods` (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 527 e 855)
+
+Em dois pontos, o `automated-billing` invoca `create-payment-intent-connect` com `payment_method: 'boleto'` hardcoded:
+- Linha 527: faturamento tradicional per-class
+- Linha 855: faturamento de mensalidade
+
+Se o professor desabilitou boleto e habilitou apenas PIX, a geração de pagamento falhará silenciosamente. O `create-invoice` (que é chamado do frontend) já implementa a hierarquia correta (Boleto → PIX → None), mas o `automated-billing` **não usa `create-invoice`** — ele usa a RPC `create_invoice_and_mark_classes_billed` diretamente e depois gera o pagamento manualmente.
+
+**Ação**: Buscar `enabled_payment_methods` do `business_profiles` (já proposto em M18) e aplicar a mesma hierarquia de seleção: Boleto (se habilitado e >= R$5) → PIX (se habilitado e >= R$1) → None.
+
+### 61. materialize-virtual-class backend não propaga `is_paid_class` (Fase 3)
+
+**Arquivo**: `supabase/functions/materialize-virtual-class/index.ts` (linhas 250-263)
+
+A criação da aula materializada copia campos do template:
+```javascript
+teacher_id, class_date, duration_minutes, status, is_experimental, 
+is_group_class, service_id, is_template, class_template_id, notes
+```
+
+Mas **não copia `is_paid_class`**. O template (aula recorrente) pode ter `is_paid_class = true` ou `false`, e essa informação se perde na materialização. Como o default do banco é `true`, aulas de reposição (template com `is_paid_class = false`) serão incorretamente materializadas como pagas, gerando cobranças indevidas.
+
+**Ação**: Adicionar `is_paid_class: template.is_paid_class` ao insert (linha 262). Isso já está documentado como ponta #17 para o frontend, mas a edge function backend tem o mesmo bug.
+
+---
+
+## Novas Melhorias v4.9 (M20-M22)
+
+### M20. CancellationModal frontend não busca `is_paid_class` — bloqueia UX de cancelamento híbrido (Fase 5)
+
+Relacionada a #19/#20. A query do `CancellationModal.tsx` (linhas 113-119) busca `teacher_id, class_date, service_id, is_group_class, is_experimental, class_services(price)` mas não busca `is_paid_class`. Sem esse campo, o modal não consegue:
+1. Mostrar aviso contextual para aulas pré-pagas ("O pagamento já foi realizado")
+2. Esconder o aviso de multa para aulas não-pagas
+3. Diferenciar o comportamento de cancelamento conforme o modelo de cobrança
+
+**Ação**: Adicionar `is_paid_class` ao SELECT. Buscar `charge_timing` do `business_profiles` do professor via query sequencial. Atualizar a lógica de `willBeCharged` para considerar os dois campos.
+
+### M21. automated-billing gera boleto para fatura de mensalidade separadamente em vez de usar helper compartilhado (Fase 4)
+
+O fluxo `processMonthlySubscriptionBilling` (linhas 848-878) e o fluxo tradicional (linhas 520-558) ambos implementam a **mesma lógica** de geração de boleto: invocar `create-payment-intent-connect`, atualizar a fatura com os campos retornados. Esse código está duplicado em 3 pontos:
+1. Faturamento tradicional (linha 520)
+2. Faturamento de mensalidade (linha 848)
+3. Faturamento de aulas fora do ciclo (linha 963)
+
+**Ação**: Extrair para helper `generatePaymentForInvoice(invoiceId, enabledMethods, amount)` que aplica a hierarquia de pagamento correta (Boleto → PIX → None) e retorna os campos para atualizar a fatura. Isso resolve simultaneamente a ponta #60.
+
+### M22. send-invoice-notification CTA `stripe_hosted_invoice_url` rotulado como "Pagar com Cartão" (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 291-295)
+
+O email mostra `stripe_hosted_invoice_url` com label "Pagar com Cartão":
+```html
+<p><strong>💳 Cartão de Crédito:</strong></p>
+<a href="${invoice.stripe_hosted_invoice_url}" class="payment-link">Pagar com Cartão</a>
+```
+
+Porém `stripe_hosted_invoice_url` é preenchida com a URL do **boleto** (não do cartão) quando o método selecionado é boleto:
+```javascript
+// create-invoice.ts linha 443:
+updateFields.stripe_hosted_invoice_url = paymentResult.boleto_url;
+```
+
+O campo `stripe_hosted_invoice_url` está sendo usado para armazenar URLs de boleto, mas o label no email diz "Cartão de Crédito". Isso confunde o aluno.
+
+**Ação**: No `send-invoice-notification`, usar `boleto_url` para boletos e `stripe_hosted_invoice_url` para cartão. Se ambos existirem, exibir ambos com labels corretos. Se apenas `boleto_url` existir, exibir "Ver Boleto". Remover o uso ambíguo de `stripe_hosted_invoice_url` como campo genérico.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -867,6 +990,7 @@ A query (linhas 27-31) não inclui `invoice_type`. Adicionar ao SELECT e passar 
 | v4.6 | 2026-02-13 | +6 pontas soltas (#41-#46), +3 melhorias (M13-M15): idempotência de notificações, rollback de fatura pré-paga, due_date hard-coded |
 | v4.7 | 2026-02-13 | +5 pontas soltas (#47-#51), +2 melhorias (M16-M17), 2 resolvidas (#33, M9): notificações duplicadas, .single() no webhook |
 | v4.8 | 2026-02-13 | +5 pontas soltas (#52-#56), +2 melhorias (M18-M19): FK join em validateTeacherCanBill, .single() em send-invoice-notification, payment_method no SELECT de notificação, dependent_id perdido na materialização, status atualizado antes do envio |
+| v4.9 | 2026-02-13 | +5 pontas soltas (#57-#61), +3 melhorias (M20-M22): FK join em create-invoice e automated-billing principal, process-cancellation sem is_paid_class, boleto hardcoded, materialize sem is_paid_class, label incorreto no email |
 
 ## Memórias do Projeto a Atualizar
 
@@ -878,4 +1002,5 @@ Após implementação, atualizar:
 5. `features/teacher-inbox/amnesty-flow-calendar` — deve documentar a limitação da anistia para faturas consolidadas (#37/M11)
 6. `features/billing/prazo-vencimento-padrao-consistencia` — deve documentar que create-invoice agora respeita payment_due_days (#44/M13)
 7. `database/invoice-overdue-notification-tracking` — deve documentar solução da ponta #47 (bug de idempotência crítico)
-8. `infrastructure/supabase-query-patterns` — deve listar #52 (validateTeacherCanBill) como exemplo adicional de FK join a corrigir
+8. `infrastructure/supabase-query-patterns` — deve listar #52, #57, #58 como exemplos de FK joins a corrigir
+9. `features/billing/ui-feedback-constraints` — deve documentar que stripe_hosted_invoice_url armazena boleto_url (M22)

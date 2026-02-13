@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.3
+# Plano de Cobrança Híbrida — v4.4
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). Esta v4.3 adiciona 6 novas pontas soltas (#24-#29) e 3 melhorias (M5-M7) identificadas em revisão dos edge functions e fluxos de cancelamento.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). Esta v4.4 adiciona 6 novas pontas soltas (#30-#35) e 3 melhorias (M8-M10) identificadas em revisão cruzada dos fluxos de notificação, cálculo de taxas e consistência de payment methods.
 
 Principais mudanças desde v3.10:
 
@@ -284,12 +284,93 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 |------|-----------|---------------|--------|
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
-| 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1 | Pendente |
-| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #26, M5, M7 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, M6 | Pendente |
+| 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
+| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, M3 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #26, #31, #33, M5, M7, M9 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, M6 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes | #9.1, #21, #10.1, #16 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, M10 | Pendente |
+
+---
+
+## Novas Pontas Soltas v4.4 (#30-#35)
+
+### 30. process-cancellation — hard-coded minimum `chargeAmount >= 5` (Fase 6)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linha 434)
+
+O `process-cancellation` possui seu próprio hard-coded minimum de R$ 5,00 para criação de faturas de cancelamento, independente do `create-invoice`. Com o modelo híbrido e PIX habilitado (mínimo R$ 1,00), multas de cancelamento entre R$ 1,00 e R$ 4,99 serão silenciosamente ignoradas.
+
+**Ação**: Alinhar com a solução da ponta #24 — verificar `enabled_payment_methods` antes de rejeitar. Se PIX estiver habilitado, o mínimo deve ser R$ 1,00. Se apenas cartão, sem mínimo.
+
+### 31. automated-billing — hard-coded `payment_method: 'boleto'` (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linha 527)
+
+O `automated-billing` sempre gera pagamento com `payment_method: 'boleto'`, ignorando a configuração `enabled_payment_methods` do `business_profiles` do professor. Se o professor desabilitou boleto e habilitou apenas PIX, o sistema tentará gerar boleto e falhará silenciosamente.
+
+**Ação**: Antes de gerar o payment intent, buscar `enabled_payment_methods` do `business_profiles` e aplicar a mesma hierarquia do `create-invoice`: Boleto (se habilitado e >= R$5) → PIX (se habilitado e >= R$1) → Nenhum.
+
+### 32. send-invoice-notification — sem tratamento para `prepaid_class` (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 223-287)
+
+A função de notificação por email trata `monthly_subscription` e faturas genéricas, mas **não tem caso específico para `invoice_type = 'prepaid_class'`**. Faturas pré-pagas precisam de:
+- Subject diferenciado: "💳 Fatura da sua aula com [Professor]"
+- CTA apontando para `stripe_hosted_invoice_url` (não para `/faturas` genérico)
+- Mensagem contextual: "A fatura da sua aula agendada para [data] foi gerada"
+
+**Ação**: Adicionar case `prepaid_class` no switch de `notification_type` e na lógica de construção do CTA. Reutilizar `stripe_hosted_invoice_url` como link primário quando disponível (conforme memória `notificacoes-pre-pago-cta-logic`).
+
+### 33. create-invoice — não dispara notificação por email (Fase 5)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts`
+
+O `create-invoice` cria a fatura e gera o payment intent, mas **não chama `send-invoice-notification`**. No fluxo pós-pago, a notificação é disparada pelo `automated-billing` após criar a fatura atomicamente. No fluxo pré-pago (Agenda.tsx → create-invoice), o aluno **não recebe email** sobre a nova fatura.
+
+**Ação**: Ao final do `create-invoice`, invocar `send-invoice-notification` com `notification_type: 'invoice_created'`. Isso garante que faturas manuais e pré-pagas também gerem notificação. Verificar se o `automated-billing` não duplica a notificação (ele chama separadamente).
+
+### 34. Financeiro.tsx — cálculo de taxa Stripe hard-coded R$ 3,49 (Fase 8)
+
+**Arquivo**: `src/pages/Financeiro.tsx` (linha 398)
+
+O cálculo `stripeFees = paidInvoices.length * 3.49` assume que todas as faturas pagas usaram boleto (R$ 3,49 por transação). Com a introdução de PIX (taxa de ~1,19%) e faturas pré-pagas, o cálculo e o alerta de transparência (linhas 422-449) ficam imprecisos.
+
+**Ação**: Na Fase 8 (ou posterior), substituir o cálculo fixo por um baseado no `payment_method` real de cada fatura. Alternativamente, exibir aviso genérico sobre taxas variáveis em vez de valor fixo. Esta é uma melhoria de UX, não um bloqueador funcional.
+
+### 35. automated-billing — FK join syntax nas queries de relacionamento (Fase 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 70-89)
+
+A query principal usa FK join syntax: `teacher:profiles!teacher_id(...)` e `student:profiles!student_id(...)`. Isso viola a constraint `edge-functions-pattern-sequential-queries` e pode causar falhas intermitentes por schema cache issues no Deno.
+
+**Ação**: Refatorar para queries sequenciais: primeiro buscar relationships, depois buscar perfis em batch com `.in('id', teacherIds)` e `.in('id', studentIds)`.
+
+---
+
+## Novas Melhorias v4.4 (M8-M10)
+
+### M8. ClassWithParticipants interface deve incluir `is_paid_class` (Fase 3)
+
+**Arquivo**: `src/pages/Agenda.tsx` (linhas 25-59)
+
+A interface `ClassWithParticipants` não inclui `is_paid_class`. Embora o spread `...templateClass` em `generateVirtualInstances` propague campos extras, a tipagem explícita é necessária para:
+- Exibir indicador visual no calendário (ícone de pagamento pendente/confirmado)
+- Passar dado ao `CancellationModal` e ao `AmnestyButton`
+- A RPC `get_classes_with_participants` precisará retornar `is_paid_class`
+
+### M9. create-invoice deve chamar send-invoice-notification (Fase 5)
+
+Relacionada à ponta #33. Ao adicionar a chamada, usar `fire-and-forget` (`.then()`) para não bloquear a resposta ao frontend. Verificar que o `automated-billing` não chame `send-invoice-notification` em duplicata — atualmente ele já chama separadamente após criar a fatura via RPC atômica.
+
+### M10. Financeiro.tsx — taxa dinâmica por método de pagamento (Fase 8)
+
+Relacionada à ponta #34. Opções de implementação:
+1. **Simples**: Remover cálculo de taxa do frontend e exibir apenas receitas brutas/líquidas
+2. **Preciso**: Buscar `payment_method` de cada fatura paga e calcular: Boleto = R$ 3,49, PIX = 1,19% do valor, Cartão = 3,49% + R$ 0,39
+3. **Intermediário**: Manter alerta genérico sobre taxas variáveis sem valor específico
+
+A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir `payment_method`.
 
 ---
 
@@ -322,6 +403,12 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 27 | materialize template query já tem `is_paid_class` via `select('*')` | 4 | materialize-virtual-class/index.ts |
 | 28 | AmnestyButton não valida invariante prepaid + cancellation | 7 | AmnestyButton.tsx |
 | 29 | VirtualClassData interface sem `is_paid_class` | 6 | CancellationModal.tsx |
+| 30 | process-cancellation hard-coded minimum R$5 ignora PIX | 6 | process-cancellation/index.ts |
+| 31 | automated-billing hard-coded `payment_method: 'boleto'` | 5 | automated-billing/index.ts |
+| 32 | send-invoice-notification sem tratamento para `prepaid_class` | 8 | send-invoice-notification/index.ts |
+| 33 | create-invoice não dispara notificação por email | 5 | create-invoice/index.ts |
+| 34 | Financeiro.tsx taxa Stripe hard-coded R$3,49 | 8 | Financeiro.tsx |
+| 35 | automated-billing usa FK join syntax | 4 | automated-billing/index.ts |
 
 ## Índice de Melhorias
 
@@ -334,6 +421,9 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | M5 | automated-billing buscar `charge_timing` para logging | 5 |
 | M6 | Guard clause suficiente no process-cancellation | 6 |
 | M7 | Type safety: handleClassSubmit `any` → `ClassFormData` | 5 |
+| M8 | ClassWithParticipants interface incluir `is_paid_class` | 3 |
+| M9 | create-invoice chamar send-invoice-notification | 5 |
+| M10 | Financeiro.tsx taxa dinâmica por método de pagamento | 8 |
 
 ---
 
@@ -355,6 +445,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | v4.1 | 2026-02-13 | 16 pontas soltas identificadas e incorporadas |
 | v4.2 | 2026-02-13 | +7 pontas soltas (#17-#23), +4 melhorias (M1-M4), reordenação de fases |
 | v4.3 | 2026-02-13 | +6 pontas soltas (#24-#29), +3 melhorias (M5-M7), decisão sobre automated-billing + charge_timing, invariante prepaid+cancellation, índices consolidados |
+| v4.4 | 2026-02-13 | +6 pontas soltas (#30-#35), +3 melhorias (M8-M10): notificações prepaid, payment_method dinâmico no automated-billing, taxa Stripe variável, FK joins no automated-billing |
 
 ## Memórias do Projeto a Atualizar
 
@@ -362,3 +453,4 @@ Após implementação, atualizar:
 1. `constraints/concorrencia-faturamento-pre-post-pago` — referencia `process-class-billing`
 2. `features/billing/arquitetura-implementacao-hibrida` — referencia `process-class-billing` como "roteador central"
 3. `features/billing/prepaid-cancellation-refund-policy` — menciona "void automático no Stripe"
+4. `payment/stripe-pix-configuration-logic` — menciona taxa fixa de R$3,49 por boleto (atualizar para taxas variáveis)

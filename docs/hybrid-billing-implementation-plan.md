@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v4.6
+# Plano de Cobrança Híbrida — v4.7
 
 **Data**: 2026-02-13
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). Esta v4.6 adiciona 6 novas pontas soltas (#41-#46) e 3 melhorias (M13-M15) identificadas em revisão cruzada do fluxo de vencimento, geração virtual, notificações de cancelamento e consistência da RPC.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. A v4.1 incorporou 16 pontas soltas, a v4.2 adicionou 7 (#17-#23) e 4 melhorias (M1-M4). A v4.3 adicionou 6 pontas soltas (#24-#29) e 3 melhorias (M5-M7). A v4.4 adicionou 6 pontas soltas (#30-#35) e 3 melhorias (M8-M10). A v4.5 adicionou 5 pontas soltas (#36-#40) e 2 melhorias (M11-M12). A v4.6 adicionou 6 pontas soltas (#41-#46) e 3 melhorias (M13-M15). Esta v4.7 adiciona 5 novas pontas soltas (#47-#51), 2 melhorias (M16-M17), e corrige 2 pontas soltas que já estavam resolvidas no código (#33 e parte de #44).
 
 Principais mudanças desde v3.10:
 
@@ -286,10 +286,10 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
 | 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #33, #36, #38, #40, #42, #44, M5, M7, M9, M13 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #41, #43, M6, M14 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, M5, M7, M9, M13 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, M6, M14 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações | #9.1, #21, #10.1, #16, #32, #34, #39, #46, M10, M12, M15 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #21, #10.1, #16, #32, #34, #39, #46, #47, #48, #49, #50, #51, M10, M12, M15, M16, M17 | Pendente |
 
 ---
 
@@ -322,13 +322,15 @@ A função de notificação por email trata `monthly_subscription` e faturas gen
 
 **Ação**: Adicionar case `prepaid_class` no switch de `notification_type` e na lógica de construção do CTA. Reutilizar `stripe_hosted_invoice_url` como link primário quando disponível (conforme memória `notificacoes-pre-pago-cta-logic`).
 
-### 33. create-invoice — não dispara notificação por email (Fase 5)
+### ~~33. create-invoice — não dispara notificação por email~~ ✅ RESOLVIDO
 
-**Arquivo**: `supabase/functions/create-invoice/index.ts`
+**Status**: Já implementado no código. O `create-invoice` (linhas 531-548) já chama `send-invoice-notification` de forma não-bloqueante com `fire-and-forget` pattern. A ponta #33 e a melhoria M9 estão resolvidas.
 
-O `create-invoice` cria a fatura e gera o payment intent, mas **não chama `send-invoice-notification`**. No fluxo pós-pago, a notificação é disparada pelo `automated-billing` após criar a fatura atomicamente. No fluxo pré-pago (Agenda.tsx → create-invoice), o aluno **não recebe email** sobre a nova fatura.
+~~**Arquivo**: `supabase/functions/create-invoice/index.ts`~~
 
-**Ação**: Ao final do `create-invoice`, invocar `send-invoice-notification` com `notification_type: 'invoice_created'`. Isso garante que faturas manuais e pré-pagas também gerem notificação. Verificar se o `automated-billing` não duplica a notificação (ele chama separadamente).
+~~O `create-invoice` cria a fatura e gera o payment intent, mas **não chama `send-invoice-notification`**.~~
+
+**Verificação no código** (linhas 531-548): O `create-invoice` **já chama** `send-invoice-notification` de forma não-bloqueante com `fire-and-forget`. A notificação já é enviada tanto para faturas manuais quanto automáticas. Esta ponta e a melhoria M9 estão **resolvidas**.
 
 ### 34. Financeiro.tsx — cálculo de taxa Stripe hard-coded R$ 3,49 (Fase 8)
 
@@ -406,7 +408,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | 30 | process-cancellation hard-coded minimum R$5 ignora PIX | 6 | process-cancellation/index.ts |
 | 31 | automated-billing hard-coded `payment_method: 'boleto'` (fluxo tradicional) | 5 | automated-billing/index.ts |
 | 32 | send-invoice-notification sem tratamento para `prepaid_class` | 8 | send-invoice-notification/index.ts |
-| 33 | create-invoice não dispara notificação por email | 5 | create-invoice/index.ts |
+| ~~33~~ | ~~create-invoice não dispara notificação por email~~ | ~~5~~ | ~~✅ Já resolvido no código (linhas 531-548)~~ |
 | 34 | Financeiro.tsx taxa Stripe hard-coded R$3,49 | 8 | Financeiro.tsx |
 | 35 | automated-billing usa FK join syntax | 4 | automated-billing/index.ts |
 | 36 | automated-billing monthly subscription hard-coded boleto (linha 854) | 5 | automated-billing/index.ts |
@@ -420,6 +422,11 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | 44 | create-invoice — `due_date` fallback 15 dias não considera `payment_due_days` do professor | 5 | create-invoice/index.ts |
 | 45 | get_classes_with_participants RPC não retorna `is_paid_class` | 4 | migration SQL / Agenda.tsx |
 | 46 | Financeiro.tsx `getInvoiceTypeBadge` falta tipo `prepaid_class` | 8 | Financeiro.tsx |
+| **47** | **check-overdue-invoices — sem INSERT de idempotência após enviar notificação** | **8** | **check-overdue-invoices/index.ts** |
+| **48** | **automated-billing não salva `payment_method` na fatura** | **5** | **automated-billing/index.ts** |
+| **49** | **webhook-stripe-connect usa `.single()` em 3 lookups (deveria ser `.maybeSingle()`)** | **8** | **webhook-stripe-connect/index.ts** |
+| **50** | **CORS headers incompletos em 4 edge functions invocadas pelo frontend** | **8** | **create-invoice, process-cancellation, etc.** |
+| **51** | **webhook `payment_intent.succeeded` não atualiza status de participantes para aulas prepaid** | **8** | **webhook-stripe-connect/index.ts** |
 
 ## Índice de Melhorias
 
@@ -433,13 +440,15 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | M6 | Guard clause suficiente no process-cancellation | 6 |
 | M7 | Type safety: handleClassSubmit `any` → `ClassFormData` | 5 |
 | M8 | ClassWithParticipants interface incluir `is_paid_class` | 3 |
-| M9 | create-invoice chamar send-invoice-notification | 5 |
+| ~~M9~~ | ~~create-invoice chamar send-invoice-notification~~ | ~~5~~ | ~~✅ Já implementado~~ |
 | M10 | Financeiro.tsx taxa dinâmica por método de pagamento | 8 |
 | M11 | AmnestyButton refatorar para suportar faturas consolidadas | 7 |
 | M12 | send-invoice-notification CTA baseado no `payment_method` real | 8 |
 | M13 | create-invoice deve respeitar `payment_due_days` do perfil do professor | 5 |
 | M14 | send-cancellation-notification deveria informar sobre modelo de cobrança | 6 |
 | M15 | check-overdue-invoices deveria usar tabela própria de idempotência | 8 |
+| **M16** | **automated-billing deve salvar `payment_method` na fatura ao criá-la** | **5** |
+| **M17** | **webhook-stripe-connect: confirmar participantes de aulas prepaid ao receber pagamento** | **8** |
 
 ---
 
@@ -638,6 +647,112 @@ A opção 1 é a mais pragmática — uma coluna boolean `overdue_notification_s
 
 ---
 
+## Novas Pontas Soltas v4.7 (#47-#51)
+
+### 47. check-overdue-invoices — CRÍTICO: sem INSERT de idempotência após enviar notificação (Fase 8)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 43-76, 96-122)
+
+**Bug crítico**: A função verifica em `class_notifications` se já enviou notificação (linhas 47-52), mas **nunca insere um registro** após enviar com sucesso (linha 62). Resultado: a cada execução do cron, o `SELECT` retorna vazio e a notificação é **reenviada infinitamente** para todas as faturas vencidas.
+
+O mesmo bug existe para lembretes de pagamento (linhas 100-105): verifica existência mas nunca insere tracking.
+
+Além do bug de idempotência descrito na ponta #41 (usar `class_notifications` para faturas), este bug é **operacional imediato** — os alunos recebem emails duplicados a cada execução do cron.
+
+**Ação imediata**: Inserir em `class_notifications` (ou melhor, usar M15 com `overdue_notification_sent`) após enviar cada notificação. Se M15 não for implementado antes, pelo menos adicionar o INSERT:
+```sql
+INSERT INTO class_notifications (class_id, student_id, notification_type, status)
+VALUES (invoice.id, invoice.student_id, 'invoice_overdue', 'sent');
+```
+
+### 48. automated-billing não salva `payment_method` na fatura ao criá-la (Fase 5)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 490-508)
+
+O `automated-billing` cria faturas via RPC `create_invoice_and_mark_classes_billed` e depois gera o pagamento com `create-payment-intent-connect`. Porém, o `invoiceData` passado à RPC (linhas 490-497) **não inclui `payment_method`**. O campo só é populado indiretamente pelo webhook quando o pagamento é processado.
+
+Isso significa que entre a criação da fatura e o pagamento, o campo `payment_method` é `null`. As notificações de email enviadas nesse intervalo (ponta #32, M12) não conseguem determinar o método de pagamento para exibir CTAs corretos.
+
+Em contraste, o `create-invoice` (linha 439) **já define** `payment_method` corretamente.
+
+**Ação** (M16): Após determinar o `payment_method` via helper `selectPaymentMethod` (ponta #31), salvar na fatura tanto via RPC quanto no update após gerar o payment intent. Mesma correção para os 3 pontos: traditional (linha 527), monthly (linha 854), outside-cycle (linha 969).
+
+### 49. webhook-stripe-connect usa `.single()` em 3 lookups — viola constraint (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 307-310, 343-347, 453-457)
+
+Três handlers (`invoice.paid`, `invoice.payment_succeeded`, `payment_intent.succeeded`) usam `.single()` para buscar `payment_origin` da fatura antes de processar. Se a fatura não existir no banco (evento orphaned ou processamento fora de ordem), o `.single()` lança exceção, interrompendo o webhook e retornando 500 ao Stripe.
+
+Isso viola a constraint `supabase-single-query-errors` e pode causar retries infinitos do Stripe para eventos legítimos de faturas não rastreadas localmente.
+
+**Ação**: Substituir `.single()` por `.maybeSingle()` nos 3 locais. Se `existingInvoice` for `null`, logar como warning e prosseguir normalmente (o update subsequente simplesmente não encontrará a fatura).
+
+### 50. CORS headers incompletos em 4+ edge functions invocadas pelo frontend (Fase 8)
+
+**Arquivos**: `create-invoice/index.ts` (linha 4-6), `process-cancellation/index.ts` (linha 4-6), `check-overdue-invoices/index.ts` (linha 4-6), `automated-billing/index.ts` (linha 4-6)
+
+Os CORS headers destas funções são:
+```javascript
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+```
+
+Mas a memória `infrastructure/edge-functions-cors-headers` exige headers adicionais:
+```
+x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version
+```
+
+Para `create-invoice` e `process-cancellation` (invocadas diretamente do frontend), a ausência pode causar falhas de preflight em navegadores que enviam esses headers. Para `automated-billing` e `check-overdue-invoices` (invocadas server-to-server), o impacto é menor mas a padronização é recomendada.
+
+**Ação**: Padronizar CORS headers em todas as edge functions para incluir os headers Supabase-specific.
+
+### 51. webhook `payment_intent.succeeded` não confirma participantes de aulas prepaid (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 441-501)
+
+Quando uma fatura pré-paga é paga via `payment_intent.succeeded`, o webhook atualiza o status da fatura para `paid` e limpa campos temporários (PIX, boleto). Porém, **não atualiza o status dos participantes da aula** (`class_participants.status`) nem da aula (`classes.status`).
+
+No modelo pós-pago, isso não é problema porque o status da aula já reflete a conclusão (o faturamento vem depois). No modelo **pré-pago**, a fatura é criada antes/no momento do agendamento, e o pagamento pode ser o gatilho para confirmar a participação ou liberar a aula.
+
+**Decisão**: Existem duas abordagens:
+1. **Não atualizar** (mais simples): A aula já é criada com `status = 'confirmada'` no `handleClassSubmit`. O pagamento da fatura é um evento financeiro separado da confirmação da aula. Status da aula e do pagamento são independentes.
+2. **Atualizar** (mais completo): Ao receber pagamento de fatura `prepaid_class`, buscar `invoice.class_id` e atualizar `class_participants` para refletir "pagamento recebido".
+
+**Recomendação**: Opção 1 (não atualizar). A aula já está confirmada; o pagamento é rastreado pela fatura. Se futuramente for necessário um indicador visual de "pago", usar JOIN com `invoices` em vez de duplicar estado.
+
+---
+
+## Novas Melhorias v4.7 (M16-M17)
+
+### M16. automated-billing deve salvar `payment_method` na fatura ao criá-la (Fase 5)
+
+Relacionada à ponta #48. Ao implementar o helper `selectPaymentMethod` (pontas #31, #36, #40), o método selecionado deve ser persistido no campo `invoices.payment_method` no momento da criação da fatura, não apenas após o pagamento via webhook. Isso permite que:
+1. Emails de notificação (`send-invoice-notification`) usem CTAs corretos desde o envio (M12)
+2. A UI do Financeiro exiba o método de pagamento esperado antes do pagamento ser processado
+3. Relatórios e métricas reflitam a intenção de pagamento mesmo para faturas pendentes
+
+### M17. webhook-stripe-connect: confirmar participantes de aulas prepaid ao receber pagamento (Fase 8)
+
+Relacionada à ponta #51. Se a opção 2 for escolhida futuramente, o handler `payment_intent.succeeded` deve:
+1. Buscar a fatura com `class_id` e `invoice_type = 'prepaid_class'`
+2. Se encontrar, atualizar `class_participants.status` para `'confirmada'` (ou adicionar campo `payment_confirmed`)
+3. Enviar notificação de confirmação ao professor
+
+Por ora, a recomendação é manter a opção 1 (sem atualização) e documentar como melhoria futura.
+
+---
+
+## Pontas Soltas Resolvidas no Código (Correções v4.7)
+
+### ~~#33. create-invoice não dispara notificação por email~~ ✅
+
+O `create-invoice` (linhas 531-548) já implementa `send-invoice-notification` com fire-and-forget. A ponta #33 e a melhoria M9 estavam incorretas — o código já possui essa funcionalidade.
+
+### ~~#44 (parcial). create-invoice `payment_method` não salvo~~ ✅
+
+O `create-invoice` (linha 439) já salva `payment_method: selectedPaymentMethod` após determinar a hierarquia (Boleto → PIX). O problema restante é apenas no `automated-billing` (ponta #48).
+
+---
+
 ## O que foi REMOVIDO do plano v3.10
 
 1. Edge function `process-class-billing` (nunca existiu no código)
@@ -659,6 +774,7 @@ A opção 1 é a mais pragmática — uma coluna boolean `overdue_notification_s
 | v4.4 | 2026-02-13 | +6 pontas soltas (#30-#35), +3 melhorias (M8-M10): notificações prepaid, payment_method dinâmico no automated-billing, taxa Stripe variável, FK joins no automated-billing |
 | v4.5 | 2026-02-13 | +5 pontas soltas (#36-#40), +2 melhorias (M11-M12): bug crítico no AmnestyButton com faturas consolidadas, FK joins adicionais no create-invoice, labels de email incorretos, hard-coded boleto em 3 locais do automated-billing |
 | v4.6 | 2026-02-13 | +6 pontas soltas (#41-#46), +3 melhorias (M13-M15): idempotência de notificações de fatura vencida, rollback de fatura pré-paga, email de cancelamento sem contexto de modelo, due_date hard-coded, RPC sem is_paid_class, prepaid_class faltando no Financeiro |
+| v4.7 | 2026-02-13 | +5 pontas soltas (#47-#51), +2 melhorias (M16-M17), 2 pontas resolvidas (#33, M9): bug crítico de notificações duplicadas no check-overdue, .single() no webhook, CORS incompletos, payment_method missing no automated-billing |
 
 ## Memórias do Projeto a Atualizar
 
@@ -669,3 +785,4 @@ Após implementação, atualizar:
 4. `payment/stripe-pix-configuration-logic` — menciona taxa fixa de R$3,49 por boleto (atualizar para taxas variáveis)
 5. `features/teacher-inbox/amnesty-flow-calendar` — deve documentar a limitação da anistia para faturas consolidadas (#37/M11)
 6. `features/billing/prazo-vencimento-padrao-consistencia` — deve documentar que create-invoice agora respeita payment_due_days (#44/M13)
+7. `database/invoice-overdue-notification-tracking` — deve documentar solução da ponta #47 (bug de idempotência crítico)

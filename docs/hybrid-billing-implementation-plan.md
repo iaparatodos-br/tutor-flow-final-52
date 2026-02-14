@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.14
+# Plano de Cobrança Híbrida — v5.15
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.12 acumulou 126 pontas soltas e 52 melhorias com auditoria final de validação. A v5.13 adicionou 5 novas pontas soltas (#127-#131) em 4 funções previamente ausentes da tabela de cobertura. A v5.14 adicionou **6 novas pontas soltas (#132-#137)** em 6 funções: `create-student`, `update-student-details`, `create-dependent`, `delete-dependent`, `manage-class-exception` e `manage-future-class-exceptions`. **Todas as 6 pontas da v5.14 foram implementadas e deployadas.** Totais atualizados: **137 pontas soltas** (6 implementadas) e **52 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.12 acumulou 126 pontas soltas e 52 melhorias com auditoria final de validação. A v5.13 adicionou 5 novas pontas soltas (#127-#131) em 4 funções previamente ausentes da tabela de cobertura. A v5.14 adicionou **6 novas pontas soltas (#132-#137)** em 6 funções (todas implementadas). A v5.15 adicionou **4 novas pontas soltas (#138-#141)** em 4 funções previamente ausentes: `request-class` (lacuna crítica no fluxo de cobrança), `update-dependent`, `create-connect-onboarding-link` e `list-subscription-invoices`. Totais atualizados: **141 pontas soltas** (6 implementadas) e **52 melhorias**.
 
-Principais mudanças na v5.14: Autenticação adicionada a `create-student` (#132 ✅) e `update-student-details` (#133 ✅). FK joins refatorados para queries sequenciais em `create-dependent` (#134 ✅), `delete-dependent` (#135 ✅), `manage-class-exception` (#136 ✅) e `manage-future-class-exceptions` (#137 ✅). Tabela de cobertura expandida para 36 funções (incluindo `send-cancellation-notification`).
+Principais mudanças na v5.15: Identificada lacuna crítica no `request-class` (#138 ALTA) — terceiro caminho de criação de aulas que não persiste `is_paid_class`, podendo disparar cobranças indesejadas no modelo prepaid. Três padrões transversais adicionais documentados: `update-dependent` `.single()` (#139 BAIXA), `create-connect-onboarding-link` HTTP 500 genérico (#140 BAIXA), `list-subscription-invoices` HTTP 500 genérico (#141 BAIXA). Tabela de cobertura expandida para 40 funções.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -284,12 +284,12 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 |------|-----------|---------------|--------|
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
-| 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência | #2.3, M1, M8 | Pendente |
+| 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
 | 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, #52, M3 | Pendente |
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, #139, #140, #141, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 ---
 
@@ -2579,7 +2579,101 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 
 ---
 
-## Tabela de Cobertura Completa (v5.14)
+## Pontas Soltas v5.15 (#138-#141)
+
+### 138. request-class não persiste `is_paid_class` — cobranças indesejadas no modelo prepaid (Fase 3)
+
+**Arquivo**: `supabase/functions/request-class/index.ts` (linhas 135-148)
+
+```javascript
+const { data: newClass, error: insertError } = await supabase
+  .from('classes')
+  .insert({
+    teacher_id: teacherId,
+    class_date: new Date(datetime).toISOString(),
+    duration_minutes: service.duration_minutes,
+    service_id: serviceId,
+    status: 'pendente',
+    notes: notes?.trim() || null,
+    is_experimental: false,
+    is_group_class: false
+    // FALTA: is_paid_class não definido — default do DB é TRUE
+  })
+```
+
+A função `request-class` é o **terceiro caminho de criação de aulas** (junto com `handleClassSubmit` e `materialize-virtual-class`), mas não define `is_paid_class` no insert. Como o default do banco é `true`, aulas solicitadas por alunos e confirmadas pelo professor podem disparar cobranças imediatas no modelo `prepaid` sem que o professor tenha decidido se a aula é paga.
+
+**Severidade**: ALTA (impacto financeiro direto)
+
+**Ação**:
+1. Adicionar `is_paid_class: false` como default seguro no insert (aulas solicitadas por alunos não devem gerar cobrança automaticamente)
+2. OU: Adicionar parâmetro opcional no payload para o professor definir na confirmação
+3. Integrar à Fase 3 do roadmap, alinhando com `handleClassSubmit` (#62) e `materialize-virtual-class` (#63)
+
+### 139. update-dependent usa `.single()` após update — exceção se dependent não existir (Batch 8)
+
+**Arquivo**: `supabase/functions/update-dependent/index.ts` (linhas 116-121)
+
+```javascript
+const { data: updatedDependent, error: updateError } = await supabaseAdmin
+  .from('dependents')
+  .update(updateData)
+  .eq('id', body.dependent_id)
+  .select()
+  .single();
+```
+
+Embora a função já valide existência antes do update (linha 70-74 com `.maybeSingle()`), o `.single()` no resultado do update pode lançar exceção em condições de corrida (dependent deletado entre a verificação e o update).
+
+**Severidade**: BAIXA (race condition improvável)
+
+**Ação**: Trocar para `.maybeSingle()` e tratar cenário de resultado vazio com HTTP 404.
+
+### 140. create-connect-onboarding-link retorna HTTP 500 genérico no catch (Batch 8)
+
+**Arquivo**: `supabase/functions/create-connect-onboarding-link/index.ts` (linhas 96-103)
+
+```javascript
+} catch (error) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  logStep("ERROR in create-onboarding-link", { message: errorMessage });
+  return new Response(JSON.stringify({ error: errorMessage }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 500,
+  });
+}
+```
+
+Erros de validação (account not found, missing params) retornam HTTP 500 em vez de códigos específicos (400, 404). Padrão idêntico ao M52.
+
+**Severidade**: BAIXA
+
+**Ação**: Diferenciar erros de validação (HTTP 400/404) de erros internos (HTTP 500).
+
+### 141. list-subscription-invoices retorna HTTP 500 genérico no catch (Batch 8)
+
+**Arquivo**: `supabase/functions/list-subscription-invoices/index.ts` (linhas 112-119)
+
+```javascript
+} catch (error) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  logStep("ERROR in list-subscription-invoices", { message: errorMessage });
+  return new Response(JSON.stringify({ error: errorMessage }), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    status: 500,
+  });
+}
+```
+
+Padrão idêntico ao #140 e M52.
+
+**Severidade**: BAIXA
+
+**Ação**: Diferenciar erros de validação de erros internos. Nota: a autenticação já é tratada corretamente com HTTP 401 (linhas 42-66).
+
+---
+
+## Tabela de Cobertura Completa (v5.15)
 
 | Função | Pontas Documentadas | Cobertura |
 |--------|-------------------|-----------|
@@ -2620,20 +2714,25 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | delete-dependent | #135 | ✅ IMPLEMENTADO (v5.14) |
 | manage-class-exception | #136 | ✅ IMPLEMENTADO (v5.14) |
 | manage-future-class-exceptions | #137 | ✅ IMPLEMENTADO (v5.14) |
+| request-class | #138 | ✅ (v5.15) |
+| update-dependent | #139 | ✅ (v5.15) |
+| create-connect-onboarding-link | #140 | ✅ (v5.15) |
+| list-subscription-invoices | #141 | ✅ (v5.15) |
 
 ### Padrões Transversais Verificados
 
 | Padrão | Funções Verificadas | Status |
 |--------|-------------------|--------|
 | FK joins no Deno | 36 funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅) |
-| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription | ✅ (#49, #53, #64, #73, #78, #84, #102, #131) |
+| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription, update-dependent | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139) |
 | Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
-| HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify | ✅ (#72, #76, #83, M32, M52) |
+| HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify, create-connect-onboarding-link, list-subscription-invoices | ✅ (#72, #76, #83, #140, #141, M32, M52) |
 | Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student, create-student, update-student-details | ✅ (#102, #118, #121, #128, #132✅, #133✅) |
 | Payment Intent órfão | handle-teacher-subscription-cancellation, create-subscription-checkout | ✅ (#112, #117) |
 | Service role como Bearer | process-cancellation | ✅ (#80) |
 | boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
 | Audit logs com schema incorreto | handle-plan-downgrade-selection | ✅ (#129) |
+| `is_paid_class` não persistido | request-class (3º caminho de criação) | ✅ (#138) |
 
 ---
 
@@ -2665,7 +2764,8 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
 | v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. |
 | v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. |
-| v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. Plano COMPLETO e FINAL. |
+| v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. |
+| v5.15 | 2026-02-14 | +4 pontas soltas (#138-#141) em 4 funções: request-class não persiste `is_paid_class` (#138 ALTA → Fase 3), update-dependent `.single()` (#139 BAIXA → Batch 8), create-connect-onboarding-link HTTP 500 genérico (#140 BAIXA → Batch 8), list-subscription-invoices HTTP 500 genérico (#141 BAIXA → Batch 8). Tabela de cobertura expandida para 40 funções. Novo padrão transversal documentado: `is_paid_class` não persistido. Totais: **141 pontas soltas** (6 implementadas), **52 melhorias**. Nível de auditoria atingido. |
 
 ## Memórias do Projeto a Atualizar
 

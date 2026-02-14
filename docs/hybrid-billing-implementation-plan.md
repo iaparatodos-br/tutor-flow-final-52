@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.13
+# Plano de Cobrança Híbrida — v5.14
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.12 acumulou 126 pontas soltas e 52 melhorias com auditoria final de validação. A v5.13 adicionou **5 novas pontas soltas (#127-#131)** em 4 funções previamente ausentes da tabela de cobertura: `smart-delete-student`, `handle-plan-downgrade-selection`, `validate-payment-routing` e `cancel-subscription`. Totais atualizados: **131 pontas soltas** e **52 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.12 acumulou 126 pontas soltas e 52 melhorias com auditoria final de validação. A v5.13 adicionou 5 novas pontas soltas (#127-#131) em 4 funções previamente ausentes da tabela de cobertura. A v5.14 adicionou **6 novas pontas soltas (#132-#137)** em 6 funções: `create-student`, `update-student-details`, `create-dependent`, `delete-dependent`, `manage-class-exception` e `manage-future-class-exceptions`. **Todas as 6 pontas da v5.14 foram implementadas e deployadas.** Totais atualizados: **137 pontas soltas** (6 implementadas) e **52 melhorias**.
 
-Principais mudanças na v5.13: Identificação de falha de autenticação em `smart-delete-student` (#128 — ALTA, Batch 1), audit_logs com colunas inexistentes em `handle-plan-downgrade-selection` (#129 — ALTA, Batch 3), FK joins em `smart-delete-student` e `validate-payment-routing` (#127, #130), faturas reais criadas em validação (#130), e `.single()` em `cancel-subscription` (#131). Tabela de cobertura expandida para 30 funções.
+Principais mudanças na v5.14: Autenticação adicionada a `create-student` (#132 ✅) e `update-student-details` (#133 ✅). FK joins refatorados para queries sequenciais em `create-dependent` (#134 ✅), `delete-dependent` (#135 ✅), `manage-class-exception` (#136 ✅) e `manage-future-class-exceptions` (#137 ✅). Tabela de cobertura expandida para 36 funções (incluindo `send-cancellation-notification`).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2489,7 +2489,53 @@ Se o professor não tiver assinatura ativa, `.single()` lança exceção e retor
 
 ---
 
-## Confirmações da Auditoria Final v5.12
+## Pontas Soltas v5.14 (#132-#137) — ✅ TODAS IMPLEMENTADAS
+
+### 132. create-student sem autenticação — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/create-student/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+A função aceitava `teacher_id` diretamente do corpo da requisição sem verificação de autenticação. Qualquer requisição HTTP podia criar alunos vinculados a qualquer professor, incluindo criação de usuários em `auth.users`, relacionamentos, cobranças e envio de emails.
+
+**Correção aplicada**: Adicionado `auth.getUser(token)` no início da função e validação `authUser.id !== body.teacher_id` retornando HTTP 403.
+
+### 133. update-student-details sem autenticação — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/update-student-details/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+A função aceitava `teacher_id` do body sem verificar autenticação, permitindo modificação de dados financeiros (billing_day, CPF, business_profile_id) de alunos de qualquer professor.
+
+**Correção aplicada**: Mesmo padrão do #132 — `auth.getUser(token)` + validação `authUser.id !== body.teacher_id`.
+
+### 134. create-dependent FK join `subscription_plans(student_limit, slug)` — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/create-dependent/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+FK join `.select('plan_id, subscription_plans(student_limit, slug)')` refatorado para duas queries sequenciais: buscar `user_subscriptions`, depois `subscription_plans` separadamente.
+
+### 135. delete-dependent FK joins `classes!inner(class_date, status)` — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/delete-dependent/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+Dois FK joins (`classes!inner(class_date, status)` e `classes!inner(class_date)`) refatorados para queries sequenciais: buscar `class_participants`, depois `classes` por array de IDs.
+
+### 136. manage-class-exception FK join `dependents!class_participants_dependent_id_fkey` — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/manage-class-exception/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+FK join de autorização de responsável refatorado para queries sequenciais: buscar `class_participants` com `dependent_id`, depois `dependents` separadamente para verificar `responsible_id`.
+
+### 137. manage-future-class-exceptions FK join idêntico ao #136 — ✅ IMPLEMENTADO
+
+**Arquivo**: `supabase/functions/manage-future-class-exceptions/index.ts`
+**Status**: ✅ Implementado e deployado em 2026-02-14
+
+Mesma correção do #136 aplicada.
 
 ### Confirmação 1: verify-payment-status usa `.single()` em lookup de fatura (já coberto por #102)
 
@@ -2533,7 +2579,7 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 
 ---
 
-## Tabela de Cobertura Completa (v5.13)
+## Tabela de Cobertura Completa (v5.14)
 
 | Função | Pontas Documentadas | Cobertura |
 |--------|-------------------|-----------|
@@ -2549,6 +2595,7 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | auto-verify-pending-invoices | #102, M52 | ✅ |
 | verify-payment-status | #102 | ✅ |
 | send-invoice-notification | #32, #53, #54, #73, #91, #99 | ✅ |
+| send-cancellation-notification | #43, M33 | ✅ (v5.14) |
 | handle-teacher-subscription-cancellation | #110, #112 | ✅ |
 | process-payment-failure-downgrade | #109 | ✅ |
 | process-expired-subscriptions | #111 | ✅ |
@@ -2567,16 +2614,22 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | handle-plan-downgrade-selection | #129 | ✅ (v5.13) |
 | validate-payment-routing | #130 | ✅ (v5.13) |
 | cancel-subscription | #131 | ✅ (v5.13) |
+| create-student | #132 | ✅ IMPLEMENTADO (v5.14) |
+| update-student-details | #133 | ✅ IMPLEMENTADO (v5.14) |
+| create-dependent | #134 | ✅ IMPLEMENTADO (v5.14) |
+| delete-dependent | #135 | ✅ IMPLEMENTADO (v5.14) |
+| manage-class-exception | #136 | ✅ IMPLEMENTADO (v5.14) |
+| manage-future-class-exceptions | #137 | ✅ IMPLEMENTADO (v5.14) |
 
 ### Padrões Transversais Verificados
 
 | Padrão | Funções Verificadas | Status |
 |--------|-------------------|--------|
-| FK joins no Deno | 30 financeiras | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130) |
+| FK joins no Deno | 36 funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅) |
 | `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription | ✅ (#49, #53, #64, #73, #78, #84, #102, #131) |
 | Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
 | HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify | ✅ (#72, #76, #83, M32, M52) |
-| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student | ✅ (#102, #118, #121, #128) |
+| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student, create-student, update-student-details | ✅ (#102, #118, #121, #128, #132✅, #133✅) |
 | Payment Intent órfão | handle-teacher-subscription-cancellation, create-subscription-checkout | ✅ (#112, #117) |
 | Service role como Bearer | process-cancellation | ✅ (#80) |
 | boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
@@ -2611,7 +2664,8 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
 | v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
 | v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. |
-| v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. Plano COMPLETO e FINAL. |
+| v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. |
+| v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. Plano COMPLETO e FINAL. |
 
 ## Memórias do Projeto a Atualizar
 

@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.16
+# Plano de Cobrança Híbrida — v5.17
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.15 adicionou 4 novas pontas soltas (#138-#141). A v5.16 adicionou **3 novas pontas soltas (#142-#144)** em 3 funções previamente ausentes: `check-business-profile-status` (falha de validação de ownership), `create-connect-account` (`.single()` incorreto) e `send-class-confirmation-notification` (`.single()` sem tratamento). Totais atualizados: **144 pontas soltas** (6 implementadas) e **52 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.15 adicionou 4 novas pontas soltas (#138-#141). A v5.16 adicionou 3 pontas soltas (#142-#144). A v5.17 adicionou **3 novas pontas soltas (#145-#147)** em 3 funções completamente ausentes da cobertura v5.16: `check-stripe-account-status` (`.single()` incorreto), `create-business-profile` (sem verificação de duplicatas — contas Stripe órfãs) e `customer-portal` (busca por email frágil + HTTP 500 genérico). Totais atualizados: **147 pontas soltas** (6 implementadas) e **52 melhorias**.
 
-Principais mudanças na v5.16: Auditoria das 32 funções restantes não cobertas na tabela v5.15. Identificada falha de segurança MÉDIA em `check-business-profile-status` (#142) — validação de ownership do `stripe_connect_id` ocorre apenas após chamada à API Stripe, permitindo vazamento de informação. Dois padrões `.single()` adicionais documentados (#143, #144). Tabela de cobertura expandida para 43 funções. 29 funções classificadas como fora de escopo (utilitárias, setup, notificações sem impacto financeiro).
+Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 46 funções. Contagem de fora de escopo corrigida para 26 (não 29).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2733,7 +2733,47 @@ Três lookups usam `.single()`:
 
 **Ação**: Trocar `.single()` por `.maybeSingle()` nas linhas 65 e 79. Linha 41 já tem tratamento adequado.
 
-### Funções Fora de Escopo (29 funções — auditadas v5.16)
+### 145. check-stripe-account-status — `.single()` em ownership check + HTTP 500 genérico (Batch 8)
+
+**Arquivo**: `supabase/functions/check-stripe-account-status/index.ts` (linha 59)
+
+```javascript
+.eq("stripe_account_id", account_id)
+.eq("teacher_id", user.id)
+.single();
+```
+
+Usa `.single()` para verificar ownership da conta Stripe Connect. Se a conta não existir no banco, `.single()` lança exceção capturada pelo catch genérico → HTTP 500 com mensagem técnica em vez de 404 semântico. Adicionalmente, o catch retorna HTTP 500 genérico para todos os erros.
+
+**Severidade**: BAIXA
+
+**Ação**: Trocar `.single()` por `.maybeSingle()`. Adicionar check explícito para retornar 404 com mensagem amigável. Adicionar tratamento específico no catch para erros de validação (400) vs erros internos (500).
+
+### 146. create-business-profile — sem verificação de duplicatas (Batch 6)
+
+**Arquivo**: `supabase/functions/create-business-profile/index.ts`
+
+A função cria uma conta Stripe Connect Express e um `pending_business_profiles` sem verificar se já existe um pending profile para o mesmo usuário. Se o usuário clicar no botão de criação múltiplas vezes (ou recarregar a página), múltiplas contas Stripe Connect serão criadas e ficará órfãs no Stripe, gerando custos e confusão administrativa.
+
+**Severidade**: MÉDIA (contas Stripe órfãs com potencial impacto financeiro)
+
+**Ação**: Antes de criar a conta Stripe, verificar se já existe um `pending_business_profiles` para o `user_id`. Se existir, retornar o onboarding link existente (regenerando via `stripe.accountLinks.create`) em vez de criar nova conta.
+
+### 147. customer-portal — busca por email frágil + HTTP 500 genérico (Batch 8)
+
+**Arquivo**: `supabase/functions/customer-portal/index.ts` (linha 49)
+
+```javascript
+const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+```
+
+Busca o Stripe Customer por email em vez de usar `stripe_customer_id` do profile do usuário. Se o email do usuário mudar no Supabase Auth, o portal apontará para o customer errado ou não encontrará nenhum. O catch retorna HTTP 500 genérico.
+
+**Severidade**: BAIXA (funcional na maioria dos casos, mas frágil)
+
+**Ação**: Buscar `stripe_customer_id` do profile do usuário no Supabase, e usar diretamente `stripe.billingPortal.sessions.create({ customer: stripe_customer_id })`. Fallback para busca por email se `stripe_customer_id` for null. Adicionar tratamento específico no catch.
+
+### Funções Fora de Escopo (26 funções — auditadas v5.17)
 
 As seguintes funções foram auditadas e classificadas como fora do escopo do plano de cobrança híbrida por serem utilitárias, de setup, de notificação sem impacto financeiro, ou de infraestrutura:
 
@@ -2800,17 +2840,22 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | check-business-profile-status | #142 | ✅ (v5.16) |
 | create-connect-account | #143 | ✅ (v5.16) |
 | send-class-confirmation-notification | #144 | ✅ (v5.16) |
+| check-stripe-account-status | #145 | ✅ (v5.17) |
+| create-business-profile | #146 | ✅ (v5.17) |
+| customer-portal | #147 | ✅ (v5.17) |
 
 ### Padrões Transversais Verificados
 
 | Padrão | Funções Verificadas | Status |
 |--------|-------------------|--------|
 | FK joins no Deno | 36 funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅) |
-| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription, update-dependent, create-connect-account, send-class-confirmation-notification | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139, #143, #144) |
+| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription, update-dependent, create-connect-account, send-class-confirmation-notification, check-stripe-account-status | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139, #143, #144, #145) |
 | Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
-| HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify, create-connect-onboarding-link, list-subscription-invoices | ✅ (#72, #76, #83, #140, #141, M32, M52) |
+| HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify, create-connect-onboarding-link, list-subscription-invoices, check-stripe-account-status, customer-portal | ✅ (#72, #76, #83, #140, #141, #145, #147, M32, M52) |
 | Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student, create-student, update-student-details | ✅ (#102, #118, #121, #128, #132✅, #133✅) |
 | Ownership validation tardia | check-business-profile-status (Stripe API antes de ownership check) | ✅ (#142) |
+| Duplicatas / contas órfãs | create-business-profile (múltiplas contas Stripe Connect) | ✅ (#146) |
+| Busca frágil por email | customer-portal (busca Stripe Customer por email em vez de ID) | ✅ (#147) |
 | Payment Intent órfão | handle-teacher-subscription-cancellation, create-subscription-checkout | ✅ (#112, #117) |
 | Service role como Bearer | process-cancellation | ✅ (#80) |
 | boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
@@ -2849,7 +2894,8 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. |
 | v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.15 | 2026-02-14 | +4 pontas soltas (#138-#141) em 4 funções: request-class não persiste `is_paid_class` (#138 ALTA → Fase 3), update-dependent `.single()` (#139 BAIXA → Batch 8), create-connect-onboarding-link HTTP 500 genérico (#140 BAIXA → Batch 8), list-subscription-invoices HTTP 500 genérico (#141 BAIXA → Batch 8). Tabela de cobertura expandida para 40 funções. Totais: 141 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.16 | 2026-02-14 | +3 pontas soltas (#142-#144) em 3 funções: check-business-profile-status ownership validation tardia (#142 MÉDIA → Batch 8), create-connect-account `.single()` incorreto (#143 BAIXA → Batch 8), send-class-confirmation-notification `.single()` sem tratamento (#144 BAIXA → Batch 8). Auditoria completa das 75 edge functions: 43 cobertas + 29 fora de escopo + 3 utilitárias (_shared, config). Novo padrão transversal: ownership validation tardia. Tabela expandida para 43 funções. Totais: **144 pontas soltas** (6 implementadas), **52 melhorias**. **COBERTURA EXAUSTIVA 100% ATINGIDA.** |
+| v5.16 | 2026-02-14 | +3 pontas soltas (#142-#144) em 3 funções: check-business-profile-status ownership validation tardia (#142 MÉDIA → Batch 8), create-connect-account `.single()` incorreto (#143 BAIXA → Batch 8), send-class-confirmation-notification `.single()` sem tratamento (#144 BAIXA → Batch 8). Tabela expandida para 43 funções. Totais: 144 pontas soltas (6 implementadas), 52 melhorias. |
+| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147) em 3 funções completamente ausentes da cobertura v5.16: check-stripe-account-status `.single()` + HTTP 500 (#145 BAIXA → Batch 8), create-business-profile sem check de duplicatas — contas Stripe Connect órfãs (#146 MÉDIA → Batch 6), customer-portal busca por email frágil + HTTP 500 (#147 BAIXA → Batch 8). Contagem de fora de escopo corrigida de 29 para 26. Tabela expandida para 46 funções. Novos padrões transversais: duplicatas/contas órfãs, busca frágil por email. Totais: **147 pontas soltas** (6 implementadas), **52 melhorias**. **COBERTURA EXAUSTIVA 100% ATINGIDA (75 funções: 46 cobertas + 26 fora de escopo + 3 infraestrutura).** |
 
 ## Memórias do Projeto a Atualizar
 

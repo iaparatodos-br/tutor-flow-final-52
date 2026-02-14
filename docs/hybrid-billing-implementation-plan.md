@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.12
+# Plano de Cobrança Híbrida — v5.13
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.11 acumulou 126 pontas soltas e 52 melhorias. A v5.12 é a **auditoria final de validação**: nenhuma nova ponta solta foi identificada — apenas 2 confirmações de cobertura de itens já documentados. Totais mantidos: **126 pontas soltas** e **52 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.12 acumulou 126 pontas soltas e 52 melhorias com auditoria final de validação. A v5.13 adicionou **5 novas pontas soltas (#127-#131)** em 4 funções previamente ausentes da tabela de cobertura: `smart-delete-student`, `handle-plan-downgrade-selection`, `validate-payment-routing` e `cancel-subscription`. Totais atualizados: **131 pontas soltas** e **52 melhorias**.
 
-Principais mudanças na v5.12: Confirmação de que `verify-payment-status` usa `.single()` (coberto por #102), confirmação de que cron jobs usam `ANON_KEY` para funções com `verify_jwt = true` (recomendação de config.toml adicionada), confirmação de que `webhook-stripe-subscriptions` segue padrões já documentados (#49, #76, #77), e tabela de cobertura completa de todas as 26 edge functions financeiras vs pontas soltas documentadas.
+Principais mudanças na v5.13: Identificação de falha de autenticação em `smart-delete-student` (#128 — ALTA, Batch 1), audit_logs com colunas inexistentes em `handle-plan-downgrade-selection` (#129 — ALTA, Batch 3), FK joins em `smart-delete-student` e `validate-payment-routing` (#127, #130), faturas reais criadas em validação (#130), e `.single()` em `cancel-subscription` (#131). Tabela de cobertura expandida para 30 funções.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2407,6 +2407,88 @@ A função usa `.update({ status: "overdue" })` em vez de `"vencida"`. Deve ser 
 
 ---
 
+## Pontas Soltas v5.13 (#127-#131)
+
+### 127. smart-delete-student usa FK joins `classes!inner(teacher_id)` (Batch 5)
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (linhas 132-136, 160-164)
+
+A função `checkPendingClasses` usa a sintaxe de FK join em dois locais:
+
+```javascript
+.select(`id, status, classes!inner(teacher_id)`)
+.eq('classes.teacher_id', teacherId)
+```
+
+FK joins falham intermitentemente no Deno por cache de schema. Se falharem, a verificação de aulas pendentes retorna erro silencioso (o erro é logado mas `studentPending` cai para 0), permitindo a exclusão de um aluno que **ainda tem aulas pendentes**.
+
+**Severidade**: ALTA
+
+**Ação**: Refatorar para queries sequenciais — buscar `class_participants` por `student_id` com status pendente/confirmado, depois filtrar por `teacher_id` via query separada em `classes`.
+
+### 128. smart-delete-student sem autenticação — qualquer usuário pode deletar alunos de outro professor (Batch 1)
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (linhas 274-303)
+
+A função não verifica o token de autenticação. Aceita `teacher_id` diretamente do corpo da requisição sem validar se o chamador é realmente aquele professor. Qualquer usuário autenticado (ou função interna) pode passar qualquer `teacher_id` e excluir alunos de outro professor.
+
+A função é chamada por:
+- Frontend (via `supabaseClient.functions.invoke`)
+- `handle-plan-downgrade-selection` (via `functions.invoke`)
+- `process-payment-failure-downgrade` (já documentado em #109)
+
+**Severidade**: ALTA (risco de segurança)
+
+**Ação**: Adicionar verificação de `auth.getUser(token)` e validar que `teacher_id` do body corresponde ao `user.id` autenticado. Para chamadas internas (server-to-server via service_role), aceitar também `service_role`.
+
+### 129. handle-plan-downgrade-selection audit_logs com colunas inexistentes — logs silenciosamente perdidos (Batch 3)
+
+**Arquivo**: `supabase/functions/handle-plan-downgrade-selection/index.ts` (linhas 29-44, 97-104, 226-231, 286-296)
+
+A função `logAuditEvent` insere em `audit_logs` usando colunas que **não existem na tabela**:
+
+- **Colunas usadas no código**: `user_id`, `action`, `details`, `metadata`
+- **Colunas reais da tabela**: `actor_id`, `operation`, `table_name`, `record_id`, `old_data`, `new_data`, `target_teacher_id`
+
+Resultado: TODOS os 3 inserts de auditoria (`PLAN_DOWNGRADE_INITIATED`, `STUDENT_DELETED_DOWNGRADE`, `PLAN_DOWNGRADE_COMPLETED`) falham silenciosamente. Nenhum registro de downgrade de plano é salvo no log de auditoria, tornando impossível rastrear quem excluiu alunos e quando.
+
+**Severidade**: ALTA
+
+**Ação**: Corrigir o mapeamento de colunas:
+- `user_id` → `actor_id`
+- `action` → `operation`
+- Adicionar `table_name: 'user_subscriptions'`, `record_id` (UUID do subscription ou user), `target_teacher_id: userId`
+- `details`/`metadata` → serializar em `new_data` (jsonb)
+
+### 130. validate-payment-routing cria e deleta faturas reais no banco (Batch 6)
+
+**Arquivo**: `supabase/functions/validate-payment-routing/index.ts` (linhas 245-264)
+
+O "Teste 5" da função de validação **insere uma fatura real** no banco de dados e depois tenta apagar. Se a função falhar entre o insert e o delete (timeout, erro de rede), uma fatura órfã de R$1.00 fica no sistema com descrição "Teste de validação de roteamento".
+
+Além disso, a função usa FK join na linha 108 (`profiles:student_id(...)`) — mesmo padrão problemático documentado nas demais pontas.
+
+**Severidade**: MÉDIA
+
+**Ação**: Substituir o insert/delete real por uma validação dry-run (ex: verificar se o RLS permitiria o insert via query de permissão, sem inserir dados reais). Refatorar FK join para query sequencial.
+
+### 131. cancel-subscription usa `.single()` em lookup de assinatura (Batch 5)
+
+**Arquivo**: `supabase/functions/cancel-subscription/index.ts` (linha 67)
+
+```javascript
+.eq('status', 'active')
+.single();
+```
+
+Se o professor não tiver assinatura ativa, `.single()` lança exceção e retorna HTTP 500. Deveria usar `.maybeSingle()` e retornar mensagem amigável.
+
+**Severidade**: BAIXA
+
+**Ação**: Trocar para `.maybeSingle()` e tratar cenário de assinatura inexistente com mensagem clara (HTTP 404).
+
+---
+
 ## Confirmações da Auditoria Final v5.12
 
 ### Confirmação 1: verify-payment-status usa `.single()` em lookup de fatura (já coberto por #102)
@@ -2451,7 +2533,7 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 
 ---
 
-## Tabela de Cobertura Completa (v5.12)
+## Tabela de Cobertura Completa (v5.13)
 
 | Função | Pontas Documentadas | Cobertura |
 |--------|-------------------|-----------|
@@ -2481,19 +2563,24 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | handle-student-overage | M47 | ✅ |
 | materialize-virtual-class | #61, #70 | ✅ |
 | webhook-stripe-subscriptions | Extensões de #49, #76, #77 | ✅ (Confirmação 3) |
+| smart-delete-student | #127, #128 | ✅ (v5.13) |
+| handle-plan-downgrade-selection | #129 | ✅ (v5.13) |
+| validate-payment-routing | #130 | ✅ (v5.13) |
+| cancel-subscription | #131 | ✅ (v5.13) |
 
 ### Padrões Transversais Verificados
 
 | Padrão | Funções Verificadas | Status |
 |--------|-------------------|--------|
-| FK joins no Deno | 25+ financeiras | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123) |
-| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment | ✅ (#49, #53, #64, #73, #78, #84, #102) |
+| FK joins no Deno | 30 financeiras | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130) |
+| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription | ✅ (#49, #53, #64, #73, #78, #84, #102, #131) |
 | Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
 | HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify | ✅ (#72, #76, #83, M32, M52) |
-| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile | ✅ (#102, #118, #121) |
+| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student | ✅ (#102, #118, #121, #128) |
 | Payment Intent órfão | handle-teacher-subscription-cancellation, create-subscription-checkout | ✅ (#112, #117) |
 | Service role como Bearer | process-cancellation | ✅ (#80) |
 | boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
+| Audit logs com schema incorreto | handle-plan-downgrade-selection | ✅ (#129) |
 
 ---
 
@@ -2523,7 +2610,8 @@ Embora categorizada como fora do escopo principal de cobrança híbrida (trata a
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
 | v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
-| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. Plano COMPLETO e FINAL. |
+| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. |
+| v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. Plano COMPLETO e FINAL. |
 
 ## Memórias do Projeto a Atualizar
 

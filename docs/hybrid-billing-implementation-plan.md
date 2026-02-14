@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.9
+# Plano de Cobrança Híbrida — v5.10
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.8 acumulou 113 pontas soltas e 46 melhorias. Esta v5.9 adiciona 5 novas pontas soltas (#114-#118) e 2 melhorias (M47-M48), totalizando **118 pontas soltas** e **48 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.9 acumulou 118 pontas soltas e 48 melhorias. Esta v5.10 adiciona 5 novas pontas soltas (#119-#123) e 3 melhorias (M49-M51), totalizando **123 pontas soltas** e **51 melhorias**. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
 
-Principais mudanças na v5.9: change-payment-method FK joins (#114 — ALTA), change-payment-method autorização guardião/responsável quebrada (#115 — ALTA), check-subscription-status FK join (#116 — MÉDIA), create-subscription-checkout não cancela Payment Intents ao mudar plano (#117 — ALTA), validate-business-profile-deletion sem autenticação (#118 — BAIXA), handle-student-overage tabela potencialmente inexistente (M47), end-recurrence não cancela faturas prepaid (M48).
+Principais mudanças na v5.10: create-payment-intent-connect 3 FK joins — ponto único de falha para todos os pagamentos (#119 — ALTA), send-class-reminders FK joins implícitos (#120 — MÉDIA), generate-boleto-for-invoice FK joins + sem autenticação (#121 — ALTA), cancel-payment-intent não verifica status PI antes de cancelar (#122 — MÉDIA), process-orphan-cancellation-charges FK join em query principal (#123 — MÉDIA), send-boleto-subscription-notification fallback hardcoded (M49), confirmação de #98 em cancel-payment-intent (M50), confirmação de #86 em webhook-stripe-connect (M51).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2266,6 +2266,111 @@ Quando a recorrência é encerrada, aulas futuras materializadas são deletadas.
 
 ---
 
+## Pontas Soltas v5.10 (#119-#123)
+
+### 119. create-payment-intent-connect usa 3 FK joins simultâneos — função central de pagamento frágil (Batch 5)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 37-51)
+
+A função usa **3 FK joins** simultâneos na query principal:
+
+```javascript
+.select(`
+  *,
+  student:profiles!invoices_student_id_fkey(...),
+  teacher:profiles!invoices_teacher_id_fkey(...),
+  business_profile:business_profiles!invoices_business_profile_id_fkey(...)
+`)
+```
+
+Esta função é o ponto central de geração de pagamentos (Boleto, PIX, Cartão) e é chamada por:
+- `create-invoice` (faturas manuais/prepaid)
+- `automated-billing` (faturas automatizadas)
+- `generate-boleto-for-invoice` (geração manual de boleto)
+- `change-payment-method` (troca de método de pagamento)
+
+Se o schema cache invalidar, **NENHUM pagamento será gerado** em todo o sistema.
+
+**Severidade**: ALTA — função crítica que é ponto único de falha para todos os pagamentos.
+
+**Ação**: Refatorar para 4 queries sequenciais: invoices, profiles (aluno), profiles (professor), business_profiles.
+
+### 120. send-class-reminders usa FK joins em classes e class_participants (Batch 5)
+
+**Arquivo**: `supabase/functions/send-class-reminders/index.ts` (linhas 28-43, 85-97)
+
+A função usa dois FK joins implícitos (`class_services`, `profiles`). Se falharem, **nenhum lembrete de aula será enviado** nas próximas 24h.
+
+**Severidade**: MÉDIA — impacta experiência do aluno mas não impacta financeiro.
+
+**Ação**: Refatorar para queries sequenciais.
+
+### 121. generate-boleto-for-invoice usa FK joins e não tem autenticação (Batch 2)
+
+**Arquivo**: `supabase/functions/generate-boleto-for-invoice/index.ts` (linhas 34-45, 22-29)
+
+Dois problemas:
+
+1. **FK joins** (linhas 38-43): `profiles!invoices_student_id_fkey` e `profiles!invoices_teacher_id_fkey`.
+
+2. **Sem autenticação** (linhas 22-29): A função usa `SUPABASE_SERVICE_ROLE_KEY` sem verificar quem está chamando. Qualquer requisição pode gerar boletos para qualquer `invoice_id`, permitindo enumeração de faturas, abuso de API Stripe e exposição de dados pessoais (CPF, endereço).
+
+**Severidade**: ALTA — exposição de dados pessoais e abuso potencial de API Stripe.
+
+**Ação**: Adicionar autenticação (verificar student_id ou teacher_id da fatura) e refatorar FK joins.
+
+### 122. cancel-payment-intent não verifica status do PI antes de cancelar (Batch 4)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 138-166)
+
+A função tenta cancelar o Payment Intent sem antes verificar seu status. Se o PI estiver `succeeded` (aluno pagou momentos antes), o cancel falha mas a função marca a fatura como `payment_origin: 'manual'`. O professor pensa que marcou manualmente, enquanto o Stripe já transferiu o dinheiro — risco de cobrança dupla.
+
+**Severidade**: MÉDIA — dados inconsistentes, risco de cobrança dupla manual.
+
+**Ação**: Fazer `stripe.paymentIntents.retrieve()` antes de cancelar. Se `succeeded`, marcar `payment_origin: 'automatic'`.
+
+### 123. process-orphan-cancellation-charges usa FK joins em class_participants e profiles (Batch 5)
+
+**Arquivo**: `supabase/functions/process-orphan-cancellation-charges/index.ts` (linhas 44-56)
+
+FK join `profiles!class_participants_student_id_fkey` na query principal. Se o schema cache invalidar, nenhuma cobrança órfão será processada.
+
+**Severidade**: MÉDIA — mesma classe de bugs de FK join.
+
+**Ação**: Refatorar para queries sequenciais.
+
+---
+
+## Melhorias v5.10 (M49-M51)
+
+### M49. send-boleto-subscription-notification usa plan_name fallback "Premium" hardcoded (Batch 6)
+
+**Arquivo**: `supabase/functions/send-boleto-subscription-notification/index.ts` (linha 294)
+
+Se o caller não passar `plan_name`, o email exibirá "Premium" independente do plano real.
+
+**Ação**: Buscar nome do plano via query ao banco ou rejeitar requisição sem o campo.
+
+### M50. cancel-payment-intent usa status 'paid' em inglês — confirmação de #98 (Batch 3)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 111, 172)
+
+Confirmação: ambos os branches usam `status: 'paid'` (inglês). Correção deve ser aplicada em AMBOS os updates.
+
+### M51. Webhook payment_intent.succeeded apaga boleto_url e pix_copy_paste — confirmação de #86 (Batch 4)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 474-481)
+
+Confirmação do código exato: `pix_qr_code`, `pix_copy_paste`, `boleto_url`, `linha_digitavel`, `barcode`, `stripe_hosted_invoice_url` são todos zerados. Correção: remover NULLs, manter apenas `pix_expires_at: null` e `boleto_expires_at: null`.
+
+---
+
+## Análise de Cobertura Final (v5.10)
+
+Todas as edge functions do fluxo financeiro foram auditadas. Ver `.lovable/plan.md` para lista completa de funções auditadas e fora de escopo.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -2289,7 +2394,8 @@ Quando a recorrência é encerrada, aulas futuras materializadas são deletadas.
 | v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
 | v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45): webhook-stripe-connect status inglês (#104 CRÍTICA), process-orphan-cancellation-charges RPC incorreta (#105 ALTA), process-orphan sem pagamento (#106 ALTA), process-cancellation cobra aulas gratuitas (#107 MÉDIA), automated-billing sem notificação (#108 ALTA), clientes Stripe duplicados (M45) |
 | v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46): process-payment-failure-downgrade parâmetros incorretos (#109 CRÍTICA), handle-teacher-subscription-cancellation RESEND_API_KEY (#110 ALTA), process-expired-subscriptions FK joins (#111 MÉDIA), handle-teacher-subscription-cancellation sem cancelar Payment Intents (#112 ALTA), check-pending-boletos FK join (#113 MÉDIA), create-invoice sem whitelist invoice_type (M46) |
-| v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48): change-payment-method FK joins (#114 ALTA), change-payment-method autorização guardião quebrada (#115 ALTA), check-subscription-status FK join (#116 MÉDIA), create-subscription-checkout sem cancelar Payment Intents (#117 ALTA), validate-business-profile-deletion sem auth (#118 BAIXA), handle-student-overage tabela inexistente (M47), end-recurrence faturas órfãs (M48) |
+| v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
+| v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51): create-payment-intent-connect 3 FK joins (#119 ALTA), send-class-reminders FK joins (#120 MÉDIA), generate-boleto-for-invoice FK joins + sem auth (#121 ALTA), cancel-payment-intent sem verificação PI (#122 MÉDIA), process-orphan-cancellation-charges FK join (#123 MÉDIA). Cobertura exaustiva concluída. |
 
 ## Memórias do Projeto a Atualizar
 
@@ -2301,7 +2407,7 @@ Após implementação, atualizar:
 5. `features/teacher-inbox/amnesty-flow-calendar` — deve documentar a limitação da anistia para faturas consolidadas (#37/M11)
 6. `features/billing/prazo-vencimento-padrao-consistencia` — deve documentar que create-invoice agora respeita payment_due_days (#44/M13)
 7. `database/invoice-overdue-notification-tracking` — deve documentar solução da ponta #47/#71 (bug de idempotência crítico)
-8. `infrastructure/supabase-query-patterns` — deve listar #52, #57, #58, #69 como exemplos de FK joins a corrigir
+8. `infrastructure/supabase-query-patterns` — deve listar #52, #57, #58, #69, #119, #120, #121, #123 como exemplos de FK joins a corrigir
 9. `features/billing/ui-feedback-constraints` — deve documentar que stripe_hosted_invoice_url armazena boleto_url (M22)
 10. `database/billing-rpc-filters-experimental-dependents` — deve documentar adição de filtro `is_paid_class = true` (#65)
 11. `style/invoice-display-badges` — deve documentar consolidação do InvoiceTypeBadge com 7 tipos (M24)

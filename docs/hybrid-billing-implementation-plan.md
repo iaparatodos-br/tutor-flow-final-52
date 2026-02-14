@@ -9,7 +9,7 @@
 
 O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.11 acumulou 126 pontas soltas e 52 melhorias. A v5.12 é a **auditoria final de validação**: nenhuma nova ponta solta foi identificada — apenas 2 confirmações de cobertura de itens já documentados. Totais mantidos: **126 pontas soltas** e **52 melhorias**.
 
-Principais mudanças na v5.12: Confirmação de que `verify-payment-status` usa `.single()` (coberto por #102), confirmação de que cron jobs usam `ANON_KEY` para funções com `verify_jwt = true` (recomendação de config.toml adicionada), e tabela de cobertura completa de todas as 25+ edge functions financeiras vs pontas soltas documentadas.
+Principais mudanças na v5.12: Confirmação de que `verify-payment-status` usa `.single()` (coberto por #102), confirmação de que cron jobs usam `ANON_KEY` para funções com `verify_jwt = true` (recomendação de config.toml adicionada), confirmação de que `webhook-stripe-subscriptions` segue padrões já documentados (#49, #76, #77), e tabela de cobertura completa de todas as 26 edge functions financeiras vs pontas soltas documentadas.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2437,6 +2437,18 @@ verify_jwt = false
 verify_jwt = false
 ```
 
+### Confirmação 3: webhook-stripe-subscriptions segue padrões já documentados
+
+**Arquivo**: `supabase/functions/webhook-stripe-subscriptions/index.ts`
+
+Embora categorizada como fora do escopo principal de cobrança híbrida (trata assinaturas do professor, não dos alunos), a função apresenta os mesmos padrões de pontas soltas já documentados:
+
+1. **Retry loops desnecessários** (linhas 420, 513, 564, 601): Retorna HTTP 400 para "user not found", causando retries desnecessários do Stripe. Padrão idêntico ao #77 (webhook-stripe-connect).
+2. **`.single()` em lookup de plano** (linha 346): Risco de exceção se o plano não existir. Padrão idêntico ao #49.
+3. **HTTP 500 no catch global** (linha 715): Deveria retornar HTTP 200 com `success: false`. Padrão idêntico ao #76.
+
+**Ação**: Nenhuma nova ponta necessária — extensões naturais de #49, #76 e #77. Incluir na implementação dos respectivos batches como aplicação transversal dos mesmos padrões. Recomendado como item pós-implementação (Batch 6).
+
 ---
 
 ## Tabela de Cobertura Completa (v5.12)
@@ -2468,6 +2480,7 @@ verify_jwt = false
 | end-recurrence | M48 | ✅ |
 | handle-student-overage | M47 | ✅ |
 | materialize-virtual-class | #61, #70 | ✅ |
+| webhook-stripe-subscriptions | Extensões de #49, #76, #77 | ✅ (Confirmação 3) |
 
 ### Padrões Transversais Verificados
 
@@ -2510,7 +2523,7 @@ verify_jwt = false
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
 | v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
-| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 2 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito). Tabela de cobertura completa adicionada (25+ funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. Plano COMPLETO e FINAL. |
+| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. Plano COMPLETO e FINAL. |
 
 ## Memórias do Projeto a Atualizar
 

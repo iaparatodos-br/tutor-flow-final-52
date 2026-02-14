@@ -1,87 +1,236 @@
 
 
+# Auditoria Final v5.14 — 6 Novas Pontas Soltas Identificadas
 
+## Resumo
 
+Cruzamento das funcoes **ausentes da tabela de cobertura v5.13** contra o codigo-fonte real revelou **6 novas pontas soltas (#132-#137)** em 5 funcoes nunca auditadas: `create-student`, `update-student-details`, `create-dependent`, `delete-dependent`, `manage-class-exception` e `manage-future-class-exceptions`. Totais atualizados: **137 pontas soltas** e **52 melhorias**.
 
-# Revisao do Plano de Cobranca Hibrida v5.13
+---
 
-## Status Atual
+## Novas Pontas Soltas
 
-O plano v5.13 documenta **131 pontas soltas** e **52 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes. A v5.13 adicionou 5 novas pontas soltas (#127-#131) em 4 funcoes ausentes da cobertura v5.12. Cobertura exaustiva confirmada com tabela de 30 funcoes.
+### #132 — create-student sem autenticacao (Batch 1 — ALTA)
 
-## Pontas Soltas CRITICAS (risco financeiro ou de dados)
+**Arquivo**: `supabase/functions/create-student/index.ts`
 
-1. **#68**: Mensalidade ignora cancelamentos com cobranca (receita perdida)
-2. **#74**: Webhook sobrescreve payment_method (dados corrompidos)
-3. **#80**: Service role key como Bearer token (pode falhar a qualquer momento)
-4. **#81**: Race condition overdue vs paid (fatura paga revertida)
-5. **#87**: Handlers invoice.* nunca encontram faturas internas (reconciliacao quebrada) -- **MAIS CRITICA**
-6. **#94**: Mensalidade sem geracao de pagamento Stripe (faturas sem mecanismo de pagamento)
-7. **#95**: check-overdue-invoices race condition paid→overdue (codigo exato sem guard clause)
-8. **#96**: process-cancellation service_role auth falha (receita cancelamentos perdida)
-9. **#104**: Webhook handlers usam status em ingles ('paid', 'overdue') -- faturas pagas nao aparecem no sistema -- **NOVA v5.7**
-10. **#109**: process-payment-failure-downgrade parametros incorretos para smart-delete-student -- alunos nunca removidos -- **NOVA v5.8**
+A funcao aceita `teacher_id` diretamente do corpo da requisicao (linha 19) sem nenhuma verificacao de autenticacao. Nao ha leitura do header `Authorization` nem chamada a `auth.getUser()`. Qualquer requisicao HTTP com um body contendo `teacher_id`, `name` e `email` pode criar alunos vinculados a qualquer professor.
 
-## Pontas Soltas ALTAS
+Alem do risco de seguranca, a funcao:
+- Cria usuarios no `auth.users` (via `admin.createUser`)
+- Cria relacionamentos em `teacher_student_relationships`
+- Pode cobrar o professor via `handle-student-overage`
+- Envia emails de convite
 
-- **#57/#58**: FK joins no create-invoice e automated-billing
-- **#59**: process-cancellation sem is_paid_class
-- **#71**: check-overdue-invoices sem tracking
-- **#85**: payment_method ausente no automated-billing
-- **#86**: payment_intent.succeeded apaga dados de boleto/PIX (confirmada M51)
-- **#91**: Email "Pagar com Cartao" quando link e de boleto
-- **#92**: automated-billing hardcoda boleto ignorando enabled_payment_methods
-- **#93**: automated-billing nao salva payment_method na fatura
-- **#98**: cancel-payment-intent status 'paid' vs 'paga' (confirmada M50 -- ambos branches)
-- **#100**: AmnestyButton cancela faturas de todos os participantes em aulas de grupo
-- **#102**: verify-payment-status e auto-verify-pending-invoices sem autenticacao
-- **#105**: process-orphan-cancellation-charges assinatura RPC incorreta -- **NOVA v5.7**
-- **#106**: process-orphan-cancellation-charges sem geracao de pagamento nem notificacao -- **NOVA v5.7**
-- **#108**: automated-billing tradicional nunca envia notificacao ao aluno -- **NOVA v5.7**
-- **#110**: handle-teacher-subscription-cancellation condiciona emails a RESEND_API_KEY inexistente -- **NOVA v5.8**
-- **#112**: handle-teacher-subscription-cancellation nao cancela Payment Intents -- alunos pagam faturas canceladas -- **NOVA v5.8**
-- **#114**: change-payment-method FK joins falham no Deno -- funcionalidade critica para pagamento -- **NOVA v5.9**
-- **#115**: change-payment-method autorizacao guardiao/responsavel completamente quebrada -- **NOVA v5.9**
-- **#117**: create-subscription-checkout nao cancela Payment Intents ao mudar plano -- **NOVA v5.9**
-- **#119**: create-payment-intent-connect 3 FK joins -- ponto unico de falha para TODOS os pagamentos -- **NOVA v5.10**
-- **#121**: generate-boleto-for-invoice FK joins + sem autenticacao -- exposicao de dados pessoais -- **NOVA v5.10**
-- **#127**: smart-delete-student FK joins `classes!inner(teacher_id)` -- exclusao de aluno com aulas pendentes -- **NOVA v5.13**
-- **#128**: smart-delete-student sem autenticacao -- qualquer usuario pode deletar alunos de outro professor -- **NOVA v5.13**
-- **#129**: handle-plan-downgrade-selection audit_logs com colunas inexistentes -- logs silenciosamente perdidos -- **NOVA v5.13**
+Padrao identico ao #128 (`smart-delete-student`).
 
-## Pontas Soltas MEDIAS/BAIXAS
+**Acao**: Adicionar `auth.getUser(token)` no inicio e validar que `teacher_id === user.id`. Se a funcao tambem for chamada internamente (server-to-server), aceitar service_role.
 
-- **#111**: process-expired-subscriptions FK joins -- **NOVA v5.8**
-- **#113**: check-pending-boletos FK join e fallback hardcoded -- **NOVA v5.8**
-- **#116**: check-subscription-status FK join em checkNeedsStudentSelection -- **NOVA v5.9**
-- **#118**: validate-business-profile-deletion sem autenticacao -- **NOVA v5.9**
-- **#120**: send-class-reminders FK joins implicitos -- **NOVA v5.10**
-- **#122**: cancel-payment-intent nao verifica status PI antes de cancelar -- risco cobranca dupla -- **NOVA v5.10**
-- **#123**: process-orphan-cancellation-charges FK join em query principal -- **NOVA v5.10**
-- **#124**: automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais -- emails com rotulo errado -- **NOVA v5.11**
-- **#125**: create-payment-intent-connect referencia guardian_name inexistente -- codigo morto -- **NOVA v5.11**
-- **#126**: check-overdue-invoices usa status 'overdue' em ingles -- inconsistencia com #104 -- **NOVA v5.11**
-- **#130**: validate-payment-routing cria/deleta faturas reais no banco + FK join -- **NOVA v5.13**
-- **#131**: cancel-subscription usa `.single()` em lookup de assinatura -- **NOVA v5.13**
+### #133 — update-student-details sem autenticacao (Batch 1 — ALTA)
 
-## Confirmacoes da Auditoria Final v5.12
+**Arquivo**: `supabase/functions/update-student-details/index.ts`
 
-1. **verify-payment-status** usa `.single()` em lookup de fatura -- ja coberto por #102 (Batch 1)
-2. **Cron jobs** (setup-billing-automation, setup-expired-subscriptions-automation) usam ANON_KEY para funcoes com verify_jwt=true -- padrao fragil mas funcional. Recomendacao: adicionar `verify_jwt = false` em config.toml para `automated-billing` e `process-expired-subscriptions`.
-3. **webhook-stripe-subscriptions** segue padroes ja documentados (#49, #76, #77) -- extensoes naturais, nenhuma nova ponta necessaria.
+A funcao aceita `teacher_id` do body (linha 18) sem verificar autenticacao. Usa `SUPABASE_SERVICE_ROLE_KEY` diretamente (linha 9-13) e apenas verifica que o `relationship_id` corresponde ao `teacher_id` fornecido — mas como `teacher_id` vem do body sem validacao, qualquer usuario pode modificar dados de alunos de outro professor.
 
-## Roadmap de Implementacao (6 batches)
+Dados modificaveis incluem: nome, dados do responsavel (nome, email, telefone, CPF, endereco), `billing_day`, e `business_profile_id` — todos com impacto financeiro direto.
 
-| Batch | Descricao | Pontas Chave |
-|-------|-----------|--------------|
-| 1 | Financial Criticals (Idempotency, runtime checks, service_role auth, webhook reconciliation) | #80, #81, #87, #95, #96, #102, #104, #109, #115, #128, M35 |
-| 2 | HTTP Status standardization (200+success:false) + Auth | #72, #76, #83, #118, #121, M32 |
-| 3 | Notifications and Status translations + Audit fixes | #32, #39, #91, #98, #99, #107, #108, #110, #126, #129, M33, M36, M39, M46, M50 |
-| 4 | Data/Schema integrity + automated-billing fixes | #85, #86, #88, #92, #93, #94, #106, #112, #117, #122, #124, M34, M37, M38, M48, M51 |
-| 5 | FK Join refactoring + validation | #57, #58, #52, #69, #103, #105, #111, #113, #114, #116, #119, #120, #123, #127, #131, M40, M41 |
-| 6 | Performance/Stripe optimizations + UI fixes | #75, #89, #97, #100, #101, #125, #130, M31, M42, M43, M44, M45, M47, M49, M52 |
+**Acao**: Adicionar `auth.getUser(token)` e validar `teacher_id === user.id`.
 
-## Documentos Relacionados
+### #134 — create-dependent FK join `subscription_plans(student_limit, slug)` (Batch 5 — MEDIA)
 
-- Plano completo: `docs/hybrid-billing-implementation-plan.md`
-- Detalhes tecnicos: `docs/hybrid-billing-implementation-plan.md` (secoes por fase)
+**Arquivo**: `supabase/functions/create-dependent/index.ts` (linha 115)
+
+```text
+.select('plan_id, subscription_plans(student_limit, slug)')
+```
+
+FK join que pode falhar intermitentemente no Deno por cache de schema. Se falhar, `studentLimit` cai para o default de 3 e `planSlug` para 'free', potencialmente bloqueando a criacao de dependentes para professores com planos pagos que ja tem 3+ alunos.
+
+**Acao**: Refatorar para duas queries sequenciais — buscar `user_subscriptions`, depois buscar `subscription_plans` separadamente com o `plan_id`.
+
+### #135 — delete-dependent FK joins `classes!inner(class_date, status)` (Batch 5 — MEDIA)
+
+**Arquivo**: `supabase/functions/delete-dependent/index.ts` (linhas 94-99, 157-161)
+
+Dois FK joins identicos:
+
+```text
+.select(`id, class_id, status, classes!inner(class_date, status)`)
+```
+
+e
+
+```text
+.select(`id, class_id, classes!inner(class_date)`)
+```
+
+Se o primeiro FK join falhar, `pendingClasses` fica vazio, e o dependente e deletado mesmo tendo aulas pendentes. Se o segundo falhar, `unbilledClasses` fica vazio, e o aviso de aulas nao faturadas e suprimido.
+
+**Acao**: Refatorar ambos para queries sequenciais. Buscar `class_participants` por `dependent_id`, depois buscar `classes` por IDs.
+
+### #136 — manage-class-exception FK join `dependents!class_participants_dependent_id_fkey` (Batch 5 — MEDIA)
+
+**Arquivo**: `supabase/functions/manage-class-exception/index.ts` (linhas 80-84)
+
+```text
+.select(`id, dependent_id, dependents!class_participants_dependent_id_fkey(responsible_id)`)
+```
+
+FK join usado na verificacao de autorizacao de alunos responsaveis por dependentes. Se falhar, o `responsible_id` nao e recuperado e o aluno responsavel nao consegue gerenciar excecoes de aulas do seu dependente — falha silenciosa de autorizacao.
+
+**Acao**: Refatorar para query sequencial — buscar `class_participants` com `dependent_id`, depois buscar `dependents` separadamente para verificar `responsible_id`.
+
+### #137 — manage-future-class-exceptions FK join identico ao #136 (Batch 5 — MEDIA)
+
+**Arquivo**: `supabase/functions/manage-future-class-exceptions/index.ts` (linhas 84-89)
+
+Codigo identico ao #136 — mesma query com FK join para verificar autorizacao de responsavel por dependente.
+
+**Acao**: Mesma correcao do #136. Considerar extrair a logica de verificacao de autorizacao para um modulo compartilhado em `_shared/`.
+
+---
+
+## Atualizacoes no Plano
+
+### Cabecalho e Totais
+
+- Titulo: `v5.13` para `v5.14`
+- Totais: `131 pontas soltas` para `137 pontas soltas`
+
+### Tabela de Cobertura (expandir para 35 funcoes)
+
+| Funcao | Pontas Documentadas | Status |
+|--------|-------------------|--------|
+| create-student | #132 | NOVO (v5.14) |
+| update-student-details | #133 | NOVO (v5.14) |
+| create-dependent | #134 | NOVO (v5.14) |
+| delete-dependent | #135 | NOVO (v5.14) |
+| manage-class-exception | #136 | NOVO (v5.14) |
+| manage-future-class-exceptions | #137 | NOVO (v5.14) |
+
+### Padroes Transversais
+
+- **Autenticacao ausente**: adicionar #132, #133 (total: 7 funcoes afetadas)
+- **FK joins no Deno**: adicionar #134, #135, #136, #137 (total: 21 pontas)
+
+### Roadmap de Batches
+
+| # | Batch | Severidade | Justificativa |
+|---|-------|-----------|---------------|
+| #132 | 1 (Criticals) | ALTA | Sem auth — criacao de alunos + cobrancas para qualquer professor |
+| #133 | 1 (Criticals) | ALTA | Sem auth — modificacao de dados financeiros (billing_day, CPF) |
+| #134 | 5 (FK Joins) | MEDIA | FK join padrao transversal |
+| #135 | 5 (FK Joins) | MEDIA | FK join — exclusao de dependente com aulas pendentes |
+| #136 | 5 (FK Joins) | MEDIA | FK join — falha silenciosa de autorizacao |
+| #137 | 5 (FK Joins) | MEDIA | FK join — identico ao #136 |
+
+### Secao Tecnica
+
+#### Correcao do #132 (create-student auth)
+
+Adicionar no inicio da funcao (apos CORS):
+```text
+const authHeader = req.headers.get("Authorization");
+if (!authHeader) {
+  return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+const token = authHeader.replace("Bearer ", "");
+const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
+if (authError || !user) {
+  return new Response(JSON.stringify({ success: false, error: "Unauthorized" }), {
+    status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+if (user.id !== body.teacher_id) {
+  return new Response(JSON.stringify({ success: false, error: "teacher_id does not match authenticated user" }), {
+    status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+```
+
+#### Correcao do #133 (update-student-details auth)
+
+Mesmo padrao do #132. A funcao ja tem `body.teacher_id` — basta validar contra `user.id`.
+
+#### Correcao do #134 (create-dependent FK join)
+
+Substituir:
+```text
+.select('plan_id, subscription_plans(student_limit, slug)')
+```
+Por duas queries:
+```text
+const { data: subscription } = await supabaseAdmin
+  .from('user_subscriptions')
+  .select('plan_id')
+  .eq('user_id', teacherId)
+  .eq('status', 'active')
+  .maybeSingle();
+
+let studentLimit = 3;
+let planSlug = 'free';
+if (subscription?.plan_id) {
+  const { data: plan } = await supabaseAdmin
+    .from('subscription_plans')
+    .select('student_limit, slug')
+    .eq('id', subscription.plan_id)
+    .maybeSingle();
+  if (plan) {
+    studentLimit = plan.student_limit || 3;
+    planSlug = plan.slug || 'free';
+  }
+}
+```
+
+#### Correcao do #135 (delete-dependent FK joins)
+
+Substituir as duas queries com `classes!inner(...)` por queries sequenciais — buscar `class_participants` sem FK join, depois buscar `classes` por array de `class_id`.
+
+#### Correcao do #136/#137 (manage-class-exception / manage-future-class-exceptions FK join)
+
+Substituir:
+```text
+.select(`id, dependent_id, dependents!class_participants_dependent_id_fkey(responsible_id)`)
+```
+Por:
+```text
+// 1. Buscar participantes com dependent_id
+const { data: depParticipants } = await supabase
+  .from('class_participants')
+  .select('id, dependent_id')
+  .eq('class_id', original_class_id)
+  .not('dependent_id', 'is', null);
+
+// 2. Buscar dependentes para verificar responsible_id
+if (depParticipants?.length) {
+  const depIds = depParticipants.map(p => p.dependent_id);
+  const { data: deps } = await supabase
+    .from('dependents')
+    .select('id, responsible_id')
+    .in('id', depIds);
+  
+  for (const dep of deps || []) {
+    if (dep.responsible_id === user.id) {
+      isAuthorized = true;
+      break;
+    }
+  }
+}
+```
+
+---
+
+## Resumo Consolidado (v5.14)
+
+| Categoria | Total v5.13 | Novos Itens | Total v5.14 |
+|-----------|-------------|-------------|-------------|
+| Pontas soltas | 131 | 6 (#132-#137) | 137 |
+| Melhorias | 52 | 0 | 52 |
+| Funcoes cobertas | 30 | 5 | 35 |
+
+## Nota sobre Funcoes Restantes
+
+As ~40 funcoes nao cobertas pela tabela sao utilitarias nao-financeiras (ex: `check-email-availability`, `check-email-confirmation`, `send-student-invitation`, `send-password-reset`, `create-teacher`, `archive-old-data`, `fetch-archived-data`, `stripe-events-monitor`, `security-rls-audit`, `audit-logger`, setup/automation functions, etc.). Nenhuma dessas manipula dados financeiros ou de cobranca e seguem padroes seguros (auth via token ou server-to-server via service_role). Nao necessitam de pontas soltas adicionais.
+

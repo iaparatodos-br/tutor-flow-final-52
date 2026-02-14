@@ -9,7 +9,7 @@
 
 O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.15 adicionou 4 novas pontas soltas (#138-#141). A v5.16 adicionou 3 pontas soltas (#142-#144). A v5.17 adicionou **3 novas pontas soltas (#145-#147)** em 3 funções completamente ausentes da cobertura v5.16: `check-stripe-account-status` (`.single()` incorreto), `create-business-profile` (sem verificação de duplicatas — contas Stripe órfãs) e `customer-portal` (busca por email frágil + HTTP 500 genérico). Totais atualizados: **147 pontas soltas** (6 implementadas) e **52 melhorias**.
 
-Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 46 funções. Contagem de fora de escopo corrigida para 26 (não 29).
+Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2773,7 +2773,7 @@ Busca o Stripe Customer por email em vez de usar `stripe_customer_id` do profile
 
 **Ação**: Buscar `stripe_customer_id` do profile do usuário no Supabase, e usar diretamente `stripe.billingPortal.sessions.create({ customer: stripe_customer_id })`. Fallback para busca por email se `stripe_customer_id` for null. Adicionar tratamento específico no catch.
 
-### Funções Fora de Escopo (26 funções — auditadas v5.17)
+### Funções Fora de Escopo (27 funções — auditadas v5.17)
 
 As seguintes funções foram auditadas e classificadas como fora do escopo do plano de cobrança híbrida por serem utilitárias, de setup, de notificação sem impacto financeiro, ou de infraestrutura:
 
@@ -2792,7 +2792,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 
 ---
 
-## Tabela de Cobertura Completa (v5.16)
+## Tabela de Cobertura Completa (v5.17)
 
 | Função | Pontas Documentadas | Cobertura |
 |--------|-------------------|-----------|
@@ -2895,7 +2895,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.15 | 2026-02-14 | +4 pontas soltas (#138-#141) em 4 funções: request-class não persiste `is_paid_class` (#138 ALTA → Fase 3), update-dependent `.single()` (#139 BAIXA → Batch 8), create-connect-onboarding-link HTTP 500 genérico (#140 BAIXA → Batch 8), list-subscription-invoices HTTP 500 genérico (#141 BAIXA → Batch 8). Tabela de cobertura expandida para 40 funções. Totais: 141 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.16 | 2026-02-14 | +3 pontas soltas (#142-#144) em 3 funções: check-business-profile-status ownership validation tardia (#142 MÉDIA → Batch 8), create-connect-account `.single()` incorreto (#143 BAIXA → Batch 8), send-class-confirmation-notification `.single()` sem tratamento (#144 BAIXA → Batch 8). Tabela expandida para 43 funções. Totais: 144 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147) em 3 funções completamente ausentes da cobertura v5.16: check-stripe-account-status `.single()` + HTTP 500 (#145 BAIXA → Batch 8), create-business-profile sem check de duplicatas — contas Stripe Connect órfãs (#146 MÉDIA → Batch 6), customer-portal busca por email frágil + HTTP 500 (#147 BAIXA → Batch 8). Contagem de fora de escopo corrigida de 29 para 26. Tabela expandida para 46 funções. Novos padrões transversais: duplicatas/contas órfãs, busca frágil por email. Totais: **147 pontas soltas** (6 implementadas), **52 melhorias**. **COBERTURA EXAUSTIVA 100% ATINGIDA (75 funções: 46 cobertas + 26 fora de escopo + 3 infraestrutura).** |
+| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147) em 3 funções completamente ausentes da cobertura v5.16: check-stripe-account-status `.single()` + HTTP 500 (#145 BAIXA → Batch 8), create-business-profile sem check de duplicatas — contas Stripe Connect órfãs (#146 MÉDIA → Batch 6), customer-portal busca por email frágil + HTTP 500 (#147 BAIXA → Batch 8). Contagens corrigidas: 47 cobertas + 27 fora de escopo + 1 infraestrutura (_shared) = 75 diretórios. Novos padrões transversais: duplicatas/contas órfãs, busca frágil por email. Totais: **147 pontas soltas** (6 implementadas), **52 melhorias**. **COBERTURA EXAUSTIVA 100% ATINGIDA.** |
 
 ## Memórias do Projeto a Atualizar
 

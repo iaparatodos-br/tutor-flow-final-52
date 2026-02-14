@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.10
+# Plano de Cobrança Híbrida — v5.11
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.9 acumulou 118 pontas soltas e 48 melhorias. Esta v5.10 adiciona 5 novas pontas soltas (#119-#123) e 3 melhorias (M49-M51), totalizando **123 pontas soltas** e **51 melhorias**. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.10 acumulou 123 pontas soltas e 51 melhorias. Esta v5.11 adiciona 3 novas pontas soltas (#124-#126) e 1 melhoria (M52), totalizando **126 pontas soltas** e **52 melhorias**. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
 
-Principais mudanças na v5.10: create-payment-intent-connect 3 FK joins — ponto único de falha para todos os pagamentos (#119 — ALTA), send-class-reminders FK joins implícitos (#120 — MÉDIA), generate-boleto-for-invoice FK joins + sem autenticação (#121 — ALTA), cancel-payment-intent não verifica status PI antes de cancelar (#122 — MÉDIA), process-orphan-cancellation-charges FK join em query principal (#123 — MÉDIA), send-boleto-subscription-notification fallback hardcoded (M49), confirmação de #98 em cancel-payment-intent (M50), confirmação de #86 em webhook-stripe-connect (M51).
+Principais mudanças na v5.11: automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais — emails automatizados com rótulo errado (#124 — MÉDIA), create-payment-intent-connect referencia campo inexistente guardian_name (#125 — BAIXA), check-overdue-invoices usa status 'overdue' em inglês em vez de 'vencida' (#126 — MÉDIA), auto-verify-pending-invoices retorna HTTP 500 inconsistente com padrão cron (M52).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2363,9 +2363,51 @@ Confirmação: ambos os branches usam `status: 'paid'` (inglês). Correção dev
 
 Confirmação do código exato: `pix_qr_code`, `pix_copy_paste`, `boleto_url`, `linha_digitavel`, `barcode`, `stripe_hosted_invoice_url` são todos zerados. Correção: remover NULLs, manter apenas `pix_expires_at: null` e `boleto_expires_at: null`.
 
+### M52. auto-verify-pending-invoices retorna HTTP 500 em caso de erro — inconsistente com padrão cron (Batch 6)
+
+**Arquivo**: `supabase/functions/auto-verify-pending-invoices/index.ts` (linhas 157-160)
+
+O catch geral retorna `status: 500`. Para funções invocadas via cron, o padrão do projeto é `200+success:false`.
+
+**Ação**: Alterar para `status: 200` com body `{ success: false, error: message }`.
+
 ---
 
-## Análise de Cobertura Final (v5.10)
+## Pontas Soltas v5.11 (#124-#126)
+
+### 124. automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais — emails automatizados com rótulo errado (Batch 4)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 537, 864, 979)
+
+Em três updates de faturas, o `automated-billing` copia `paymentResult.boleto_url` para `stripe_hosted_invoice_url`. O `send-invoice-notification` então renderiza "Pagar com Cartão" apontando para URL de boleto. Extensão direta de M38. A correção deve ser aplicada em ambos os arquivos simultaneamente.
+
+**Severidade**: MÉDIA
+
+**Ação**: Em todos os 3 updates, NÃO copiar `boleto_url` para `stripe_hosted_invoice_url`. Manter `stripe_hosted_invoice_url: null`.
+
+### 125. create-payment-intent-connect referencia campo inexistente guardian_name em profiles (Batch 6)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 308, 433)
+
+O código referencia `invoice.student?.guardian_name`, que não existe na tabela `profiles`. O fallback `invoice.student?.name` funciona, mas ignora o nome do responsável. A função já calcula `finalPayerName` (linha 268) corretamente.
+
+**Severidade**: BAIXA
+
+**Ação**: Substituir `invoice.student?.guardian_name || invoice.student?.name` por `finalPayerName` nas linhas 308 e 433.
+
+### 126. check-overdue-invoices usa status 'overdue' em inglês em vez de 'vencida' (Batch 3)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 58)
+
+A função usa `.update({ status: "overdue" })` em vez de `"vencida"`. Deve ser corrigida junto com #104 (webhooks). Se #104 for corrigido sem incluir esta função, haverá dois status diferentes para faturas vencidas.
+
+**Severidade**: MÉDIA
+
+**Ação**: Alterar `status: "overdue"` para `status: "vencida"`. Coordenar com #104.
+
+---
+
+## Análise de Cobertura Final (v5.11)
 
 Todas as edge functions do fluxo financeiro foram auditadas. Ver `.lovable/plan.md` para lista completa de funções auditadas e fora de escopo.
 
@@ -2386,16 +2428,17 @@ Todas as edge functions do fluxo financeiro foram auditadas. Ver `.lovable/plan.
 | v4.8 | 2026-02-13 | +5 pontas soltas (#52-#56), +2 melhorias (M18-M19) |
 | v4.9 | 2026-02-13 | +5 pontas soltas (#57-#61), +3 melhorias (M20-M22) |
 | v5.0 | 2026-02-13 | +6 pontas soltas (#62-#67), +3 melhorias (M23-M25), 1 duplicata resolvida |
-| v5.1 | 2026-02-13 | +6 pontas soltas (#68-#73), +3 melhorias (M26-M28): bug crítico mensalidade sem cancelamentos, FK join em alerta de aulas antigas, SDK inconsistente, confirmação bug idempotência, HTTP 500 no create-invoice, .single() em send-invoice-notification |
-| v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31): webhook dupla atualização payment_method, automated-billing sem PIX fallback, HTTP 500 em catch geral, webhook retorna 500 para updates não-críticos, create-invoice guardian .single(), outsideCycleInvoiceId não logado |
-| v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35): process-cancellation SERVICE_ROLE_KEY como Bearer token, check-overdue-invoices race condition paid→overdue, AmnestyButton sem validação prepaid, process-cancellation HTTP 500, .single() em dependente, automated-billing payment_method ausente nos updates |
-| v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38): webhook apaga dados boleto/PIX (#86), handlers invoice.* nunca encontram faturas internas (#87 CRÍTICA), RPC sem filtro datas mensalidade (#88), create-invoice sem charges_enabled (#89), decisão mensalidade sem aulas (#90), label "Cartão" para boleto (#91), notificação valores baixos (M36), BillingSettings sem charge_timing (M37), duplicação stripe_hosted_invoice_url (M38) |
-| v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41): automated-billing hardcoda boleto (#92 ALTA), payment_method NULL em faturas automatizadas (#93 ALTA), mensalidade sem geração de pagamento (#94 CRÍTICA), check-overdue-invoices race condition (#95 CRÍTICA), process-cancellation service_role auth (#96 CRÍTICA), clientes Stripe duplicados platform vs connected (#97 MÉDIA), notificação skipBoletoGeneration (M39), change-payment-method auth redundante (M40), create-invoice sem whitelist invoice_type (M41) |
-| v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
-| v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45): webhook-stripe-connect status inglês (#104 CRÍTICA), process-orphan-cancellation-charges RPC incorreta (#105 ALTA), process-orphan sem pagamento (#106 ALTA), process-cancellation cobra aulas gratuitas (#107 MÉDIA), automated-billing sem notificação (#108 ALTA), clientes Stripe duplicados (M45) |
-| v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46): process-payment-failure-downgrade parâmetros incorretos (#109 CRÍTICA), handle-teacher-subscription-cancellation RESEND_API_KEY (#110 ALTA), process-expired-subscriptions FK joins (#111 MÉDIA), handle-teacher-subscription-cancellation sem cancelar Payment Intents (#112 ALTA), check-pending-boletos FK join (#113 MÉDIA), create-invoice sem whitelist invoice_type (M46) |
+| v5.1 | 2026-02-13 | +6 pontas soltas (#68-#73), +3 melhorias (M26-M28) |
+| v5.2 | 2026-02-13 | +6 pontas soltas (#74-#79), +3 melhorias (M29-M31) |
+| v5.3 | 2026-02-13 | +6 pontas soltas (#80-#85), +4 melhorias (M32-M35) |
+| v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38) |
+| v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41) |
+| v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44) |
+| v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45) |
+| v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46) |
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
-| v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51): create-payment-intent-connect 3 FK joins (#119 ALTA), send-class-reminders FK joins (#120 MÉDIA), generate-boleto-for-invoice FK joins + sem auth (#121 ALTA), cancel-payment-intent sem verificação PI (#122 MÉDIA), process-orphan-cancellation-charges FK join (#123 MÉDIA). Cobertura exaustiva concluída. |
+| v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
+| v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). Auditoria final completa. |
 
 ## Memórias do Projeto a Atualizar
 

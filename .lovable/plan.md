@@ -2,11 +2,12 @@
 
 
 
-# Revisao do Plano de Cobranca Hibrida v5.10
+
+# Revisao do Plano de Cobranca Hibrida v5.11
 
 ## Status Atual
 
-O plano v5.10 documenta **123 pontas soltas** e **51 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
+O plano v5.11 documenta **126 pontas soltas** e **52 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
 
 ## Pontas Soltas CRITICAS (risco financeiro ou de dados)
 
@@ -54,6 +55,9 @@ O plano v5.10 documenta **123 pontas soltas** e **51 melhorias** no sistema de c
 - **#120**: send-class-reminders FK joins implicitos -- **NOVA v5.10**
 - **#122**: cancel-payment-intent nao verifica status PI antes de cancelar -- risco cobranca dupla -- **NOVA v5.10**
 - **#123**: process-orphan-cancellation-charges FK join em query principal -- **NOVA v5.10**
+- **#124**: automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais -- emails com rotulo errado -- **NOVA v5.11**
+- **#125**: create-payment-intent-connect referencia guardian_name inexistente -- codigo morto -- **NOVA v5.11**
+- **#126**: check-overdue-invoices usa status 'overdue' em ingles -- inconsistencia com #104 -- **NOVA v5.11**
 
 ## Roadmap de Implementacao (6 batches)
 
@@ -61,10 +65,10 @@ O plano v5.10 documenta **123 pontas soltas** e **51 melhorias** no sistema de c
 |-------|-----------|--------------|
 | 1 | Financial Criticals (Idempotency, runtime checks, service_role auth, webhook reconciliation) | #80, #81, #87, #95, #96, #102, #104, #109, #115, M35 |
 | 2 | HTTP Status standardization (200+success:false) + Auth | #72, #76, #83, #118, #121, M32 |
-| 3 | Notifications and Status translations | #32, #39, #91, #98, #99, #107, #108, #110, M33, M36, M39, M46, M50 |
-| 4 | Data/Schema integrity + automated-billing fixes | #85, #86, #88, #92, #93, #94, #106, #112, #117, #122, M34, M37, M38, M48, M51 |
+| 3 | Notifications and Status translations | #32, #39, #91, #98, #99, #107, #108, #110, #126, M33, M36, M39, M46, M50 |
+| 4 | Data/Schema integrity + automated-billing fixes | #85, #86, #88, #92, #93, #94, #106, #112, #117, #122, #124, M34, M37, M38, M48, M51 |
 | 5 | FK Join refactoring + validation | #57, #58, #52, #69, #103, #105, #111, #113, #114, #116, #119, #120, #123, M40, M41 |
-| 6 | Performance/Stripe optimizations + UI fixes | #75, #89, #97, #100, #101, M31, M42, M43, M44, M45, M47, M49 |
+| 6 | Performance/Stripe optimizations + UI fixes | #75, #89, #97, #100, #101, #125, M31, M42, M43, M44, M45, M47, M49, M52 |
 
 ## Documentos Relacionados
 

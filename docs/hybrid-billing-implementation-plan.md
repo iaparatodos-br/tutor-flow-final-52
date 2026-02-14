@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.7
+# Plano de Cobrança Híbrida — v5.8
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.6 acumulou 103 pontas soltas e 44 melhorias. Esta v5.7 adiciona 5 novas pontas soltas (#104-#108) e 1 melhoria (M45), totalizando **108 pontas soltas** e **45 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.7 acumulou 108 pontas soltas e 45 melhorias. Esta v5.8 adiciona 5 novas pontas soltas (#109-#113) e 1 melhoria (M46), totalizando **113 pontas soltas** e **46 melhorias**.
 
-Principais mudanças na v5.7: webhook-stripe-connect handlers usam status em inglês (#104 — CRÍTICA), process-orphan-cancellation-charges assinatura RPC incorreta (#105 — ALTA), process-orphan-cancellation-charges sem geração de pagamento (#106 — ALTA), process-cancellation cobra aulas gratuitas (#107 — MÉDIA), automated-billing tradicional sem notificação (#108 — ALTA), clientes Stripe duplicados platform vs connected (M45).
+Principais mudanças na v5.8: process-payment-failure-downgrade chama smart-delete-student com parâmetros incorretos (#109 — CRÍTICA), handle-teacher-subscription-cancellation condiciona emails a RESEND_API_KEY inexistente (#110 — ALTA), process-expired-subscriptions FK joins (#111 — MÉDIA), handle-teacher-subscription-cancellation não cancela Payment Intents (#112 — ALTA), check-pending-boletos FK join e fallback hardcoded (#113 — MÉDIA), create-invoice sem whitelist invoice_type (M46).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2000,6 +2000,156 @@ Para pagamentos PIX (Direct Charges), a função cria um Stripe Customer **na co
 
 ---
 
+## Novas Pontas Soltas v5.8 (#109-#113)
+
+### 109. process-payment-failure-downgrade chama smart-delete-student com parâmetros incorretos — alunos nunca são removidos (Batch 1)
+
+**Arquivo**: `supabase/functions/process-payment-failure-downgrade/index.ts` (linhas 142-153)
+**Arquivo relacionado**: `supabase/functions/smart-delete-student/index.ts` (linhas 287-301)
+
+A função `process-payment-failure-downgrade` chama `smart-delete-student` assim:
+
+```javascript
+body: {
+  studentId: student.student_id,    // camelCase
+  reason: 'payment_failure_downgrade'
+}
+```
+
+Porém, `smart-delete-student` espera:
+
+```javascript
+const { student_id, teacher_id, relationship_id, force = false } = await req.json();
+// Validação obrigatória (linha 290-301):
+if (!student_id || !teacher_id || !relationship_id) {
+  return Response({ success: false, error: 'Missing required fields...' }, { status: 400 });
+}
+```
+
+Três problemas críticos:
+1. `studentId` (camelCase) vs `student_id` (snake_case) — parâmetro nunca é lido
+2. `teacher_id` não é passado — será `undefined`
+3. `relationship_id` não é passado — será `undefined`
+
+Resultado: **TODAS as chamadas retornam erro 400**, mas o `process-payment-failure-downgrade` ignora o corpo da resposta e apenas verifica `error` do `functions.invoke` (que só captura erros de rede, não erros HTTP 400). Os alunos excedentes NUNCA são removidos durante downgrade por falha de pagamento.
+
+**Severidade**: CRÍTICA — professores com falha de pagamento mantêm alunos acima do limite do plano gratuito indefinidamente.
+
+**Ação**: Corrigir a chamada para passar os 3 parâmetros obrigatórios em snake_case:
+
+```javascript
+body: {
+  student_id: student.student_id,
+  teacher_id: user.id,
+  relationship_id: student.id, // ID do teacher_student_relationships
+  force: true  // Necessário para pular verificação de aulas pendentes
+}
+```
+
+### 110. handle-teacher-subscription-cancellation condiciona notificações a RESEND_API_KEY inexistente — emails nunca são enviados (Batch 3)
+
+**Arquivo**: `supabase/functions/handle-teacher-subscription-cancellation/index.ts` (linhas 198-201)
+
+A função condiciona o envio de notificações à existência da variável `RESEND_API_KEY`:
+
+```javascript
+if (Deno.env.get("RESEND_API_KEY")) {
+  await sendNotifications(supabaseService, teacher_id, voidedInvoices, paidInvoices);
+}
+```
+
+O sistema utiliza AWS SES (via `_shared/ses-email.ts`), não Resend. A variável `RESEND_API_KEY` provavelmente não existe no ambiente, o que significa que:
+1. O professor NÃO recebe email sobre faturas canceladas automaticamente
+2. Os alunos NÃO recebem email sobre suspensão de cobranças
+3. Alunos com faturas pagas que precisam de estorno NÃO são informados
+
+Além disso, a função `sendNotifications` (linhas 240-303) acessa `student.guardian_email` (campo que não existe em `profiles` — dados de responsável estão em `teacher_student_relationships`).
+
+**Severidade**: ALTA — nenhuma parte afetada recebe comunicação sobre cancelamento de cobranças.
+
+**Ação**:
+1. Remover a condicional `RESEND_API_KEY` — chamar `sendNotifications` sempre
+2. Corrigir `student.guardian_email` para buscar de `teacher_student_relationships.student_guardian_email`
+
+### 111. process-expired-subscriptions usa FK joins que falham no Deno — subscrições expiradas podem não ser processadas (Batch 5)
+
+**Arquivo**: `supabase/functions/process-expired-subscriptions/index.ts` (linhas 38-57)
+
+A função usa FK joins na query principal:
+
+```javascript
+.from('user_subscriptions')
+.select(`
+  ...,
+  subscription_plans!inner (...),
+  profiles!user_id (...)
+`)
+```
+
+Este padrão de FK join (`tabela!coluna_fk`) é conhecido por falhar em edge functions Deno devido a problemas de schema cache. Se falhar, **nenhuma subscrição expirada será processada** — professores com subscrições expiradas continuam com acesso ao módulo financeiro.
+
+**Severidade**: MÉDIA — se o schema cache invalidar, o processamento inteiro para.
+
+**Ação**: Substituir por queries sequenciais:
+1. Buscar `user_subscriptions` com filtros de status e data
+2. Para cada subscrição, buscar `subscription_plans` e `profiles` separadamente
+
+### 112. handle-teacher-subscription-cancellation não cancela Payment Intents ativos no Stripe — alunos podem pagar faturas já canceladas (Batch 4)
+
+**Arquivo**: `supabase/functions/handle-teacher-subscription-cancellation/index.ts` (linhas 116-163)
+
+Quando uma fatura pendente é cancelada (status `cancelada_por_professor_inativo`), a função anula a Invoice no Stripe (`stripe.invoices.voidInvoice`) mas **não cancela o Payment Intent** associado (campo `stripe_payment_intent_id`).
+
+Se a fatura tinha um boleto ou PIX ativo, o aluno pode pagar antes do vencimento. O pagamento será processado pelo webhook, que tentará atualizar a fatura (agora com status `cancelada_por_professor_inativo`). Dependendo do handler, isso pode:
+1. Reverter o status para `paid`/`paga` (criando fatura "zumbi")
+2. Ignorar silenciosamente (dinheiro do aluno preso no Stripe sem reconciliação)
+
+**Severidade**: ALTA — risco de dinheiro preso ou faturas canceladas reaparecendo como pagas.
+
+**Ação**: Após atualizar o status da fatura local, cancelar o Payment Intent no Stripe:
+
+```javascript
+if (invoice.stripe_payment_intent_id) {
+  try {
+    await stripe.paymentIntents.cancel(invoice.stripe_payment_intent_id);
+  } catch (e) {
+    // Log but don't fail -- PI may already be cancelled or succeeded
+  }
+}
+```
+
+### 113. check-pending-boletos usa FK join e fallback "Premium" hardcoded (Batch 5)
+
+**Arquivo**: `supabase/functions/check-pending-boletos/index.ts` (linhas 35-42)
+
+A função usa FK join na query principal e se `subscription_plans` for null (plano deletado ou órfão), o acesso a `subscription.subscription_plans?.name` pode retornar `undefined`, resultando no fallback hardcoded `"Premium"` — potencialmente enganoso para o usuário.
+
+**Severidade**: MÉDIA — FK join pode falhar; fallback "Premium" pode ser incorreto.
+
+**Ação**: Substituir FK join por query sequencial e usar nome real do plano em vez de hardcoded "Premium".
+
+---
+
+## Nova Melhoria v5.8 (M46)
+
+### M46. create-invoice não tem validação de whitelist para invoice_type — tipos inválidos podem ser inseridos (Batch 3)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 197)
+
+O campo `invoice_type` é aceito diretamente do body sem validação. Os tipos válidos no sistema são: `'regular'`, `'manual'`, `'automated'`, `'monthly_subscription'`, `'prepaid_class'`, `'cancellation'`, `'orphan_charges'`. Tipos inválidos podem quebrar badges de interface, filtros e lógica de faturamento.
+
+**Ação**: Adicionar validação de whitelist antes da inserção:
+
+```javascript
+const VALID_INVOICE_TYPES = ['regular', 'manual', 'automated', 'monthly_subscription', 'prepaid_class', 'cancellation', 'orphan_charges'];
+const invoiceType = body.invoice_type || 'manual';
+if (!VALID_INVOICE_TYPES.includes(invoiceType)) {
+  throw new Error(`Tipo de fatura inválido: ${invoiceType}`);
+}
+```
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -2022,6 +2172,7 @@ Para pagamentos PIX (Direct Charges), a função cria um Stripe Customer **na co
 | v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41): automated-billing hardcoda boleto (#92 ALTA), payment_method NULL em faturas automatizadas (#93 ALTA), mensalidade sem geração de pagamento (#94 CRÍTICA), check-overdue-invoices race condition (#95 CRÍTICA), process-cancellation service_role auth (#96 CRÍTICA), clientes Stripe duplicados platform vs connected (#97 MÉDIA), notificação skipBoletoGeneration (M39), change-payment-method auth redundante (M40), create-invoice sem whitelist invoice_type (M41) |
 | v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
 | v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45): webhook-stripe-connect status inglês (#104 CRÍTICA), process-orphan-cancellation-charges RPC incorreta (#105 ALTA), process-orphan sem pagamento (#106 ALTA), process-cancellation cobra aulas gratuitas (#107 MÉDIA), automated-billing sem notificação (#108 ALTA), clientes Stripe duplicados (M45) |
+| v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46): process-payment-failure-downgrade parâmetros incorretos (#109 CRÍTICA), handle-teacher-subscription-cancellation RESEND_API_KEY (#110 ALTA), process-expired-subscriptions FK joins (#111 MÉDIA), handle-teacher-subscription-cancellation sem cancelar Payment Intents (#112 ALTA), check-pending-boletos FK join (#113 MÉDIA), create-invoice sem whitelist invoice_type (M46) |
 
 ## Memórias do Projeto a Atualizar
 

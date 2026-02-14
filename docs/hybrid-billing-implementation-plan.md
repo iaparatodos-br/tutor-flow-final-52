@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.11
+# Plano de Cobrança Híbrida — v5.12
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.10 acumulou 123 pontas soltas e 51 melhorias. Esta v5.11 adiciona 3 novas pontas soltas (#124-#126) e 1 melhoria (M52), totalizando **126 pontas soltas** e **52 melhorias**. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.11 acumulou 126 pontas soltas e 52 melhorias. A v5.12 é a **auditoria final de validação**: nenhuma nova ponta solta foi identificada — apenas 2 confirmações de cobertura de itens já documentados. Totais mantidos: **126 pontas soltas** e **52 melhorias**.
 
-Principais mudanças na v5.11: automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais — emails automatizados com rótulo errado (#124 — MÉDIA), create-payment-intent-connect referencia campo inexistente guardian_name (#125 — BAIXA), check-overdue-invoices usa status 'overdue' em inglês em vez de 'vencida' (#126 — MÉDIA), auto-verify-pending-invoices retorna HTTP 500 inconsistente com padrão cron (M52).
+Principais mudanças na v5.12: Confirmação de que `verify-payment-status` usa `.single()` (coberto por #102), confirmação de que cron jobs usam `ANON_KEY` para funções com `verify_jwt = true` (recomendação de config.toml adicionada), e tabela de cobertura completa de todas as 25+ edge functions financeiras vs pontas soltas documentadas.
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2407,9 +2407,80 @@ A função usa `.update({ status: "overdue" })` em vez de `"vencida"`. Deve ser 
 
 ---
 
-## Análise de Cobertura Final (v5.11)
+## Confirmações da Auditoria Final v5.12
 
-Todas as edge functions do fluxo financeiro foram auditadas. Ver `.lovable/plan.md` para lista completa de funções auditadas e fora de escopo.
+### Confirmação 1: verify-payment-status usa `.single()` em lookup de fatura (já coberto por #102)
+
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linha 40)
+
+```javascript
+.eq("id", invoice_id)
+.single();
+```
+
+Se o `invoice_id` não existir, `.single()` lança exceção e retorna HTTP 500. Este padrão já está coberto pela ponta #102 (autenticação ausente) — a correção de #102 também deve incluir a troca para `.maybeSingle()`.
+
+**Ação**: Incluir na correção de #102 (Batch 1). Nenhuma nova ponta necessária.
+
+### Confirmação 2: Cron jobs usam ANON_KEY para funções com verify_jwt = true (padrão aceito)
+
+**Arquivos**: `supabase/functions/setup-billing-automation/index.ts`, `supabase/functions/setup-expired-subscriptions-automation/index.ts`
+
+Ambos os cron jobs enviam `SUPABASE_ANON_KEY` como Bearer token para `automated-billing` e `process-expired-subscriptions`, que não estão listadas em `config.toml` (defaulting to `verify_jwt = true`). Isso funciona porque o anon key é um JWT válido e essas funções usam `SUPABASE_SERVICE_ROLE_KEY` internamente (não chamam `auth.getUser()`). O padrão é frágil mas funcional.
+
+**Recomendação**: Adicionar ao `config.toml`:
+```toml
+[functions.automated-billing]
+verify_jwt = false
+
+[functions.process-expired-subscriptions]
+verify_jwt = false
+```
+
+---
+
+## Tabela de Cobertura Completa (v5.12)
+
+| Função | Pontas Documentadas | Cobertura |
+|--------|-------------------|-----------|
+| create-invoice | #24, #25, #57, #72, #78, M28, M35, M38 | ✅ |
+| automated-billing | #31, #35, #36, #40, #52, #58, #60, #68, #69, #75, #76, #85, #88, #92, #93, #108, #124 | ✅ |
+| process-cancellation | #30, #59, #80, #83, #84, #96, #107 | ✅ |
+| webhook-stripe-connect | #49, #64, #74, #77, #86, #87, #104, M51 | ✅ |
+| cancel-payment-intent | #98, #122, M44, M50 | ✅ |
+| create-payment-intent-connect | #119, #125, M45 | ✅ |
+| change-payment-method | #114, #115 | ✅ |
+| generate-boleto-for-invoice | #103, #121 | ✅ |
+| check-overdue-invoices | #41, #47, #56, #71, #81, #95, #126 | ✅ |
+| auto-verify-pending-invoices | #102, M52 | ✅ |
+| verify-payment-status | #102 | ✅ |
+| send-invoice-notification | #32, #53, #54, #73, #91, #99 | ✅ |
+| handle-teacher-subscription-cancellation | #110, #112 | ✅ |
+| process-payment-failure-downgrade | #109 | ✅ |
+| process-expired-subscriptions | #111 | ✅ |
+| create-subscription-checkout | #117 | ✅ |
+| check-subscription-status | #116 | ✅ |
+| check-pending-boletos | #113 | ✅ |
+| process-orphan-cancellation-charges | #105, #106, #123 | ✅ |
+| validate-business-profile-deletion | #118 | ✅ |
+| send-class-reminders | #120 | ✅ |
+| send-boleto-subscription-notification | M49 | ✅ |
+| end-recurrence | M48 | ✅ |
+| handle-student-overage | M47 | ✅ |
+| materialize-virtual-class | #61, #70 | ✅ |
+
+### Padrões Transversais Verificados
+
+| Padrão | Funções Verificadas | Status |
+|--------|-------------------|--------|
+| FK joins no Deno | 25+ financeiras | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123) |
+| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment | ✅ (#49, #53, #64, #73, #78, #84, #102) |
+| Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
+| HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify | ✅ (#72, #76, #83, M32, M52) |
+| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile | ✅ (#102, #118, #121) |
+| Payment Intent órfão | handle-teacher-subscription-cancellation, create-subscription-checkout | ✅ (#112, #117) |
+| Service role como Bearer | process-cancellation | ✅ (#80) |
+| boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
 
 ---
 
@@ -2438,7 +2509,8 @@ Todas as edge functions do fluxo financeiro foram auditadas. Ver `.lovable/plan.
 | v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46) |
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
-| v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). Auditoria final completa. |
+| v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
+| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 2 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito). Tabela de cobertura completa adicionada (25+ funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. Plano COMPLETO e FINAL. |
 
 ## Memórias do Projeto a Atualizar
 

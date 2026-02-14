@@ -89,14 +89,10 @@ serve(async (req) => {
     }
 
     // Check for pending/future classes
-    const { data: pendingClasses, error: classError } = await supabaseAdmin
+    // #135 — Sequential queries to avoid FK join (classes!inner)
+    const { data: pendingParticipants, error: classError } = await supabaseAdmin
       .from('class_participants')
-      .select(`
-        id,
-        class_id,
-        status,
-        classes!inner(class_date, status)
-      `)
+      .select('id, class_id, status')
       .eq('dependent_id', body.dependent_id)
       .in('status', ['pendente', 'confirmada']);
 
@@ -108,12 +104,22 @@ serve(async (req) => {
       );
     }
 
-    // Filter for future classes only
+    // Fetch class dates separately
     const now = new Date();
-    const futureClasses = pendingClasses?.filter(p => {
-      const classDate = new Date((p.classes as any).class_date);
-      return classDate > now;
-    }) || [];
+    let futureClasses: any[] = [];
+    if (pendingParticipants && pendingParticipants.length > 0) {
+      const classIds = [...new Set(pendingParticipants.map(p => p.class_id))];
+      const { data: classRows } = await supabaseAdmin
+        .from('classes')
+        .select('id, class_date, status')
+        .in('id', classIds);
+
+      const classMap = new Map((classRows || []).map(c => [c.id, c]));
+      futureClasses = pendingParticipants.filter(p => {
+        const cls = classMap.get(p.class_id);
+        return cls && new Date(cls.class_date) > now;
+      });
+    }
 
     if (futureClasses.length > 0 && !body.force) {
       console.log(`Dependent has ${futureClasses.length} pending future classes`);
@@ -152,13 +158,10 @@ serve(async (req) => {
     }
 
     // Check for unbilled completed classes
-    const { data: unbilledClasses, error: unbilledError } = await supabaseAdmin
+    // #135 — Sequential query for unbilled classes (avoid FK join)
+    const { data: unbilledParticipants, error: unbilledError } = await supabaseAdmin
       .from('class_participants')
-      .select(`
-        id,
-        class_id,
-        classes!inner(class_date)
-      `)
+      .select('id, class_id')
       .eq('dependent_id', body.dependent_id)
       .eq('status', 'concluida')
       .is('charge_applied', false);
@@ -166,6 +169,7 @@ serve(async (req) => {
     if (unbilledError) {
       console.error('Error checking unbilled classes:', unbilledError);
     }
+    const unbilledClasses = unbilledParticipants;
 
     const unbilledCount = unbilledClasses?.length || 0;
     if (unbilledCount > 0) {

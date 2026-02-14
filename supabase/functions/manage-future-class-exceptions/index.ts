@@ -80,21 +80,22 @@ serve(async (req) => {
       if (participation) {
         isAuthorized = true;
       } else {
-        // Check if responsible for dependent participant
-        const { data: dependentParticipation } = await supabase
+        // #137 — Sequential queries to avoid FK join (dependents!fkey)
+        const { data: depParticipants } = await supabase
           .from('class_participants')
-          .select(`
-            id,
-            dependent_id,
-            dependents!class_participants_dependent_id_fkey(responsible_id)
-          `)
+          .select('id, dependent_id')
           .eq('class_id', original_class_id)
           .not('dependent_id', 'is', null);
         
-        if (dependentParticipation) {
-          for (const p of dependentParticipation) {
-            const dep = p.dependents as any;
-            if (dep?.responsible_id === user.id) {
+        if (depParticipants && depParticipants.length > 0) {
+          const depIds = depParticipants.map(p => p.dependent_id).filter(Boolean) as string[];
+          const { data: deps } = await supabase
+            .from('dependents')
+            .select('id, responsible_id')
+            .in('id', depIds);
+          
+          for (const dep of deps || []) {
+            if (dep.responsible_id === user.id) {
               isAuthorized = true;
               break;
             }

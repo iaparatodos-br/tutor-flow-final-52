@@ -109,10 +109,10 @@ serve(async (req) => {
       );
     }
 
-    // Get teacher's plan limit and slug
+    // #134 — Get teacher's plan limit and slug (sequential queries to avoid FK join)
     const { data: subscription, error: subError } = await supabaseAdmin
       .from('user_subscriptions')
-      .select('plan_id, subscription_plans(student_limit, slug)')
+      .select('plan_id')
       .eq('user_id', teacherId)
       .eq('status', 'active')
       .maybeSingle();
@@ -120,9 +120,16 @@ serve(async (req) => {
     let studentLimit = 3; // Default free plan limit
     let planSlug = 'free';
     
-    if (subscription?.subscription_plans) {
-      studentLimit = (subscription.subscription_plans as any).student_limit || 3;
-      planSlug = (subscription.subscription_plans as any).slug || 'free';
+    if (subscription?.plan_id) {
+      const { data: plan } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('student_limit, slug')
+        .eq('id', subscription.plan_id)
+        .maybeSingle();
+      if (plan) {
+        studentLimit = plan.student_limit || 3;
+        planSlug = plan.slug || 'free';
+      }
     }
 
     const currentTotal = counts?.[0]?.total_students || 0;

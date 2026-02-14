@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.8
+# Plano de Cobrança Híbrida — v5.9
 
 **Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
@@ -7,9 +7,9 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.7 acumulou 108 pontas soltas e 45 melhorias. Esta v5.8 adiciona 5 novas pontas soltas (#109-#113) e 1 melhoria (M46), totalizando **113 pontas soltas** e **46 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.8 acumulou 113 pontas soltas e 46 melhorias. Esta v5.9 adiciona 5 novas pontas soltas (#114-#118) e 2 melhorias (M47-M48), totalizando **118 pontas soltas** e **48 melhorias**.
 
-Principais mudanças na v5.8: process-payment-failure-downgrade chama smart-delete-student com parâmetros incorretos (#109 — CRÍTICA), handle-teacher-subscription-cancellation condiciona emails a RESEND_API_KEY inexistente (#110 — ALTA), process-expired-subscriptions FK joins (#111 — MÉDIA), handle-teacher-subscription-cancellation não cancela Payment Intents (#112 — ALTA), check-pending-boletos FK join e fallback hardcoded (#113 — MÉDIA), create-invoice sem whitelist invoice_type (M46).
+Principais mudanças na v5.9: change-payment-method FK joins (#114 — ALTA), change-payment-method autorização guardião/responsável quebrada (#115 — ALTA), check-subscription-status FK join (#116 — MÉDIA), create-subscription-checkout não cancela Payment Intents ao mudar plano (#117 — ALTA), validate-business-profile-deletion sem autenticação (#118 — BAIXA), handle-student-overage tabela potencialmente inexistente (M47), end-recurrence não cancela faturas prepaid (M48).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -2150,6 +2150,122 @@ if (!VALID_INVOICE_TYPES.includes(invoiceType)) {
 
 ---
 
+## Pontas Soltas v5.9 (#114-#118)
+
+### 114. change-payment-method usa FK joins que falham no Deno (Batch 5)
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 47-51)
+
+A função usa FK joins na query de faturas:
+
+```javascript
+.select(`
+  *,
+  student:profiles!invoices_student_id_fkey(id, name, email),
+  teacher:profiles!invoices_teacher_id_fkey(id, name)
+`)
+```
+
+Este padrão é inconsistente com a regra do projeto de usar queries sequenciais em edge functions Deno. Se o schema cache invalidar, o aluno não conseguirá mudar o método de pagamento de nenhuma fatura.
+
+**Severidade**: ALTA — funcionalidade crítica para o fluxo de pagamento do aluno.
+
+**Ação**: Substituir por queries sequenciais: buscar fatura, depois buscar perfis do aluno e professor separadamente.
+
+### 115. change-payment-method autorização de responsável/guardião completamente quebrada (Batch 1)
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 72-108)
+
+A verificação de autorização para guardiões tem dois bugs críticos:
+
+1. **Linha 84**: A query encadeia `.eq('responsible_id', invoice.student_id).eq('responsible_id', user.id)` — dois filtros `eq` no mesmo campo `responsible_id`. Isso só retorna resultado se `invoice.student_id === user.id`, que já foi verificado por `isStudent`. Guardiões cujo ID difere do `student_id` da fatura NUNCA passam.
+
+2. **Linhas 95-108**: O bloco `isResponsible` verifica `if (invoice.student_id === user.id)` — idêntica à verificação `isStudent` (linha 68). Isso é redundante e nunca ativa `isResponsible` para um caso diferente.
+
+Resultado: **Responsáveis e guardiões de dependentes NÃO conseguem alterar o método de pagamento** de faturas emitidas para seus dependentes. Apenas o próprio aluno (student_id da fatura) consegue.
+
+**Severidade**: ALTA — responsáveis não podem gerenciar pagamentos de dependentes.
+
+**Ação**: Reescrever a lógica de autorização:
+1. Verificar se `user.id === invoice.student_id` (aluno direto)
+2. Verificar se o usuário é responsável de algum dependente via `dependents.responsible_id = user.id` E a fatura pertence ao responsável
+3. Verificar via `teacher_student_relationships` se há vínculo de responsável
+
+### 116. check-subscription-status usa FK join em checkNeedsStudentSelection (Batch 5)
+
+**Arquivo**: `supabase/functions/check-subscription-status/index.ts` (linhas 30-39)
+
+A função auxiliar `checkNeedsStudentSelection` usa FK join:
+
+```javascript
+.select(`
+  id, student_id, student_name, created_at,
+  profiles!teacher_student_relationships_student_id_fkey(name, email)
+`)
+```
+
+Se o schema cache invalidar, o modal de seleção de alunos no downgrade não aparecerá. O professor poderá fazer downgrade sem remover alunos excedentes, mantendo acesso acima do limite do plano.
+
+**Severidade**: MÉDIA — se falhar, professores mantêm alunos além do limite.
+
+**Ação**: Substituir por queries sequenciais.
+
+### 117. create-subscription-checkout não cancela Payment Intents ao mudar de plano (Batch 4)
+
+**Arquivo**: `supabase/functions/create-subscription-checkout/index.ts` (linhas 213-249)
+
+Quando o professor muda para um plano sem módulo financeiro, a função cancela faturas pendentes locais (`status: 'cancelada_por_mudanca_plano'`) mas **não cancela os Payment Intents** no Stripe.
+
+Mesmo padrão de bug de #112: boletos e PIX ativos permanecem pagáveis. Se o aluno pagar, o webhook processará o pagamento e potencialmente reverterá o status da fatura.
+
+**Severidade**: ALTA — risco de pagamentos em faturas canceladas por mudança de plano.
+
+**Ação**: Antes de cancelar faturas, iterar sobre cada uma, buscar `stripe_payment_intent_id`, e cancelar no Stripe:
+
+```javascript
+for (const invoice of pendingInvoices) {
+  if (invoice.stripe_payment_intent_id) {
+    try {
+      await stripe.paymentIntents.cancel(invoice.stripe_payment_intent_id);
+    } catch (e) { /* log */ }
+  }
+}
+```
+
+### 118. validate-business-profile-deletion sem autenticação (Batch 2)
+
+**Arquivo**: `supabase/functions/validate-business-profile-deletion/index.ts` (linhas 9-25)
+
+A função aceita `business_profile_id` do body sem verificar autenticação do usuário. Qualquer requisição autenticada pode consultar informações de qualquer business profile (contagem de faturas e alunos vinculados).
+
+Embora não exponha dados sensíveis diretamente, viola o princípio de menor privilégio e permite enumeração de perfis de negócios.
+
+**Severidade**: BAIXA — exposição limitada, mas deveria validar ownership.
+
+**Ação**: Adicionar autenticação e verificar que o `business_profile_id` pertence ao usuário autenticado (`user_id = auth.uid()`).
+
+---
+
+## Melhorias v5.9 (M47-M48)
+
+### M47. handle-student-overage insere em tabela student_overage_charges potencialmente inexistente (Batch 6)
+
+**Arquivo**: `supabase/functions/handle-student-overage/index.ts` (linhas 131-139)
+
+A função insere registros em `student_overage_charges`, mas esta tabela não aparece no schema fornecido pelo banco de dados. Se a tabela não existir, o insert falha silenciosamente (o erro é logado mas não interrompe o fluxo).
+
+**Ação**: Verificar existência da tabela. Se não existir, criar migration. Se existir, documentar no schema.
+
+### M48. end-recurrence não cancela faturas prepaid de aulas deletadas (Batch 4)
+
+**Arquivo**: `supabase/functions/end-recurrence/index.ts` (linhas 67-73)
+
+Quando a recorrência é encerrada, aulas futuras materializadas são deletadas. Porém, se alguma dessas aulas já tinha fatura prepaid gerada (via `create-invoice`), a fatura permanece ativa e cobrável para uma aula que não existe mais.
+
+**Ação**: Antes de deletar as aulas, buscar faturas com `class_id` correspondente e status `pendente`, e cancelá-las.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -2173,6 +2289,7 @@ if (!VALID_INVOICE_TYPES.includes(invoiceType)) {
 | v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
 | v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45): webhook-stripe-connect status inglês (#104 CRÍTICA), process-orphan-cancellation-charges RPC incorreta (#105 ALTA), process-orphan sem pagamento (#106 ALTA), process-cancellation cobra aulas gratuitas (#107 MÉDIA), automated-billing sem notificação (#108 ALTA), clientes Stripe duplicados (M45) |
 | v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46): process-payment-failure-downgrade parâmetros incorretos (#109 CRÍTICA), handle-teacher-subscription-cancellation RESEND_API_KEY (#110 ALTA), process-expired-subscriptions FK joins (#111 MÉDIA), handle-teacher-subscription-cancellation sem cancelar Payment Intents (#112 ALTA), check-pending-boletos FK join (#113 MÉDIA), create-invoice sem whitelist invoice_type (M46) |
+| v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48): change-payment-method FK joins (#114 ALTA), change-payment-method autorização guardião quebrada (#115 ALTA), check-subscription-status FK join (#116 MÉDIA), create-subscription-checkout sem cancelar Payment Intents (#117 ALTA), validate-business-profile-deletion sem auth (#118 BAIXA), handle-student-overage tabela inexistente (M47), end-recurrence faturas órfãs (M48) |
 
 ## Memórias do Projeto a Atualizar
 

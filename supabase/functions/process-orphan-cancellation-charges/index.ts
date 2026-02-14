@@ -71,6 +71,26 @@ serve(async (req) => {
       orphanParticipants = orphanParticipants.filter(p => !billedIds.has(p.id));
     }
 
+    // #150 - Defesa em profundidade: filtrar aulas gratuitas (is_paid_class = false)
+    if (orphanParticipants && orphanParticipants.length > 0) {
+      const classIds = [...new Set(orphanParticipants.map(p => p.class_id))];
+      const { data: classDetails } = await supabaseAdmin
+        .from('classes')
+        .select('id, is_paid_class')
+        .in('id', classIds);
+
+      const paidClassIds = new Set(
+        classDetails?.filter(c => c.is_paid_class === true).map(c => c.id) || []
+      );
+
+      const beforeCount = orphanParticipants.length;
+      orphanParticipants = orphanParticipants.filter(p => paidClassIds.has(p.class_id));
+      const filtered = beforeCount - orphanParticipants.length;
+      if (filtered > 0) {
+        logStep(`Filtered ${filtered} participants from free/unpaid classes (defense-in-depth)`);
+      }
+    }
+
     if (orphanError) {
       logStep("Error fetching orphan participants", orphanError);
       throw orphanError;
@@ -101,14 +121,19 @@ serve(async (req) => {
         .from('profiles')
         .select('id, name, payment_due_days')
         .eq('id', classData.teacher_id)
-        .single();
+        .maybeSingle();
+
+      if (!teacherData) {
+        logStep(`Skipping participant ${participant.id} - teacher profile not found`, { teacherId: classData.teacher_id });
+        continue;
+      }
 
       const { data: relationshipData } = await supabaseAdmin
         .from('teacher_student_relationships')
         .select('business_profile_id')
         .eq('teacher_id', classData.teacher_id)
         .eq('student_id', participant.student_id)
-        .single();
+        .maybeSingle();
 
       // Validar se o professor tem módulo financeiro
       const { data: hasFinancialModule } = await supabaseAdmin

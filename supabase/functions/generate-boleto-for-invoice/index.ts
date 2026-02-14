@@ -42,10 +42,40 @@ serve(async (req) => {
         teacher:profiles!invoices_teacher_id_fkey(name, email)
       `)
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
 
-    if (invoiceError || !invoice) {
-      throw new Error("Invoice not found");
+    if (invoiceError) {
+      logStep("Error fetching invoice", invoiceError);
+      throw new Error("Erro ao buscar fatura");
+    }
+
+    if (!invoice) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Fatura não encontrada" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
+
+    // #151 - Guard clause: verificar status da fatura antes de gerar pagamento
+    const allowedStatuses = ['pendente', 'open', 'falha_pagamento'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      logStep("Invoice status not allowed for boleto generation", { status: invoice.status });
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Não é possível gerar boleto para fatura com status "${invoice.status}"`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
+    if (invoice.stripe_payment_intent_id) {
+      logStep("Invoice already has a payment intent", { 
+        existingPI: invoice.stripe_payment_intent_id 
+      });
     }
 
     // VALIDAÇÃO DE VALOR MÍNIMO PARA BOLETO

@@ -1,15 +1,15 @@
-# Plano de Cobrança Híbrida — v5.6
+# Plano de Cobrança Híbrida — v5.7
 
-**Data**: 2026-02-13
+**Data**: 2026-02-14
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.5 acumulou 97 pontas soltas e 41 melhorias. Esta v5.6 adiciona 6 novas pontas soltas (#98-#103) e 3 melhorias (M42-M44), totalizando **103 pontas soltas** e **44 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.6 acumulou 103 pontas soltas e 44 melhorias. Esta v5.7 adiciona 5 novas pontas soltas (#104-#108) e 1 melhoria (M45), totalizando **108 pontas soltas** e **45 melhorias**.
 
-Principais mudanças na v5.6: cancel-payment-intent status 'paid' vs 'paga' (#98 — ALTA), send-invoice-notification misusa class_notifications (#99 — MÉDIA), AmnestyButton cancela faturas de outros alunos em grupo (#100 — ALTA), Financeiro.tsx calcula taxas incorretamente (#101 — MÉDIA), verify-payment-status sem autenticação (#102 — ALTA), generate-boleto-for-invoice usa FK joins (#103 — MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação de pagamento existente (M44).
+Principais mudanças na v5.7: webhook-stripe-connect handlers usam status em inglês (#104 — CRÍTICA), process-orphan-cancellation-charges assinatura RPC incorreta (#105 — ALTA), process-orphan-cancellation-charges sem geração de pagamento (#106 — ALTA), process-cancellation cobra aulas gratuitas (#107 — MÉDIA), automated-billing tradicional sem notificação (#108 — ALTA), clientes Stripe duplicados platform vs connected (M45).
 
 1. A escolha "paga antes" ou "paga depois" é uma configuração global do professor (`charge_timing` em `business_profiles`), enquanto "aula paga ou não" é definida por aula (`is_paid_class` em `classes`).
 2. Pré-pago gera fatura local imediata — sem Invoice Items no Stripe Connect.
@@ -1903,6 +1903,103 @@ Quando o professor "marca como paga manualmente", a função cancela o Payment I
 
 ---
 
+## Novas Pontas Soltas v5.7 (#104-#108)
+
+### 104. webhook-stripe-connect handlers invoice.* usam status em inglês — inconsistência com todo o sistema (Batch 1)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 320, 357, 469, 404)
+
+Os handlers `invoice.paid` (linha 320), `invoice.payment_succeeded` (linha 357) e `payment_intent.succeeded` (linha 469) definem `status: 'paid'` em inglês. O handler `invoice.marked_uncollectible` (linha 404) define `status: 'overdue'` também em inglês.
+
+O sistema inteiro utiliza status em português: `'paga'`, `'vencida'`, `'pendente'`, `'cancelada'`, `'falha_pagamento'`. Isso causa:
+1. Faturas pagas via webhook ficam invisíveis nos filtros do `Financeiro.tsx` (que filtra por `'paga'`)
+2. O cron `check-overdue-invoices` não encontra faturas com status `'paid'` ao filtrar por `'pendente'`
+3. O `verify-payment-status` (linha 83) corretamente usa `'paga'`, criando divergência com o webhook
+
+**Severidade**: CRÍTICA — faturas pagas via webhook não aparecem como pagas na interface.
+
+**Relação**: Complementa #98 (mesmo bug em `cancel-payment-intent`). Este impacta TODAS as faturas pagas automaticamente via Stripe.
+
+**Ação**: Substituir todos os status em inglês pelos equivalentes em português:
+- `'paid'` → `'paga'` (linhas 320, 357, 469)
+- `'overdue'` → `'vencida'` (linha 404)
+
+### 105. process-orphan-cancellation-charges chama RPC com assinatura de parâmetros incorreta (Batch 5)
+
+**Arquivo**: `supabase/functions/process-orphan-cancellation-charges/index.ts` (linhas 205-215)
+
+A função chama `create_invoice_and_mark_classes_billed` com parâmetros individuais (`p_student_id`, `p_teacher_id`, `p_amount`, etc.), enquanto `automated-billing` (linhas 484-488) chama a mesma RPC com objetos compostos (`p_invoice_data`, `p_class_items`).
+
+Uma dessas chamadas está usando a assinatura errada da RPC. Se a RPC espera `p_invoice_data` (objeto), a chamada do `process-orphan-cancellation-charges` falhará silenciosamente, deixando cancelamentos órfãos sem faturamento permanentemente.
+
+**Severidade**: ALTA — se a assinatura estiver errada, nenhuma cobrança órfã será gerada.
+
+**Ação**: Verificar a definição exata da RPC `create_invoice_and_mark_classes_billed` no SQL e padronizar ambas as chamadas para a mesma assinatura. Provavelmente o `process-orphan-cancellation-charges` precisa ser atualizado para usar `p_invoice_data` como objeto.
+
+### 106. process-orphan-cancellation-charges não gera pagamento (boleto/PIX) após criar fatura (Batch 4)
+
+**Arquivo**: `supabase/functions/process-orphan-cancellation-charges/index.ts` (linhas 223-229)
+
+Após criar a fatura via RPC (linha 205), a função loga o sucesso e incrementa `processedCount`, mas **nunca invoca** `create-payment-intent-connect` para gerar boleto ou PIX. O aluno recebe uma fatura sem nenhum mecanismo de pagamento.
+
+Comparando com `automated-billing` (linhas 520-558) que gera boleto explicitamente após criar a fatura, e com o fluxo de mensalidade (linhas 848-879) que faz o mesmo, esta função é a única que pula completamente a geração de pagamento.
+
+Também não envia notificação ao aluno via `send-invoice-notification`.
+
+**Severidade**: ALTA — cobranças órfãs são geradas mas o aluno não tem como pagar nem fica sabendo.
+
+**Ação**: Após a criação da fatura (linha 223), adicionar:
+1. Chamada a `create-payment-intent-connect` com hierarquia Boleto → PIX
+2. Update da fatura com dados de pagamento
+3. Chamada a `send-invoice-notification` com tipo `'invoice_created'`
+
+### 107. process-cancellation não verifica is_paid_class antes de aplicar cobrança de cancelamento (Batch 3)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linhas 219-225)
+
+A lógica de determinação de cobrança verifica se a aula é experimental (`is_experimental === true`) e aplica cobrança se o aluno cancelou tarde. Porém, **não verifica** `is_paid_class`. Se um professor agenda uma aula gratuita (`is_paid_class = false`) e o aluno cancela tarde, o sistema aplica cobrança baseada no preço do serviço para uma aula que deveria ser gratuita.
+
+Isso é inconsistente com a regra de negócio: "aulas com `is_paid_class = false` nunca geram cobrança".
+
+**Severidade**: MÉDIA — gera cobranças indevidas para aulas gratuitas canceladas tarde.
+
+**Ação**: Adicionar verificação `classData.is_paid_class === false` junto com `is_experimental`:
+```javascript
+if (classData.is_experimental === true || classData.is_paid_class === false) {
+  shouldCharge = false;
+}
+```
+
+### 108. automated-billing fluxo tradicional nunca envia notificação ao aluno (Batch 3)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 511-566)
+
+No fluxo tradicional (sem mensalidade), após criar a fatura e gerar pagamento, o `automated-billing` **nunca envia notificação** ao aluno via `send-invoice-notification`. Comparando com:
+- `create-invoice` (linhas 531-548): envia notificação
+- `processMonthlySubscriptionBilling` (linhas 882-893): envia notificação
+
+O fluxo tradicional é o único que pula completamente a notificação, afetando todos os alunos sem mensalidade.
+
+**Severidade**: ALTA — alunos com faturamento automatizado tradicional nunca recebem email de nova fatura.
+
+**Relação**: Expande M36 (que cobria apenas o caso `skipBoletoGeneration`). O problema é mais amplo.
+
+**Ação**: Adicionar chamada a `send-invoice-notification` após o bloco de geração de pagamento (após linha 558), similar ao fluxo de mensalidade.
+
+---
+
+## Nova Melhoria v5.7 (M45)
+
+### M45. create-payment-intent-connect cria clientes Stripe duplicados entre plataforma e contas conectadas (Batch 6)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 297-315, 421-443)
+
+Para pagamentos PIX (Direct Charges), a função cria um Stripe Customer **na conta conectada** do professor. Para pagamentos Boleto e Cartão (Destination Charges), cria um Customer **na plataforma**. Se um aluno paga uma fatura com PIX e outra com Boleto, terá dois registros de Customer no Stripe. Isso dificulta reconciliação, impede reutilização de métodos salvos e causa confusão em disputas.
+
+**Ação**: Documentar como limitação conhecida da arquitetura híbrida (PIX Direct vs Boleto Destination). Avaliar migrar tudo para Direct Charges no futuro para unificar clientes.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -1924,6 +2021,7 @@ Quando o professor "marca como paga manualmente", a função cancela o Payment I
 | v5.4 | 2026-02-13 | +6 pontas soltas (#86-#91), +3 melhorias (M36-M38): webhook apaga dados boleto/PIX (#86), handlers invoice.* nunca encontram faturas internas (#87 CRÍTICA), RPC sem filtro datas mensalidade (#88), create-invoice sem charges_enabled (#89), decisão mensalidade sem aulas (#90), label "Cartão" para boleto (#91), notificação valores baixos (M36), BillingSettings sem charge_timing (M37), duplicação stripe_hosted_invoice_url (M38) |
 | v5.5 | 2026-02-13 | +6 pontas soltas (#92-#97), +3 melhorias (M39-M41): automated-billing hardcoda boleto (#92 ALTA), payment_method NULL em faturas automatizadas (#93 ALTA), mensalidade sem geração de pagamento (#94 CRÍTICA), check-overdue-invoices race condition (#95 CRÍTICA), process-cancellation service_role auth (#96 CRÍTICA), clientes Stripe duplicados platform vs connected (#97 MÉDIA), notificação skipBoletoGeneration (M39), change-payment-method auth redundante (M40), create-invoice sem whitelist invoice_type (M41) |
 | v5.6 | 2026-02-13 | +6 pontas soltas (#98-#103), +3 melhorias (M42-M44): cancel-payment-intent status 'paid' vs 'paga' (#98 ALTA), send-invoice-notification misusa class_notifications (#99 MÉDIA), AmnestyButton cancela faturas grupo (#100 ALTA), Financeiro.tsx taxas incorretas (#101 MÉDIA), verify-payment-status sem auth (#102 ALTA), generate-boleto FK joins (#103 MÉDIA), Financeiro.tsx query incompleta (M42), check-overdue-invoices single reminder (M43), cancel-payment-intent sem verificação pagamento (M44) |
+| v5.7 | 2026-02-14 | +5 pontas soltas (#104-#108), +1 melhoria (M45): webhook-stripe-connect status inglês (#104 CRÍTICA), process-orphan-cancellation-charges RPC incorreta (#105 ALTA), process-orphan sem pagamento (#106 ALTA), process-cancellation cobra aulas gratuitas (#107 MÉDIA), automated-billing sem notificação (#108 ALTA), clientes Stripe duplicados (M45) |
 
 ## Memórias do Projeto a Atualizar
 

@@ -2,12 +2,11 @@
 
 
 
-
-# Revisao do Plano de Cobranca Hibrida v5.11
+# Revisao do Plano de Cobranca Hibrida v5.12
 
 ## Status Atual
 
-O plano v5.11 documenta **126 pontas soltas** e **52 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes. Cobertura exaustiva: todas as edge functions financeiras foram auditadas.
+O plano v5.12 documenta **126 pontas soltas** e **52 melhorias** no sistema de cobranca hibrida. A Fase 1 (migracao SQL) esta concluida. Fases 2-8 estao pendentes. A v5.12 e a auditoria final de validacao: nenhuma nova ponta solta identificada. Cobertura exaustiva confirmada com tabela de 25+ funcoes.
 
 ## Pontas Soltas CRITICAS (risco financeiro ou de dados)
 
@@ -58,6 +57,11 @@ O plano v5.11 documenta **126 pontas soltas** e **52 melhorias** no sistema de c
 - **#124**: automated-billing copia boleto_url para stripe_hosted_invoice_url em 3 locais -- emails com rotulo errado -- **NOVA v5.11**
 - **#125**: create-payment-intent-connect referencia guardian_name inexistente -- codigo morto -- **NOVA v5.11**
 - **#126**: check-overdue-invoices usa status 'overdue' em ingles -- inconsistencia com #104 -- **NOVA v5.11**
+
+## Confirmacoes da Auditoria Final v5.12
+
+1. **verify-payment-status** usa `.single()` em lookup de fatura -- ja coberto por #102 (Batch 1)
+2. **Cron jobs** (setup-billing-automation, setup-expired-subscriptions-automation) usam ANON_KEY para funcoes com verify_jwt=true -- padrao fragil mas funcional. Recomendacao: adicionar `verify_jwt = false` em config.toml para `automated-billing` e `process-expired-subscriptions`.
 
 ## Roadmap de Implementacao (6 batches)
 

@@ -1,176 +1,94 @@
 
 
-# Consolidacao Final do Plano de Cobranca Hibrida -- v5.24
+# Verificacao Final v5.25 -- Inconsistencias Encontradas
 
-## Problema Identificado
+## Veredicto: 4 inconsistencias de fase e 2 duplicatas nao resolvidas impedem o plano de estar 100% pronto
 
-O plano esta fragmentado em dois documentos desincronizados:
-- `docs/hybrid-billing-implementation-plan.md` -- parado na v5.17 com 147 pontas soltas
-- `.lovable/plan.md` -- avancou ate v5.23 com 180 pontas soltas
-
-Alem disso, encontrei **3 duplicatas**, **2 inconsistencias de fase** e **4 itens nao integrados nas fases**. Nenhuma ponta solta genuinamente nova foi encontrada -- a cobertura de 100% das 75 Edge Functions esta validada.
+Apos revisar todas as 3014 linhas do documento e cross-referenciar com o codigo das edge functions, o plano esta estruturalmente completo mas contem **erros de atribuicao de fase** que causariam confusao na implementacao.
 
 ---
 
-## 1. Duplicatas Confirmadas (a resolver)
+## 1. Item #87 atribuido a Fase 1 (Concluida) mas NAO implementado -- CRITICO
 
-| Item .lovable/plan.md | Duplicata de (main doc) | Descricao |
-|---|---|---|
-| #166 | #80 | process-cancellation usa SERVICE_ROLE_KEY como Bearer token para create-invoice |
-| #169 (parcial) | #98 + #104 | Status 'paid' vs 'paga' em webhook-stripe-connect e cancel-payment-intent |
-| #153 | Subsumido por #177 | `.single()` em create-payment-intent-connect (ja declarado como subsumido) |
-| #154 | Subsumido por #179 | `.single()` em change-payment-method (ja declarado como subsumido) |
+**Problema**: O indice (linha 525) lista `#87` como **Fase 1**, mas a Fase 1 e "Migracao SQL" e esta marcada como "Concluida". O item #87 e sobre reconciliacao de webhooks (`invoice.*` handlers buscam por `stripe_invoice_id` que nunca e preenchido) -- nao tem relacao com migracao SQL.
 
-**Acao**: Marcar #166 como duplicata de #80. Manter #169 como item expandido que complementa #98/#104 com 3 ocorrencias adicionais no webhook. Manter #153/#154 como subsumidos (ja esta assim).
+**Verificacao no codigo**: Confirmado no `webhook-stripe-connect/index.ts` linhas 306-310 -- o handler `invoice.paid` busca `.eq('stripe_invoice_id', paidInvoice.id)` mas `create-invoice` e `automated-billing` nunca preenchem `stripe_invoice_id`. A reconciliacao de faturas via handlers `invoice.*` e completamente quebrada.
 
-## 2. Itens Implementados Nao Refletidos no Main Doc
+**Acao**: Mover #87 para **Fase 0 (Batch Critico)** -- e uma vulnerabilidade ativa que impede o processamento correto de pagamentos via eventos de invoice do Stripe.
 
-Os seguintes itens foram implementados mas o main doc nao foi atualizado:
+## 2. Itens #95 e #96 atribuidos a Fase 1 (Concluida) mas NAO implementados
 
-| # | Descricao | Status |
-|---|---|---|
-| #148 | generate-boleto-for-invoice: `.single()` trocado por `.maybeSingle()` | Implementado |
-| #149 | process-orphan-cancellation-charges: `.single()` em 2 lookups internos | Implementado |
-| #150 | process-orphan-cancellation-charges: filtro `is_paid_class` adicionado | Implementado |
-| #151 | generate-boleto-for-invoice: guard clause de status adicionada | Implementado |
+**Problema**: O indice lista:
+- `#95` (check-overdue-invoices race condition) como **Fase 1**
+- `#96` (process-cancellation SERVICE_ROLE_KEY como Bearer) como **Fase 1**
 
-**Total implementado atualizado**: 8 (originais #132-#137) + 4 (#148-#151) = **12 implementadas**
+Ambos estao na Fase 1 que e "Concluida", mas **nenhum dos dois foi implementado**. Sao pontas soltas ativas.
 
-## 3. Itens Nao Atribuidos a Fases
+**Verificacao no codigo**:
+- #95: Confirmado em `check-overdue-invoices/index.ts` linha 57 -- UPDATE sem guard clause `.eq('status', 'pendente')`
+- #96: Confirmado em `process-cancellation/index.ts` -- ainda invoca `create-invoice` com `SERVICE_ROLE_KEY` como Bearer
 
-Os seguintes itens da auditoria (#152-#180) nao estao mapeados nas 8 fases do roadmap:
+**Acao**:
+- #95 e **duplicata parcial de #155** (ambos sobre guard clause em check-overdue-invoices). Marcar #95 como duplicata de #155 (ja na Fase 0).
+- #96 e **duplicata de #80** (mesmo bug: process-cancellation com SERVICE_ROLE_KEY). Marcar #96 como duplicata de #80 (ja na Fase 6).
 
-| # | Descricao | Fase Sugerida |
-|---|---|---|
-| #152 | process-orphan: verificacao de erro apos filtragem | 8 (Polish) |
-| #155 | check-overdue-invoices: guard clause no UPDATE | **1 (Critico)** -- ja assinalado no Batch 1 |
-| #156 | auto-verify-pending-invoices: guard clause no UPDATE | **1 (Critico)** |
-| #157 | verify-payment-status: `.single()` | 8 |
-| #158 | verify-payment-status: guard clause no UPDATE | **1 (Critico)** |
-| #159 | send-invoice-notification: `.single()` em 3 lookups | 8 |
-| #160 | webhook-stripe-connect: verificacao payment_origin nos handlers de falha | **1 (Critico)** |
-| #161 | process-cancellation: `.single()` na linha 107 | 6 |
-| #162 | create-invoice: `.single()` nas linhas 154, 382 | 5 |
-| #163 | automated-billing: FK joins na query principal | 4 |
-| #164 | create-invoice: FK join para relationship | 5 |
-| #165 | create-invoice: FK joins aninhados para classes | 5 |
-| #166 | DUPLICATA de #80 -- remover | -- |
-| #167 | handle-student-overage: `.single()` | 8 |
-| #168 | send-cancellation-notification: `.single()` em 4 lookups | 8 |
-| #169 | webhook + cancel-payment-intent: status 'paid' vs 'paga' (5 locais) | **1 (Critico)** |
-| #170 | change-payment-method: bypass autorizacao | **1 (Critico)** |
-| #171 | generate-boleto-for-invoice: FK joins | 5 |
-| #172 | automated-billing: FK join diagnostico | 4 |
-| #173 | webhook-stripe-connect: `.single()` em 3 handlers | 8 |
-| #174 | cancel-payment-intent: `.single()` | 8 |
-| #175 | create-payment-intent-connect: SEM autenticacao | **1 (Critico)** |
-| #176 | create-payment-intent-connect: FK joins triplos | 5 |
-| #177 | create-payment-intent-connect: `.single()` cascata | 5 |
-| #178 | check-overdue-invoices: usa class_notifications para faturas | 8 |
-| #179 | change-payment-method: FK joins + `.single()` | 8 |
-| #180 | automated-billing: FK joins na query principal | 4 |
+## 3. Duplicatas #81 vs #155 nao resolvidas
 
-## 4. Atualizacao das Fases com Itens Criticos
+**Problema**: O indice lista:
+- `#81` (Fase 8) -- "check-overdue-invoices sem guard clause `status = 'pendente'` no update"
+- `#155` (Fase 0) -- "check-overdue-invoices: guard clause `status = 'pendente'` no UPDATE"
 
-A tabela de fases atualizada fica:
+Sao **exatamente o mesmo bug** mas atribuidos a fases diferentes.
 
-| Fase | Descricao | Pontas Soltas (atualizado) |
-|------|-----------|---------------------------|
-| **0** | **Batch 1 Critico (NOVO)** | **#155, #156, #158, #160, #169, #170, #175** |
-| 1 | Migracao SQL | Concluida |
-| 2 | Settings/BillingSettings | #3.2, #22, M4, M37 |
-| 3 | ClassForm + request-class | #2.3, #138, M1, M8 |
-| 4 | RPC + materialize + automated-billing | #7.1, #8.1, #17, #27, #35, #45, #52, #163, #172, #180, M3, M18 |
-| 5 | Agenda.tsx + create-invoice + pagamento | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 |
-| 6 | Cancelamento | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 |
-| 7 | AmnestyButton | #6.1, #28, #37, #82, #100, M11 |
-| 8 | Polish, i18n, bugs | #9.1, #16, #21, #10.1, e todos os demais itens de `.single()`, CORS, HTTP 500, FK joins nao criticos |
+**Acao**: Marcar #81 como duplicata de #155. O item ja esta na Fase 0 via #155.
 
-**Nota critica**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contem vulnerabilidades de seguranca ativas e race conditions que causam perda financeira.
+## 4. Fase 0 atualizada (8 itens em vez de 7)
 
-## 5. Verificacao de Fluxos Completos
+Com a movimentacao de #87, a Fase 0 passa a ter **8 itens**:
 
-Verifiquei cada fluxo end-to-end contra o codigo atual:
+| # | Descricao | Tipo |
+|---|-----------|------|
+| #87 | webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas | Reconciliacao |
+| #155 | check-overdue-invoices: guard clause no UPDATE | Race Condition |
+| #156 | auto-verify-pending-invoices: guard clause no UPDATE | Race Condition |
+| #158 | verify-payment-status: guard clause no UPDATE | Race Condition |
+| #160 | webhook-stripe-connect: verificacao payment_origin nos handlers de falha | Protecao Manual |
+| #169 | webhook + cancel-payment-intent: status 'paid' vs 'paga' (5 locais) | Padronizacao |
+| #170 | change-payment-method: bypass de autorizacao | Seguranca |
+| #175 | create-payment-intent-connect: SEM autenticacao | Seguranca |
 
-### Fluxo Prepaid (criar aula paga antes)
-- ClassForm adiciona `is_paid_class` -- #2.3, #66 (Fase 3)
-- handleClassSubmit persiste `is_paid_class` -- #2.4, #62 (Fase 5)
-- handleClassSubmit chama create-invoice -- #18 (Fase 5)
-- create-invoice aceita `prepaid_class` -- #23 (Fase 5)
-- create-invoice valida minimo condicional -- #24 (Fase 5)
-- create-invoice gera pagamento via hierarquia -- ja funciona
-- Bloqueio de recorrencia para prepaid+paga -- Fase 3
-- **Verificado**: Fluxo completo coberto
+## 5. Resumo de duplicatas a resolver
 
-### Fluxo Postpaid (cobranca depois)
-- Aulas acumuladas -- ja funciona
-- automated-billing filtra `is_paid_class` via RPC -- #7.1, #65 (Fase 4)
-- automated-billing gera pagamento com hierarquia -- #31, #36, #40, M27 (Fase 4/5)
-- **Verificado**: Fluxo completo coberto
+| Duplicata | Original | Descricao |
+|-----------|----------|-----------|
+| #81 | #155 | check-overdue-invoices guard clause (mesmo bug, fases 8 vs 0) |
+| #95 | #155 | check-overdue-invoices race condition (mesmo bug, fases 1 vs 0) |
+| #96 | #80 | process-cancellation SERVICE_ROLE_KEY (mesmo bug, fases 1 vs 6) |
+| #166 | #80 | process-cancellation SERVICE_ROLE_KEY (ja marcado como duplicata) |
 
-### Fluxo Cancelamento
-- process-cancellation busca `is_paid_class` -- #5.1 (Fase 6)
-- process-cancellation busca `charge_timing` -- #5.2 (Fase 6)
-- Aula gratuita: shouldCharge = false -- #5.1 (Fase 6)
-- Aula prepaid: shouldCharge = false -- #5.2 (Fase 6)
-- Aula postpaid: fluxo existente com anistia -- ja funciona
-- AmnestyButton verifica faturamento -- #6.1, #28 (Fase 7)
-- AmnestyButton verifica is_paid_class -- #82 (Fase 7)
-- **Verificado**: Fluxo completo coberto
-
-### Fluxo Pagamento (PIX/Boleto/Cartao)
-- create-payment-intent-connect: auth -- #175 (Fase 0)
-- create-payment-intent-connect: FK joins -- #176 (Fase 5)
-- webhook recebe pagamento e atualiza status -- #169 (status em PT, Fase 0)
-- webhook preserva payment_method -- #74 (Fase 8)
-- webhook preserva dados de pagamento -- #86 (Fase 8)
-- change-payment-method: auth bypass -- #170 (Fase 0)
-- verify-payment-status: guard clause -- #158 (Fase 0)
-- auto-verify: guard clause -- #156 (Fase 0)
-- **Verificado**: Fluxo coberto, com 4 itens criticos na Fase 0
-
-### Fluxo Materialização de Aulas Virtuais
-- materialize-virtual-class propaga `is_paid_class` -- #8.1, #61 (Fase 4)
-- Frontend materializeVirtualClass propaga `is_paid_class` -- #17, #63 (Fase 4/5)
-- Participantes propagam `dependent_id` -- #55 (Fase 5)
-- **Verificado**: Fluxo completo coberto
-
-## 6. Acao Concreta
-
-Consolidar os dois documentos em um unico `docs/hybrid-billing-implementation-plan.md` atualizado para v5.24:
-
-1. **Atualizar cabecalho**: v5.17 para v5.24, 180 pontas soltas (12 implementadas, 168 pendentes, 1 duplicata removida = **179 unicas**)
-2. **Adicionar Fase 0** (Batch Critico) na tabela de fases
-3. **Integrar #148-#180** no indice de pontas soltas (atualmente para em #91 no indice principal, com #92-#147 em secoes separadas)
-4. **Marcar #166 como duplicata** de #80
-5. **Atualizar tabela de cobertura** com as 55 funcoes auditadas (atual: 47)
-6. **Mover conteudo relevante do `.lovable/plan.md`** para o doc principal e limpar o arquivo de audit
-7. **Adicionar secao "Itens Implementados"** unificada listando #132-#137 e #148-#151
-
----
-
-## Secao Tecnica: Totais Finais Consolidados
+## 6. Totais atualizados
 
 ```text
 Pontas Soltas Totais:     180
-  - Duplicatas:             1 (#166 = #80)
-  - Unicas:               179
+  - Duplicatas:             4 (#81=#155, #95=#155, #96=#80, #166=#80)
+  - Unicas:               176
   - Implementadas:          12 (#132-#137, #148-#151)
-  - Pendentes:            167
+  - Pendentes:            164
 
-Melhorias (M):              52
-
-Funcoes Cobertas:           48 (+ 27 fora de escopo = 75 total)
-
-Fases:
-  Fase 0 (Critico):         7 itens (#155, #156, #158, #160, #169, #170, #175)
-  Fase 1 (SQL):            Concluida
-  Fase 2 (Settings):        4 itens
-  Fase 3 (ClassForm):       4 itens
-  Fase 4 (RPC/Billing):    12 itens
-  Fase 5 (Agenda/Invoice): 25 itens
-  Fase 6 (Cancelamento):   15 itens
-  Fase 7 (Amnesty):         5 itens
-  Fase 8 (Polish):        ~95 itens
+Fase 0 (Critico):           8 itens (adicionado #87)
 ```
+
+## Secao Tecnica: Correcoes no Documento
+
+As seguintes alteracoes serao feitas no `docs/hybrid-billing-implementation-plan.md`:
+
+1. **Indice de pontas soltas**: Alterar fase de #87 de "1" para "0"
+2. **Indice de pontas soltas**: Marcar #81 como duplicata de #155
+3. **Indice de pontas soltas**: Marcar #95 como duplicata de #155
+4. **Indice de pontas soltas**: Marcar #96 como duplicata de #80
+5. **Tabela de fases** (linha 286): Adicionar #87 a Fase 0 e atualizar contagem
+6. **Secao Fase 0** (linha 300): Adicionar #87 como 8o item
+7. **Cabecalho** (linha 1): Atualizar para v5.25 com 8 vulnerabilidades ativas
+8. **Totais**: Atualizar de 179 unicas para 176 unicas, de 167 pendentes para 164 pendentes
+9. **Historico de versoes**: Adicionar entrada v5.25
 

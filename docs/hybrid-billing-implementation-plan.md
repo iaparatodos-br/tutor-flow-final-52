@@ -1,13 +1,14 @@
-# Plano de Cobrança Híbrida — v5.17
+# Plano de Cobrança Híbrida — v5.24 (Consolidado)
 
-**Data**: 2026-02-14
+**Data**: 2026-02-15
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 7 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.15 adicionou 4 novas pontas soltas (#138-#141). A v5.16 adicionou 3 pontas soltas (#142-#144). A v5.17 adicionou **3 novas pontas soltas (#145-#147)** em 3 funções completamente ausentes da cobertura v5.16: `check-stripe-account-status` (`.single()` incorreto), `create-business-profile` (sem verificação de duplicatas — contas Stripe órfãs) e `customer-portal` (busca por email frágil + HTTP 500 genérico). Totais atualizados: **147 pontas soltas** (6 implementadas) e **52 melhorias**.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.24 consolida auditorias v5.18-v5.23 (realizadas em `.lovable/plan.md`) de volta neste documento único. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = **179 únicas**, 167 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -282,14 +283,73 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 | Fase | Descrição | Pontas Soltas | Status |
 |------|-----------|---------------|--------|
+| **0** | **Batch Crítico: segurança, race conditions, status** | **#155, #156, #158, #160, #169, #170, #175** | 🔴 Pendente |
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
-| 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4 | Pendente |
+| 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4, M37 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
-| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, #52, M3 | Pendente |
-| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, M5, M7, M9, M13, M35 | Pendente |
-| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, M6, M14, M33 | Pendente |
-| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, #139, #140, #141, #142, #143, #144, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 4 | automated-billing RPC + materialize (filtro `is_paid_class`) | #7.1, #8.1, #17, #27, #35, #45, #52, #163, #172, #180, M3, M18 | Pendente |
+| 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
+| 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
+| 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+
+**⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
+
+---
+
+## Fase 0 — Batch Crítico (7 itens)
+
+Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
+
+### #155. check-overdue-invoices — guard clause no UPDATE (Race Condition)
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 57)
+O UPDATE para `status: 'overdue'` não filtra por `status = 'pendente'`, permitindo que uma fatura já paga seja revertida para 'overdue'.
+**Ação**: Adicionar `.in('status', ['pendente'])` ao UPDATE.
+
+### #156. auto-verify-pending-invoices — guard clause no UPDATE (Race Condition)
+**Arquivo**: `supabase/functions/auto-verify-pending-invoices/index.ts`
+Mesmo problema do #155 — UPDATE sem guard clause pode reverter status terminal.
+**Ação**: Adicionar `.in('status', ['pendente', 'falha_pagamento'])` ao UPDATE.
+
+### #158. verify-payment-status — guard clause no UPDATE (Race Condition)
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts`
+Mesmo padrão — UPDATE de status sem filtrar estado atual.
+**Ação**: Adicionar guard clause para não sobrescrever status 'paga' ou 'cancelada'.
+
+### #160. webhook-stripe-connect — verificação payment_origin nos handlers de falha
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts`
+Handlers de `payment_intent.payment_failed`, `invoice.payment_failed` e `invoice.marked_uncollectible` atualizam status para 'falha_pagamento' sem verificar se `payment_origin = 'manual'`. Confirmações manuais do professor podem ser invalidadas por eventos de falha do Stripe.
+**Ação**: Antes de atualizar status para falha, verificar se `payment_origin !== 'manual'`.
+
+### #169. webhook + cancel-payment-intent — status 'paid' vs 'paga' (5 locais)
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts`, `supabase/functions/cancel-payment-intent/index.ts`
+5 ocorrências de `status: 'paid'` em vez do padrão `status: 'paga'`. Causa: faturas pagas ficam invisíveis no Financeiro.
+**Ação**: Substituir todas as ocorrências de `'paid'` por `'paga'`.
+
+### #170. change-payment-method — bypass de autorização
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 81-86)
+Dois `.eq('responsible_id', ...)` consecutivos se sobrescrevem, fazendo com que a query de dependentes seja ineficaz. Qualquer guardião pode alterar métodos de pagamento de faturas alheias.
+**Ação**: Corrigir a lógica de verificação de parentesco para usar uma query que realmente valide a relação entre o guardião e o aluno da fatura.
+
+### #175. create-payment-intent-connect — SEM autenticação
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts`
+A função usa `SUPABASE_SERVICE_ROLE_KEY` e não valida a identidade do caller. Qualquer pessoa com o `invoice_id` pode gerar pagamentos.
+**Ação**: Adicionar autenticação via `auth.getUser(token)` e validar que o caller é o aluno da fatura, seu responsável, ou o professor.
+
+## Itens Implementados (12 total)
+
+| # | Descrição | Versão |
+|---|-----------|--------|
+| #132 | create-student: autenticação adicionada | v5.14 |
+| #133 | update-student-details: autenticação adicionada | v5.14 |
+| #134 | create-dependent: FK join → queries sequenciais | v5.14 |
+| #135 | delete-dependent: FK joins → queries sequenciais | v5.14 |
+| #136 | manage-class-exception: FK join → query sequencial | v5.14 |
+| #137 | manage-future-class-exceptions: FK join → query sequencial | v5.14 |
+| #148 | generate-boleto-for-invoice: `.single()` → `.maybeSingle()` | v5.24 |
+| #149 | process-orphan-cancellation-charges: `.single()` → `.maybeSingle()` (2 lookups) | v5.24 |
+| #150 | process-orphan-cancellation-charges: filtro `is_paid_class` adicionado | v5.24 |
+| #151 | generate-boleto-for-invoice: guard clause de status adicionada | v5.24 |
 
 ---
 
@@ -467,7 +527,39 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **89** | **create-invoice não verifica `charges_enabled` do Stripe Connect antes de gerar pagamento** | **5** | **create-invoice/index.ts** |
 | **90** | **Documentação: decisão sobre cobrança de mensalidade sem aulas não documentada** | **—** | **Documentação** |
 | **91** | **send-invoice-notification label "Pagar com Cartão" quando link é de boleto** | **8** | **send-invoice-notification/index.ts** |
-
+| **148** | **generate-boleto-for-invoice: `.single()` trocado por `.maybeSingle()`** | **—** | **✅ IMPLEMENTADO (v5.24)** |
+| **149** | **process-orphan-cancellation-charges: `.single()` em 2 lookups internos** | **—** | **✅ IMPLEMENTADO (v5.24)** |
+| **150** | **process-orphan-cancellation-charges: filtro `is_paid_class` adicionado** | **—** | **✅ IMPLEMENTADO (v5.24)** |
+| **151** | **generate-boleto-for-invoice: guard clause de status adicionada** | **—** | **✅ IMPLEMENTADO (v5.24)** |
+| **152** | **process-orphan: verificação de erro após filtragem** | **8** | **process-orphan-cancellation-charges/index.ts** |
+| **153** | **Subsumido por #177** | **—** | **—** |
+| **154** | **Subsumido por #179** | **—** | **—** |
+| **155** | **check-overdue-invoices: guard clause `status = 'pendente'` no UPDATE — race condition paid→overdue** | **0** | **check-overdue-invoices/index.ts** |
+| **156** | **auto-verify-pending-invoices: guard clause no UPDATE — race condition** | **0** | **auto-verify-pending-invoices/index.ts** |
+| **157** | **verify-payment-status: `.single()` em lookup** | **8** | **verify-payment-status/index.ts** |
+| **158** | **verify-payment-status: guard clause no UPDATE — race condition** | **0** | **verify-payment-status/index.ts** |
+| **159** | **send-invoice-notification: `.single()` em 3 lookups** | **8** | **send-invoice-notification/index.ts** |
+| **160** | **webhook-stripe-connect: verificação `payment_origin` nos handlers de falha** | **0** | **webhook-stripe-connect/index.ts** |
+| **161** | **process-cancellation: `.single()` na linha 107** | **6** | **process-cancellation/index.ts** |
+| **162** | **create-invoice: `.single()` nas linhas 154, 382** | **5** | **create-invoice/index.ts** |
+| **163** | **automated-billing: FK joins na query principal** | **4** | **automated-billing/index.ts** |
+| **164** | **create-invoice: FK join para relationship** | **5** | **create-invoice/index.ts** |
+| **165** | **create-invoice: FK joins aninhados para classes** | **5** | **create-invoice/index.ts** |
+| ~~**166**~~ | ~~**DUPLICATA de #80 — process-cancellation SERVICE_ROLE_KEY como Bearer**~~ | **—** | **—** |
+| **167** | **handle-student-overage: `.single()` em lookup** | **8** | **handle-student-overage/index.ts** |
+| **168** | **send-cancellation-notification: `.single()` em 4 lookups** | **8** | **send-cancellation-notification/index.ts** |
+| **169** | **webhook-stripe-connect + cancel-payment-intent: status 'paid' vs 'paga' em 5 locais** | **0** | **webhook-stripe-connect/index.ts, cancel-payment-intent/index.ts** |
+| **170** | **change-payment-method: bypass de autorização — `.eq()` consecutivos se sobrescrevem** | **0** | **change-payment-method/index.ts** |
+| **171** | **generate-boleto-for-invoice: FK joins para student/teacher profiles** | **5** | **generate-boleto-for-invoice/index.ts** |
+| **172** | **automated-billing: FK join diagnóstico `classes!inner`** | **4** | **automated-billing/index.ts** |
+| **173** | **webhook-stripe-connect: `.single()` em 3 handlers — causa retries do Stripe** | **8** | **webhook-stripe-connect/index.ts** |
+| **174** | **cancel-payment-intent: `.single()` em lookup de fatura** | **8** | **cancel-payment-intent/index.ts** |
+| **175** | **create-payment-intent-connect: SEM autenticação/autorização — qualquer pessoa pode gerar pagamentos** | **0** | **create-payment-intent-connect/index.ts** |
+| **176** | **create-payment-intent-connect: FK joins triplos (student, teacher, business_profile)** | **5** | **create-payment-intent-connect/index.ts** |
+| **177** | **create-payment-intent-connect: `.single()` em cascata** | **5** | **create-payment-intent-connect/index.ts** |
+| **178** | **check-overdue-invoices: usa `class_notifications` para faturas — violação semântica de schema** | **8** | **check-overdue-invoices/index.ts** |
+| **179** | **change-payment-method: FK joins + `.single()` em invoice lookup** | **8** | **change-payment-method/index.ts** |
+| **180** | **automated-billing: FK joins na query principal (duplicata parcial de #163)** | **4** | **automated-billing/index.ts** |
 ## Índice de Melhorias
 
 | # | Descrição | Fase |
@@ -2820,7 +2912,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | send-class-reminders | #120 | ✅ |
 | send-boleto-subscription-notification | M49 | ✅ |
 | end-recurrence | M48 | ✅ |
-| handle-student-overage | M47 | ✅ |
+| handle-student-overage | M47, #167 | ✅ |
 | materialize-virtual-class | #61, #70 | ✅ |
 | webhook-stripe-subscriptions | Extensões de #49, #76, #77 | ✅ (Confirmação 3) |
 | smart-delete-student | #127, #128 | ✅ (v5.13) |
@@ -2848,11 +2940,14 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 
 | Padrão | Funções Verificadas | Status |
 |--------|-------------------|--------|
-| FK joins no Deno | 36 funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅) |
-| `.single()` vs `.maybeSingle()` | webhook, send-invoice, create-invoice, verify-payment, cancel-subscription, update-dependent, create-connect-account, send-class-confirmation-notification, check-stripe-account-status | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139, #143, #144, #145) |
-| Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126) |
+| FK joins no Deno | 36+ funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅, #163, #164, #165, #171, #172, #176, #179, #180) |
+| `.single()` vs `.maybeSingle()` | 24+ funções auditadas | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139, #143, #144, #145, #148✅, #149✅, #157, #159, #161, #162, #167, #168, #173, #174, #177, #179) |
+| Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126, #169) |
+| Race conditions (guard clauses) | check-overdue, auto-verify, verify-payment | ✅ (#81, #155, #156, #158) |
+| Auth/Authorization bypass | create-payment-intent-connect, change-payment-method | ✅ (#170, #175) |
+| payment_origin em handlers de falha | webhook-stripe-connect | ✅ (#160) |
 | HTTP 500 vs 200+success:false | create-invoice, automated-billing, process-cancellation, check-overdue, auto-verify, create-connect-onboarding-link, list-subscription-invoices, check-stripe-account-status, customer-portal | ✅ (#72, #76, #83, #140, #141, #145, #147, M32, M52) |
-| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student, create-student, update-student-details | ✅ (#102, #118, #121, #128, #132✅, #133✅) |
+| Autenticação ausente | verify-payment, auto-verify, generate-boleto, validate-business-profile, smart-delete-student, create-student, update-student-details, create-payment-intent-connect | ✅ (#102, #118, #121, #128, #132✅, #133✅, #175) |
 | Ownership validation tardia | check-business-profile-status (Stripe API antes de ownership check) | ✅ (#142) |
 | Duplicatas / contas órfãs | create-business-profile (múltiplas contas Stripe Connect) | ✅ (#146) |
 | Busca frágil por email | customer-portal (busca Stripe Customer por email em vez de ID) | ✅ (#147) |
@@ -2861,6 +2956,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | boleto_url → stripe_hosted_invoice_url | create-invoice, automated-billing (3 locais) | ✅ (M38, #124) |
 | Audit logs com schema incorreto | handle-plan-downgrade-selection | ✅ (#129) |
 | `is_paid_class` não persistido | request-class (3º caminho de criação) | ✅ (#138) |
+| Schema semântico violado | check-overdue-invoices (class_notifications para faturas) | ✅ (#178) |
 
 ---
 
@@ -2895,7 +2991,9 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.15 | 2026-02-14 | +4 pontas soltas (#138-#141) em 4 funções: request-class não persiste `is_paid_class` (#138 ALTA → Fase 3), update-dependent `.single()` (#139 BAIXA → Batch 8), create-connect-onboarding-link HTTP 500 genérico (#140 BAIXA → Batch 8), list-subscription-invoices HTTP 500 genérico (#141 BAIXA → Batch 8). Tabela de cobertura expandida para 40 funções. Totais: 141 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.16 | 2026-02-14 | +3 pontas soltas (#142-#144) em 3 funções: check-business-profile-status ownership validation tardia (#142 MÉDIA → Batch 8), create-connect-account `.single()` incorreto (#143 BAIXA → Batch 8), send-class-confirmation-notification `.single()` sem tratamento (#144 BAIXA → Batch 8). Tabela expandida para 43 funções. Totais: 144 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147) em 3 funções completamente ausentes da cobertura v5.16: check-stripe-account-status `.single()` + HTTP 500 (#145 BAIXA → Batch 8), create-business-profile sem check de duplicatas — contas Stripe Connect órfãs (#146 MÉDIA → Batch 6), customer-portal busca por email frágil + HTTP 500 (#147 BAIXA → Batch 8). Contagens corrigidas: 47 cobertas + 27 fora de escopo + 1 infraestrutura (_shared) = 75 diretórios. Novos padrões transversais: duplicatas/contas órfãs, busca frágil por email. Totais: **147 pontas soltas** (6 implementadas), **52 melhorias**. **COBERTURA EXAUSTIVA 100% ATINGIDA.** |
+| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147). Cobertura 100% atingida: 47 funções + 27 fora de escopo = 75. Totais: 147 pontas soltas (6 implementadas), 52 melhorias. |
+| v5.18-5.23 | 2026-02-14/15 | Auditoria profunda via `.lovable/plan.md`: +33 pontas soltas (#148-#180). 4 implementadas (#148-#151). 1 duplicata (#166=#80). 2 subsumidas (#153→#177, #154→#179). Fase 0 (Batch Crítico) criada com 7 itens de segurança/race conditions. |
+| v5.24 | 2026-02-15 | **Consolidação final**. Documentos unificados. Fase 0 integrada. Verificação de fluxos end-to-end. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = 179 únicas, 167 pendentes), **52 melhorias**, **48 funções cobertas**. |
 
 ## Memórias do Projeto a Atualizar
 

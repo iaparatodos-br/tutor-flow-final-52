@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.24 (Consolidado)
+# Plano de Cobrança Híbrida — v5.25 (Consolidado)
 
 **Data**: 2026-02-15
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 7 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.24 consolida auditorias v5.18-v5.23 (realizadas em `.lovable/plan.md`) de volta neste documento único. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = **179 únicas**, 167 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.25 consolida auditorias v5.18-v5.23 e resolve inconsistências de fase e duplicatas remanescentes. Totais finais: **180 pontas soltas** (12 implementadas, 4 duplicatas = **176 únicas**, 164 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -283,7 +283,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 | Fase | Descrição | Pontas Soltas | Status |
 |------|-----------|---------------|--------|
-| **0** | **Batch Crítico: segurança, race conditions, status** | **#155, #156, #158, #160, #169, #170, #175** | 🔴 Pendente |
+| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **#87, #155, #156, #158, #160, #169, #170, #175** | 🔴 Pendente |
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4, M37 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
@@ -291,15 +291,21 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #81, #85, #86, #87, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (7 itens)
+## Fase 0 — Batch Crítico (8 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
+
+### #87. webhook-stripe-connect — handlers `invoice.*` nunca encontram faturas internas (Reconciliação)
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 306-310, 343-346, 380-386, 401-407, 425-430)
+Os handlers `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`, `invoice.marked_uncollectible` e `invoice.voided` buscam faturas por `.eq('stripe_invoice_id', invoice.id)`. Porém, `create-invoice` e `automated-billing` nunca preenchem `stripe_invoice_id` nas faturas internas — apenas `stripe_payment_intent_id` é preenchido.
+**Resultado**: Todos os eventos `invoice.*` do Stripe são silenciosamente ignorados para faturas internas, quebrando a reconciliação de pagamentos.
+**Ação**: Adicionar fallback de busca por `stripe_payment_intent_id` quando a busca por `stripe_invoice_id` não retornar resultados. Usar `invoice.payment_intent` (disponível no objeto Invoice do Stripe) como chave de fallback.
 
 ### #155. check-overdue-invoices — guard clause no UPDATE (Race Condition)
 **Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 57)
@@ -516,13 +522,13 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **78** | **create-invoice guardian lookup usa `.single()` em query não garantida** | **5** | **create-invoice/index.ts** |
 | **79** | **processMonthlySubscriptionBilling `outsideCycleInvoiceId` não logado pelo caller** | **4** | **automated-billing/index.ts** |
 | **80** | **process-cancellation usa SERVICE_ROLE_KEY como Bearer token para create-invoice — viola constraint** | **6** | **process-cancellation/index.ts** |
-| **81** | **check-overdue-invoices sem guard clause `status = 'pendente'` no update — race condition paid→overdue** | **8** | **check-overdue-invoices/index.ts** |
+| ~~**81**~~ | ~~**DUPLICATA de #155 — check-overdue-invoices guard clause (mesmo bug)**~~ | **—** | **—** |
 | **82** | **AmnestyButton não verifica `is_paid_class` — permite anistia em aulas pré-pagas** | **7** | **AmnestyButton.tsx** |
 | **83** | **process-cancellation catch geral retorna HTTP 500 — viola constraint** | **6** | **process-cancellation/index.ts** |
 | **84** | **process-cancellation usa `.single()` para buscar dependente — pode falhar** | **6** | **process-cancellation/index.ts** |
 | **85** | **automated-billing não salva `payment_method` nos 3 updates de pagamento** | **8** | **automated-billing/index.ts** |
 | **86** | **webhook-stripe-connect `payment_intent.succeeded` apaga dados de boleto/PIX da fatura paga** | **8** | **webhook-stripe-connect/index.ts** |
-| **87** | **webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas (busca por `stripe_invoice_id` inexistente)** | **1** | **webhook-stripe-connect/index.ts** |
+| **87** | **webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas (busca por `stripe_invoice_id` inexistente)** | **0** | **webhook-stripe-connect/index.ts** |
 | **88** | **automated-billing mensalidade sem filtro de datas na RPC — performance** | **4** | **automated-billing/index.ts** |
 | **89** | **create-invoice não verifica `charges_enabled` do Stripe Connect antes de gerar pagamento** | **5** | **create-invoice/index.ts** |
 | **90** | **Documentação: decisão sobre cobrança de mensalidade sem aulas não documentada** | **—** | **Documentação** |
@@ -1771,7 +1777,7 @@ O aluno recebe uma fatura sem nenhum CTA de pagamento funcional.
 
 **Ação**: Após criar a fatura de mensalidade e inserir os `invoice_classes`, replicar a lógica de geração de pagamento do fluxo tradicional: consultar `enabled_payment_methods`, selecionar método apropriado, chamar `create-payment-intent-connect` e atualizar a fatura com os dados de pagamento.
 
-### 95. check-overdue-invoices race condition: atualiza para 'overdue' sem verificar status atual (Fase 1)
+### ~~95. DUPLICATA de #155 — check-overdue-invoices race condition (Fase 0 via #155)~~
 
 **Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
 
@@ -1796,7 +1802,7 @@ await supabase
   .eq("status", "pendente");
 ```
 
-### 96. process-cancellation passa SERVICE_ROLE_KEY como Bearer token para create-invoice (Fase 1)
+### ~~96. DUPLICATA de #80 — process-cancellation SERVICE_ROLE_KEY como Bearer (Fase 6 via #80)~~
 
 **Arquivo**: `supabase/functions/process-cancellation/index.ts`
 
@@ -2994,6 +3000,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147). Cobertura 100% atingida: 47 funções + 27 fora de escopo = 75. Totais: 147 pontas soltas (6 implementadas), 52 melhorias. |
 | v5.18-5.23 | 2026-02-14/15 | Auditoria profunda via `.lovable/plan.md`: +33 pontas soltas (#148-#180). 4 implementadas (#148-#151). 1 duplicata (#166=#80). 2 subsumidas (#153→#177, #154→#179). Fase 0 (Batch Crítico) criada com 7 itens de segurança/race conditions. |
 | v5.24 | 2026-02-15 | **Consolidação final**. Documentos unificados. Fase 0 integrada. Verificação de fluxos end-to-end. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = 179 únicas, 167 pendentes), **52 melhorias**, **48 funções cobertas**. |
+| v5.25 | 2026-02-15 | **Verificação final de consistência**. #87 movido de Fase 1→Fase 0 (reconciliação de webhooks quebrada). 3 duplicatas adicionais resolvidas: #81=#155, #95=#155, #96=#80. Fase 0 expandida para 8 itens. Totais: **176 únicas** (12 implementadas, 164 pendentes). |
 
 ## Memórias do Projeto a Atualizar
 

@@ -2,67 +2,50 @@
 
 
 
-# Verificação Final v5.38 — 8 Novas Pontas Soltas em Validação, Notificações, Auditoria e Segurança
+# Verificação Final v5.39 — 6 Novas Pontas Soltas em Cancelamento, Pagamento e Validação
 
-## Veredicto: Plano atualizado para v5.38 com 1 novo bug crítico (audit-logger inoperante) e 2 bugs funcionais de escala/ambiguidade.
+## Veredicto: Plano atualizado para v5.39 com 2 novos bugs críticos (identity spoofing + status 'paid' recorrente) e reclassificação de 4 findings anteriores.
 
 ---
 
-## Auditoria Profunda Realizada (Funções Restantes — 100% Cobertura Atingida)
+## Auditoria de 2ª Passagem (Funções Financeiras Core + Cancelamento)
 
-Funções auditadas nesta rodada:
-- `check-business-profile-status/index.ts` (199 linhas) — `.single()` já coberto por #142
-- `create-connect-account/index.ts` (148 linhas) — OK (ownership validation presente)
-- `create-connect-onboarding-link/index.ts` (104 linhas) — já coberto por #197
-- `create-dependent/index.ts` (211 linhas) — OK (fix #134 aplicado, usa `.maybeSingle()`)
-- `delete-dependent/index.ts` (240 linhas) — OK (fix #135 aplicado)
-- `update-dependent/index.ts` (148 linhas) — `.single()` já coberto por #139
-- `update-student-details/index.ts` (144 linhas) — OK (auth + ownership)
-- `create-student/index.ts` (529 linhas) — OK (robusto, com rollback)
-- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()` já coberto por #198
-- `create-business-profile/index.ts` (141 linhas) — duplicata já coberta por #146
-- `validate-business-profile-deletion/index.ts` (128 linhas) — **SEM AUTH** (#223)
-- `list-business-profiles/index.ts` (71 linhas) — OK (auth presente)
-- `list-pending-business-profiles/index.ts` (74 linhas) — OK (auth presente)
-- `check-email-availability/index.ts` (74 linhas) — **SEM AUTH, email enumeration** (#228)
-- `check-email-confirmation/index.ts` (139 linhas) — OK (auth + ownership)
-- `resend-confirmation/index.ts` (202 linhas) — **listUsers() sem filtro** (#224)
-- `send-class-report-notification/index.ts` (294 linhas) — **6x `.single()`** (#230)
-- `send-class-reminders/index.ts` (317 linhas) — **FK join ambíguo PGRST201** (#225)
-- `generate-teacher-notifications/index.ts` (351 linhas) — **dependência cruzada #209** (#229)
-- `get-teacher-availability/index.ts` (134 linhas) — FK join em `classes!inner` (já coberto)
-- `stripe-events-monitor/index.ts` (124 linhas) — **SEM AUTH** (#227)
-- `archive-old-data/index.ts` (330 linhas) — OK (service-role auth)
-- `fetch-archived-data/index.ts` (122 linhas) — OK (auth + ownership)
-- `audit-logger/index.ts` (86 linhas) — **SCHEMA MISMATCH TOTAL** (#226)
-- `security-rls-audit/index.ts` (379 linhas) — OK (auth + role check)
+Funções auditadas nesta rodada (2ª passagem — análise mais profunda):
+- `process-cancellation/index.ts` (500 linhas) — **Identity spoofing: aceita `cancelled_by` do body sem JWT** (#231)
+- `manage-class-exception/index.ts` (157 linhas) — OK (auth + ownership robusto, fix #136 aplicado)
+- `manage-future-class-exceptions/index.ts` (220 linhas) — OK (auth + ownership robusto, fix #137 aplicado)
+- `request-class/index.ts` (223 linhas) — OK (auth + ownership + dependent validation)
+- `verify-payment-status/index.ts` (124 linhas) — **Sem ownership validation: IDOR** (#232)
+- `create-invoice/index.ts` (575 linhas) — **FK joins aninhados** (#233), `.single()` em relationship (já coberto)
+- `cancel-payment-intent/index.ts` (250 linhas) — **CONFIRMA #199: status 'paid' em inglês** (#234)
+- `create-payment-intent-connect/index.ts` (659 linhas) — OK (FK joins explicitamente nomeados, validação robusta)
+- `customer-portal/index.ts` (75 linhas) — OK (auth + Stripe lookup by email)
+- `send-student-invitation/index.ts` (158 linhas) — **Reclassificação**: verify_jwt=true no gateway (#236)
+- `validate-payment-routing/index.ts` (321 linhas) — **Cria faturas REAIS em produção** (#235)
+- `send-class-confirmation-notification/index.ts` (212 linhas) — 3x `.single()` (já coberto genericamente por #230)
 
-### Novos Gaps Encontrados (#223-#230)
+### Novos Gaps Encontrados (#231-#236)
 
-1. **#223 (MÉDIA)**: `validate-business-profile-deletion` sem autenticação — qualquer pessoa pode consultar faturas e alunos de um perfil de negócios.
+1. **#231 (ALTA → Fase 0)**: `process-cancellation` aceita `cancelled_by` do body da request sem extrair o usuário do JWT. Identity spoofing: User A pode cancelar aulas como User B.
 
-2. **#224 (ALTA)**: `resend-confirmation` usa `listUsers()` que carrega TODOS os usuários em memória. Com milhares de usuários, timeout ou crash.
+2. **#232 (MÉDIA)**: `verify-payment-status` não verifica ownership. Qualquer usuário autenticado pode consultar/atualizar status de qualquer fatura (IDOR).
 
-3. **#225 (MÉDIA)**: `send-class-reminders` usa FK join `profiles (name, email)` em `class_participants` que tem 2 FKs para `profiles` — risco de erro PGRST201 de ambiguidade, quebrando lembretes para todos os alunos.
+3. **#233 (BAIXA)**: `create-invoice` usa FK joins aninhados `classes!inner → class_services` em class_participants. Tratamento de rollback presente, mas viola padrão.
 
-4. **#226 (ALTA → Fase 0)**: `audit-logger` insere com campos `user_id`, `action`, `details`, `metadata` — mas tabela `audit_logs` usa `actor_id`, `operation`, `record_id`, `table_name`. NENHUM campo corresponde. Sistema de auditoria completamente inoperante.
+4. **#234 (ALTA → Fase 0)**: `cancel-payment-intent` usa `status: 'paid'` em inglês (linhas 111, 172). CONFIRMA que o padrão #199 é recorrente. Faturas pagas manualmente ficam invisíveis.
 
-5. **#227 (BAIXA)**: `stripe-events-monitor` sem autenticação — expõe estatísticas de eventos Stripe.
+5. **#235 (MÉDIA)**: `validate-payment-routing` cria faturas REAIS em produção como "teste" (linhas 245-264), com deleção por match de descrição que pode deletar faturas de usuários.
 
-6. **#228 (BAIXA)**: `check-email-availability` sem autenticação — vetor de enumeração de emails.
+6. **#236 (CORREÇÃO)**: #218, #223, #227, #228 reclassificados de "sem auth" para "sem ownership". O gateway Supabase aplica verify_jwt=true por padrão.
 
-7. **#229 (MÉDIA)**: `generate-teacher-notifications` busca status 'overdue' que depende de #209 para existir corretamente.
-
-8. **#230 (BAIXA-MÉDIA)**: `send-class-report-notification` usa `.single()` em 6 lookups — qualquer ausência aborta notificação para todos.
-
-### Totais Atualizados (v5.38)
-- 230 pontas soltas totais
+### Totais Atualizados (v5.39)
+- 236 pontas soltas totais
 - 18 duplicatas + 2 subsumidas
-- 210 únicas
+- 216 únicas
 - 10 implementadas
-- **200 pendentes**
-- Fase 0: **17 itens** (+1: #226)
-- **100% cobertura**: Todas as 75 funções auditadas
+- **206 pendentes**
+- Fase 0: **19 itens** (+2: #231, #234)
+- **100% cobertura**: Todas as 75 funções auditadas (2ª passagem em 12 funções core)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 17 itens críticos. Cobertura de auditoria 100% atingida.
+O documento está **pronto para execução da Fase 0** com 19 itens críticos. A 2ª passagem confirmou que o bug de status em inglês (#199/#234) é um padrão recorrente que precisa ser corrigido em TODAS as funções que escrevem status de faturas.

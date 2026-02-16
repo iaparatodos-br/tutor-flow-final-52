@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.38 (Consolidado)
+# Plano de Cobrança Híbrida — v5.39 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 17 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 19 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.38 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **230 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **210 únicas**, **200 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.39 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **236 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **216 únicas**, **206 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura). Auditoria de 2ª passagem em funções financeiras core revelou 2 novos bugs críticos de corrupção de status.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #225, #227, #228, #229, #230, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #225, #227, #228, #229, #230, #232, #233, #235, #236, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (17 itens)
+## Fase 0 — Batch Crítico (19 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -3688,6 +3688,47 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 
 ---
 
+### 231. process-cancellation — aceita `cancelled_by` do body sem validar JWT (Identity Spoofing) (Fase 0)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (500 linhas)
+Função não extrai o usuário autenticado do JWT. Aceita `cancelled_by` diretamente do corpo da requisição e o usa para verificação de permissão (linhas 172-194). Um usuário autenticado (User A) pode enviar `cancelled_by: userB_id` e, se userB for participante da aula, o cancelamento será processado como se fosse userB. Isso permite spoofing de identidade em cancelamentos, incluindo geração de multas no nome de outros.
+**Severidade**: ALTA — identity spoofing em operação financeira (cancelamento com multa). Qualquer usuário autenticado pode cancelar aulas de outros.
+**Ação**: Extrair `auth.uid()` do JWT e usar como fonte de verdade para `cancelled_by`. O body só deve conter `class_id`, `reason`, `cancelled_by_type` e opcionalmente `dependent_id`.
+
+### 232. verify-payment-status — sem ownership validation (IDOR)
+
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (124 linhas)
+Função não verifica autenticação nem propriedade. Qualquer usuário autenticado (verify_jwt=true no gateway) pode consultar e ATUALIZAR o status de qualquer fatura fornecendo seu `invoice_id`. Linha 40: `.single()` sem filtro de propriedade. Linhas 89-93: atualiza status sem checar se o invoker é o professor ou aluno da fatura.
+**Severidade**: MÉDIA — IDOR: qualquer usuário pode forçar status de fatura alheia para 'paga' se tiver o payment_intent correto no Stripe.
+**Ação**: Adicionar extração do JWT user e verificar que `invoice.teacher_id === user.id` ou `invoice.student_id === user.id`.
+
+### 233. create-invoice — FK joins aninhados em class_participants
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 228-238)
+Query de `class_participants` usa FK joins aninhados: `classes!inner (id, class_date, service_id, class_services (name, price))`. Se o schema cache estiver obsoleto, a query inteira falha e a fatura é estornada (rollback).
+**Severidade**: BAIXA — já tem tratamento de rollback robusto, mas viola o padrão de queries sequenciais.
+**Ação**: Refatorar para buscar class_participants, classes e class_services em queries separadas.
+
+### 234. cancel-payment-intent — CONFIRMA #199: status 'paid' em inglês (Corrupção de Dados Recorrente) (Fase 0)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 111, 172)
+Função marca faturas com `status: 'paid'` em inglês (linhas 111, 172). Todo o sistema financeiro filtra por status em português ('pendente', 'paga', 'vencida'). Faturas marcadas como 'paid' ficam INVISÍVEIS ao financeiro, ao dashboard e a todas as queries de status. Este é o MESMO padrão do #199 mas num ponto de código diferente, confirmando que é um padrão recorrente e não um caso isolado.
+**Severidade**: ALTA — corrupção silenciosa de dados financeiros. Faturas pagas manualmente desaparecem do sistema.
+**Ação**: Substituir `status: 'paid'` por `status: 'paga'` em ambas as ocorrências (linhas 111 e 172).
+
+### 235. validate-payment-routing — cria faturas REAIS em produção como "teste"
+
+**Arquivo**: `supabase/functions/validate-payment-routing/index.ts` (linhas 245-264)
+Teste 5 ("Invoice Creation Simulation") cria uma fatura REAL no banco de dados de produção e depois tenta deletá-la por `description = 'Teste de validação de roteamento'`. Problemas: (1) se a deleção falhar, faturas fantasma permanecem; (2) o filtro de deleção pode apagar faturas legítimas com mesma descrição; (3) a fatura criada pode disparar webhooks e notificações antes de ser deletada.
+**Severidade**: MÉDIA — risco de faturas fantasma e deleção acidental.
+**Ação**: Remover Teste 5 ou substituir por dry-run (validate insert permissions via RPC sem INSERT real).
+
+### 236. CORREÇÃO: Reclassificação de findings de "sem auth" (#218, #223, #227, #228)
+
+Análise cruzada do `supabase/config.toml` revelou que as funções #218 (`send-student-invitation`), #223 (`validate-business-profile-deletion`), #227 (`stripe-events-monitor`) e #228 (`check-email-availability`) NÃO estão listadas no config.toml, portanto o padrão `verify_jwt = true` é aplicado pelo gateway do Supabase. Isso significa que essas funções REQUEREM um JWT válido e não são acessíveis anonimamente. A vulnerabilidade real é a falta de OWNERSHIP validation (qualquer usuário autenticado pode acessar dados de outros), não a ausência total de autenticação. Severidade reclassificada de MÉDIA/BAIXA para BAIXA em todos os 4 casos.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -3736,6 +3777,7 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 | v5.36 | 2026-02-16 | **Auditoria profunda de funções de downgrade, overage, cancelamento e expiração**. +7 pontas soltas (#209-#215): check-overdue-invoices status 'overdue' em inglês (#209 ALTA → Fase 0), handle-plan-downgrade-selection audit log schema errado (#210 MÉDIA), handle-student-overage tabela inexistente `student_overage_charges` (#211 MÉDIA), 7+ funções com `.single()` (#212 BAIXA-MÉDIA), process-expired-subscriptions FK join syntax (#213 MÉDIA), process-cancellation `.single()` (#214 BAIXA), handle-teacher-subscription-cancellation campo inexistente `guardian_email` (#215 MÉDIA). 1 item adicionado à Fase 0 (15 itens). Totais: **215 pontas soltas**, **195 únicas**, **185 pendentes**. |
 | v5.37 | 2026-02-16 | **Auditoria profunda de checkout, subscription status, billing e invitation**. +7 pontas soltas (#216-#222): create-subscription-checkout cancela assinatura ANTES do checkout (#216 ALTA → Fase 0), check-subscription-status monolito frágil 846 linhas (#217 MÉDIA), send-student-invitation sem auth (#218 BAIXA), automated-billing FK joins em cron crítico (#219 MÉDIA), resend-student-invitation `.single()` (#220 BAIXA), create-subscription-checkout `.single()` e FK joins (#221 BAIXA), smart-delete-student `.single()` em subscriptions (#222 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (16 itens). Totais: **222 pontas soltas**, **202 únicas**, **192 pendentes**. |
 | v5.38 | 2026-02-16 | **Auditoria completa de funções restantes (100% cobertura)**. +8 pontas soltas (#223-#230): validate-business-profile-deletion sem auth (#223 MÉDIA), resend-confirmation listUsers() carrega todos usuários (#224 ALTA), send-class-reminders FK join ambíguo PGRST201 (#225 MÉDIA), audit-logger schema mismatch total — auditoria inoperante (#226 ALTA → Fase 0), stripe-events-monitor sem auth (#227 BAIXA), check-email-availability email enumeration (#228 BAIXA), generate-teacher-notifications dependência cruzada com #209 (#229 MÉDIA), send-class-report-notification 6x `.single()` (#230 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (17 itens). Totais: **230 pontas soltas**, **210 únicas**, **200 pendentes**. |
+| v5.39 | 2026-02-16 | **Auditoria de 2ª passagem em funções financeiras core e cancelamento**. +6 pontas soltas (#231-#236): process-cancellation aceita `cancelled_by` do body sem validar JWT (#231 ALTA → Fase 0), verify-payment-status sem ownership validation (#232 MÉDIA), create-invoice FK joins aninhados em class_participants (#233 BAIXA), cancel-payment-intent marca status 'paid' em inglês — faturas invisíveis ao financeiro (#234 ALTA → Fase 0 — CONFIRMA #199 como padrão recorrente), validate-payment-routing cria faturas REAIS em produção como "teste" (#235 MÉDIA), reclassificação: #218/#223/#227/#228 têm verify_jwt=true no gateway — faltam apenas checks de ownership (#236 CORREÇÃO). 2 itens adicionados à Fase 0 (19 itens). Totais: **236 pontas soltas**, **216 únicas**, **206 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

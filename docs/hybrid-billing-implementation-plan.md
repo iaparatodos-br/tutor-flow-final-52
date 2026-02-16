@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.44 (Consolidado)
+# Plano de Cobrança Híbrida — v5.45 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 28 vulnerabilidades ativas (unchanged)
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 31 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.44 consolida todas as auditorias com 7 passagens completas. Totais finais: **276 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 7 confirmações = **247 únicas**, **235 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 7ª passagem em notificações, entity management e CRUD). A 7ª passagem revelou um padrão sistêmico: **todas as 10 funções de notificação** usam `.single()` em lookups internos de loops, criando crash points que podem derrubar a fila inteira de notificações por um único registro ausente. Também identificou inconsistência no tratamento de overage entre create-student (permite cobrança extra) e create-dependent (bloqueia).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.45 consolida todas as auditorias com 8 passagens completas. Totais finais: **286 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 7 confirmações = **257 únicas**, **245 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 8ª passagem em automação, verificação e utilitários). A 8ª passagem revelou que `audit-logger` (a função compartilhada de auditoria) insere com colunas erradas — o mesmo bug que #258 mas na função exportada, significando que TODOS os audit logs do sistema falham silenciosamente. Também identificou que `smart-delete-student` não tem autenticação e que `check-overdue-invoices` usa status em inglês ('overdue') e a tabela errada para deduplicação.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4001,6 +4001,76 @@ Quando o professor excede o limite do plano, `create-student` processa cobrança
 **Severidade**: BAIXA — inconsistência de UX e lógica de negócio.
 **Ação**: Implementar overage billing para dependentes ou unificar a mensagem de erro.
 
+### 277. audit-logger — colunas erradas em audit_logs (extensão de #258)
+
+**Arquivo**: `supabase/functions/audit-logger/index.ts` (L23-31)
+A função exportada `logAuditEvent` insere com colunas `user_id`, `action`, `details`, `metadata` — mas a tabela `audit_logs` tem `actor_id`, `operation`, `table_name`, `record_id`. **TODOS os audit logs do sistema falham silenciosamente** porque esta é a função compartilhada usada por múltiplas edge functions.
+**Severidade**: ALTA → Fase 0. Extensão sistêmica de #258.
+**Ação**: Corrigir mapeamento de colunas.
+
+### 278. check-overdue-invoices — status 'overdue' em inglês
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (L58)
+Escreve `status: "overdue"` (inglês) em vez do padrão português do sistema. Faturas marcadas como 'overdue' ficam invisíveis para queries que filtram por status em português.
+**Severidade**: ALTA → Fase 0 (extensão de #237).
+**Ação**: Substituir por status em português consistente com o sistema.
+
+### 279. check-overdue-invoices — tabela errada para deduplicação
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (L47-52, L100-105)
+Usa `class_notifications` para deduplicate invoice notifications. `class_notifications` é semanticamente para aulas, não faturas. Pode causar colisões de IDs e falhas de dedup.
+**Severidade**: MÉDIA.
+**Ação**: Criar tabela dedicada para invoice notifications ou usar campo na própria fatura.
+
+### 280. smart-delete-student — .single() em user_subscriptions
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (L47-52)
+`updateStripeSubscriptionQuantity` usa `.single()` para buscar subscription ativa. Se professor não tem subscription → crash 500, Stripe quantity nunca é atualizada após deleção.
+**Severidade**: ALTA → Fase 0 (aluno deletado mas Stripe fica dessincronizado).
+**Ação**: Substituir por `.maybeSingle()` com early return.
+
+### 281. smart-delete-student — .single() em plan lookup
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (L87-91)
+`.single()` em `subscription_plans` dentro de `updateStripeSubscriptionQuantity`. Se plano deletado → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 282. smart-delete-student — SEM AUTENTICAÇÃO
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (L274-301)
+Não verifica Authorization header nem valida identidade do chamador. Qualquer requisição com a URL da função pode deletar alunos arbitrariamente passando student_id/teacher_id/relationship_id.
+**Severidade**: ALTA → Fase 0 (vulnerabilidade de segurança crítica).
+**Ação**: Adicionar autenticação e validação de ownership (teacher_id deve ser auth.uid()).
+
+### 283. check-subscription-status — múltiplos .single() em plans
+
+**Arquivo**: `supabase/functions/check-subscription-status/index.ts` (L378, L460, L584, L703, L760)
+Cinco chamadas `.single()` em `subscription_plans` ao longo da função. Se plano não encontrado por price_id → crash com throw.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()` com fallback para free plan.
+
+### 284. check-pending-boletos — .single() em free plan
+
+**Arquivo**: `supabase/functions/check-pending-boletos/index.ts` (L122)
+`.single()` para buscar plano free durante expiração de boleto. Se plano free ausente → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 285. process-expired-subscriptions — .single() em free plan
+
+**Arquivo**: `supabase/functions/process-expired-subscriptions/index.ts` (L122)
+`.single()` para buscar plano free. Se plano free ausente → crash para aquele usuário, loop continua mas com errorCount incrementado.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 286. check-business-profile-status — .single() em pending profile
+
+**Arquivo**: `supabase/functions/check-business-profile-status/index.ts` (L77)
+`.single()` em `pending_business_profiles`. Se nenhum registro pendente → crash em vez de retornar status informativo.
+**Severidade**: BAIXA.
+**Ação**: Substituir por `.maybeSingle()`.
+
 ---
 
 | Versão | Data | Mudanças |
@@ -4030,7 +4100,8 @@ Quando o professor excede o limite do plano, `create-student` processa cobrança
 | v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
 | v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management**. +8 pontas soltas (#250-#257). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
 | v5.43 | 2026-02-16 | **6ª passagem: subscription management, payment flows e Connect**. +9 pontas soltas (#258-#266). 2 itens adicionados à Fase 0 (28 itens). Totais: **266 pontas soltas**, **238 únicas**, **226 pendentes**. |
-| v5.44 | 2026-02-16 | **7ª passagem: notificações, entity management e CRUD — padrão sistêmico de .single()**. +10 pontas soltas (#267-#276): send-class-reminders .single() em teacher dentro de loop (#267 MÉDIA), send-class-reminders .single() em relationship (#268 MÉDIA), CONFIRMAÇÃO de #248 — send-invoice-notification 3× .single() (#269), send-invoice-notification .single() em monthly_subscriptions (#270 MÉDIA), send-cancellation-notification 4× .single() em dependent lookups dentro de loops (#271 MÉDIA), send-class-report-notification 5× .single() em class/teacher/student/dependent/relationship (#272 MÉDIA), send-class-request-notification 3× .single() sequenciais (#273 MÉDIA), send-material-shared-notification 2× .single() em material/teacher (#274 MÉDIA), send-boleto-subscription-notification .single() em profile (#275 MÉDIA), create-dependent bloqueia overage para planos pagos em vez de cobrar como create-student (#276 BAIXA — inconsistência de lógica). Nenhum item adicionado à Fase 0 (28 itens mantidos). Totais: **276 pontas soltas**, **247 únicas**, **235 pendentes**. |
+| v5.44 | 2026-02-16 | **7ª passagem: notificações, entity management e CRUD**. +10 pontas soltas (#267-#276). Nenhum item adicionado à Fase 0 (28 itens mantidos). Totais: **276 pontas soltas**, **247 únicas**, **235 pendentes**. |
+| v5.45 | 2026-02-16 | **8ª passagem: automação, verificação e utilitários**. +10 pontas soltas (#277-#286): audit-logger insere com colunas erradas — extensão sistêmica de #258, TODOS os audit logs falham silenciosamente (#277 ALTA → Fase 0), check-overdue-invoices escreve 'overdue' (inglês) — extensão de #237 (#278 ALTA → Fase 0), check-overdue-invoices usa class_notifications para dedup de invoices (#279 MÉDIA), smart-delete-student .single() em subscription (#280 ALTA → Fase 0), smart-delete-student .single() em plan (#281 MÉDIA), smart-delete-student SEM AUTENTICAÇÃO (#282 ALTA → Fase 0), check-subscription-status 5× .single() em plans (#283 MÉDIA), check-pending-boletos .single() em free plan (#284 MÉDIA), process-expired-subscriptions .single() em free plan (#285 MÉDIA), check-business-profile-status .single() em pending profile (#286 BAIXA). 3 itens adicionados à Fase 0 (31 itens). Totais: **286 pontas soltas**, **257 únicas**, **245 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

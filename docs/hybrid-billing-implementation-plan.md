@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.27 (Consolidado)
+# Plano de Cobrança Híbrida — v5.28 (Consolidado)
 
 **Data**: 2026-02-15
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.27 consolida todas as auditorias, completa o índice mestre com ~50 itens ausentes (#94-#147), corrige contagem de implementados (10, não 12) e identifica 7 novas duplicatas. Totais finais: **180 pontas soltas** (10 implementadas, 17 duplicatas, 2 subsumidas = **163 únicas**, **153 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.28 consolida todas as auditorias, completa o índice mestre com ~50 itens ausentes (#94-#147), corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **180 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **160 únicas**, **150 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -413,17 +413,18 @@ Os itens abaixo foram identificados nas auditorias v5.18 a v5.23 e estão atribu
 | #171 | #103 | generate-boleto FK joins (já coberta por #103) |
 | #178 | #41 | check-overdue `class_notifications` semântica (já coberta por #41) |
 
-### Totais Atualizados (v5.27)
+### Totais Atualizados (v5.28)
 
 ```text
 Pontas Soltas Totais:       180
   Duplicatas anteriores:     10 (#59, #81, #92, #93, #95, #96, #107, #166, #171, #178)
   Novas duplicatas v5.27:     7 (#61, #62, #63, #65, #66, #104, #108)
-  Total duplicatas:          17
+  Nova duplicata v5.28:       1 (#98⊂#169)
+  Total duplicatas:          18
   Subsumidas:                 2 (#153→#177, #154→#179)
-  Únicas:                   163 (180 - 17)
+  Únicas:                   160 (180 - 18 - 2)
   Implementadas:             10
-  Pendentes:               153
+  Pendentes:               150
 
 Fase 0 (Crítico):            8 itens (inalterado)
 ```
@@ -610,7 +611,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**108**~~ | ~~**DUPLICATA de #67 — automated-billing tradicional sem notificação**~~ | **—** | **—** |
 | **94** | **automated-billing mensalidade não gera pagamento via Stripe** | **4** | **automated-billing/index.ts** |
 | **97** | **Clientes Stripe duplicados: platform vs connected account** | **6** | **create-payment-intent-connect/index.ts** |
-| **98** | **cancel-payment-intent status 'paid' em inglês (coberto por #169)** | **0** | **cancel-payment-intent/index.ts** |
+| ~~**98**~~ | ~~**DUPLICATA / Subsumido por #169 — cancel-payment-intent status 'paid' em inglês**~~ | **—** | **—** |
 | **99** | **send-invoice-notification armazena invoice.id em class_notifications.class_id** | **8** | **send-invoice-notification/index.ts** |
 | **100** | **AmnestyButton cancela faturas de todos participantes em grupo** | **7** | **AmnestyButton.tsx** |
 | **101** | **Financeiro.tsx taxas Stripe valor fixo para todos métodos** | **8** | **Financeiro.tsx** |
@@ -3023,7 +3024,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | automated-billing | #31, #35, #36, #40, #52, #58, #60, #68, #69, #75, #76, #85, #88, #92, #93, #108, #124 | ✅ |
 | process-cancellation | #30, #59, #80, #83, #84, #96, #107 | ✅ |
 | webhook-stripe-connect | #49, #64, #74, #77, #86, #87, #104, M51 | ✅ |
-| cancel-payment-intent | #98, #122, M44, M50 | ✅ |
+| cancel-payment-intent | ~~#98~~, #122, M44, M50 | ✅ |
 | create-payment-intent-connect | #119, #125, M45 | ✅ |
 | change-payment-method | #114, #115 | ✅ |
 | generate-boleto-for-invoice | #103, #121 | ✅ |
@@ -3073,7 +3074,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 |--------|-------------------|--------|
 | FK joins no Deno | 36+ funções auditadas | ✅ Todos documentados (#25, #35, #52, #57, #58, #69, #103, #111, #113, #114, #116, #119, #120, #121, #123, #127, #130, #134✅, #135✅, #136✅, #137✅, #163, #164, #165, #171, #172, #176, #179, #180) |
 | `.single()` vs `.maybeSingle()` | 24+ funções auditadas | ✅ (#49, #53, #64, #73, #78, #84, #102, #131, #139, #143, #144, #145, #148✅, #149✅, #157, #159, #161, #162, #167, #168, #173, #174, #177, #179) |
-| Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (#98, #104, #126, #169) |
+| Status inglês vs português | webhook, cancel-payment-intent, check-overdue | ✅ (~~#98~~, #104⊂#169, #126, #169) |
 | Race conditions (guard clauses) | check-overdue, auto-verify, verify-payment | ✅ (#81, #155, #156, #158) |
 | Auth/Authorization bypass | create-payment-intent-connect, change-payment-method | ✅ (#170, #175) |
 | payment_origin em handlers de falha | webhook-stripe-connect | ✅ (#160) |
@@ -3128,6 +3129,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.25 | 2026-02-15 | **Verificação final de consistência**. #87 movido de Fase 1→Fase 0 (reconciliação de webhooks quebrada). 3 duplicatas adicionais resolvidas: #81=#155, #95=#155, #96=#80. Fase 0 expandida para 8 itens. Totais: **176 únicas** (12 implementadas, 164 pendentes). |
 | v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. |
 | v5.27 | 2026-02-16 | **Verificação final de consistência**. Índice mestre completado com ~50 itens ausentes (#94-#147). 7 novas duplicatas: #61=#8.1, #62=#2.4, #63=#17, #65=#7.1, #66=#2.3, #104⊂#169, #108=#67. Contagem de implementados corrigida de 12→10. Total duplicatas: 17. Totais finais: **163 únicas** (10 implementadas, **153 pendentes**). Fase 0 inalterada (8 itens). |
+| v5.28 | 2026-02-16 | **Correção aritmética final**. #98 marcado como duplicata/subsumido por #169 (total duplicatas: 18). Fórmula de únicas corrigida para subtrair subsumidas: 180 - 18 - 2 = **160 únicas** (10 implementadas, **150 pendentes**). Fase 0 inalterada (8 itens). |
 
 ## Memórias do Projeto a Atualizar
 

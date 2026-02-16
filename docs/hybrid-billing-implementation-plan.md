@@ -620,7 +620,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**104**~~ | ~~**Subsumido por #169 — webhook status inglês**~~ | **—** | **—** |
 | **105** | **process-orphan-cancellation-charges assinatura RPC** | **8** | **process-orphan-cancellation-charges/index.ts** |
 | **106** | **process-orphan-cancellation-charges FK joins** | **8** | **process-orphan-cancellation-charges/index.ts** |
-| **109** | **process-payment-failure-downgrade FK joins + sem auth** | **8** | **process-payment-failure-downgrade/index.ts** |
+| **109** | **process-payment-failure-downgrade chama smart-delete-student com parâmetros incorretos** | **8** | **process-payment-failure-downgrade/index.ts** |
 | **110** | **handle-teacher-subscription-cancellation RESEND_API_KEY inexistente** | **8** | **handle-teacher-subscription-cancellation/index.ts** |
 | **111** | **process-expired-subscriptions FK joins** | **8** | **process-expired-subscriptions/index.ts** |
 | **112** | **handle-teacher-subscription-cancellation não cancela Payment Intents** | **8** | **handle-teacher-subscription-cancellation/index.ts** |

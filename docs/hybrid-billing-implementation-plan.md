@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.29 (Consolidado)
+# Plano de Cobrança Híbrida — v5.30 (Consolidado)
 
 **Data**: 2026-02-16
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.29 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **183 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **163 únicas**, **153 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.30 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **186 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **166 únicas**, **156 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,7 +291,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
@@ -697,6 +697,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **181** | **end-recurrence: não deleta class_participants antes de classes — FK constraint bloqueia deleção** | **8** | **end-recurrence/index.ts** |
 | **182** | **invoice.voided webhook handler sem guard clause no UPDATE — pode sobrescrever status terminal** | **8** | **webhook-stripe-connect/index.ts** |
 | **183** | **process-cancellation e cancel-payment-intent: createClient sem `{ auth: { persistSession: false } }`** | **8** | **process-cancellation/index.ts, cancel-payment-intent/index.ts** |
+| **184** | **webhook-stripe-connect: handler `payment_intent.payment_failed` ausente — falhas de boleto/PIX não processadas** | **8** | **webhook-stripe-connect/index.ts** |
+| **185** | **webhook-stripe-connect: Stripe SDK v14.24.0 inconsistente com padrão v14.21.0** | **8** | **webhook-stripe-connect/index.ts** |
+| **186** | **send-invoice-notification: `.single()` em lookup de monthly_subscriptions (linha 161)** | **8** | **send-invoice-notification/index.ts** |
 
 ## Índice de Melhorias
 
@@ -3029,7 +3032,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | create-invoice | #24, #25, #57, #72, #78, M28, M35, M38 | ✅ |
 | automated-billing | #31, #35, #36, #40, #52, #58, #60, #68, #69, #75, #76, #85, #88, #92, #93, #108, #124 | ✅ |
 | process-cancellation | #30, #59, #80, #83, #84, #96, #107 | ✅ |
-| webhook-stripe-connect | #49, #64, #74, #77, #86, #87, #104, M51 | ✅ |
+| webhook-stripe-connect | #49, #64, #74, #77, #86, #87, #104, #184, #185, M51 | ✅ |
 | cancel-payment-intent | ~~#98~~, #122, M44, M50 | ✅ |
 | create-payment-intent-connect | #119, #125, M45 | ✅ |
 | change-payment-method | #114, #115 | ✅ |
@@ -3037,7 +3040,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | check-overdue-invoices | #41, #47, #56, #71, #81, #95, #126 | ✅ |
 | auto-verify-pending-invoices | #102, M52 | ✅ |
 | verify-payment-status | #102 | ✅ |
-| send-invoice-notification | #32, #53, #54, #73, #91, #99 | ✅ |
+| send-invoice-notification | #32, #53, #54, #73, #91, #99, #186 | ✅ |
 | send-cancellation-notification | #43, M33 | ✅ (v5.14) |
 | handle-teacher-subscription-cancellation | #110, #112 | ✅ |
 | process-payment-failure-downgrade | #109 | ✅ |
@@ -3098,6 +3101,9 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | FK constraint não tratada | end-recurrence (class_participants bloqueiam delete) | ✅ (#181) |
 | Guard clause ausente em webhook | invoice.voided (pode sobrescrever status terminal) | ✅ (#182) |
 | createClient sem persistSession:false | process-cancellation, cancel-payment-intent | ✅ (#183) |
+| Handler de webhook ausente | webhook-stripe-connect (payment_intent.payment_failed) | ✅ (#184) |
+| SDK version drift | webhook-stripe-connect (Stripe v14.24.0 vs v14.21.0) | ✅ (#185) |
+| `.single()` adicional | send-invoice-notification (monthly_subscriptions lookup) | ✅ (#186) |
 
 ---
 
@@ -3159,6 +3165,78 @@ Ambas as funções criam o cliente Supabase com `createClient(url, key)` sem pas
 
 ---
 
+## Novas Pontas Soltas v5.30 (#184-#186)
+
+### 184. webhook-stripe-connect: handler `payment_intent.payment_failed` ausente — falhas de boleto/PIX não processadas (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts`
+
+O webhook processa `payment_intent.succeeded` (linhas 441-501) mas **não possui handler para `payment_intent.payment_failed`**. Quando um boleto expira sem pagamento ou um PIX falha, o Stripe envia `payment_intent.payment_failed`, mas o sistema não o processa.
+
+Consequência: a fatura permanece com status `pendente` no banco até que `check-overdue-invoices` a marque como `overdue`/`vencida` baseado na `due_date`, o que pode levar dias. Enquanto isso, o aluno vê a fatura como "pendente" com link de pagamento expirado.
+
+O handler `invoice.payment_failed` (linhas 372-393) existe mas busca por `stripe_invoice_id` (bug #87), então também nunca encontra faturas internas criadas via Payment Intent.
+
+**Severidade**: ALTA — status de fatura não reflete realidade do pagamento por dias.
+
+**Ação**: Adicionar handler `payment_intent.payment_failed` no switch do webhook:
+```javascript
+case 'payment_intent.payment_failed': {
+  const failedPI = eventObject as Stripe.PaymentIntent;
+  logStep("Payment intent failed", { paymentIntentId: failedPI.id });
+
+  const { error } = await supabaseClient
+    .from('invoices')
+    .update({ 
+      status: 'falha_pagamento',
+      updated_at: new Date().toISOString()
+    })
+    .eq('stripe_payment_intent_id', failedPI.id)
+    .in('status', ['pendente']); // Guard clause
+
+  if (error) {
+    logStep("Error updating invoice for failed PI", error);
+  }
+  break;
+}
+```
+
+### 185. webhook-stripe-connect: Stripe SDK v14.24.0 inconsistente com padrão v14.21.0 do projeto (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linha 2)
+
+```javascript
+import Stripe from "https://esm.sh/stripe@14.24.0";
+```
+
+O padrão do projeto é `stripe@14.21.0` (documentado na memória `infrastructure/stripe-sdk-version-standard-refined`). O webhook usa v14.24.0, criando risco de comportamento divergente na função mais crítica do sistema de pagamentos.
+
+**Severidade**: BAIXA — provavelmente compatível, mas cria drift de versão.
+
+**Ação**: Alinhar para `stripe@14.21.0` ou atualizar o padrão para v14.24.0 em todas as funções.
+
+### 186. send-invoice-notification: `.single()` em lookup de monthly_subscriptions (Fase 8)
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linha 161)
+
+```javascript
+const { data: subscription, error: subError } = await supabase
+  .from("monthly_subscriptions")
+  .select("name, price, max_classes, overage_price")
+  .eq("id", invoice.monthly_subscription_id)
+  .single();
+```
+
+Se a mensalidade for desativada ou deletada entre a criação da fatura e o envio da notificação, `.single()` lança exceção. O código posterior (`if (!subError && subscription)`) mitiga parcialmente, mas a exceção do `.single()` pode interromper o fluxo antes de chegar ao check.
+
+Diferente de #53 (invoice lookup) e #73 (student/teacher lookups), esta é uma terceira instância de `.single()` na mesma função que não foi coberta.
+
+**Severidade**: BAIXA — mitigado pelo try/catch geral, mas inconsistente com o padrão.
+
+**Ação**: Substituir por `.maybeSingle()`. Se `subscription` for null, enviar email sem seção de detalhes do plano.
+
+---
+
 ## Histórico de Versões
 
 | Versão | Data | Mudanças |
@@ -3200,6 +3278,7 @@ Ambas as funções criam o cliente Supabase com `createClient(url, key)` sem pas
 | v5.28.1 | 2026-02-16 | **Correção de índice**. #109 descrição corrigida no índice mestre para corresponder ao corpo do documento. |
 | v5.28.2 | 2026-02-16 | **Completude do índice**. #95 e #96 adicionados ao índice mestre com strikethrough (duplicatas que faltavam). Todas 18 duplicatas agora presentes no índice. |
 | v5.29 | 2026-02-16 | **Revisão profunda final**. +3 pontas soltas (#181-#183): end-recurrence FK constraint bloqueia deleção (#181 ALTA), invoice.voided sem guard clause (#182 BAIXA), createClient sem persistSession:false (#183 BAIXA). Totais: **183 pontas soltas**, **163 únicas**, **153 pendentes**. |
+| v5.30 | 2026-02-16 | **Auditoria cruzada código×plano**. +3 pontas soltas (#184-#186): webhook-stripe-connect sem handler `payment_intent.payment_failed` (#184 ALTA — falhas de boleto/PIX não processadas), Stripe SDK v14.24.0 inconsistente (#185 BAIXA), send-invoice-notification `.single()` em monthly_subscriptions (#186 BAIXA). Totais: **186 pontas soltas**, **166 únicas**, **156 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

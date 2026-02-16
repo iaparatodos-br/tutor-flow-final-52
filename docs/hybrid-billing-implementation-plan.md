@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.31 (Consolidado)
+# Plano de Cobrança Híbrida — v5.32 (Consolidado)
 
 **Data**: 2026-02-16
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 9 vulnerabilidades ativas
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.31 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **189 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **169 únicas**, **159 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.32 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **192 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **172 únicas**, **162 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,7 +291,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
@@ -3297,9 +3297,90 @@ LIMIT 1;
 ```
 Se existir, pular a criação e logar como "já faturado neste ciclo".
 
----
+### 190. webhook-stripe-connect: `.single()` em lookups de faturas nos handlers invoice.paid/payment_succeeded/payment_intent.succeeded (Fase 8)
 
-## Histórico de Versões
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 310, 346, 457)
+
+```javascript
+// invoice.paid (linha 310)
+const { data: existingInvoice } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_invoice_id', paidInvoice.id)
+  .single(); // ← Lança exceção se fatura não existe
+
+// invoice.payment_succeeded (linha 346)
+const { data: existingSucceeded } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_invoice_id', succeededInvoice.id)
+  .single(); // ← Mesma vulnerabilidade
+
+// payment_intent.succeeded (linha 457)
+const { data: existingPI } = await supabaseClient
+  .from('invoices')
+  .select('payment_origin')
+  .eq('stripe_payment_intent_id', paymentIntent.id)
+  .single(); // ← Mesma vulnerabilidade
+```
+
+Quando o Stripe envia um evento para uma fatura que não existe no banco de dados local (evento órfão, fatura de outra integração, ou fatura deletada), `.single()` lança PGRST116, que propaga até o catch global e retorna HTTP 500. Isso faz o Stripe iniciar retentativas, potencialmente criando um loop de 5-7 tentativas por evento.
+
+**Severidade**: MÉDIA — causa loops de retentativa do Stripe e polui logs de erro.
+
+**Ação**: Substituir por `.maybeSingle()` nos 3 lookups. Se `existingInvoice` for `null`, logar "No local invoice found for Stripe event" e retornar 200 (evento órfão).
+
+### 191. process-expired-subscriptions: FK joins + `.single()` violando padrões do projeto (Fase 8)
+
+**Arquivo**: `supabase/functions/process-expired-subscriptions/index.ts` (linhas 38-57, 122)
+
+```javascript
+// FK joins proibidos (linhas 38-57)
+const { data: expiredSubscriptions } = await supabaseAdmin
+  .from('user_subscriptions')
+  .select(`
+    id, user_id, plan_id, stripe_subscription_id, current_period_end,
+    subscription_plans!inner (...),  // ← FK join
+    profiles!user_id (...)           // ← FK join
+  `)
+
+// .single() para free plan (linha 122)
+const { data: freePlan } = await supabaseAdmin
+  .from('subscription_plans')
+  .select('*')
+  .eq('slug', 'free')
+  .single(); // ← Lança se plano free não existe
+```
+
+A query principal usa FK joins que podem falhar silenciosamente devido ao cache de schema do Deno, retornando dados parciais ou nulos. O `.single()` na linha 122 pode crashar o processamento de uma assinatura se o plano free não existir, deixando o usuário com status inconsistente (assinatura expirada mas profile não atualizado).
+
+**Severidade**: MÉDIA — pode causar falha silenciosa no processamento de expiração de assinaturas.
+
+**Ação**: Refatorar para queries sequenciais independentes. Trocar `.single()` por `.maybeSingle()` e tratar ausência do plano free com log de alerta.
+
+### 192. webhook-stripe-connect: retorna HTTP 500 no catch global, causando retry storms do Stripe (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 551-558)
+
+```javascript
+} catch (error) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
+  
+  return new Response(JSON.stringify({ error: errorMessage }), {
+    status: 500,  // ← Viola padrão de resiliência
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+```
+
+Per memória `infrastructure/stripe-webhook-resilience-pattern`, webhooks devem retornar HTTP 200 para falhas não-críticas para evitar que o Stripe inicie loops de retentativa infinitos. O catch global é atingido por erros de processamento interno (ex: PGRST116 de `.single()`) que não justificam retentativas do Stripe.
+
+**Severidade**: BAIXA — já mitigado parcialmente pela idempotência, mas agrava os efeitos de #190.
+
+**Ação**: Retornar HTTP 200 com `{ received: true, error: errorMessage }` no catch global. Manter HTTP 400 apenas para falha de verificação de assinatura do webhook (linha 135), que indica evento potencialmente fraudulento.
+
+---
 
 | Versão | Data | Mudanças |
 |--------|------|----------|
@@ -3342,6 +3423,7 @@ Se existir, pular a criação e logar como "já faturado neste ciclo".
 | v5.29 | 2026-02-16 | **Revisão profunda final**. +3 pontas soltas (#181-#183): end-recurrence FK constraint bloqueia deleção (#181 ALTA), invoice.voided sem guard clause (#182 BAIXA), createClient sem persistSession:false (#183 BAIXA). Totais: **183 pontas soltas**, **163 únicas**, **153 pendentes**. |
 | v5.30 | 2026-02-16 | **Auditoria cruzada código×plano**. +3 pontas soltas (#184-#186): webhook-stripe-connect sem handler `payment_intent.payment_failed` (#184 ALTA — falhas de boleto/PIX não processadas), Stripe SDK v14.24.0 inconsistente (#185 BAIXA), send-invoice-notification `.single()` em monthly_subscriptions (#186 BAIXA). Totais: **186 pontas soltas**, **166 únicas**, **156 pendentes**. |
 | v5.31 | 2026-02-16 | **Auditoria profunda de funções financeiras core**. +3 pontas soltas (#187-#189): check-overdue-invoices sem guard de status terminal — pode sobrescrever `paga` para `overdue` (#187 ALTA → Fase 0), cancel-payment-intent marca `payment_origin: 'manual'` quando PI já `succeeded` (#188 MÉDIA), automated-billing duplica fatura de mensalidade se cron executar duas vezes (#189 ALTA). #187 adicionado à Fase 0 (9 itens). Totais: **189 pontas soltas**, **169 únicas**, **159 pendentes**. |
+| v5.32 | 2026-02-16 | **Auditoria cruzada de resiliência e padrões**. +3 pontas soltas (#190-#192): webhook-stripe-connect `.single()` em lookups de `payment_origin` causa loops de retentativa do Stripe (#190 MÉDIA), process-expired-subscriptions FK joins + `.single()` (#191 MÉDIA), webhook-stripe-connect HTTP 500 no catch global (#192 BAIXA). Totais: **192 pontas soltas**, **172 únicas**, **162 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

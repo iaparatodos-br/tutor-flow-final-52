@@ -2,51 +2,55 @@
 
 
 
-# Verificação Final v5.36 — 7 Novas Pontas Soltas em Downgrade, Overage, Cancelamento e Expiração
+# Verificação Final v5.37 — 7 Novas Pontas Soltas em Checkout, Subscription Status, Billing e Invitations
 
-## Veredicto: Plano atualizado para v5.36 com 1 novo bug crítico de corrupção de dados e 3 bugs funcionais de auditoria/rastreamento.
+## Veredicto: Plano atualizado para v5.37 com 1 novo bug crítico de perda de plano e 2 bugs funcionais de fragilidade/segurança.
 
 ---
 
-## Auditoria Profunda Realizada (Funções de Downgrade, Overage, Cancelamento e Expiração)
+## Auditoria Profunda Realizada (Funções de Checkout, Status, Billing e Convites)
 
 Funções auditadas nesta rodada:
-- `verify-payment-status/index.ts` (124 linhas) — confirmação de #195 (sem auth)
-- `change-payment-method/index.ts` (253 linhas) — confirmação de #196 (guardian bug) + `.single()`
-- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' em inglês
-- `process-cancellation/index.ts` (500 linhas) — `.single()` em dependent lookup
-- `handle-student-overage/index.ts` (238 linhas) — `.single()` + tabela inexistente
-- `handle-plan-downgrade-selection/index.ts` (323 linhas) — audit log schema errado + `.single()`
-- `cancel-subscription/index.ts` (118 linhas) — `.single()` em 2 lookups
-- `process-expired-subscriptions/index.ts` (233 linhas) — FK join syntax + `.single()`
-- `handle-teacher-subscription-cancellation/index.ts` (304 linhas) — campo `guardian_email` inexistente
-- `create-student/index.ts` (529 linhas) — `.single()` em plan lookup
-- `create-connect-onboarding-link/index.ts` (104 linhas) — confirmação de #197 (ownership bypass)
-- `generate-boleto-for-invoice/index.ts` (187 linhas) — OK (já corrigido em v5.24)
+- `create-subscription-checkout/index.ts` (372 linhas) — cancela assinatura ANTES do checkout
+- `check-subscription-status/index.ts` (846 linhas) — monolito frágil com 5+ `.single()` e FK joins
+- `customer-portal/index.ts` (75 linhas) — OK (simples, sem bugs)
+- `list-subscription-invoices/index.ts` (120 linhas) — OK (simples, com auth)
+- `setup-billing-automation/index.ts` (69 linhas) — OK (setup de cron)
+- `end-recurrence/index.ts` (133 linhas) — confirmação de #181 (FK constraint)
+- `manage-class-exception/index.ts` (157 linhas) — OK (já corrigido #136)
+- `manage-future-class-exceptions/index.ts` (220 linhas) — OK (já corrigido #137)
+- `materialize-virtual-class/index.ts` (376 linhas) — OK (usa `.maybeSingle()`)
+- `request-class/index.ts` (223 linhas) — OK (usa `.maybeSingle()`, tem ownership)
+- `send-student-invitation/index.ts` (158 linhas) — SEM AUTH
+- `resend-student-invitation/index.ts` (186 linhas) — `.single()` em profiles
+- `automated-billing/index.ts` (1057 linhas) — FK joins em cron crítico
+- `smart-delete-student/index.ts` (547 linhas) — `.single()` em subscriptions
+- `validate-monthly-subscriptions/index.ts` (355 linhas) — FK join em V06
+- `check-overdue-invoices/index.ts` (152 linhas) — confirmação de #209
 
-### Novos Gaps Encontrados (#209-#215)
+### Novos Gaps Encontrados (#216-#222)
 
-1. **#209 (ALTA → Fase 0)**: `check-overdue-invoices` marca faturas como `status: "overdue"` (inglês) em vez de `"vencida"` (português) na linha 58. TODAS as faturas vencidas processadas pelo cron job ficam com status incorreto, invisíveis no Financeiro. Quarta fonte de corrupção de status (junto com #199, #203 e #169).
+1. **#216 (ALTA → Fase 0)**: `create-subscription-checkout` cancela IMEDIATAMENTE a assinatura Stripe existente (linha 186) ANTES do checkout ser concluído. Se o usuário abandonar o checkout, ele perde o plano sem caminho de recuperação. A assinatura local é marcada como `'cancelled'` e não há mecanismo de reversão.
 
-2. **#210 (MÉDIA)**: `handle-plan-downgrade-selection` usa função `logAuditEvent` com campos errados (`user_id`, `action`, `details`, `metadata`) que não existem na tabela `audit_logs`. Todas as entradas de auditoria de downgrade falham silenciosamente.
+2. **#217 (MÉDIA)**: `check-subscription-status` é um monolito de 846 linhas com 5+ `.single()` (linhas 378, 460, 585, 703, 760) e FK joins (linhas 32-38, 131-139). Função crítica para carregamento de planos, extremamente frágil.
 
-3. **#211 (MÉDIA)**: `handle-student-overage` insere em tabela `student_overage_charges` que não existe nos tipos do Supabase. Cobranças de excedente não são rastreadas.
+3. **#218 (BAIXA)**: `send-student-invitation` não possui NENHUMA autenticação. Qualquer pessoa pode invocar o endpoint para enviar emails usando o template do Tutor Flow.
 
-4. **#212 (BAIXA-MÉDIA)**: 7+ funções usam `.single()` onde `.maybeSingle()` é obrigatório: `handle-student-overage`, `handle-plan-downgrade-selection`, `cancel-subscription` (2x), `process-expired-subscriptions`, `change-payment-method`, `create-student`, `process-cancellation`.
+4. **#219 (MÉDIA)**: `automated-billing` usa FK join syntax extenso (linhas 70-90 e 213-226) no cron job de faturamento. Schema cache stale faria o faturamento de TODOS os alunos falhar.
 
-5. **#213 (MÉDIA)**: `process-expired-subscriptions` usa FK join syntax (`subscription_plans!inner`, `profiles!user_id`) que viola o padrão de queries sequenciais.
+5. **#220 (BAIXA)**: `resend-student-invitation` usa `.single()` em 3 lookups (linhas 75, 90, 128).
 
-6. **#214 (BAIXA)**: `process-cancellation` usa `.single()` para dependent lookup (linha 107).
+6. **#221 (BAIXA)**: `create-subscription-checkout` complementar — `.single()` (linha 138) e FK join (linha 172).
 
-7. **#215 (MÉDIA)**: `handle-teacher-subscription-cancellation` referencia campo `guardian_email` na tabela `profiles`, mas esse campo não existe. Responsáveis não recebem notificação de suspensão de cobranças.
+7. **#222 (BAIXA-MÉDIA)**: `smart-delete-student` usa `.single()` em subscription lookups (linhas 52, 91), impedindo deleção quando professor não tem assinatura.
 
-### Totais Atualizados (v5.36)
-- 215 pontas soltas totais
+### Totais Atualizados (v5.37)
+- 222 pontas soltas totais
 - 18 duplicatas + 2 subsumidas
-- 195 únicas
+- 202 únicas
 - 10 implementadas
-- **185 pendentes**
-- Fase 0: **15 itens** (+1: #209)
+- **192 pendentes**
+- Fase 0: **16 itens** (+1: #216)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 15 itens críticos.
+O documento está **pronto para execução da Fase 0** com 16 itens críticos.

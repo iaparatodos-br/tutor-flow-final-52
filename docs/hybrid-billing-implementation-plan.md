@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.36 (Consolidado)
+# Plano de Cobrança Híbrida — v5.37 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 15 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 16 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.36 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **215 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **195 únicas**, **185 pendentes**) e **52 melhorias**. Cobertura: 55 funções auditadas + 20 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.37 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **222 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **202 únicas**, **192 pendentes**) e **52 melhorias**. Cobertura: 62 funções auditadas + 13 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (15 itens)
+## Fase 0 — Batch Crítico (16 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -3565,6 +3565,57 @@ Query de profiles seleciona campo `guardian_email` que não existe na tabela `pr
 
 ---
 
+### 216. create-subscription-checkout — cancela assinatura ANTES do checkout (Perda de Plano) (Fase 0)
+
+**Arquivo**: `supabase/functions/create-subscription-checkout/index.ts` (linhas 184-188)
+Quando o usuário troca de plano, a função cancela IMEDIATAMENTE a assinatura existente no Stripe (linha 186: `stripe.subscriptions.cancel(...)`) ANTES do checkout ser concluído. Se o usuário abandonar o checkout, ele fica sem plano e sem caminho de recuperação. A assinatura local é marcada como `'cancelled'` e o perfil não é restaurado.
+**Severidade**: ALTA — perda de plano do usuário por abandono de checkout. Não há reversão automática.
+**Ação**: Substituir cancelamento imediato por `cancel_at_period_end: true` ou mover o cancelamento para o webhook `checkout.session.completed`. Alternativa: guardar o `subscription_id` antigo e re-ativar se o checkout expirar.
+
+### 217. check-subscription-status — 846 linhas, 5+ `.single()` e FK joins (Fragilidade)
+
+**Arquivo**: `supabase/functions/check-subscription-status/index.ts` (846 linhas)
+Função monolítica com 5+ usos de `.single()` (linhas 378, 460, 585, 703, 760) e FK join syntax (linhas 32-38 `profiles!teacher_student_relationships_student_id_fkey`, linhas 131-139 `subscription_plans (*)`). Qualquer falha de lookup causa HTTP 500, quebrando o carregamento da página de planos.
+**Severidade**: MÉDIA — função crítica extremamente frágil.
+**Ação**: Refatorar para queries sequenciais, trocar `.single()` por `.maybeSingle()`, considerar dividir em subfunções.
+
+### 218. send-student-invitation — sem autenticação (Spam)
+
+**Arquivo**: `supabase/functions/send-student-invitation/index.ts`
+Função de envio de email não possui NENHUMA verificação de autenticação. Qualquer pessoa com a URL da função pode invocar o endpoint e enviar emails arbitrários usando o template do Tutor Flow.
+**Severidade**: BAIXA — não modifica dados, mas pode ser usado para spam ou phishing usando o branding do Tutor Flow.
+**Ação**: Validar que o chamador é outra edge function (verificar Service-Role key) ou adicionar autenticação de professor.
+
+### 219. automated-billing — FK join syntax no cron job crítico
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 70-90, 213-226)
+Cron job de faturamento usa FK join syntax extenso: `teacher:profiles!teacher_id(...)`, `student:profiles!student_id(...)` (linhas 78-88) e `classes!inner(teacher_id)` (linhas 213-226). Em caso de schema cache stale, o faturamento de TODOS os alunos falha.
+**Severidade**: MÉDIA — risco de falha total do ciclo de faturamento.
+**Ação**: Refatorar para queries sequenciais independentes, pelo menos para os lookups de profiles.
+
+### 220. resend-student-invitation — `.single()` em profile lookups
+
+**Arquivo**: `supabase/functions/resend-student-invitation/index.ts` (linhas 75, 90, 128)
+Usa `.single()` para buscar relação professor-aluno (linha 75), perfil do aluno (linha 90) e perfil do professor (linha 128). Se qualquer registro não existir, lança exceção HTTP 500.
+**Severidade**: BAIXA — erros de UX em cenários edge.
+**Ação**: Trocar por `.maybeSingle()` com mensagens amigáveis.
+
+### 221. create-subscription-checkout — `.single()` e FK joins
+
+**Arquivo**: `supabase/functions/create-subscription-checkout/index.ts` (linhas 138, 172)
+Usa `.single()` para plan lookup (linha 138) e FK join syntax `subscription_plans(*)` (linha 172).
+**Severidade**: BAIXA — complementa #216.
+**Ação**: Trocar `.single()` por `.maybeSingle()`, refatorar FK join.
+
+### 222. smart-delete-student — `.single()` em subscription lookups
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (linhas 52, 91)
+Usa `.single()` para buscar `user_subscriptions` (linha 52) e `subscription_plans` (linha 91). Se assinatura ou plano não existirem, lança exceção que interrompe a deleção do aluno.
+**Severidade**: BAIXA-MÉDIA — impede deleção de aluno quando professor não tem assinatura.
+**Ação**: Trocar por `.maybeSingle()` com fallback gracioso.
+
+---
+
 ### 198. refresh-stripe-connect-account e check-stripe-account-status: `.single()` em lookups de Connect account (Fase 8)
 
 **Arquivos**: 
@@ -3625,6 +3676,7 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 | v5.34 | 2026-02-16 | **Auditoria de funções Stripe Connect e autorização**. +3 pontas soltas (#196-#198): change-payment-method autorização de guardian quebrada por sobreposição de `.eq()` (#196 ALTA → Fase 0), create-connect-onboarding-link bypass de ownership validation (#197 MÉDIA), refresh/check-stripe-connect `.single()` (#198 BAIXA). #196 adicionado à Fase 0 (11 itens). Totais: **198 pontas soltas**, **178 únicas**, **168 pendentes**. |
 | v5.35 | 2026-02-16 | **Auditoria profunda de cancel-payment-intent, webhooks e downgrade**. +10 pontas soltas (#199-#208): cancel-payment-intent status 'paid' em inglês (#199 ALTA → Fase 0), cancel-payment-intent `.single()` (#200 BAIXA), process-payment-failure-downgrade `.single()` (#201 MÉDIA), process-payment-failure-downgrade parâmetros errados em smart-delete-student (#202 ALTA → Fase 0), webhook-stripe-connect status em inglês (#203 ALTA → Fase 0), webhook-stripe-connect invoice handlers sem fallback (#204 MÉDIA), webhook-stripe-connect handlers sem guards de status terminal (#205 MÉDIA), webhook catch HTTP 500 (#206 MÉDIA), webhook-stripe-subscriptions HTTP 400 para user not found (#207 MÉDIA), create-payment-intent-connect sem guard de status (#208 MÉDIA). 3 itens adicionados à Fase 0 (14 itens). Totais: **208 pontas soltas**, **188 únicas**, **178 pendentes**. |
 | v5.36 | 2026-02-16 | **Auditoria profunda de funções de downgrade, overage, cancelamento e expiração**. +7 pontas soltas (#209-#215): check-overdue-invoices status 'overdue' em inglês (#209 ALTA → Fase 0), handle-plan-downgrade-selection audit log schema errado (#210 MÉDIA), handle-student-overage tabela inexistente `student_overage_charges` (#211 MÉDIA), 7+ funções com `.single()` (#212 BAIXA-MÉDIA), process-expired-subscriptions FK join syntax (#213 MÉDIA), process-cancellation `.single()` (#214 BAIXA), handle-teacher-subscription-cancellation campo inexistente `guardian_email` (#215 MÉDIA). 1 item adicionado à Fase 0 (15 itens). Totais: **215 pontas soltas**, **195 únicas**, **185 pendentes**. |
+| v5.37 | 2026-02-16 | **Auditoria profunda de checkout, subscription status, billing e invitation**. +7 pontas soltas (#216-#222): create-subscription-checkout cancela assinatura ANTES do checkout (#216 ALTA → Fase 0), check-subscription-status monolito frágil 846 linhas (#217 MÉDIA), send-student-invitation sem auth (#218 BAIXA), automated-billing FK joins em cron crítico (#219 MÉDIA), resend-student-invitation `.single()` (#220 BAIXA), create-subscription-checkout `.single()` e FK joins (#221 BAIXA), smart-delete-student `.single()` em subscriptions (#222 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (16 itens). Totais: **222 pontas soltas**, **202 únicas**, **192 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

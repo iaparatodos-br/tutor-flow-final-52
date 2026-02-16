@@ -1,54 +1,52 @@
 
 
 
-# Verificação Final v5.35 — 10 Novas Pontas Soltas em Webhooks, Downgrade e Status de Faturas
 
-## Veredicto: Plano atualizado para v5.35 com 3 bugs críticos de corrupção de dados e 1 bug funcional de downgrade.
+# Verificação Final v5.36 — 7 Novas Pontas Soltas em Downgrade, Overage, Cancelamento e Expiração
+
+## Veredicto: Plano atualizado para v5.36 com 1 novo bug crítico de corrupção de dados e 3 bugs funcionais de auditoria/rastreamento.
 
 ---
 
-## Auditoria Profunda Realizada (Funções de Pagamento, Webhooks e Downgrade)
+## Auditoria Profunda Realizada (Funções de Downgrade, Overage, Cancelamento e Expiração)
 
 Funções auditadas nesta rodada:
-- `cancel-payment-intent/index.ts` (250 linhas) — status 'paid' em inglês + `.single()`
-- `webhook-stripe-connect/index.ts` (560 linhas) — status em inglês em 4 handlers + sem guards
-- `webhook-stripe-subscriptions/index.ts` (802 linhas) — HTTP 400/500 para erros não-críticos
-- `process-payment-failure-downgrade/index.ts` (280 linhas) — parâmetros errados em smart-delete-student
-- `create-payment-intent-connect/index.ts` (659 linhas) — sem guard de status na fatura
-- `automated-billing/index.ts` (1057 linhas) — FK join syntax (confirmação)
-- `create-invoice/index.ts` (575 linhas) — `.single()` em relationship lookup
-- `smart-delete-student/index.ts` (547 linhas) — interface confirmada (requer student_id, teacher_id, relationship_id)
-- `end-recurrence/index.ts` (133 linhas) — confirmação de #181 (FK constraint)
+- `verify-payment-status/index.ts` (124 linhas) — confirmação de #195 (sem auth)
+- `change-payment-method/index.ts` (253 linhas) — confirmação de #196 (guardian bug) + `.single()`
+- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' em inglês
+- `process-cancellation/index.ts` (500 linhas) — `.single()` em dependent lookup
+- `handle-student-overage/index.ts` (238 linhas) — `.single()` + tabela inexistente
+- `handle-plan-downgrade-selection/index.ts` (323 linhas) — audit log schema errado + `.single()`
+- `cancel-subscription/index.ts` (118 linhas) — `.single()` em 2 lookups
+- `process-expired-subscriptions/index.ts` (233 linhas) — FK join syntax + `.single()`
+- `handle-teacher-subscription-cancellation/index.ts` (304 linhas) — campo `guardian_email` inexistente
+- `create-student/index.ts` (529 linhas) — `.single()` em plan lookup
+- `create-connect-onboarding-link/index.ts` (104 linhas) — confirmação de #197 (ownership bypass)
+- `generate-boleto-for-invoice/index.ts` (187 linhas) — OK (já corrigido em v5.24)
 
-### Novos Gaps Encontrados (#199-#208)
+### Novos Gaps Encontrados (#209-#215)
 
-1. **#199 (ALTA → Fase 0)**: `cancel-payment-intent` marca faturas como `status: 'paid'` (inglês) em vez de `'paga'` (português) nas linhas 111 e 172. TODAS as confirmações manuais de pagamento ficam invisíveis no dashboard financeiro.
+1. **#209 (ALTA → Fase 0)**: `check-overdue-invoices` marca faturas como `status: "overdue"` (inglês) em vez de `"vencida"` (português) na linha 58. TODAS as faturas vencidas processadas pelo cron job ficam com status incorreto, invisíveis no Financeiro. Quarta fonte de corrupção de status (junto com #199, #203 e #169).
 
-2. **#200 (BAIXA)**: `cancel-payment-intent` usa `.single()` na linha 71 para buscar fatura.
+2. **#210 (MÉDIA)**: `handle-plan-downgrade-selection` usa função `logAuditEvent` com campos errados (`user_id`, `action`, `details`, `metadata`) que não existem na tabela `audit_logs`. Todas as entradas de auditoria de downgrade falham silenciosamente.
 
-3. **#201 (MÉDIA)**: `process-payment-failure-downgrade` usa `.single()` nas linhas 55 e 95 para subscription e plan lookups.
+3. **#211 (MÉDIA)**: `handle-student-overage` insere em tabela `student_overage_charges` que não existe nos tipos do Supabase. Cobranças de excedente não são rastreadas.
 
-4. **#202 (ALTA → Fase 0)**: `process-payment-failure-downgrade` invoca `smart-delete-student` com `{ studentId, reason }` mas a função espera `{ student_id, teacher_id, relationship_id }`. Nenhum aluno excedente é removido no downgrade por falha de pagamento.
+4. **#212 (BAIXA-MÉDIA)**: 7+ funções usam `.single()` onde `.maybeSingle()` é obrigatório: `handle-student-overage`, `handle-plan-downgrade-selection`, `cancel-subscription` (2x), `process-expired-subscriptions`, `change-payment-method`, `create-student`, `process-cancellation`.
 
-5. **#203 (ALTA → Fase 0)**: `webhook-stripe-connect` usa status em inglês: `'paid'` (linhas 320, 359, 469) e `'overdue'` (linha 404). Estes são os handlers PRIMÁRIOS para pagamentos via Stripe Connect — todos os pagamentos confirmados ficam invisíveis.
+5. **#213 (MÉDIA)**: `process-expired-subscriptions` usa FK join syntax (`subscription_plans!inner`, `profiles!user_id`) que viola o padrão de queries sequenciais.
 
-6. **#204 (MÉDIA)**: `webhook-stripe-connect` handlers `invoice.paid` e `invoice.payment_succeeded` usam `.single()` sem fallback por `stripe_payment_intent_id`.
+6. **#214 (BAIXA)**: `process-cancellation` usa `.single()` para dependent lookup (linha 107).
 
-7. **#205 (MÉDIA)**: `webhook-stripe-connect` handlers `invoice.payment_failed` e `invoice.voided` não possuem guards contra sobrescrita de status `'paga'`.
+7. **#215 (MÉDIA)**: `handle-teacher-subscription-cancellation` referencia campo `guardian_email` na tabela `profiles`, mas esse campo não existe. Responsáveis não recebem notificação de suspensão de cobranças.
 
-8. **#206 (MÉDIA)**: `webhook-stripe-connect` e `webhook-stripe-subscriptions` retornam HTTP 500 no catch global, causando loops de retentativa do Stripe.
-
-9. **#207 (MÉDIA)**: `webhook-stripe-subscriptions` retorna HTTP 400 para "user not found" em 4 handlers, causando retentativas desnecessárias.
-
-10. **#208 (MÉDIA)**: `create-payment-intent-connect` não verifica status da fatura antes de criar Payment Intent. Pode gerar cobranças duplicadas.
-
-### Totais Atualizados (v5.35)
-- 208 pontas soltas totais
+### Totais Atualizados (v5.36)
+- 215 pontas soltas totais
 - 18 duplicatas + 2 subsumidas
-- 188 únicas
+- 195 únicas
 - 10 implementadas
-- **178 pendentes**
-- Fase 0: **14 itens** (+3: #199, #202, #203)
+- **185 pendentes**
+- Fase 0: **15 itens** (+1: #209)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 14 itens críticos.
+O documento está **pronto para execução da Fase 0** com 15 itens críticos.

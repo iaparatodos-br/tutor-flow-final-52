@@ -1,6 +1,6 @@
-# Plano de Cobrança Híbrida — v5.28.2 (Consolidado)
+# Plano de Cobrança Híbrida — v5.29 (Consolidado)
 
-**Data**: 2026-02-15
+**Data**: 2026-02-16
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.28 consolida todas as auditorias, completa o índice mestre com ~50 itens ausentes (#94-#147), corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **180 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **160 únicas**, **150 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.29 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **183 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **163 únicas**, **153 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,7 +291,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
@@ -416,15 +416,15 @@ Os itens abaixo foram identificados nas auditorias v5.18 a v5.23 e estão atribu
 ### Totais Atualizados (v5.28)
 
 ```text
-Pontas Soltas Totais:       180
+Pontas Soltas Totais:       183
   Duplicatas anteriores:     10 (#59, #81, #92, #93, #95, #96, #107, #166, #171, #178)
   Novas duplicatas v5.27:     7 (#61, #62, #63, #65, #66, #104, #108)
   Nova duplicata v5.28:       1 (#98⊂#169)
   Total duplicatas:          18
   Subsumidas:                 2 (#153→#177, #154→#179)
-  Únicas:                   160 (180 - 18 - 2)
+  Únicas:                   163 (183 - 18 - 2)
   Implementadas:             10
-  Pendentes:               150
+  Pendentes:               153
 
 Fase 0 (Crítico):            8 itens (inalterado)
 ```
@@ -694,6 +694,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**178**~~ | ~~**DUPLICATA de #41 — check-overdue-invoices: usa `class_notifications` para faturas — violação semântica**~~ | **—** | **—** |
 | **179** | **change-payment-method: FK joins + `.single()` em invoice lookup** | **8** | **change-payment-method/index.ts** |
 | **180** | **automated-billing: FK joins na query principal (duplicata parcial de #163)** | **4** | **automated-billing/index.ts** |
+| **181** | **end-recurrence: não deleta class_participants antes de classes — FK constraint bloqueia deleção** | **8** | **end-recurrence/index.ts** |
+| **182** | **invoice.voided webhook handler sem guard clause no UPDATE — pode sobrescrever status terminal** | **8** | **webhook-stripe-connect/index.ts** |
+| **183** | **process-cancellation e cancel-payment-intent: createClient sem `{ auth: { persistSession: false } }`** | **8** | **process-cancellation/index.ts, cancel-payment-intent/index.ts** |
 
 ## Índice de Melhorias
 
@@ -3092,6 +3095,67 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | Audit logs com schema incorreto | handle-plan-downgrade-selection | ✅ (#129) |
 | `is_paid_class` não persistido | request-class (3º caminho de criação) | ✅ (#138) |
 | Schema semântico violado | check-overdue-invoices (class_notifications para faturas) | ✅ (#178) |
+| FK constraint não tratada | end-recurrence (class_participants bloqueiam delete) | ✅ (#181) |
+| Guard clause ausente em webhook | invoice.voided (pode sobrescrever status terminal) | ✅ (#182) |
+| createClient sem persistSession:false | process-cancellation, cancel-payment-intent | ✅ (#183) |
+
+---
+
+## Novas Pontas Soltas v5.29 (#181-#183)
+
+### 181. end-recurrence não deleta class_participants antes de deletar classes — FK constraint bloqueia deleção (Fase 8)
+
+**Arquivo**: `supabase/functions/end-recurrence/index.ts` (linhas 67-73)
+
+A função deleta aulas materializadas futuras com `.delete().eq('class_template_id', templateId).gte('class_date', endDate).neq('status', 'concluida')`. Porém, se essas aulas tiverem participantes registrados na tabela `class_participants`, a FK constraint `class_participants_class_id_fkey` (default RESTRICT) **bloqueará a deleção**, e o erro será propagado ao usuário como "Failed to delete future classes".
+
+Além disso, se houver registros em `class_exceptions` referenciando essas classes, a FK `class_exceptions_original_class_id_fkey` também bloqueará a deleção.
+
+**Severidade**: ALTA — encerrar recorrência falha silenciosamente para aulas com participantes.
+
+**Ação**: Antes de deletar as classes, buscar os IDs das aulas a serem removidas via SELECT, deletar `class_participants` e `class_exceptions` associados, e então deletar as classes:
+```javascript
+// 1. Buscar IDs das classes a deletar
+const { data: classesToDelete } = await supabase
+  .from('classes')
+  .select('id')
+  .eq('class_template_id', templateId)
+  .gte('class_date', endDate)
+  .neq('status', 'concluida');
+
+const classIds = classesToDelete?.map(c => c.id) || [];
+if (classIds.length > 0) {
+  // 2. Deletar dependências
+  await supabase.from('class_participants').delete().in('class_id', classIds);
+  await supabase.from('class_exceptions').delete().in('original_class_id', classIds);
+  // 3. Deletar classes
+  await supabase.from('classes').delete().in('id', classIds);
+}
+```
+
+### 182. invoice.voided webhook handler sem guard clause no UPDATE — pode sobrescrever status terminal (Fase 8)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 425-431)
+
+O handler `invoice.voided` atualiza a fatura para `status: 'cancelada'` usando `.eq('stripe_invoice_id', voidedInvoice.id)` sem verificar o status atual. Se por alguma razão uma fatura já estiver `paga` ou em outro estado terminal, o update sobrescreveria para `cancelada`.
+
+Embora o risco seja baixo (Stripe não costuma void faturas pagas), o padrão é inconsistente com as guard clauses adicionadas nos handlers `check-overdue-invoices` (#155), `auto-verify-pending-invoices` (#156) e `verify-payment-status` (#158).
+
+**Severidade**: BAIXA — edge case improvável mas inconsistência de padrão.
+
+**Ação**: Adicionar guard clause `.in('status', ['pendente', 'overdue', 'vencida', 'falha_pagamento'])` ao UPDATE.
+
+### 183. process-cancellation e cancel-payment-intent: createClient sem `{ auth: { persistSession: false } }` (Fase 8)
+
+**Arquivos**: 
+- `supabase/functions/process-cancellation/index.ts` (linhas 28-31)
+- `supabase/functions/cancel-payment-intent/index.ts` (linha 37)
+
+Ambas as funções criam o cliente Supabase com `createClient(url, key)` sem passar `{ auth: { persistSession: false } }`. Embora em Deno Edge Functions a persistência de sessão não cause bugs visíveis (cada invocação é isolada), a omissão é inconsistente com o padrão seguido por todas as outras funções do projeto.
+
+**Severidade**: BAIXA — inconsistência de padrão, sem impacto funcional direto.
+
+**Ação**: Adicionar `{ auth: { persistSession: false } }` como terceiro argumento do `createClient` em ambas as funções.
 
 ---
 
@@ -3135,6 +3199,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.28 | 2026-02-16 | **Correção aritmética final**. #98 marcado como duplicata/subsumido por #169 (total duplicatas: 18). Fórmula de únicas corrigida para subtrair subsumidas: 180 - 18 - 2 = **160 únicas** (10 implementadas, **150 pendentes**). Fase 0 inalterada (8 itens). |
 | v5.28.1 | 2026-02-16 | **Correção de índice**. #109 descrição corrigida no índice mestre para corresponder ao corpo do documento. |
 | v5.28.2 | 2026-02-16 | **Completude do índice**. #95 e #96 adicionados ao índice mestre com strikethrough (duplicatas que faltavam). Todas 18 duplicatas agora presentes no índice. |
+| v5.29 | 2026-02-16 | **Revisão profunda final**. +3 pontas soltas (#181-#183): end-recurrence FK constraint bloqueia deleção (#181 ALTA), invoice.voided sem guard clause (#182 BAIXA), createClient sem persistSession:false (#183 BAIXA). Totais: **183 pontas soltas**, **163 únicas**, **153 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

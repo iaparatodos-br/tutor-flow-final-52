@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.43 (Consolidado)
+# Plano de Cobrança Híbrida — v5.44 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 28 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 28 vulnerabilidades ativas (unchanged)
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.43 consolida todas as auditorias com 6 passagens completas. Totais finais: **266 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 6 confirmações = **238 únicas**, **226 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 6ª passagem em subscription management, payment flows e Connect). A 6ª passagem revelou que `cancel-payment-intent` escreve `status: 'paid'` (inglês) criando faturas fantasma (extensão de #237), que `handle-plan-downgrade-selection` tem audit logs silenciosamente falhando por colunas erradas, e confirmou visualmente os bugs #195 (verify-payment-status sem auth) e #196 (change-payment-method guardian check quebrado).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.44 consolida todas as auditorias com 7 passagens completas. Totais finais: **276 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 7 confirmações = **247 únicas**, **235 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 7ª passagem em notificações, entity management e CRUD). A 7ª passagem revelou um padrão sistêmico: **todas as 10 funções de notificação** usam `.single()` em lookups internos de loops, criando crash points que podem derrubar a fila inteira de notificações por um único registro ausente. Também identificou inconsistência no tratamento de overage entre create-student (permite cobrança extra) e create-dependent (bloqueia).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -3934,6 +3934,73 @@ Usa `profiles:student_id(...)` FK join syntax, violando a constraint de queries 
 **Severidade**: BAIXA — potencial falha por schema cache stale.
 **Ação**: Refatorar para queries sequenciais.
 
+### 267. send-class-reminders — .single() em teacher dentro de loop
+
+**Arquivo**: `supabase/functions/send-class-reminders/index.ts` (L77)
+Usa `.single()` para buscar perfil do professor dentro do loop de aulas. Se o perfil estiver ausente → HTTP 500 para TODOS os lembretes restantes.
+**Severidade**: MÉDIA — falha em cascata de notificações.
+**Ação**: Substituir por `.maybeSingle()` com `continue`.
+
+### 268. send-class-reminders — .single() em relationship
+
+**Arquivo**: `supabase/functions/send-class-reminders/index.ts` (L156)
+Usa `.single()` para buscar `teacher_student_relationships` dentro do loop de participantes.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 269. CONFIRMAÇÃO de #248: send-invoice-notification — 3× .single()
+
+Confirmação visual de #248. Linhas 57, 69 e 99 usam `.single()` para invoice, student e teacher respectivamente.
+
+### 270. send-invoice-notification — .single() em monthly_subscriptions
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (L161)
+Usa `.single()` para buscar detalhes da mensalidade. Se a subscription foi deletada entre a geração da fatura e o envio da notificação → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()` com fallback para dados genéricos.
+
+### 271. send-cancellation-notification — .single() em dependentes dentro de loops
+
+**Arquivo**: `supabase/functions/send-cancellation-notification/index.ts` (L117, L147, L277, L374)
+Quatro chamadas `.single()` em lookups de dependentes dentro de loops de processamento.
+**Severidade**: MÉDIA — crash de notificação individual propaga para o loop.
+**Ação**: Substituir todas por `.maybeSingle()`.
+
+### 272. send-class-report-notification — 5× .single()
+
+**Arquivo**: `supabase/functions/send-class-report-notification/index.ts` (L37, L49, L107, L128, L142)
+Cinco chamadas `.single()` para class, teacher, student profile, dependent e relationship. Qualquer registro ausente derruba a notificação inteira.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()` com continue/fallback.
+
+### 273. send-class-request-notification — 3× .single() sequenciais
+
+**Arquivo**: `supabase/functions/send-class-request-notification/index.ts` (L41, L52, L67)
+Três `.single()` sequenciais para teacher, student e dependent. Qualquer ausência → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 274. send-material-shared-notification — 2× .single()
+
+**Arquivo**: `supabase/functions/send-material-shared-notification/index.ts` (L40, L50)
+`.single()` em material e teacher. Se material ou professor deletado entre request e processamento → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 275. send-boleto-subscription-notification — .single() em profile
+
+**Arquivo**: `supabase/functions/send-boleto-subscription-notification/index.ts` (L283)
+`.single()` em profile lookup. Se usuário deletado → crash.
+**Severidade**: MÉDIA.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 276. create-dependent — inconsistência de overage com create-student
+
+**Arquivo**: `supabase/functions/create-dependent/index.ts` (L155-166)
+Quando o professor excede o limite do plano, `create-student` processa cobrança extra automaticamente via `handle-student-overage`, mas `create-dependent` simplesmente bloqueia a criação com HTTP 403. TODO na L156 nunca implementado.
+**Severidade**: BAIXA — inconsistência de UX e lógica de negócio.
+**Ação**: Implementar overage billing para dependentes ou unificar a mensagem de erro.
+
 ---
 
 | Versão | Data | Mudanças |
@@ -3962,7 +4029,8 @@ Usa `profiles:student_id(...)` FK join syntax, violando a constraint de queries 
 | v5.11-v5.40 | 2026-02-14/16 | Auditorias incrementais: +119 pontas soltas (#124-#242). Detalhes no changelog anterior. |
 | v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
 | v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management**. +8 pontas soltas (#250-#257). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
-| v5.43 | 2026-02-16 | **6ª passagem: subscription management, payment flows e Connect — análise cruzada**. +9 pontas soltas (#258-#266): handle-plan-downgrade-selection audit logs usam colunas erradas — falham silenciosamente (#258 ALTA → Fase 0), validate-payment-routing cria fatura REAL como teste (#259 MÉDIA), CONFIRMAÇÃO de #195 — verify-payment-status sem auth (#260), CONFIRMAÇÃO de #196 — change-payment-method double .eq() (#261), cancel-payment-intent escreve status 'paid' (inglês) em L112/L172 — extensão de #237 (#262 ALTA → Fase 0), create-connect-onboarding-link IDOR quando stripe_account_id direto (#263 MÉDIA), handle-plan-downgrade-selection não conta dependentes dos selecionados (#264 MÉDIA), múltiplos .single() sem handling (#265 MÉDIA), validate-payment-routing usa FK joins (#266 BAIXA). 2 itens adicionados à Fase 0 (28 itens). Totais: **266 pontas soltas**, **238 únicas**, **226 pendentes**. |
+| v5.43 | 2026-02-16 | **6ª passagem: subscription management, payment flows e Connect**. +9 pontas soltas (#258-#266). 2 itens adicionados à Fase 0 (28 itens). Totais: **266 pontas soltas**, **238 únicas**, **226 pendentes**. |
+| v5.44 | 2026-02-16 | **7ª passagem: notificações, entity management e CRUD — padrão sistêmico de .single()**. +10 pontas soltas (#267-#276): send-class-reminders .single() em teacher dentro de loop (#267 MÉDIA), send-class-reminders .single() em relationship (#268 MÉDIA), CONFIRMAÇÃO de #248 — send-invoice-notification 3× .single() (#269), send-invoice-notification .single() em monthly_subscriptions (#270 MÉDIA), send-cancellation-notification 4× .single() em dependent lookups dentro de loops (#271 MÉDIA), send-class-report-notification 5× .single() em class/teacher/student/dependent/relationship (#272 MÉDIA), send-class-request-notification 3× .single() sequenciais (#273 MÉDIA), send-material-shared-notification 2× .single() em material/teacher (#274 MÉDIA), send-boleto-subscription-notification .single() em profile (#275 MÉDIA), create-dependent bloqueia overage para planos pagos em vez de cobrar como create-student (#276 BAIXA — inconsistência de lógica). Nenhum item adicionado à Fase 0 (28 itens mantidos). Totais: **276 pontas soltas**, **247 únicas**, **235 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

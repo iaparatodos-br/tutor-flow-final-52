@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.34 (Consolidado)
+# Plano de Cobrança Híbrida — v5.35 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 11 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 14 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.34 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **198 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **178 únicas**, **168 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.35 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **208 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **188 únicas**, **178 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (11 itens)
+## Fase 0 — Batch Crítico (14 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -356,6 +356,21 @@ A função não possui NENHUMA verificação de autenticação. Qualquer requisi
 **Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 83-86)
 Dois `.eq('responsible_id', ...)` consecutivos na mesma coluna — PostgREST aplica apenas o último. A verificação de guardian é **sempre falsa**, impedindo responsáveis financeiros de alterar métodos de pagamento de faturas de seus dependentes. Complementa #170 com evidência concreta do bug de sobreposição documentado em memória `constraints/sobreposicao-filtros-query-supabase`.
 **Ação**: Refatorar para verificação independente: buscar se o `invoice.student_id` possui dependentes cujo `responsible_id === user.id`, usando query separada ou `.or()`.
+
+### #199. cancel-payment-intent — status 'paid' em inglês em vez de 'paga' (Corrupção de Dados)
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 111 e 172)
+A função marca faturas como `status: 'paid'` (inglês) em vez de `'paga'` (português). Isso significa que TODAS as confirmações manuais de pagamento ficam invisíveis no Financeiro, dashboard e cron jobs que filtram por `'paga'`. Complementa #169 com locais adicionais confirmados.
+**Ação**: Substituir `'paid'` por `'paga'` nas linhas 111 e 172.
+
+### #202. process-payment-failure-downgrade — parâmetros errados na chamada a smart-delete-student (Bug Funcional)
+**Arquivo**: `supabase/functions/process-payment-failure-downgrade/index.ts` (linhas 144-152)
+A função invoca `smart-delete-student` com `{ studentId, reason }` mas a função espera `{ student_id, teacher_id, relationship_id }`. Resultado: **nenhum aluno excedente é removido** quando há falha de pagamento no plano do professor. A validação de campos obrigatórios em `smart-delete-student` (linha 290) retorna HTTP 400.
+**Ação**: Corrigir para `{ student_id: student.student_id, teacher_id: user.id, relationship_id: student.id, force: true }`.
+
+### #203. webhook-stripe-connect — status em inglês 'paid' e 'overdue' (Corrupção de Dados)
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 320, 359, 404, 469)
+Múltiplos handlers usam status em inglês: `'paid'` (linhas 320, 359, 469) e `'overdue'` (linha 404) em vez de `'paga'` e `'vencida'`. Estes são os handlers PRIMÁRIOS para confirmações de pagamento do Stripe Connect. Todo pagamento confirmado via webhook fica invisível no dashboard financeiro.
+**Ação**: Substituir `'paid'` por `'paga'` e `'overdue'` por `'vencida'` em todos os handlers.
 
 ## Itens Implementados (10 total)
 
@@ -3547,6 +3562,7 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 | v5.32 | 2026-02-16 | **Auditoria cruzada de resiliência e padrões**. +3 pontas soltas (#190-#192): webhook-stripe-connect `.single()` em lookups de `payment_origin` causa loops de retentativa do Stripe (#190 MÉDIA), process-expired-subscriptions FK joins + `.single()` (#191 MÉDIA), webhook-stripe-connect HTTP 500 no catch global (#192 BAIXA). Totais: **192 pontas soltas**, **172 únicas**, **162 pendentes**. |
 | v5.33 | 2026-02-16 | **Auditoria de funções de criação de pagamento**. +3 pontas soltas (#193-#195): create-invoice FK joins + `.single()` (#193 MÉDIA), create-payment-intent-connect FK joins + `.single()` + sem guard de status (#194 MÉDIA), verify-payment-status sem autenticação/autorização (#195 ALTA → Fase 0). #195 adicionado à Fase 0 (10 itens). Totais: **195 pontas soltas**, **175 únicas**, **165 pendentes**. |
 | v5.34 | 2026-02-16 | **Auditoria de funções Stripe Connect e autorização**. +3 pontas soltas (#196-#198): change-payment-method autorização de guardian quebrada por sobreposição de `.eq()` (#196 ALTA → Fase 0), create-connect-onboarding-link bypass de ownership validation (#197 MÉDIA), refresh/check-stripe-connect `.single()` (#198 BAIXA). #196 adicionado à Fase 0 (11 itens). Totais: **198 pontas soltas**, **178 únicas**, **168 pendentes**. |
+| v5.35 | 2026-02-16 | **Auditoria profunda de cancel-payment-intent, webhooks e downgrade**. +10 pontas soltas (#199-#208): cancel-payment-intent status 'paid' em inglês (#199 ALTA → Fase 0), cancel-payment-intent `.single()` (#200 BAIXA), process-payment-failure-downgrade `.single()` (#201 MÉDIA), process-payment-failure-downgrade parâmetros errados em smart-delete-student (#202 ALTA → Fase 0), webhook-stripe-connect status em inglês (#203 ALTA → Fase 0), webhook-stripe-connect invoice handlers sem fallback (#204 MÉDIA), webhook-stripe-connect handlers sem guards de status terminal (#205 MÉDIA), webhook catch HTTP 500 (#206 MÉDIA), webhook-stripe-subscriptions HTTP 400 para user not found (#207 MÉDIA), create-payment-intent-connect sem guard de status (#208 MÉDIA). 3 itens adicionados à Fase 0 (14 itens). Totais: **208 pontas soltas**, **188 únicas**, **178 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

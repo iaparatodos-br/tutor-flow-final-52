@@ -1,38 +1,54 @@
 
 
 
-# Verificação Final v5.34 — 3 Novas Pontas Soltas em Funções Stripe Connect e Autorização
+# Verificação Final v5.35 — 10 Novas Pontas Soltas em Webhooks, Downgrade e Status de Faturas
 
-## Veredicto: Plano atualizado para v5.34 com 1 bug funcional crítico de autorização.
+## Veredicto: Plano atualizado para v5.35 com 3 bugs críticos de corrupção de dados e 1 bug funcional de downgrade.
 
 ---
 
-## Auditoria Profunda Realizada (Funções Stripe Connect & Autorização)
+## Auditoria Profunda Realizada (Funções de Pagamento, Webhooks e Downgrade)
 
 Funções auditadas nesta rodada:
-- `change-payment-method/index.ts` (253 linhas) — bug de sobreposição `.eq()` em guardian auth
-- `create-connect-onboarding-link/index.ts` (104 linhas) — bypass de ownership
-- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()`
-- `check-stripe-account-status/index.ts` (156 linhas) — `.single()`
-- `create-connect-account/index.ts` (148 linhas) — confirmação de #143
-- `customer-portal/index.ts` (75 linhas) — OK
-- `list-subscription-invoices/index.ts` (120 linhas) — OK
+- `cancel-payment-intent/index.ts` (250 linhas) — status 'paid' em inglês + `.single()`
+- `webhook-stripe-connect/index.ts` (560 linhas) — status em inglês em 4 handlers + sem guards
+- `webhook-stripe-subscriptions/index.ts` (802 linhas) — HTTP 400/500 para erros não-críticos
+- `process-payment-failure-downgrade/index.ts` (280 linhas) — parâmetros errados em smart-delete-student
+- `create-payment-intent-connect/index.ts` (659 linhas) — sem guard de status na fatura
+- `automated-billing/index.ts` (1057 linhas) — FK join syntax (confirmação)
+- `create-invoice/index.ts` (575 linhas) — `.single()` em relationship lookup
+- `smart-delete-student/index.ts` (547 linhas) — interface confirmada (requer student_id, teacher_id, relationship_id)
+- `end-recurrence/index.ts` (133 linhas) — confirmação de #181 (FK constraint)
 
-### Novos Gaps Encontrados (#196-#198)
+### Novos Gaps Encontrados (#199-#208)
 
-1. **#196 (ALTA → Fase 0)**: `change-payment-method` possui bug de sobreposição de `.eq('responsible_id', ...)` em linhas 83-86. Dois filtros consecutivos na mesma coluna — PostgREST aplica apenas o último. Resultado: **a verificação de guardian é SEMPRE falsa**. Responsáveis financeiros nunca conseguem alterar o método de pagamento de faturas de seus dependentes.
+1. **#199 (ALTA → Fase 0)**: `cancel-payment-intent` marca faturas como `status: 'paid'` (inglês) em vez de `'paga'` (português) nas linhas 111 e 172. TODAS as confirmações manuais de pagamento ficam invisíveis no dashboard financeiro.
 
-2. **#197 (MÉDIA)**: `create-connect-onboarding-link` pula validação de propriedade quando `stripe_account_id` é fornecido diretamente (linhas 53-56). Qualquer professor autenticado pode gerar links de onboarding para contas Stripe de outros professores.
+2. **#200 (BAIXA)**: `cancel-payment-intent` usa `.single()` na linha 71 para buscar fatura.
 
-3. **#198 (BAIXA)**: `refresh-stripe-connect-account` e `check-stripe-account-status` usam `.single()` para lookups de Connect account, violando padrão `.maybeSingle()`.
+3. **#201 (MÉDIA)**: `process-payment-failure-downgrade` usa `.single()` nas linhas 55 e 95 para subscription e plan lookups.
 
-### Totais Atualizados (v5.34)
-- 198 pontas soltas totais
+4. **#202 (ALTA → Fase 0)**: `process-payment-failure-downgrade` invoca `smart-delete-student` com `{ studentId, reason }` mas a função espera `{ student_id, teacher_id, relationship_id }`. Nenhum aluno excedente é removido no downgrade por falha de pagamento.
+
+5. **#203 (ALTA → Fase 0)**: `webhook-stripe-connect` usa status em inglês: `'paid'` (linhas 320, 359, 469) e `'overdue'` (linha 404). Estes são os handlers PRIMÁRIOS para pagamentos via Stripe Connect — todos os pagamentos confirmados ficam invisíveis.
+
+6. **#204 (MÉDIA)**: `webhook-stripe-connect` handlers `invoice.paid` e `invoice.payment_succeeded` usam `.single()` sem fallback por `stripe_payment_intent_id`.
+
+7. **#205 (MÉDIA)**: `webhook-stripe-connect` handlers `invoice.payment_failed` e `invoice.voided` não possuem guards contra sobrescrita de status `'paga'`.
+
+8. **#206 (MÉDIA)**: `webhook-stripe-connect` e `webhook-stripe-subscriptions` retornam HTTP 500 no catch global, causando loops de retentativa do Stripe.
+
+9. **#207 (MÉDIA)**: `webhook-stripe-subscriptions` retorna HTTP 400 para "user not found" em 4 handlers, causando retentativas desnecessárias.
+
+10. **#208 (MÉDIA)**: `create-payment-intent-connect` não verifica status da fatura antes de criar Payment Intent. Pode gerar cobranças duplicadas.
+
+### Totais Atualizados (v5.35)
+- 208 pontas soltas totais
 - 18 duplicatas + 2 subsumidas
-- 178 únicas
+- 188 únicas
 - 10 implementadas
-- **168 pendentes**
-- Fase 0: **11 itens** (+1: #196)
+- **178 pendentes**
+- Fase 0: **14 itens** (+3: #199, #202, #203)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 11 itens críticos.
+O documento está **pronto para execução da Fase 0** com 14 itens críticos.

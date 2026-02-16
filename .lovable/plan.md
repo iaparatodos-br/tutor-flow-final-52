@@ -1,63 +1,36 @@
 
 
-# Verificacao Final v5.28.2 -- Documento 100% Consistente
+# Verificação Final v5.31 — 3 Novas Pontas Soltas Identificadas
 
-## Veredicto: O plano esta PRONTO para implementacao. Uma unica correcao de formatacao Markdown.
-
----
-
-## Auditoria Completa Realizada
-
-Todos os seguintes pontos foram verificados e estao **corretos**:
-
-### Totais
-- 180 pontas soltas totais
-- 18 duplicatas com strikethrough no indice (todas 18 presentes)
-- 2 subsumidas (#153, #154) marcadas
-- 160 unicas (180 - 18 - 2)
-- 10 implementadas (#132-#137 v5.14, #148-#151 v5.24)
-- 150 pendentes
-
-### Fase 0 (8 itens criticos)
-- #87, #155, #156, #158, #160, #169, #170, #175 — todos presentes e corretamente descritos
-
-### Indice Mestre
-- Todos os 180 itens presentes (11 decimais + 165 numericos de #16-#180)
-- 18 duplicatas com strikethrough
-- 10 implementados marcados
-- 2 subsumidos marcados
-- Descricoes consistentes com corpo do documento
-
-### Historico de Versoes
-- Completo de v4.0 ate v5.28.2 (linha 3136)
+## Veredicto: Plano atualizado para v5.31 com 3 novos gaps críticos.
 
 ---
 
-## Unico Problema Encontrado
+## Auditoria Profunda Realizada (Funções Core)
 
-**Formatacao Markdown**: Na linha 696-697, a ultima linha da tabela do indice mestre (#180) nao tem uma linha em branco antes do proximo cabecalho (`## Indice de Melhorias`). Isso pode causar problemas de renderizacao em alguns parsers Markdown.
+Funções auditadas nesta rodada:
+- `create-invoice/index.ts` (575 linhas)
+- `automated-billing/index.ts` (1057 linhas)
+- `create-payment-intent-connect/index.ts` (659 linhas)
+- `check-overdue-invoices/index.ts` (152 linhas)
+- `verify-payment-status/index.ts` (124 linhas)
+- `cancel-payment-intent/index.ts` (250 linhas)
 
-**Antes** (linhas 696-697):
-```
-| **180** | **automated-billing: FK joins...** | **4** | **automated-billing/index.ts** |
-## Indice de Melhorias
-```
+### Novos Gaps Encontrados (#187-#189)
 
-**Depois**:
-```
-| **180** | **automated-billing: FK joins...** | **4** | **automated-billing/index.ts** |
+1. **#187 (ALTA → Fase 0)**: `check-overdue-invoices` sobrescreve faturas pagas para `overdue` sem guard clause. Cron job automático pode reverter confirmações manuais do professor.
 
-## Indice de Melhorias
-```
+2. **#188 (MÉDIA)**: `cancel-payment-intent` marca `payment_origin: 'manual'` mesmo quando o PI já `succeeded` no Stripe, corrompendo dados de auditoria.
 
-## Secao Tecnica
+3. **#189 (ALTA)**: `automated-billing/processMonthlySubscriptionBilling` não verifica se já existe fatura de mensalidade para o ciclo atual. Se cron executar duas vezes, duplica a cobrança.
 
-### Arquivo a modificar
-- `docs/hybrid-billing-implementation-plan.md`: Adicionar linha em branco entre linhas 696 e 697
-
-### Impacto
-Nenhum impacto funcional. Correcao puramente cosmetica de formatacao Markdown.
+### Totais Atualizados (v5.31)
+- 189 pontas soltas totais
+- 18 duplicatas + 2 subsumidas
+- 169 únicas
+- 10 implementadas
+- **159 pendentes**
+- Fase 0: **9 itens** (adicionado #187)
 
 ### Status Final
-O documento esta **pronto para execucao da Fase 0** apos esta micro-correcao.
-
+O documento está **pronto para execução da Fase 0** com 9 itens críticos.

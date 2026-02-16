@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.35 (Consolidado)
+# Plano de Cobrança Híbrida — v5.36 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 14 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 15 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.35 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **208 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **188 únicas**, **178 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.36 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **215 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **195 únicas**, **185 pendentes**) e **52 melhorias**. Cobertura: 55 funções auditadas + 20 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (14 itens)
+## Fase 0 — Batch Crítico (15 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -372,6 +372,10 @@ A função invoca `smart-delete-student` com `{ studentId, reason }` mas a funç
 Múltiplos handlers usam status em inglês: `'paid'` (linhas 320, 359, 469) e `'overdue'` (linha 404) em vez de `'paga'` e `'vencida'`. Estes são os handlers PRIMÁRIOS para confirmações de pagamento do Stripe Connect. Todo pagamento confirmado via webhook fica invisível no dashboard financeiro.
 **Ação**: Substituir `'paid'` por `'paga'` e `'overdue'` por `'vencida'` em todos os handlers.
 
+### #209. check-overdue-invoices — status 'overdue' em inglês em vez de 'vencida' (Corrupção de Dados)
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 58)
+O cron job de verificação de faturas vencidas marca faturas como `status: "overdue"` (inglês) em vez de `"vencida"` (português). TODAS as faturas vencidas ficam com status incorreto, invisíveis nos filtros do Financeiro e não processadas por outros cron jobs que buscam `'vencida'`. Complementa #169, #199 e #203 como quarta fonte de corrupção de status.
+**Ação**: Substituir `"overdue"` por `"vencida"` na linha 58.
 ## Itens Implementados (10 total)
 
 | # | Descrição | Versão |
@@ -3504,6 +3508,63 @@ Quando `stripe_account_id` é fornecido diretamente (em vez de `payment_account_
 
 ---
 
+### 209. check-overdue-invoices — status 'overdue' em inglês (Fase 0)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 58)
+Cron job marca faturas como `"overdue"` em vez de `"vencida"`. Todas as faturas vencidas ficam com status incorreto.
+**Severidade**: ALTA — corrupção de dados em lote via cron.
+**Ação**: Substituir `"overdue"` por `"vencida"`.
+
+### 210. handle-plan-downgrade-selection — audit log com schema errado (Fase 8)
+
+**Arquivo**: `supabase/functions/handle-plan-downgrade-selection/index.ts` (linhas 29-44)
+A função `logAuditEvent` insere com campos `user_id`, `action`, `details`, `metadata` que não existem na tabela `audit_logs` (que usa `actor_id`, `target_teacher_id`, `table_name`, `record_id`, `operation`, `old_data`, `new_data`). Todas as entradas de auditoria de downgrade falham silenciosamente.
+**Severidade**: MÉDIA — sem trilha de auditoria para downgrades voluntários.
+**Ação**: Refatorar `logAuditEvent` para usar os campos corretos da tabela `audit_logs`.
+
+### 211. handle-student-overage — referência a tabela inexistente `student_overage_charges` (Fase 8)
+
+**Arquivo**: `supabase/functions/handle-student-overage/index.ts` (linha 132)
+A função tenta inserir em `student_overage_charges` que não existe nos tipos do Supabase. O insert falha silenciosamente, impedindo o rastreamento de cobranças por excedente de alunos.
+**Severidade**: MÉDIA — cobranças de overage não são rastreadas no banco.
+**Ação**: Criar tabela `student_overage_charges` ou remover insert e usar `audit_logs` como alternativa.
+
+### 212. Múltiplas funções com `.single()` sem `.maybeSingle()` (Fase 8)
+
+**Funções afetadas**:
+- `handle-student-overage/index.ts` (linha 79)
+- `handle-plan-downgrade-selection/index.ts` (linha 111)
+- `cancel-subscription/index.ts` (linhas 47, 67)
+- `process-expired-subscriptions/index.ts` (linha 122)
+- `change-payment-method/index.ts` (linha 53)
+- `create-student/index.ts` (linha 297)
+- `process-cancellation/index.ts` (linha 107)
+**Severidade**: BAIXA a MÉDIA — exceções HTTP 500 quando registros não existem.
+**Ação**: Trocar todas por `.maybeSingle()` com tratamento gracioso.
+
+### 213. process-expired-subscriptions — FK join syntax (Fase 8)
+
+**Arquivo**: `supabase/functions/process-expired-subscriptions/index.ts` (linhas 40-57)
+Usa FK join syntax `subscription_plans!inner(...)` e `profiles!user_id(...)` que viola o padrão de queries sequenciais documentado em memória.
+**Severidade**: MÉDIA — risco de falha por schema cache.
+**Ação**: Refatorar para queries sequenciais independentes.
+
+### 214. process-cancellation — `.single()` em lookup de dependent (Fase 8)
+
+**Arquivo**: `supabase/functions/process-cancellation/index.ts` (linha 107)
+Usa `.single()` para buscar dependente por ID. Se o dependente não existir, lança exceção.
+**Severidade**: BAIXA.
+**Ação**: Trocar por `.maybeSingle()`.
+
+### 215. handle-teacher-subscription-cancellation — referência a campo inexistente `guardian_email` (Fase 8)
+
+**Arquivo**: `supabase/functions/handle-teacher-subscription-cancellation/index.ts` (linha 262)
+Query de profiles seleciona campo `guardian_email` que não existe na tabela `profiles`. Dados de guardian estão em `teacher_student_relationships`. A query não falha (PostgREST ignora campos inexistentes no select), mas o campo retorna como `undefined`, impedindo notificações a responsáveis.
+**Severidade**: MÉDIA — responsáveis não recebem notificação de suspensão de cobranças.
+**Ação**: Remover `guardian_email` do select e buscar dados do responsável via `teacher_student_relationships`.
+
+---
+
 ### 198. refresh-stripe-connect-account e check-stripe-account-status: `.single()` em lookups de Connect account (Fase 8)
 
 **Arquivos**: 
@@ -3563,6 +3624,7 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 | v5.33 | 2026-02-16 | **Auditoria de funções de criação de pagamento**. +3 pontas soltas (#193-#195): create-invoice FK joins + `.single()` (#193 MÉDIA), create-payment-intent-connect FK joins + `.single()` + sem guard de status (#194 MÉDIA), verify-payment-status sem autenticação/autorização (#195 ALTA → Fase 0). #195 adicionado à Fase 0 (10 itens). Totais: **195 pontas soltas**, **175 únicas**, **165 pendentes**. |
 | v5.34 | 2026-02-16 | **Auditoria de funções Stripe Connect e autorização**. +3 pontas soltas (#196-#198): change-payment-method autorização de guardian quebrada por sobreposição de `.eq()` (#196 ALTA → Fase 0), create-connect-onboarding-link bypass de ownership validation (#197 MÉDIA), refresh/check-stripe-connect `.single()` (#198 BAIXA). #196 adicionado à Fase 0 (11 itens). Totais: **198 pontas soltas**, **178 únicas**, **168 pendentes**. |
 | v5.35 | 2026-02-16 | **Auditoria profunda de cancel-payment-intent, webhooks e downgrade**. +10 pontas soltas (#199-#208): cancel-payment-intent status 'paid' em inglês (#199 ALTA → Fase 0), cancel-payment-intent `.single()` (#200 BAIXA), process-payment-failure-downgrade `.single()` (#201 MÉDIA), process-payment-failure-downgrade parâmetros errados em smart-delete-student (#202 ALTA → Fase 0), webhook-stripe-connect status em inglês (#203 ALTA → Fase 0), webhook-stripe-connect invoice handlers sem fallback (#204 MÉDIA), webhook-stripe-connect handlers sem guards de status terminal (#205 MÉDIA), webhook catch HTTP 500 (#206 MÉDIA), webhook-stripe-subscriptions HTTP 400 para user not found (#207 MÉDIA), create-payment-intent-connect sem guard de status (#208 MÉDIA). 3 itens adicionados à Fase 0 (14 itens). Totais: **208 pontas soltas**, **188 únicas**, **178 pendentes**. |
+| v5.36 | 2026-02-16 | **Auditoria profunda de funções de downgrade, overage, cancelamento e expiração**. +7 pontas soltas (#209-#215): check-overdue-invoices status 'overdue' em inglês (#209 ALTA → Fase 0), handle-plan-downgrade-selection audit log schema errado (#210 MÉDIA), handle-student-overage tabela inexistente `student_overage_charges` (#211 MÉDIA), 7+ funções com `.single()` (#212 BAIXA-MÉDIA), process-expired-subscriptions FK join syntax (#213 MÉDIA), process-cancellation `.single()` (#214 BAIXA), handle-teacher-subscription-cancellation campo inexistente `guardian_email` (#215 MÉDIA). 1 item adicionado à Fase 0 (15 itens). Totais: **215 pontas soltas**, **195 únicas**, **185 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

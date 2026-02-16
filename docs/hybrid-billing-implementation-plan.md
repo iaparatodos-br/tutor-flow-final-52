@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.42 (Consolidado)
+# Plano de Cobrança Híbrida — v5.43 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 26 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 28 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.42 consolida todas as auditorias com 5 passagens completas. Totais finais: **257 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 4 confirmações = **233 únicas**, **221 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 5ª passagem em webhooks, subscrições e student management). A 5ª passagem revelou que ambos os webhooks do Stripe retornam HTTP 500 no catch final (causando retentativas infinitas), que handlers de falha/void não protegem status terminal, e confirmou visualmente os bugs #109 (parâmetros errados em process-payment-failure-downgrade) e #138 (request-class sem is_paid_class).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.43 consolida todas as auditorias com 6 passagens completas. Totais finais: **266 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 6 confirmações = **238 únicas**, **226 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 6ª passagem em subscription management, payment flows e Connect). A 6ª passagem revelou que `cancel-payment-intent` escreve `status: 'paid'` (inglês) criando faturas fantasma (extensão de #237), que `handle-plan-downgrade-selection` tem audit logs silenciosamente falhando por colunas erradas, e confirmou visualmente os bugs #195 (verify-payment-status sem auth) e #196 (change-payment-method guardian check quebrado).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -3874,6 +3874,66 @@ Mesmo problema do #256. Parcialmente coberto por #238 (que documentava HTTP 400 
 **Severidade**: ALTA — loop de retentativas infinito.
 **Ação**: Retornar HTTP 200 com `{ received: true, error: message }`.
 
+### 258. handle-plan-downgrade-selection — audit_logs com colunas erradas (Fase 0)
+
+**Arquivo**: `supabase/functions/handle-plan-downgrade-selection/index.ts` (linhas 29-44, 97, 226, 286)
+A função `logAuditEvent` insere na tabela `audit_logs` usando colunas inexistentes: `user_id` (deveria ser `actor_id`), `action` (deveria ser `operation`), `details` e `metadata` (deveriam ser `old_data`/`new_data`). Também não inclui `table_name` e `record_id` (obrigatórios). **Todas as 3 chamadas de audit silenciosamente falham** — zero trilha de auditoria para downgrades.
+**Severidade**: ALTA — perda total de auditoria para operações destrutivas (remoção de alunos).
+**Ação**: Reescrever `logAuditEvent` para usar as colunas corretas da tabela `audit_logs`.
+
+### 259. validate-payment-routing — cria fatura real como teste
+
+**Arquivo**: `supabase/functions/validate-payment-routing/index.ts` (linhas 245-264)
+Insere fatura real no banco como "teste de simulação", depois tenta deletar por `description = 'Teste de validação de roteamento'`. Se crash entre insert e delete → fatura órfã. Delete por description pode afetar faturas legítimas.
+**Severidade**: MÉDIA — faturas fantasma em produção.
+**Ação**: Remover teste de inserção real. Usar dry-run validation sem escrita.
+
+### 260. CONFIRMAÇÃO de #195: verify-payment-status — sem validação de identidade
+
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts`
+Não verifica se o chamador é dono da fatura. Qualquer JWT válido pode consultar e ATUALIZAR status de qualquer fatura. Pode reverter `'paga'` para `'falha_pagamento'`.
+**Severidade**: CONFIRMAÇÃO de #195.
+
+### 261. CONFIRMAÇÃO de #196: change-payment-method — double .eq() quebra guardian check
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 83-86)
+`.eq('responsible_id', invoice.student_id).eq('responsible_id', user.id)` — PostgREST usa o ÚLTIMO `.eq()`, anulando a verificação.
+**Severidade**: CONFIRMAÇÃO de #196.
+
+### 262. cancel-payment-intent — status 'paid' (inglês) — extensão de #237 (Fase 0)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 112, 172)
+Escreve `status: 'paid'` (inglês) em vez de `'paga'` (português). Faturas confirmadas manualmente ficam invisíveis no módulo financeiro. Mesmo bug que #237 em função diferente.
+**Severidade**: ALTA — corrupção de dados financeiros.
+**Ação**: Substituir `'paid'` por `'paga'` nas linhas 112 e 172.
+
+### 263. create-connect-onboarding-link — IDOR quando stripe_account_id direto
+
+**Arquivo**: `supabase/functions/create-connect-onboarding-link/index.ts` (linhas 53-56)
+Quando `stripe_account_id` é fornecido diretamente, a função pula ownership validation. Atacante pode gerar link de onboarding para qualquer conta Stripe Connect.
+**Severidade**: MÉDIA — IDOR para contas de pagamento.
+**Ação**: Validar que o `stripe_account_id` pertence ao `user.id` autenticado.
+
+### 264. handle-plan-downgrade-selection — não conta dependentes dos selecionados
+
+**Arquivo**: `supabase/functions/handle-plan-downgrade-selection/index.ts` (linha 134)
+Valida `selected_student_ids.length` contra `student_limit` mas não conta dependentes dos alunos selecionados. Professor pode manter alunos cujos dependentes excedem o limite.
+**Severidade**: MÉDIA — violação de limite de plano.
+**Ação**: Contar dependentes dos alunos selecionados e validar total contra `student_limit`.
+
+### 265. Múltiplos .single() sem handling gracioso
+
+**Funções**: cancel-subscription (L47/L67), create-subscription-checkout (L138), handle-plan-downgrade-selection (L111), create-connect-onboarding-link (L64).
+**Severidade**: MÉDIA — crash HTTP 500 se registro não encontrado.
+**Ação**: Substituir por `.maybeSingle()` com mensagens de erro claras.
+
+### 266. validate-payment-routing — FK join syntax
+
+**Arquivo**: `supabase/functions/validate-payment-routing/index.ts` (linhas 102-116)
+Usa `profiles:student_id(...)` FK join syntax, violando a constraint de queries sequenciais para Edge Functions.
+**Severidade**: BAIXA — potencial falha por schema cache stale.
+**Ação**: Refatorar para queries sequenciais.
+
 ---
 
 | Versão | Data | Mudanças |
@@ -3901,7 +3961,8 @@ Mesmo problema do #256. Parcialmente coberto por #238 (que documentava HTTP 400 
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
 | v5.11-v5.40 | 2026-02-14/16 | Auditorias incrementais: +119 pontas soltas (#124-#242). Detalhes no changelog anterior. |
 | v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
-| v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management — análise cruzada de chamadas**. +8 pontas soltas (#250-#257): webhook-stripe-connect 3× `.single()` em payment_origin check (#250 ALTA → Fase 0), webhook-stripe-connect handlers de falha/void sem guard de status terminal — podem reverter 'paga' (#251 ALTA → Fase 0), CONFIRMAÇÃO de #109 — process-payment-failure-downgrade envia parâmetros errados para smart-delete-student (#252), process-payment-failure-downgrade 2× `.single()` (#253 MÉDIA), CONFIRMAÇÃO de #138 — request-class não define is_paid_class (#254), handle-student-overage `.single()` (#255 MÉDIA), webhook-stripe-connect catch retorna HTTP 500 causando retries infinitos (#256 ALTA → Fase 0), webhook-stripe-subscriptions catch retorna HTTP 500 (#257 ALTA → Fase 0). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
+| v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management**. +8 pontas soltas (#250-#257). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
+| v5.43 | 2026-02-16 | **6ª passagem: subscription management, payment flows e Connect — análise cruzada**. +9 pontas soltas (#258-#266): handle-plan-downgrade-selection audit logs usam colunas erradas — falham silenciosamente (#258 ALTA → Fase 0), validate-payment-routing cria fatura REAL como teste (#259 MÉDIA), CONFIRMAÇÃO de #195 — verify-payment-status sem auth (#260), CONFIRMAÇÃO de #196 — change-payment-method double .eq() (#261), cancel-payment-intent escreve status 'paid' (inglês) em L112/L172 — extensão de #237 (#262 ALTA → Fase 0), create-connect-onboarding-link IDOR quando stripe_account_id direto (#263 MÉDIA), handle-plan-downgrade-selection não conta dependentes dos selecionados (#264 MÉDIA), múltiplos .single() sem handling (#265 MÉDIA), validate-payment-routing usa FK joins (#266 BAIXA). 2 itens adicionados à Fase 0 (28 itens). Totais: **266 pontas soltas**, **238 únicas**, **226 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

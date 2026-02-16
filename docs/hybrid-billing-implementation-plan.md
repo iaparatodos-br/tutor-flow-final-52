@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.30 (Consolidado)
+# Plano de Cobrança Híbrida — v5.31 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 9 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.30 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **186 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **166 únicas**, **156 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.31 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **189 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **169 únicas**, **159 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -297,7 +297,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 ---
 
-## Fase 0 — Batch Crítico (8 itens)
+## Fase 0 — Batch Crítico (9 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -341,6 +341,11 @@ Dois `.eq('responsible_id', ...)` consecutivos se sobrescrevem, fazendo com que 
 **Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts`
 A função usa `SUPABASE_SERVICE_ROLE_KEY` e não valida a identidade do caller. Qualquer pessoa com o `invoice_id` pode gerar pagamentos.
 **Ação**: Adicionar autenticação via `auth.getUser(token)` e validar que o caller é o aluno da fatura, seu responsável, ou o professor.
+
+### #187. check-overdue-invoices — sem guard de status terminal (Sobrescrita de Dados)
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
+O UPDATE para `status: 'overdue'` (linha 58) não verifica se a fatura já foi paga manualmente (`payment_origin: 'manual'`). Complementa #155 com um vetor de ataque concreto: faturas pagas pelo professor são revertidas automaticamente pelo cron job.
+**Ação**: Adicionar `.not('payment_origin', 'eq', 'manual').not('status', 'in', '("paga","cancelada")')` ao UPDATE. Também alinhar status com #169 (`vencida` em vez de `overdue`).
 
 ## Itens Implementados (10 total)
 
@@ -700,6 +705,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **184** | **webhook-stripe-connect: handler `payment_intent.payment_failed` ausente — falhas de boleto/PIX não processadas** | **8** | **webhook-stripe-connect/index.ts** |
 | **185** | **webhook-stripe-connect: Stripe SDK v14.24.0 inconsistente com padrão v14.21.0** | **8** | **webhook-stripe-connect/index.ts** |
 | **186** | **send-invoice-notification: `.single()` em lookup de monthly_subscriptions (linha 161)** | **8** | **send-invoice-notification/index.ts** |
+| **187** | **check-overdue-invoices: sem guard de status terminal — pode sobrescrever `paga` para `overdue`** | **0** | **check-overdue-invoices/index.ts** |
+| **188** | **cancel-payment-intent: marca `payment_origin: 'manual'` mesmo quando PI já `succeeded` no Stripe** | **8** | **cancel-payment-intent/index.ts** |
+| **189** | **automated-billing: processMonthlySubscriptionBilling sem proteção contra fatura duplicada no mesmo ciclo** | **8** | **automated-billing/index.ts** |
 
 ## Índice de Melhorias
 
@@ -3235,6 +3243,60 @@ Diferente de #53 (invoice lookup) e #73 (student/teacher lookups), esta é uma t
 
 **Ação**: Substituir por `.maybeSingle()`. Se `subscription` for null, enviar email sem seção de detalhes do plano.
 
+### 187. check-overdue-invoices: sem guard de status terminal — pode sobrescrever `paga` para `overdue` (Fase 0)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
+
+```javascript
+// PROBLEMA: atualiza para "overdue" sem verificar se já foi paga manualmente
+await supabase
+  .from("invoices")
+  .update({ status: "overdue" })
+  .eq("id", invoice.id);
+```
+
+Se o professor marcar uma fatura como paga manualmente (`payment_origin: 'manual'`) e o boleto vencer depois, o cron job sobrescreve o status `paga` para `overdue`. Isso é uma regressão de dados crítica que invalida confirmações manuais.
+
+Diferente de #155 (que cobre o conceito genérico de guards), esta é uma instância concreta e crítica no cron job `check-overdue-invoices` que roda automaticamente sem supervisão humana.
+
+**Severidade**: ALTA — pode reverter faturas pagas sem intervenção humana.
+
+**Ação**: Adicionar guard clause no UPDATE: `.not('status', 'in', '("paga","cancelada")').not('payment_origin', 'eq', 'manual')`. Também alinhar com #169 para usar status em português (`vencida` em vez de `overdue`).
+
+### 188. cancel-payment-intent: marca `payment_origin: 'manual'` mesmo quando PI já `succeeded` no Stripe (Fase 8)
+
+**Arquivo**: `supabase/functions/cancel-payment-intent/index.ts` (linhas 138-183)
+
+Quando o cancelamento do Payment Intent falha porque já está em estado `succeeded` (pagamento já realizado via Stripe), a função ainda marca a fatura como `payment_origin: 'manual'` (linha 173). Isso cria uma inconsistência: o pagamento foi automático (Stripe), mas o registro diz "manual".
+
+**Severidade**: MÉDIA — não causa falha funcional, mas corrompe dados de auditoria e relatórios financeiros que distinguem pagamentos manuais de automáticos.
+
+**Ação**: Após o catch do `stripe.paymentIntents.cancel()`, verificar o status real do PI. Se `status === 'succeeded'`, marcar como `payment_origin: 'automatic'` em vez de `'manual'`. Considerar retornar erro ao frontend informando que o pagamento já foi recebido pelo Stripe.
+
+### 189. automated-billing: processMonthlySubscriptionBilling sem proteção contra fatura duplicada no mesmo ciclo (Fase 8)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 652-828)
+
+A função `processMonthlySubscriptionBilling` cria uma fatura de mensalidade (`monthly_base`) sem verificar se já existe uma fatura para o mesmo `monthly_subscription_id` no mesmo ciclo de faturamento. Se o cron job `automated-billing` executar duas vezes no mesmo dia (falha e retry, deploy duplicado, etc.), duas faturas de mensalidade serão criadas para o mesmo aluno.
+
+O item `monthly_base` (linha 737) é criado incondicionalmente — não depende de aulas não faturadas como no fluxo tradicional, então a RPC `create_invoice_and_mark_classes_billed` não protege contra duplicatas neste caso.
+
+**Severidade**: ALTA — cobrança duplicada de mensalidade pode causar disputas financeiras e perda de confiança.
+
+**Ação**: Antes de criar a fatura, verificar:
+```sql
+SELECT id FROM invoices 
+WHERE student_id = p_student_id 
+  AND teacher_id = p_teacher_id 
+  AND invoice_type = 'monthly_subscription' 
+  AND monthly_subscription_id = p_subscription_id
+  AND due_date >= cycle_start::date
+  AND due_date <= (cycle_end + interval '30 days')::date
+  AND status NOT IN ('cancelada')
+LIMIT 1;
+```
+Se existir, pular a criação e logar como "já faturado neste ciclo".
+
 ---
 
 ## Histórico de Versões
@@ -3279,6 +3341,7 @@ Diferente de #53 (invoice lookup) e #73 (student/teacher lookups), esta é uma t
 | v5.28.2 | 2026-02-16 | **Completude do índice**. #95 e #96 adicionados ao índice mestre com strikethrough (duplicatas que faltavam). Todas 18 duplicatas agora presentes no índice. |
 | v5.29 | 2026-02-16 | **Revisão profunda final**. +3 pontas soltas (#181-#183): end-recurrence FK constraint bloqueia deleção (#181 ALTA), invoice.voided sem guard clause (#182 BAIXA), createClient sem persistSession:false (#183 BAIXA). Totais: **183 pontas soltas**, **163 únicas**, **153 pendentes**. |
 | v5.30 | 2026-02-16 | **Auditoria cruzada código×plano**. +3 pontas soltas (#184-#186): webhook-stripe-connect sem handler `payment_intent.payment_failed` (#184 ALTA — falhas de boleto/PIX não processadas), Stripe SDK v14.24.0 inconsistente (#185 BAIXA), send-invoice-notification `.single()` em monthly_subscriptions (#186 BAIXA). Totais: **186 pontas soltas**, **166 únicas**, **156 pendentes**. |
+| v5.31 | 2026-02-16 | **Auditoria profunda de funções financeiras core**. +3 pontas soltas (#187-#189): check-overdue-invoices sem guard de status terminal — pode sobrescrever `paga` para `overdue` (#187 ALTA → Fase 0), cancel-payment-intent marca `payment_origin: 'manual'` quando PI já `succeeded` (#188 MÉDIA), automated-billing duplica fatura de mensalidade se cron executar duas vezes (#189 ALTA). #187 adicionado à Fase 0 (9 itens). Totais: **189 pontas soltas**, **169 únicas**, **159 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

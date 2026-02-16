@@ -694,6 +694,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**178**~~ | ~~**DUPLICATA de #41 — check-overdue-invoices: usa `class_notifications` para faturas — violação semântica**~~ | **—** | **—** |
 | **179** | **change-payment-method: FK joins + `.single()` em invoice lookup** | **8** | **change-payment-method/index.ts** |
 | **180** | **automated-billing: FK joins na query principal (duplicata parcial de #163)** | **4** | **automated-billing/index.ts** |
+
 ## Índice de Melhorias
 
 | # | Descrição | Fase |

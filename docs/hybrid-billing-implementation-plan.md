@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.40 (Consolidado)
+# Plano de Cobrança Híbrida — v5.41 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 21 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 22 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.40 consolida todas as auditorias com 3 passagens completas. Totais finais: **242 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **222 únicas**, **212 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 3ª passagem em webhooks e cron jobs). A 3ª passagem revelou que o bug de status 'paid' em inglês (#199/#234) afeta TAMBÉM o webhook principal de pagamentos, corrompendo silenciosamente TODOS os pagamentos automáticos.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.41 consolida todas as auditorias com 4 passagens completas. Totais finais: **249 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 2 confirmações = **227 únicas**, **215 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 4ª passagem em funções financeiras core). A 4ª passagem revelou que `materialize-virtual-class` não herda `is_paid_class`, criando cobranças indevidas em aulas de reposição, e confirmou visualmente os bugs #196 e #181.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -3780,6 +3780,48 @@ Função não verifica que o usuário autenticado é o professor ou aluno da fat
 **Severidade**: MÉDIA — IDOR com exposição de dados pessoais sensíveis.
 **Ação**: Adicionar extração do JWT e verificar ownership (`invoice.teacher_id === user.id` ou `invoice.student_id === user.id`).
 
+### 243. check-overdue-invoices — UPDATE sem guard de status terminal (Fase 0)
+
+**Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linha 58)
+O UPDATE `status: "overdue"` não possui cláusula de guarda `.eq('status', 'pendente')`. Se uma fatura foi paga (status `'paga'`) mas o cron executa antes da atualização de status do webhook, a fatura paga é revertida para `'overdue'`. **Combinação explosiva com #237**: faturas com status `'paid'` (inglês, invisíveis) são automaticamente promovidas a `'overdue'`, gerando cobranças duplicadas.
+**Severidade**: ALTA — reversão de status terminal + duplicação de cobrança.
+**Ação**: Adicionar `.eq('status', 'pendente')` ao UPDATE (linha 58).
+
+### 244. automated-billing — invocação server-to-server (INFORMATIVO)
+
+**Arquivo**: `supabase/functions/automated-billing/index.ts` (linhas 522-530)
+Invocação via `supabaseAdmin.functions.invoke()` sem Authorization header explícito é correta — `supabaseAdmin` injeta automaticamente o `service_role_key`.
+**Severidade**: INFORMATIVO — documentado para referência.
+
+### 245. create-invoice — `.single()` em teacher_student_relationships
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linha 154)
+**Severidade**: MÉDIA — `.single()` causa HTTP 500 se relacionamento não existir.
+**Ação**: Substituir por `.maybeSingle()` com mensagem amigável.
+
+### 246. CONFIRMAÇÃO VISUAL de #196: change-payment-method `.eq()` sobreposição
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 84-85)
+`.eq('responsible_id', invoice.student_id).eq('responsible_id', user.id)` — segundo filter sobrescreve primeiro. Qualquer responsável passa a verificação.
+
+### 247. CONFIRMAÇÃO VISUAL de #181: end-recurrence sem cleanup de FKs
+
+**Arquivo**: `supabase/functions/end-recurrence/index.ts` (linhas 67-73)
+DELETE em `classes` sem limpar `class_participants` e `class_exceptions` primeiro. FK RESTRICT bloqueia deleção.
+
+### 248. send-invoice-notification — 3× `.single()` sem fallback
+
+**Arquivo**: `supabase/functions/send-invoice-notification/index.ts` (linhas 57, 69, 99)
+**Severidade**: BAIXA — crash de notificação se profile ausente.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 249. materialize-virtual-class — não herda `is_paid_class` do template
+
+**Arquivo**: `supabase/functions/materialize-virtual-class/index.ts` (linhas 250-263)
+INSERT omite `is_paid_class`. Aulas de reposição (`is_paid_class = false`) materializadas herdam DEFAULT `true`, gerando cobrança indevida.
+**Severidade**: MÉDIA — cobrança indevida em aulas de reposição materializadas.
+**Ação**: Adicionar `is_paid_class: template.is_paid_class` ao INSERT.
+
 ---
 
 | Versão | Data | Mudanças |
@@ -3805,33 +3847,8 @@ Função não verifica que o usuário autenticado é o professor ou aluno da fat
 | v5.8 | 2026-02-14 | +5 pontas soltas (#109-#113), +1 melhoria (M46) |
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
-| v5.11 | 2026-02-14 | +3 pontas soltas (#124-#126), +1 melhoria (M52): automated-billing copia boleto_url para stripe_hosted_invoice_url (#124 MÉDIA), create-payment-intent-connect guardian_name inexistente (#125 BAIXA), check-overdue-invoices status 'overdue' em inglês (#126 MÉDIA), auto-verify-pending-invoices HTTP 500 (M52). |
-| v5.12 | 2026-02-14 | Auditoria final de validação. Nenhuma nova ponta solta. 3 confirmações de cobertura (verify-payment-status .single() coberto por #102, cron jobs ANON_KEY aceito, webhook-stripe-subscriptions segue padrões de #49/#76/#77). Tabela de cobertura completa adicionada (26 funções × 126 pontas). Recomendação de config.toml para automated-billing e process-expired-subscriptions. |
-| v5.13 | 2026-02-14 | +5 pontas soltas (#127-#131) em 4 funções ausentes da cobertura v5.12: smart-delete-student FK joins (#127 ALTA) e sem autenticação (#128 ALTA → Batch 1), handle-plan-downgrade-selection audit_logs com colunas inexistentes (#129 ALTA → Batch 3), validate-payment-routing cria faturas reais (#130 MÉDIA → Batch 6), cancel-subscription .single() (#131 BAIXA → Batch 5). Tabela de cobertura expandida para 30 funções. Totais: 131 pontas soltas, 52 melhorias. |
-| v5.14 | 2026-02-14 | +6 pontas soltas (#132-#137) em 6 funções: create-student sem auth (#132 ALTA ✅ IMPLEMENTADO), update-student-details sem auth (#133 ALTA ✅ IMPLEMENTADO), create-dependent FK join (#134 MÉDIA ✅ IMPLEMENTADO), delete-dependent FK joins (#135 MÉDIA ✅ IMPLEMENTADO), manage-class-exception FK join (#136 MÉDIA ✅ IMPLEMENTADO), manage-future-class-exceptions FK join (#137 MÉDIA ✅ IMPLEMENTADO). send-cancellation-notification adicionada à tabela de cobertura. Tabela expandida para 36 funções. Totais: 137 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.15 | 2026-02-14 | +4 pontas soltas (#138-#141) em 4 funções: request-class não persiste `is_paid_class` (#138 ALTA → Fase 3), update-dependent `.single()` (#139 BAIXA → Batch 8), create-connect-onboarding-link HTTP 500 genérico (#140 BAIXA → Batch 8), list-subscription-invoices HTTP 500 genérico (#141 BAIXA → Batch 8). Tabela de cobertura expandida para 40 funções. Totais: 141 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.16 | 2026-02-14 | +3 pontas soltas (#142-#144) em 3 funções: check-business-profile-status ownership validation tardia (#142 MÉDIA → Batch 8), create-connect-account `.single()` incorreto (#143 BAIXA → Batch 8), send-class-confirmation-notification `.single()` sem tratamento (#144 BAIXA → Batch 8). Tabela expandida para 43 funções. Totais: 144 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.17 | 2026-02-14 | +3 pontas soltas (#145-#147). Cobertura 100% atingida: 47 funções + 27 fora de escopo = 75. Totais: 147 pontas soltas (6 implementadas), 52 melhorias. |
-| v5.18-5.23 | 2026-02-14/15 | Auditoria profunda via `.lovable/plan.md`: +33 pontas soltas (#148-#180). 4 implementadas (#148-#151). 1 duplicata (#166=#80). 2 subsumidas (#153→#177, #154→#179). Fase 0 (Batch Crítico) criada com 7 itens de segurança/race conditions. |
-| v5.24 | 2026-02-15 | **Consolidação final**. Documentos unificados. Fase 0 integrada. Verificação de fluxos end-to-end. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = 179 únicas, 167 pendentes), **52 melhorias**, **48 funções cobertas**. |
-| v5.25 | 2026-02-15 | **Verificação final de consistência**. #87 movido de Fase 1→Fase 0 (reconciliação de webhooks quebrada). 3 duplicatas adicionais resolvidas: #81=#155, #95=#155, #96=#80. Fase 0 expandida para 8 itens. Totais: **176 únicas** (12 implementadas, 164 pendentes). |
-| v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. |
-| v5.27 | 2026-02-16 | **Verificação final de consistência**. Índice mestre completado com ~50 itens ausentes (#94-#147). 7 novas duplicatas: #61=#8.1, #62=#2.4, #63=#17, #65=#7.1, #66=#2.3, #104⊂#169, #108=#67. Contagem de implementados corrigida de 12→10. Total duplicatas: 17. Totais finais: **163 únicas** (10 implementadas, **153 pendentes**). Fase 0 inalterada (8 itens). |
-| v5.28 | 2026-02-16 | **Correção aritmética final**. #98 marcado como duplicata/subsumido por #169 (total duplicatas: 18). Fórmula de únicas corrigida para subtrair subsumidas: 180 - 18 - 2 = **160 únicas** (10 implementadas, **150 pendentes**). Fase 0 inalterada (8 itens). |
-| v5.28.1 | 2026-02-16 | **Correção de índice**. #109 descrição corrigida no índice mestre para corresponder ao corpo do documento. |
-| v5.28.2 | 2026-02-16 | **Completude do índice**. #95 e #96 adicionados ao índice mestre com strikethrough (duplicatas que faltavam). Todas 18 duplicatas agora presentes no índice. |
-| v5.29 | 2026-02-16 | **Revisão profunda final**. +3 pontas soltas (#181-#183): end-recurrence FK constraint bloqueia deleção (#181 ALTA), invoice.voided sem guard clause (#182 BAIXA), createClient sem persistSession:false (#183 BAIXA). Totais: **183 pontas soltas**, **163 únicas**, **153 pendentes**. |
-| v5.30 | 2026-02-16 | **Auditoria cruzada código×plano**. +3 pontas soltas (#184-#186): webhook-stripe-connect sem handler `payment_intent.payment_failed` (#184 ALTA — falhas de boleto/PIX não processadas), Stripe SDK v14.24.0 inconsistente (#185 BAIXA), send-invoice-notification `.single()` em monthly_subscriptions (#186 BAIXA). Totais: **186 pontas soltas**, **166 únicas**, **156 pendentes**. |
-| v5.31 | 2026-02-16 | **Auditoria profunda de funções financeiras core**. +3 pontas soltas (#187-#189): check-overdue-invoices sem guard de status terminal — pode sobrescrever `paga` para `overdue` (#187 ALTA → Fase 0), cancel-payment-intent marca `payment_origin: 'manual'` quando PI já `succeeded` (#188 MÉDIA), automated-billing duplica fatura de mensalidade se cron executar duas vezes (#189 ALTA). #187 adicionado à Fase 0 (9 itens). Totais: **189 pontas soltas**, **169 únicas**, **159 pendentes**. |
-| v5.32 | 2026-02-16 | **Auditoria cruzada de resiliência e padrões**. +3 pontas soltas (#190-#192): webhook-stripe-connect `.single()` em lookups de `payment_origin` causa loops de retentativa do Stripe (#190 MÉDIA), process-expired-subscriptions FK joins + `.single()` (#191 MÉDIA), webhook-stripe-connect HTTP 500 no catch global (#192 BAIXA). Totais: **192 pontas soltas**, **172 únicas**, **162 pendentes**. |
-| v5.33 | 2026-02-16 | **Auditoria de funções de criação de pagamento**. +3 pontas soltas (#193-#195): create-invoice FK joins + `.single()` (#193 MÉDIA), create-payment-intent-connect FK joins + `.single()` + sem guard de status (#194 MÉDIA), verify-payment-status sem autenticação/autorização (#195 ALTA → Fase 0). #195 adicionado à Fase 0 (10 itens). Totais: **195 pontas soltas**, **175 únicas**, **165 pendentes**. |
-| v5.34 | 2026-02-16 | **Auditoria de funções Stripe Connect e autorização**. +3 pontas soltas (#196-#198): change-payment-method autorização de guardian quebrada por sobreposição de `.eq()` (#196 ALTA → Fase 0), create-connect-onboarding-link bypass de ownership validation (#197 MÉDIA), refresh/check-stripe-connect `.single()` (#198 BAIXA). #196 adicionado à Fase 0 (11 itens). Totais: **198 pontas soltas**, **178 únicas**, **168 pendentes**. |
-| v5.35 | 2026-02-16 | **Auditoria profunda de cancel-payment-intent, webhooks e downgrade**. +10 pontas soltas (#199-#208): cancel-payment-intent status 'paid' em inglês (#199 ALTA → Fase 0), cancel-payment-intent `.single()` (#200 BAIXA), process-payment-failure-downgrade `.single()` (#201 MÉDIA), process-payment-failure-downgrade parâmetros errados em smart-delete-student (#202 ALTA → Fase 0), webhook-stripe-connect status em inglês (#203 ALTA → Fase 0), webhook-stripe-connect invoice handlers sem fallback (#204 MÉDIA), webhook-stripe-connect handlers sem guards de status terminal (#205 MÉDIA), webhook catch HTTP 500 (#206 MÉDIA), webhook-stripe-subscriptions HTTP 400 para user not found (#207 MÉDIA), create-payment-intent-connect sem guard de status (#208 MÉDIA). 3 itens adicionados à Fase 0 (14 itens). Totais: **208 pontas soltas**, **188 únicas**, **178 pendentes**. |
-| v5.36 | 2026-02-16 | **Auditoria profunda de funções de downgrade, overage, cancelamento e expiração**. +7 pontas soltas (#209-#215): check-overdue-invoices status 'overdue' em inglês (#209 ALTA → Fase 0), handle-plan-downgrade-selection audit log schema errado (#210 MÉDIA), handle-student-overage tabela inexistente `student_overage_charges` (#211 MÉDIA), 7+ funções com `.single()` (#212 BAIXA-MÉDIA), process-expired-subscriptions FK join syntax (#213 MÉDIA), process-cancellation `.single()` (#214 BAIXA), handle-teacher-subscription-cancellation campo inexistente `guardian_email` (#215 MÉDIA). 1 item adicionado à Fase 0 (15 itens). Totais: **215 pontas soltas**, **195 únicas**, **185 pendentes**. |
-| v5.37 | 2026-02-16 | **Auditoria profunda de checkout, subscription status, billing e invitation**. +7 pontas soltas (#216-#222): create-subscription-checkout cancela assinatura ANTES do checkout (#216 ALTA → Fase 0), check-subscription-status monolito frágil 846 linhas (#217 MÉDIA), send-student-invitation sem auth (#218 BAIXA), automated-billing FK joins em cron crítico (#219 MÉDIA), resend-student-invitation `.single()` (#220 BAIXA), create-subscription-checkout `.single()` e FK joins (#221 BAIXA), smart-delete-student `.single()` em subscriptions (#222 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (16 itens). Totais: **222 pontas soltas**, **202 únicas**, **192 pendentes**. |
-| v5.38 | 2026-02-16 | **Auditoria completa de funções restantes (100% cobertura)**. +8 pontas soltas (#223-#230): validate-business-profile-deletion sem auth (#223 MÉDIA), resend-confirmation listUsers() carrega todos usuários (#224 ALTA), send-class-reminders FK join ambíguo PGRST201 (#225 MÉDIA), audit-logger schema mismatch total — auditoria inoperante (#226 ALTA → Fase 0), stripe-events-monitor sem auth (#227 BAIXA), check-email-availability email enumeration (#228 BAIXA), generate-teacher-notifications dependência cruzada com #209 (#229 MÉDIA), send-class-report-notification 6x `.single()` (#230 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (17 itens). Totais: **230 pontas soltas**, **210 únicas**, **200 pendentes**. |
-| v5.39 | 2026-02-16 | **Auditoria de 2ª passagem em funções financeiras core e cancelamento**. +6 pontas soltas (#231-#236): process-cancellation aceita `cancelled_by` do body sem validar JWT (#231 ALTA → Fase 0), verify-payment-status sem ownership validation (#232 MÉDIA), create-invoice FK joins aninhados em class_participants (#233 BAIXA), cancel-payment-intent marca status 'paid' em inglês — faturas invisíveis ao financeiro (#234 ALTA → Fase 0 — CONFIRMA #199 como padrão recorrente), validate-payment-routing cria faturas REAIS em produção como "teste" (#235 MÉDIA), reclassificação: #218/#223/#227/#228 têm verify_jwt=true no gateway — faltam apenas checks de ownership (#236 CORREÇÃO). 2 itens adicionados à Fase 0 (19 itens). Totais: **236 pontas soltas**, **216 únicas**, **206 pendentes**. |
-| v5.40 | 2026-02-16 | **3ª passagem: webhooks, cron jobs e funções de subscrição**. +6 pontas soltas (#237-#242): webhook-stripe-connect usa `status: "paid"` em TRÊS handlers — invoice.paid (L320), invoice.payment_succeeded (L357), payment_intent.succeeded (L469) — corrompendo TODOS os pagamentos automáticos (#237 CRÍTICA → Fase 0), webhook-stripe-subscriptions retorna HTTP 400/500 para "user not found" causando retries desnecessárias do Stripe (#238 ALTA → Fase 0), process-expired-subscriptions FK joins em cron (#239 MÉDIA), smart-delete-student sem ownership validation (#240 MÉDIA), check-subscription-status monolito 846 linhas com 6+ `.single()` (#241 BAIXA — já coberto parcialmente por #217), generate-boleto-for-invoice sem ownership validation (#242 MÉDIA). 2 itens adicionados à Fase 0 (21 itens). **#237 é o finding mais crítico de toda a auditoria**: afeta a maioria dos pagamentos processados via Stripe. Totais: **242 pontas soltas**, **222 únicas**, **212 pendentes**. |
+| v5.11-v5.40 | 2026-02-14/16 | Auditorias incrementais: +119 pontas soltas (#124-#242). Detalhes no changelog anterior. |
+| v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249): check-overdue-invoices UPDATE sem guard de status terminal — combinação explosiva com #237 (#243 ALTA → Fase 0), automated-billing invocação s2s OK (INFORMATIVO #244), create-invoice `.single()` em relationship (#245 MÉDIA), CONFIRMAÇÃO VISUAL de #196 — `.eq()` sobreposição (#246), CONFIRMAÇÃO VISUAL de #181 — end-recurrence sem cleanup FKs (#247), send-invoice-notification 3× `.single()` (#248 BAIXA), materialize-virtual-class não herda `is_paid_class` — cobrança indevida em reposições (#249 MÉDIA). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

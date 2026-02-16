@@ -1,47 +1,54 @@
 
 
-# Verificação Final v5.44 — 10 Novas Pontas Soltas (7ª Passagem: Notificações, Entity Management e CRUD)
+# Verificação Final v5.45 — 10 Novas Pontas Soltas (8ª Passagem: Automação, Verificação e Utilitários)
 
-## Veredicto: Plano atualizado para v5.44 com padrão sistêmico de `.single()` em TODAS as funções de notificação.
+## Veredicto: Plano atualizado para v5.45 com 3 achados CRÍTICOS — audit-logger quebrado, smart-delete-student sem auth, status em inglês.
 
 ---
 
-## Auditoria de 7ª Passagem (Notificações, Entity Management e CRUD)
+## Auditoria de 8ª Passagem (Automação, Verificação e Utilitários)
 
-Funções auditadas nesta rodada (7ª passagem):
-- `send-class-reminders/index.ts` (317 linhas) — 2× `.single()` em loops (#267, #268)
-- `send-invoice-notification/index.ts` (465 linhas) — CONFIRMAÇÃO #248 (#269), `.single()` em monthly_subscriptions (#270)
-- `send-cancellation-notification/index.ts` (498 linhas) — 4× `.single()` em dependent lookups (#271)
-- `send-class-report-notification/index.ts` (294 linhas) — 5× `.single()` (#272)
-- `send-class-request-notification/index.ts` (210 linhas) — 3× `.single()` sequenciais (#273)
-- `send-material-shared-notification/index.ts` (316 linhas) — 2× `.single()` (#274)
-- `send-boleto-subscription-notification/index.ts` (345 linhas) — 1× `.single()` (#275)
-- `send-student-invitation/index.ts` (158 linhas) — OK (sem DB queries)
-- `resend-student-invitation/index.ts` (186 linhas) — `.single()` em profiles/relationship mas com handling adequado
-- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` em profiles mas com error check
-- `send-password-reset/index.ts` (244 linhas) — OK (anti-enumeration correto)
-- `generate-teacher-notifications/index.ts` (351 linhas) — OK (sem `.single()`)
-- `create-student/index.ts` (529 linhas) — OK (já corrigido em #132)
-- `create-dependent/index.ts` (211 linhas) — inconsistência de overage (#276)
-- `delete-dependent/index.ts` (240 linhas) — OK (`.maybeSingle()` correto)
-- `update-dependent/index.ts` (148 linhas) — OK (`.maybeSingle()` + ownership)
-- `create-teacher/index.ts` (220 linhas) — OK
-- `manage-class-exception/index.ts` (157 linhas) — OK (`.maybeSingle()` correto)
+Funções auditadas nesta rodada (8ª passagem):
+- `auto-verify-pending-invoices/index.ts` (162 linhas) — OK (resiliente, loops com try/catch)
+- `automated-billing/index.ts` (1057 linhas) — OK (`.maybeSingle()` correto, RPC calls)
+- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' em inglês (#278), tabela errada para dedup (#279)
+- `check-pending-boletos/index.ts` (239 linhas) — `.single()` em free plan (#284)
+- `archive-old-data/index.ts` (330 linhas) — OK (auth com service-role, loops resilientes)
+- `audit-logger/index.ts` (86 linhas) — colunas erradas em audit_logs (#277 ALTA)
+- `smart-delete-student/index.ts` (547 linhas) — SEM AUTH (#282 ALTA), 2× `.single()` (#280, #281)
+- `update-student-details/index.ts` (144 linhas) — `.single()` em relationship L85 mas com error check adequado. OK.
+- `check-business-profile-status/index.ts` (199 linhas) — `.single()` em pending (#286)
+- `check-email-availability/index.ts` (74 linhas) — OK (`.maybeSingle()`)
+- `check-email-confirmation/index.ts` (139 linhas) — OK (auth + role check)
+- `check-stripe-account-status/index.ts` (156 linhas) — `.single()` em connect_accounts L59 mas com ownership check
+- `check-subscription-status/index.ts` (846 linhas) — 5× `.single()` em plans (#283)
+- `process-expired-subscriptions/index.ts` (233 linhas) — `.single()` em free plan (#285)
+- `fetch-archived-data/index.ts` (122 linhas) — OK (auth correto)
+- `stripe-events-monitor/index.ts` (124 linhas) — sem auth (baixo risco, read-only stats)
+- `validate-business-profile-deletion/index.ts` (128 linhas) — sem auth (baixo risco, read-only)
+- `list-business-profiles/index.ts` (71 linhas) — OK
+- `list-pending-business-profiles/index.ts` (74 linhas) — OK
+- `list-subscription-invoices/index.ts` (120 linhas) — OK
+- `get-teacher-availability/index.ts` (134 linhas) — OK (`.maybeSingle()`, auth + role)
+- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()` L66 com ownership
+- `security-rls-audit/index.ts` (379 linhas) — OK
 
-### Padrão Sistêmico Identificado
+### Achados Críticos (→ Fase 0)
 
-**TODAS as 10 funções de notificação (send-*)** compartilham o mesmo anti-padrão: usam `.single()` em lookups dentro de loops de processamento. Isso significa que **um único registro ausente (perfil, dependente, relação) derruba a fila inteira de notificações**, afetando todos os destinatários restantes.
+1. **#277 (ALTA)**: `audit-logger` — função exportada `logAuditEvent` insere com colunas erradas (`user_id`, `action`, `details`, `metadata` em vez de `actor_id`, `operation`, `table_name`, `record_id`). **TODOS os audit logs do sistema falham silenciosamente.** Extensão sistêmica de #258.
 
-Recomendação: criar um batch fix que substitua `.single()` por `.maybeSingle()` com `continue` em todas as 10 funções simultaneamente. Estimativa: ~30 substituições em ~20 minutos.
+2. **#278 (ALTA)**: `check-overdue-invoices` — escreve `status: "overdue"` (inglês). Extensão de #237.
 
-### Totais Atualizados (v5.44)
-- 276 pontas soltas totais
-- 18 duplicatas + 2 subsumidas + 7 confirmações (#246→#196, #247→#181, #252→#109, #254→#138, #260→#195, #261→#196, #269→#248)
-- 247 únicas
+3. **#282 (ALTA)**: `smart-delete-student` — **ZERO autenticação**. Qualquer requisição com a URL pode deletar alunos arbitrariamente.
+
+### Totais Atualizados (v5.45)
+- 286 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 7 confirmações
+- 257 únicas
 - 10 implementadas
-- **235 pendentes**
-- Fase 0: **28 itens** (sem alterações — issues de notificação são MÉDIA, não ALTA)
-- **100% cobertura**: 75 funções auditadas (7 passagens completas)
+- **245 pendentes**
+- Fase 0: **31 itens** (+3: #277, #278, #282)
+- **100% cobertura**: 75 funções auditadas (8 passagens completas)
 
 ### Status Final
-Prioridade de execução permanece: Fase 0 primeiro (28 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições).
+Prioridade de execução: Fase 0 (31 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições) e utilitários (~15 substituições).

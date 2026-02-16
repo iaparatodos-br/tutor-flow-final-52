@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.39 (Consolidado)
+# Plano de Cobrança Híbrida — v5.40 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 19 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 21 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.39 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **236 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **216 únicas**, **206 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura). Auditoria de 2ª passagem em funções financeiras core revelou 2 novos bugs críticos de corrupção de status.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.40 consolida todas as auditorias com 3 passagens completas. Totais finais: **242 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **222 únicas**, **212 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 3ª passagem em webhooks e cron jobs). A 3ª passagem revelou que o bug de status 'paid' em inglês (#199/#234) afeta TAMBÉM o webhook principal de pagamentos, corrompendo silenciosamente TODOS os pagamentos automáticos.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #225, #227, #228, #229, #230, #232, #233, #235, #236, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #225, #227, #228, #229, #230, #232, #233, #235, #236, #239, #240, #241, #242, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (19 itens)
+## Fase 0 — Batch Crítico (21 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -3729,6 +3729,59 @@ Análise cruzada do `supabase/config.toml` revelou que as funções #218 (`send-
 
 ---
 
+### 237. webhook-stripe-connect — status `"paid"` em inglês em TRÊS handlers (Corrupção de Dados em Massa) (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (560 linhas)
+**O finding mais crítico de toda a auditoria.** O webhook de pagamentos Stripe Connect marca faturas com `status: "paid"` (inglês) em TRÊS handlers diferentes:
+- `invoice.paid` (linha 320): `status: 'paid'`
+- `invoice.payment_succeeded` (linha 357): `status: 'paid'`
+- `payment_intent.succeeded` (linha 469): `status: "paid"`
+
+Todo o sistema financeiro (dashboard, filtros, cron jobs, relatórios) filtra por status em português (`'paga'`, `'pendente'`, `'vencida'`). Isso significa que **TODOS os pagamentos processados automaticamente via Stripe são marcados com status invisível ao sistema**. Faturas pagas desaparecem do financeiro, aparecem como "pendentes" e podem ser cobradas novamente pelo cron de check-overdue-invoices.
+**Severidade**: CRÍTICA — corrupção silenciosa e massiva de dados financeiros em produção. Afeta a maioria dos pagamentos do sistema.
+**Ação**: Substituir `status: 'paid'` e `status: "paid"` por `status: 'paga'` em todas as 3 ocorrências (linhas 320, 357, 469).
+
+### 238. webhook-stripe-subscriptions — HTTP 400/500 para "user not found" causa retries desnecessários (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-subscriptions/index.ts` (802 linhas)
+Múltiplos handlers retornam HTTP 400 quando o usuário não é encontrado (linhas 427, 519, 572, 608). O Stripe interpreta qualquer resposta não-200 como falha e retenta o webhook (até 3x por tipo de evento). Isso causa:
+1. Carga desnecessária no servidor (3x mais chamadas)
+2. Logs poluídos com "User not found" repetidos
+3. Risco de processamento duplicado se o usuário for criado entre retentativas
+O catch global (linha 715) também retorna HTTP 500, causando retries para erros internos.
+**Severidade**: ALTA — retries desnecessários do Stripe + risco de duplicação.
+**Ação**: Substituir todos os retornos HTTP 400/500 para "User not found" por HTTP 200 com `{ received: true, skipped: true, reason: "user_not_found" }`.
+
+### 239. process-expired-subscriptions — FK joins em cron job
+
+**Arquivo**: `supabase/functions/process-expired-subscriptions/index.ts` (233 linhas)
+Linhas 46-57 usam FK joins: `subscription_plans!inner (...)` e `profiles!user_id (...)`. Se o schema cache estiver obsoleto, o cron inteiro falha e nenhuma assinatura expirada é processada.
+**Severidade**: MÉDIA — falha silenciosa do cron de expiração.
+**Ação**: Refatorar para queries sequenciais independentes.
+
+### 240. smart-delete-student — missing ownership validation
+
+**Arquivo**: `supabase/functions/smart-delete-student/index.ts` (547 linhas)
+Função aceita `student_id`, `teacher_id`, `relationship_id` do body sem validar que o usuário autenticado (via JWT) corresponde ao `teacher_id`. Como `verify_jwt=true` por padrão, qualquer professor autenticado pode deletar alunos de OUTRO professor fornecendo IDs válidos.
+**Severidade**: MÉDIA — IDOR em operação destrutiva (deleção de aluno + dependentes + dados).
+**Ação**: Extrair `auth.uid()` do JWT e validar que `auth.uid() === teacher_id`.
+
+### 241. check-subscription-status — monolito 846 linhas com 6+ `.single()`
+
+**Arquivo**: `supabase/functions/check-subscription-status/index.ts` (846 linhas)
+Função monolítica com pelo menos 6 chamadas `.single()` em lookups de planos (linhas 375, 460, 585, 703, 734, 760). Qualquer plano ausente ou inativo causa HTTP 500 para o usuário, impedindo-o de ver seu status de assinatura.
+**Severidade**: BAIXA — já parcialmente coberto por #217. Consolidado aqui para completude.
+**Ação**: Substituir todos os `.single()` por `.maybeSingle()` e adicionar tratamento gracioso.
+
+### 242. generate-boleto-for-invoice — missing ownership validation
+
+**Arquivo**: `supabase/functions/generate-boleto-for-invoice/index.ts` (187 linhas)
+Função não verifica que o usuário autenticado é o professor ou aluno da fatura. Qualquer usuário autenticado pode gerar boleto para qualquer fatura fornecendo o `invoice_id`. Embora o boleto beneficie o dono da fatura, isso expõe dados pessoais (CPF, endereço) do pagador.
+**Severidade**: MÉDIA — IDOR com exposição de dados pessoais sensíveis.
+**Ação**: Adicionar extração do JWT e verificar ownership (`invoice.teacher_id === user.id` ou `invoice.student_id === user.id`).
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -3778,6 +3831,7 @@ Análise cruzada do `supabase/config.toml` revelou que as funções #218 (`send-
 | v5.37 | 2026-02-16 | **Auditoria profunda de checkout, subscription status, billing e invitation**. +7 pontas soltas (#216-#222): create-subscription-checkout cancela assinatura ANTES do checkout (#216 ALTA → Fase 0), check-subscription-status monolito frágil 846 linhas (#217 MÉDIA), send-student-invitation sem auth (#218 BAIXA), automated-billing FK joins em cron crítico (#219 MÉDIA), resend-student-invitation `.single()` (#220 BAIXA), create-subscription-checkout `.single()` e FK joins (#221 BAIXA), smart-delete-student `.single()` em subscriptions (#222 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (16 itens). Totais: **222 pontas soltas**, **202 únicas**, **192 pendentes**. |
 | v5.38 | 2026-02-16 | **Auditoria completa de funções restantes (100% cobertura)**. +8 pontas soltas (#223-#230): validate-business-profile-deletion sem auth (#223 MÉDIA), resend-confirmation listUsers() carrega todos usuários (#224 ALTA), send-class-reminders FK join ambíguo PGRST201 (#225 MÉDIA), audit-logger schema mismatch total — auditoria inoperante (#226 ALTA → Fase 0), stripe-events-monitor sem auth (#227 BAIXA), check-email-availability email enumeration (#228 BAIXA), generate-teacher-notifications dependência cruzada com #209 (#229 MÉDIA), send-class-report-notification 6x `.single()` (#230 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (17 itens). Totais: **230 pontas soltas**, **210 únicas**, **200 pendentes**. |
 | v5.39 | 2026-02-16 | **Auditoria de 2ª passagem em funções financeiras core e cancelamento**. +6 pontas soltas (#231-#236): process-cancellation aceita `cancelled_by` do body sem validar JWT (#231 ALTA → Fase 0), verify-payment-status sem ownership validation (#232 MÉDIA), create-invoice FK joins aninhados em class_participants (#233 BAIXA), cancel-payment-intent marca status 'paid' em inglês — faturas invisíveis ao financeiro (#234 ALTA → Fase 0 — CONFIRMA #199 como padrão recorrente), validate-payment-routing cria faturas REAIS em produção como "teste" (#235 MÉDIA), reclassificação: #218/#223/#227/#228 têm verify_jwt=true no gateway — faltam apenas checks de ownership (#236 CORREÇÃO). 2 itens adicionados à Fase 0 (19 itens). Totais: **236 pontas soltas**, **216 únicas**, **206 pendentes**. |
+| v5.40 | 2026-02-16 | **3ª passagem: webhooks, cron jobs e funções de subscrição**. +6 pontas soltas (#237-#242): webhook-stripe-connect usa `status: "paid"` em TRÊS handlers — invoice.paid (L320), invoice.payment_succeeded (L357), payment_intent.succeeded (L469) — corrompendo TODOS os pagamentos automáticos (#237 CRÍTICA → Fase 0), webhook-stripe-subscriptions retorna HTTP 400/500 para "user not found" causando retries desnecessárias do Stripe (#238 ALTA → Fase 0), process-expired-subscriptions FK joins em cron (#239 MÉDIA), smart-delete-student sem ownership validation (#240 MÉDIA), check-subscription-status monolito 846 linhas com 6+ `.single()` (#241 BAIXA — já coberto parcialmente por #217), generate-boleto-for-invoice sem ownership validation (#242 MÉDIA). 2 itens adicionados à Fase 0 (21 itens). **#237 é o finding mais crítico de toda a auditoria**: afeta a maioria dos pagamentos processados via Stripe. Totais: **242 pontas soltas**, **222 únicas**, **212 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

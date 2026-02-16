@@ -1,94 +1,87 @@
 
 
-# Verificacao Final v5.25 -- Inconsistencias Encontradas
+# Correção Final v5.26 — Completude do Documento
 
-## Veredicto: 4 inconsistencias de fase e 2 duplicatas nao resolvidas impedem o plano de estar 100% pronto
+## Problema
 
-Apos revisar todas as 3014 linhas do documento e cross-referenciar com o codigo das edge functions, o plano esta estruturalmente completo mas contem **erros de atribuicao de fase** que causariam confusao na implementacao.
+O documento `docs/hybrid-billing-implementation-plan.md` tem 2 lacunas que dificultam a implementação:
 
----
+1. **19 itens sem descrição**: Os itens #152, #157, #159, #161-#165, #167-#168, #171-#174, #176-#180 estão na tabela de fases (linha 294) mas não possuem seção descritiva no documento. As descrições só existiam no `.lovable/plan.md`.
 
-## 1. Item #87 atribuido a Fase 1 (Concluida) mas NAO implementado -- CRITICO
+2. **6 duplicatas internas não marcadas** nos itens #86-#147:
+   - #59 = #5.1 (process-cancellation sem is_paid_class)
+   - #107 = #5.1 (mesma coisa, descrita novamente)
+   - #92 = #60 = #31 (automated-billing hardcoded boleto — 3 entradas para o mesmo bug)
+   - #93 = #85 = #48 (automated-billing sem payment_method — 3 entradas)
 
-**Problema**: O indice (linha 525) lista `#87` como **Fase 1**, mas a Fase 1 e "Migracao SQL" e esta marcada como "Concluida". O item #87 e sobre reconciliacao de webhooks (`invoice.*` handlers buscam por `stripe_invoice_id` que nunca e preenchido) -- nao tem relacao com migracao SQL.
+## Ações
 
-**Verificacao no codigo**: Confirmado no `webhook-stripe-connect/index.ts` linhas 306-310 -- o handler `invoice.paid` busca `.eq('stripe_invoice_id', paidInvoice.id)` mas `create-invoice` e `automated-billing` nunca preenchem `stripe_invoice_id`. A reconciliacao de faturas via handlers `invoice.*` e completamente quebrada.
+### 1. Adicionar seção "Pontas Soltas v5.18-v5.23 (#152-#180)" ao documento
 
-**Acao**: Mover #87 para **Fase 0 (Batch Critico)** -- e uma vulnerabilidade ativa que impede o processamento correto de pagamentos via eventos de invoice do Stripe.
+Inserir após a seção de Itens Implementados (linha ~360) com descrições concisas para os 19 itens faltantes, agrupados por padrão:
 
-## 2. Itens #95 e #96 atribuidos a Fase 1 (Concluida) mas NAO implementados
+**FK Joins (Fase 4/5/8):**
+- #163: automated-billing query principal usa FK joins `teacher:profiles!teacher_id` (mesmo que #58, mas na query de billing_day)
+- #164: create-invoice FK join para relationship (refinamento de #57)
+- #165: create-invoice FK joins aninhados para classes (refinamento de #38)
+- #171: generate-boleto-for-invoice FK joins (mesmo que #103)
+- #172: automated-billing FK join diagnóstico em old confirmed classes (mesmo que #69)
+- #176: create-payment-intent-connect FK joins triplos (mesmo que #119)
+- #179: change-payment-method FK joins + `.single()` (mesmo que #114)
+- #180: automated-billing FK joins na query principal (mesmo que #58)
 
-**Problema**: O indice lista:
-- `#95` (check-overdue-invoices race condition) como **Fase 1**
-- `#96` (process-cancellation SERVICE_ROLE_KEY como Bearer) como **Fase 1**
+**`.single()` para `.maybeSingle()` (Fase 5/6/8):**
+- #152: process-orphan-cancellation-charges verificação de erro após filtragem
+- #157: verify-payment-status `.single()` em lookup de fatura
+- #159: send-invoice-notification `.single()` em 3 lookups (mesmo que #53+#73)
+- #161: process-cancellation `.single()` na linha 107 (lookup de dependente, mesmo que #84)
+- #162: create-invoice `.single()` nas linhas 154 e 382 (mesmo que #78)
+- #167: handle-student-overage `.single()` em lookup
+- #168: send-cancellation-notification `.single()` em 4 lookups
+- #173: webhook-stripe-connect `.single()` em 3 handlers (mesmo que #49+#64)
+- #174: cancel-payment-intent `.single()` em lookup
+- #177: create-payment-intent-connect `.single()` cascata (subsume #153)
 
-Ambos estao na Fase 1 que e "Concluida", mas **nenhum dos dois foi implementado**. Sao pontas soltas ativas.
+**Semântico (Fase 8):**
+- #178: check-overdue-invoices usa coluna class_id para armazenar invoice_id (mesmo que #41)
 
-**Verificacao no codigo**:
-- #95: Confirmado em `check-overdue-invoices/index.ts` linha 57 -- UPDATE sem guard clause `.eq('status', 'pendente')`
-- #96: Confirmado em `process-cancellation/index.ts` -- ainda invoca `create-invoice` com `SERVICE_ROLE_KEY` como Bearer
+### 2. Marcar 6 duplicatas adicionais no índice
 
-**Acao**:
-- #95 e **duplicata parcial de #155** (ambos sobre guard clause em check-overdue-invoices). Marcar #95 como duplicata de #155 (ja na Fase 0).
-- #96 e **duplicata de #80** (mesmo bug: process-cancellation com SERVICE_ROLE_KEY). Marcar #96 como duplicata de #80 (ja na Fase 6).
-
-## 3. Duplicatas #81 vs #155 nao resolvidas
-
-**Problema**: O indice lista:
-- `#81` (Fase 8) -- "check-overdue-invoices sem guard clause `status = 'pendente'` no update"
-- `#155` (Fase 0) -- "check-overdue-invoices: guard clause `status = 'pendente'` no UPDATE"
-
-Sao **exatamente o mesmo bug** mas atribuidos a fases diferentes.
-
-**Acao**: Marcar #81 como duplicata de #155. O item ja esta na Fase 0 via #155.
-
-## 4. Fase 0 atualizada (8 itens em vez de 7)
-
-Com a movimentacao de #87, a Fase 0 passa a ter **8 itens**:
-
-| # | Descricao | Tipo |
-|---|-----------|------|
-| #87 | webhook-stripe-connect handlers `invoice.*` nunca encontram faturas internas | Reconciliacao |
-| #155 | check-overdue-invoices: guard clause no UPDATE | Race Condition |
-| #156 | auto-verify-pending-invoices: guard clause no UPDATE | Race Condition |
-| #158 | verify-payment-status: guard clause no UPDATE | Race Condition |
-| #160 | webhook-stripe-connect: verificacao payment_origin nos handlers de falha | Protecao Manual |
-| #169 | webhook + cancel-payment-intent: status 'paid' vs 'paga' (5 locais) | Padronizacao |
-| #170 | change-payment-method: bypass de autorizacao | Seguranca |
-| #175 | create-payment-intent-connect: SEM autenticacao | Seguranca |
-
-## 5. Resumo de duplicatas a resolver
-
-| Duplicata | Original | Descricao |
+| Duplicata | Original | Descrição |
 |-----------|----------|-----------|
-| #81 | #155 | check-overdue-invoices guard clause (mesmo bug, fases 8 vs 0) |
-| #95 | #155 | check-overdue-invoices race condition (mesmo bug, fases 1 vs 0) |
-| #96 | #80 | process-cancellation SERVICE_ROLE_KEY (mesmo bug, fases 1 vs 6) |
-| #166 | #80 | process-cancellation SERVICE_ROLE_KEY (ja marcado como duplicata) |
+| #59 | #5.1 | process-cancellation sem is_paid_class (Fase 6 via #5.1) |
+| #107 | #5.1 | process-cancellation sem is_paid_class (Fase 6 via #5.1) |
+| #92 | #60 | automated-billing hardcoded boleto (Fase 4 via #60) |
+| #93 | #85 | automated-billing sem payment_method (Fase 8 via #85) |
+| #171 | #103 | generate-boleto FK joins (já coberta) |
+| #178 | #41 | check-overdue class_notifications semântica (já coberta) |
 
-## 6. Totais atualizados
+### 3. Atualizar totais
 
 ```text
-Pontas Soltas Totais:     180
-  - Duplicatas:             4 (#81=#155, #95=#155, #96=#80, #166=#80)
-  - Unicas:               176
-  - Implementadas:          12 (#132-#137, #148-#151)
-  - Pendentes:            164
-
-Fase 0 (Critico):           8 itens (adicionado #87)
+Pontas Soltas Totais:       180
+  Duplicatas anteriores:      4 (#81, #95, #96, #166)
+  Novas duplicatas:           6 (#59, #92, #93, #107, #171, #178)
+  Total duplicatas:          10
+  Únicas:                   170
+  Implementadas:             12
+  Pendentes:               158
 ```
 
-## Secao Tecnica: Correcoes no Documento
+### 4. Atualizar cabeçalho e histórico de versões
 
-As seguintes alteracoes serao feitas no `docs/hybrid-billing-implementation-plan.md`:
+- Versão: v5.26
+- Únicas: 170 (era 176)
+- Pendentes: 158 (era 164)
+- Adicionar entrada no histórico
 
-1. **Indice de pontas soltas**: Alterar fase de #87 de "1" para "0"
-2. **Indice de pontas soltas**: Marcar #81 como duplicata de #155
-3. **Indice de pontas soltas**: Marcar #95 como duplicata de #155
-4. **Indice de pontas soltas**: Marcar #96 como duplicata de #80
-5. **Tabela de fases** (linha 286): Adicionar #87 a Fase 0 e atualizar contagem
-6. **Secao Fase 0** (linha 300): Adicionar #87 como 8o item
-7. **Cabecalho** (linha 1): Atualizar para v5.25 com 8 vulnerabilidades ativas
-8. **Totais**: Atualizar de 179 unicas para 176 unicas, de 167 pendentes para 164 pendentes
-9. **Historico de versoes**: Adicionar entrada v5.25
+## Seção Técnica
 
+### Arquivos a modificar
+- `docs/hybrid-billing-implementation-plan.md`: Adicionar seção de descrições #152-#180, marcar duplicatas, atualizar totais
+
+### Verificação final de fluxos
+Todos os 5 fluxos end-to-end continuam 100% cobertos. Nenhuma ponta solta genuinamente nova foi identificada — todas as 6 "novas duplicatas" são repetições de bugs já documentados e atribuídos a fases.
+
+### Impacto na implementação
+As duplicatas reduzem o trabalho real de 164 para **158 itens pendentes**. A Fase 0 permanece com 8 itens críticos inalterados.

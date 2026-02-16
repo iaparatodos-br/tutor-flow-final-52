@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.37 (Consolidado)
+# Plano de Cobrança Híbrida — v5.38 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 16 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 17 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.37 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **222 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **202 únicas**, **192 pendentes**) e **52 melhorias**. Cobertura: 62 funções auditadas + 13 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.38 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **230 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **210 únicas**, **200 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, #200, #201, #204, #205, #206, #207, #208, #210, #211, #212, #213, #214, #215, #217, #218, #219, #220, #221, #222, #223, #225, #227, #228, #229, #230, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (16 itens)
+## Fase 0 — Batch Crítico (17 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -3616,6 +3616,64 @@ Usa `.single()` para buscar `user_subscriptions` (linha 52) e `subscription_plan
 
 ---
 
+### 223. validate-business-profile-deletion — sem autenticação (Information Disclosure)
+
+**Arquivo**: `supabase/functions/validate-business-profile-deletion/index.ts`
+Função não possui NENHUMA verificação de autenticação. Qualquer pessoa pode consultar se um `business_profile_id` tem faturas ativas, alunos vinculados e detalhes financeiros.
+**Severidade**: MÉDIA — vazamento de informações financeiras e de alunos. Não modifica dados.
+**Ação**: Adicionar autenticação e verificar que o `business_profile_id` pertence ao `auth.uid()`.
+
+### 224. resend-confirmation — listUsers() carrega TODOS os usuários em memória
+
+**Arquivo**: `supabase/functions/resend-confirmation/index.ts` (linha 45)
+Chama `supabaseAdmin.auth.admin.listUsers()` SEM filtro ou paginação para encontrar um único usuário por email. Com milhares de usuários, a função timeout ou crashea por exceder limite de memória.
+**Severidade**: ALTA — DoS por escala. Degradação de performance proporcional ao número de usuários.
+**Ação**: Substituir `listUsers()` por lookup via `profiles` table (`.eq('email', email).maybeSingle()`) seguido de `getUserById()`, ou usar `listUsers({ filter: ... })` com paginação.
+
+### 225. send-class-reminders — FK join ambíguo em class_participants→profiles (PGRST201)
+
+**Arquivo**: `supabase/functions/send-class-reminders/index.ts` (linhas 87-94)
+Query de class_participants usa `profiles (name, email)` SEM especificar a foreign key. Tabela `class_participants` tem DUAS FKs para `profiles`: `student_id` e `cancelled_by`. Isso pode causar erro `PGRST201` de ambiguidade, quebrando o envio de lembretes para TODOS os alunos.
+**Severidade**: MÉDIA — quebra total de lembretes de aula. Também viola o padrão de queries sequenciais.
+**Ação**: Refatorar para queries sequenciais (buscar participantes, depois buscar profiles separadamente).
+
+### 226. audit-logger — schema mismatch total (Todas as escritas falham) (Fase 0)
+
+**Arquivo**: `supabase/functions/audit-logger/index.ts` (linhas 23-31)
+Função insere com campos `user_id`, `action`, `details`, `metadata` — mas a tabela `audit_logs` usa `actor_id`, `operation`, `record_id`, `table_name`, `old_data`, `new_data`. NENHUM campo corresponde. Todas as inserções falham silenciosamente.
+**Severidade**: ALTA — sistema de auditoria completamente inoperante. Nenhum evento de auditoria é registrado.
+**Ação**: Corrigir o mapeamento de campos: `user_id`→`actor_id`, `action`→`operation`, e incluir `record_id` e `table_name` como obrigatórios.
+
+### 227. stripe-events-monitor — sem autenticação (Information Disclosure)
+
+**Arquivo**: `supabase/functions/stripe-events-monitor/index.ts`
+Função de monitoramento de eventos Stripe não possui autenticação. Qualquer pessoa pode consultar estatísticas de processamento, taxas de erro e eventos recentes do Stripe.
+**Severidade**: BAIXA — expõe padrões de atividade financeira, mas sem dados sensíveis diretos.
+**Ação**: Adicionar autenticação e verificar papel de `professor`.
+
+### 228. check-email-availability — sem autenticação (Email Enumeration)
+
+**Arquivo**: `supabase/functions/check-email-availability/index.ts`
+Qualquer pessoa pode verificar se um email existe no sistema sem autenticação. Vetor de ataque de enumeração de emails.
+**Severidade**: BAIXA — permite descobrir quais emails estão cadastrados no Tutor Flow.
+**Ação**: Adicionar rate limiting ou autenticação.
+
+### 229. generate-teacher-notifications — dependência cruzada com #209 (overdue_invoices vazio)
+
+**Arquivo**: `supabase/functions/generate-teacher-notifications/index.ts` (linha 187)
+Categoria `overdue_invoices` busca por `status = 'overdue'`. Porém, #209 documenta que `check-overdue-invoices` marca faturas com status 'overdue' (inglês) em vez de 'vencida' (português). Resultado: ou o status existe como 'overdue' e a notificação funciona, ou o padrão é 'vencida' e a query retorna vazio. Há inconsistência entre as funções.
+**Severidade**: MÉDIA — notificações de faturas vencidas podem estar completamente vazias ou dependem de um bug (#209) para funcionar.
+**Ação**: Unificar todos os status para português. Atualizar query para `status = 'vencida'` após correção de #209.
+
+### 230. send-class-report-notification — 6 `.single()` sem tratamento
+
+**Arquivo**: `supabase/functions/send-class-report-notification/index.ts` (linhas 37, 49, 74, 107, 128, 142)
+Usa `.single()` em 6 lookups diferentes (classes, teacher profile, report, student profile, dependent, relationship). Qualquer registro ausente causa HTTP 500, abortando a notificação para TODOS os participantes.
+**Severidade**: BAIXA-MÉDIA — um único registro ausente impede notificação para toda a turma.
+**Ação**: Trocar por `.maybeSingle()` com `continue` para pular participantes com dados incompletos.
+
+---
+
 ### 198. refresh-stripe-connect-account e check-stripe-account-status: `.single()` em lookups de Connect account (Fase 8)
 
 **Arquivos**: 
@@ -3677,6 +3735,7 @@ Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não ex
 | v5.35 | 2026-02-16 | **Auditoria profunda de cancel-payment-intent, webhooks e downgrade**. +10 pontas soltas (#199-#208): cancel-payment-intent status 'paid' em inglês (#199 ALTA → Fase 0), cancel-payment-intent `.single()` (#200 BAIXA), process-payment-failure-downgrade `.single()` (#201 MÉDIA), process-payment-failure-downgrade parâmetros errados em smart-delete-student (#202 ALTA → Fase 0), webhook-stripe-connect status em inglês (#203 ALTA → Fase 0), webhook-stripe-connect invoice handlers sem fallback (#204 MÉDIA), webhook-stripe-connect handlers sem guards de status terminal (#205 MÉDIA), webhook catch HTTP 500 (#206 MÉDIA), webhook-stripe-subscriptions HTTP 400 para user not found (#207 MÉDIA), create-payment-intent-connect sem guard de status (#208 MÉDIA). 3 itens adicionados à Fase 0 (14 itens). Totais: **208 pontas soltas**, **188 únicas**, **178 pendentes**. |
 | v5.36 | 2026-02-16 | **Auditoria profunda de funções de downgrade, overage, cancelamento e expiração**. +7 pontas soltas (#209-#215): check-overdue-invoices status 'overdue' em inglês (#209 ALTA → Fase 0), handle-plan-downgrade-selection audit log schema errado (#210 MÉDIA), handle-student-overage tabela inexistente `student_overage_charges` (#211 MÉDIA), 7+ funções com `.single()` (#212 BAIXA-MÉDIA), process-expired-subscriptions FK join syntax (#213 MÉDIA), process-cancellation `.single()` (#214 BAIXA), handle-teacher-subscription-cancellation campo inexistente `guardian_email` (#215 MÉDIA). 1 item adicionado à Fase 0 (15 itens). Totais: **215 pontas soltas**, **195 únicas**, **185 pendentes**. |
 | v5.37 | 2026-02-16 | **Auditoria profunda de checkout, subscription status, billing e invitation**. +7 pontas soltas (#216-#222): create-subscription-checkout cancela assinatura ANTES do checkout (#216 ALTA → Fase 0), check-subscription-status monolito frágil 846 linhas (#217 MÉDIA), send-student-invitation sem auth (#218 BAIXA), automated-billing FK joins em cron crítico (#219 MÉDIA), resend-student-invitation `.single()` (#220 BAIXA), create-subscription-checkout `.single()` e FK joins (#221 BAIXA), smart-delete-student `.single()` em subscriptions (#222 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (16 itens). Totais: **222 pontas soltas**, **202 únicas**, **192 pendentes**. |
+| v5.38 | 2026-02-16 | **Auditoria completa de funções restantes (100% cobertura)**. +8 pontas soltas (#223-#230): validate-business-profile-deletion sem auth (#223 MÉDIA), resend-confirmation listUsers() carrega todos usuários (#224 ALTA), send-class-reminders FK join ambíguo PGRST201 (#225 MÉDIA), audit-logger schema mismatch total — auditoria inoperante (#226 ALTA → Fase 0), stripe-events-monitor sem auth (#227 BAIXA), check-email-availability email enumeration (#228 BAIXA), generate-teacher-notifications dependência cruzada com #209 (#229 MÉDIA), send-class-report-notification 6x `.single()` (#230 BAIXA-MÉDIA). 1 item adicionado à Fase 0 (17 itens). Totais: **230 pontas soltas**, **210 únicas**, **200 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

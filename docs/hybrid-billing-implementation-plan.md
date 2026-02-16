@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.26 (Consolidado)
+# Plano de Cobrança Híbrida — v5.27 (Consolidado)
 
 **Data**: 2026-02-15
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.26 consolida auditorias v5.18-v5.23, resolve inconsistências de fase, duplicatas remanescentes e adiciona descrições para itens #152-#180. Totais finais: **180 pontas soltas** (12 implementadas, 10 duplicatas = **170 únicas**, 158 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.27 consolida todas as auditorias, completa o índice mestre com ~50 itens ausentes (#94-#147), corrige contagem de implementados (10, não 12) e identifica 7 novas duplicatas. Totais finais: **180 pontas soltas** (10 implementadas, 17 duplicatas, 2 subsumidas = **163 únicas**, **153 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -342,7 +342,7 @@ Dois `.eq('responsible_id', ...)` consecutivos se sobrescrevem, fazendo com que 
 A função usa `SUPABASE_SERVICE_ROLE_KEY` e não valida a identidade do caller. Qualquer pessoa com o `invoice_id` pode gerar pagamentos.
 **Ação**: Adicionar autenticação via `auth.getUser(token)` e validar que o caller é o aluno da fatura, seu responsável, ou o professor.
 
-## Itens Implementados (12 total)
+## Itens Implementados (10 total)
 
 | # | Descrição | Versão |
 |---|-----------|--------|
@@ -391,28 +391,41 @@ Os itens abaixo foram identificados nas auditorias v5.18 a v5.23 e estão atribu
 
 - ~~**#178**~~: **DUPLICATA de #41** — `check-overdue-invoices` usa coluna `class_id` em `class_notifications` para armazenar `invoice_id`, violando integridade referencial.
 
-### Duplicatas Identificadas na v5.26
+### Duplicatas Identificadas (v5.26 + v5.27)
 
 | Duplicata | Original | Descrição |
 |-----------|----------|-----------|
 | #59 | #5.1 | process-cancellation sem `is_paid_class` (Fase 6 via #5.1) |
+| #61 | #8.1 | materialize-virtual-class backend não propaga `is_paid_class` — mesma correção |
+| #62 | #2.4 | handleClassSubmit sem `is_paid_class` no insert — mesma correção |
+| #63 | #17 | materializeVirtualClass frontend sem `is_paid_class` — mesma correção |
+| #65 | #7.1 | RPC sem filtro `is_paid_class` — mesma correção SQL |
+| #66 | #2.3 | ClassFormData sem `is_paid_class` — mesma interface |
+| #81 | #155 | check-overdue-invoices guard clause (Fase 0 via #155) |
 | #92 | #60 | automated-billing hardcoded boleto (Fase 4 via #60) |
 | #93 | #85 | automated-billing sem `payment_method` (Fase 8 via #85) |
+| #95 | #155 | check-overdue-invoices race condition (Fase 0 via #155) |
+| #96 | #80 | process-cancellation SERVICE_ROLE_KEY (Fase 6 via #80) |
+| #104 | #169 | webhook status inglês — subsumido por #169 (Fase 0) |
 | #107 | #5.1 | process-cancellation sem `is_paid_class` (Fase 6 via #5.1) |
+| #108 | #67 | automated-billing tradicional sem notificação — mesmo bug |
+| #166 | #80 | process-cancellation SERVICE_ROLE_KEY (Fase 6 via #80) |
 | #171 | #103 | generate-boleto FK joins (já coberta por #103) |
 | #178 | #41 | check-overdue `class_notifications` semântica (já coberta por #41) |
 
-### Totais Atualizados (v5.26)
+### Totais Atualizados (v5.27)
 
 ```text
 Pontas Soltas Totais:       180
-  Duplicatas anteriores:      4 (#81, #95, #96, #166)
-  Novas duplicatas v5.26:     6 (#59, #92, #93, #107, #171, #178)
-  Total duplicatas:          10
+  Duplicatas anteriores:     10 (#59, #81, #92, #93, #95, #96, #107, #166, #171, #178)
+  Novas duplicatas v5.27:     7 (#61, #62, #63, #65, #66, #104, #108)
+  Total duplicatas:          17
   Subsumidas:                 2 (#153→#177, #154→#179)
-  Únicas:                   170 (180 - 10)
-  Implementadas:             12
-  Pendentes:               158
+  Únicas:                   163 (180 - 17)
+  Implementadas:             10
+  Pendentes:               153
+
+Fase 0 (Crítico):            8 itens (inalterado)
 ```
 
 ---
@@ -560,12 +573,12 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | 58 | automated-billing FK joins `teacher:profiles!teacher_id` e `student:profiles!student_id` | 4 | automated-billing/index.ts |
 | ~~59~~ | ~~DUPLICATA de #5.1 — process-cancellation não busca `is_paid_class` nem `charge_timing`~~ | **—** | **—** |
 | 60 | automated-billing hardcoded `payment_method: 'boleto'` | 4 | automated-billing/index.ts |
-| 61 | materialize-virtual-class backend não propaga `is_paid_class` | 3 | materialize-virtual-class/index.ts |
-| 62 | handleClassSubmit não inclui `is_paid_class` no insert | 3 | Agenda.tsx |
-| 63 | materializeVirtualClass frontend não inclui `is_paid_class` | 3 | Agenda.tsx |
+| ~~61~~ | ~~DUPLICATA de #8.1 — materialize-virtual-class backend não propaga `is_paid_class`~~ | **—** | **—** |
+| ~~62~~ | ~~DUPLICATA de #2.4 — handleClassSubmit não inclui `is_paid_class` no insert~~ | **—** | **—** |
+| ~~63~~ | ~~DUPLICATA de #17 — materializeVirtualClass frontend não inclui `is_paid_class`~~ | **—** | **—** |
 | 64 | webhook `payment_intent.succeeded` usa `.single()` em lookup | 8 | webhook-stripe-connect/index.ts |
-| 65 | RPC `get_unbilled_participants_v2` não filtra `is_paid_class` | 4 | migration SQL |
-| 66 | ClassFormData interface sem `is_paid_class` | 3 | ClassForm.tsx |
+| ~~65~~ | ~~DUPLICATA de #7.1 — RPC `get_unbilled_participants_v2` não filtra `is_paid_class`~~ | **—** | **—** |
+| ~~66~~ | ~~DUPLICATA de #2.3 — ClassFormData interface sem `is_paid_class`~~ | **—** | **—** |
 | 67 | automated-billing tradicional não envia notificação | 4 | automated-billing/index.ts |
 | **68** | **processMonthlySubscriptionBilling não processa cancelamentos com cobrança** | **4** | **automated-billing/index.ts** |
 | **69** | **automated-billing old confirmed classes check usa FK join `classes!inner`** | **4** | **automated-billing/index.ts** |
@@ -594,6 +607,57 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**92**~~ | ~~**DUPLICATA de #60 — automated-billing hardcoded `payment_method: 'boleto'`**~~ | **—** | **—** |
 | ~~**93**~~ | ~~**DUPLICATA de #85 — automated-billing não salva `payment_method`**~~ | **—** | **—** |
 | ~~**107**~~ | ~~**DUPLICATA de #5.1 — process-cancellation não verifica `is_paid_class`**~~ | **—** | **—** |
+| ~~**108**~~ | ~~**DUPLICATA de #67 — automated-billing tradicional sem notificação**~~ | **—** | **—** |
+| **94** | **automated-billing mensalidade não gera pagamento via Stripe** | **4** | **automated-billing/index.ts** |
+| **97** | **Clientes Stripe duplicados: platform vs connected account** | **6** | **create-payment-intent-connect/index.ts** |
+| **98** | **cancel-payment-intent status 'paid' em inglês (coberto por #169)** | **0** | **cancel-payment-intent/index.ts** |
+| **99** | **send-invoice-notification armazena invoice.id em class_notifications.class_id** | **8** | **send-invoice-notification/index.ts** |
+| **100** | **AmnestyButton cancela faturas de todos participantes em grupo** | **7** | **AmnestyButton.tsx** |
+| **101** | **Financeiro.tsx taxas Stripe valor fixo para todos métodos** | **8** | **Financeiro.tsx** |
+| **102** | **verify-payment-status e auto-verify sem autenticação** | **8** | **verify-payment-status, auto-verify/index.ts** |
+| **103** | **generate-boleto-for-invoice FK joins** | **5** | **generate-boleto-for-invoice/index.ts** |
+| ~~**104**~~ | ~~**Subsumido por #169 — webhook status inglês**~~ | **—** | **—** |
+| **105** | **process-orphan-cancellation-charges assinatura RPC** | **8** | **process-orphan-cancellation-charges/index.ts** |
+| **106** | **process-orphan-cancellation-charges FK joins** | **8** | **process-orphan-cancellation-charges/index.ts** |
+| **109** | **process-payment-failure-downgrade FK joins + sem auth** | **8** | **process-payment-failure-downgrade/index.ts** |
+| **110** | **handle-teacher-subscription-cancellation RESEND_API_KEY inexistente** | **8** | **handle-teacher-subscription-cancellation/index.ts** |
+| **111** | **process-expired-subscriptions FK joins** | **8** | **process-expired-subscriptions/index.ts** |
+| **112** | **handle-teacher-subscription-cancellation não cancela Payment Intents** | **8** | **handle-teacher-subscription-cancellation/index.ts** |
+| **113** | **check-pending-boletos FK join + fallback "Premium" hardcoded** | **8** | **check-pending-boletos/index.ts** |
+| **114** | **change-payment-method FK joins** | **8** | **change-payment-method/index.ts** |
+| **115** | **change-payment-method autorização guardian/responsible quebrada** | **8** | **change-payment-method/index.ts** |
+| **116** | **check-subscription-status FK join em checkNeedsStudentSelection** | **8** | **check-subscription-status/index.ts** |
+| **117** | **create-subscription-checkout não cancela Payment Intents** | **8** | **create-subscription-checkout/index.ts** |
+| **118** | **validate-business-profile-deletion sem autenticação** | **8** | **validate-business-profile-deletion/index.ts** |
+| **119** | **create-payment-intent-connect 3 FK joins simultâneos** | **5** | **create-payment-intent-connect/index.ts** |
+| **120** | **send-class-reminders FK joins** | **8** | **send-class-reminders/index.ts** |
+| **121** | **generate-boleto-for-invoice FK joins + sem autenticação** | **8** | **generate-boleto-for-invoice/index.ts** |
+| **122** | **cancel-payment-intent não verifica status PI antes de cancelar** | **8** | **cancel-payment-intent/index.ts** |
+| **123** | **process-orphan-cancellation-charges FK joins em class_participants** | **8** | **process-orphan-cancellation-charges/index.ts** |
+| **124** | **automated-billing copia boleto_url para stripe_hosted_invoice_url (3 locais)** | **8** | **automated-billing/index.ts** |
+| **125** | **create-payment-intent-connect guardian_name inexistente em profiles** | **8** | **create-payment-intent-connect/index.ts** |
+| **126** | **check-overdue-invoices status 'overdue' em inglês** | **8** | **check-overdue-invoices/index.ts** |
+| **127** | **smart-delete-student FK joins** | **8** | **smart-delete-student/index.ts** |
+| **128** | **smart-delete-student sem autenticação** | **8** | **smart-delete-student/index.ts** |
+| **129** | **handle-plan-downgrade-selection audit_logs schema incorreto** | **8** | **handle-plan-downgrade-selection/index.ts** |
+| **130** | **validate-payment-routing cria faturas reais no banco** | **8** | **validate-payment-routing/index.ts** |
+| **131** | **cancel-subscription `.single()` em lookup de assinatura** | **8** | **cancel-subscription/index.ts** |
+| **132** | **create-student: autenticação adicionada** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **133** | **update-student-details: autenticação adicionada** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **134** | **create-dependent: FK join → queries sequenciais** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **135** | **delete-dependent: FK joins → queries sequenciais** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **136** | **manage-class-exception: FK join → query sequencial** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **137** | **manage-future-class-exceptions: FK join → query sequencial** | **—** | **✅ IMPLEMENTADO (v5.14)** |
+| **138** | **request-class não persiste `is_paid_class`** | **3** | **request-class/index.ts** |
+| **139** | **update-dependent `.single()` após update** | **8** | **update-dependent/index.ts** |
+| **140** | **create-connect-onboarding-link HTTP 500 genérico** | **8** | **create-connect-onboarding-link/index.ts** |
+| **141** | **list-subscription-invoices HTTP 500 genérico** | **8** | **list-subscription-invoices/index.ts** |
+| **142** | **check-business-profile-status ownership validation tardia** | **8** | **check-business-profile-status/index.ts** |
+| **143** | **create-connect-account `.single()` incorreto** | **8** | **create-connect-account/index.ts** |
+| **144** | **send-class-confirmation-notification `.single()` em 3 lookups** | **8** | **send-class-confirmation-notification/index.ts** |
+| **145** | **check-stripe-account-status `.single()` + HTTP 500** | **8** | **check-stripe-account-status/index.ts** |
+| **146** | **create-business-profile sem verificação de duplicatas** | **8** | **create-business-profile/index.ts** |
+| **147** | **customer-portal busca por email frágil + HTTP 500** | **8** | **customer-portal/index.ts** |
 | **148** | **generate-boleto-for-invoice: `.single()` trocado por `.maybeSingle()`** | **—** | **✅ IMPLEMENTADO (v5.24)** |
 | **149** | **process-orphan-cancellation-charges: `.single()` em 2 lookups internos** | **—** | **✅ IMPLEMENTADO (v5.24)** |
 | **150** | **process-orphan-cancellation-charges: filtro `is_paid_class` adicionado** | **—** | **✅ IMPLEMENTADO (v5.24)** |
@@ -3062,7 +3126,8 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.18-5.23 | 2026-02-14/15 | Auditoria profunda via `.lovable/plan.md`: +33 pontas soltas (#148-#180). 4 implementadas (#148-#151). 1 duplicata (#166=#80). 2 subsumidas (#153→#177, #154→#179). Fase 0 (Batch Crítico) criada com 7 itens de segurança/race conditions. |
 | v5.24 | 2026-02-15 | **Consolidação final**. Documentos unificados. Fase 0 integrada. Verificação de fluxos end-to-end. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = 179 únicas, 167 pendentes), **52 melhorias**, **48 funções cobertas**. |
 | v5.25 | 2026-02-15 | **Verificação final de consistência**. #87 movido de Fase 1→Fase 0 (reconciliação de webhooks quebrada). 3 duplicatas adicionais resolvidas: #81=#155, #95=#155, #96=#80. Fase 0 expandida para 8 itens. Totais: **176 únicas** (12 implementadas, 164 pendentes). |
-| v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. Totais finais: **170 únicas** (12 implementadas, **158 pendentes**). Fase 0 inalterada (8 itens). |
+| v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. |
+| v5.27 | 2026-02-16 | **Verificação final de consistência**. Índice mestre completado com ~50 itens ausentes (#94-#147). 7 novas duplicatas: #61=#8.1, #62=#2.4, #63=#17, #65=#7.1, #66=#2.3, #104⊂#169, #108=#67. Contagem de implementados corrigida de 12→10. Total duplicatas: 17. Totais finais: **163 únicas** (10 implementadas, **153 pendentes**). Fase 0 inalterada (8 itens). |
 
 ## Memórias do Projeto a Atualizar
 

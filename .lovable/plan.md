@@ -1,65 +1,63 @@
 
 
-# Correcao Final v5.28.2 -- 2 Duplicatas ausentes do indice mestre
+# Verificacao Final v5.28.2 -- Documento 100% Consistente
 
-## Veredicto: O plano esta 99% pronto. Duas entradas de duplicatas faltam no indice.
+## Veredicto: O plano esta PRONTO para implementacao. Uma unica correcao de formatacao Markdown.
 
 ---
 
-## Problema Encontrado
+## Auditoria Completa Realizada
 
-Os itens **#95** e **#96** estao corretamente listados na tabela de duplicatas (linhas 407-408):
+Todos os seguintes pontos foram verificados e estao **corretos**:
 
+### Totais
+- 180 pontas soltas totais
+- 18 duplicatas com strikethrough no indice (todas 18 presentes)
+- 2 subsumidas (#153, #154) marcadas
+- 160 unicas (180 - 18 - 2)
+- 10 implementadas (#132-#137 v5.14, #148-#151 v5.24)
+- 150 pendentes
+
+### Fase 0 (8 itens criticos)
+- #87, #155, #156, #158, #160, #169, #170, #175 — todos presentes e corretamente descritos
+
+### Indice Mestre
+- Todos os 180 itens presentes (11 decimais + 165 numericos de #16-#180)
+- 18 duplicatas com strikethrough
+- 10 implementados marcados
+- 2 subsumidos marcados
+- Descricoes consistentes com corpo do documento
+
+### Historico de Versoes
+- Completo de v4.0 ate v5.28.2 (linha 3136)
+
+---
+
+## Unico Problema Encontrado
+
+**Formatacao Markdown**: Na linha 696-697, a ultima linha da tabela do indice mestre (#180) nao tem uma linha em branco antes do proximo cabecalho (`## Indice de Melhorias`). Isso pode causar problemas de renderizacao em alguns parsers Markdown.
+
+**Antes** (linhas 696-697):
 ```
-| #95 | #155 | check-overdue-invoices race condition (Fase 0 via #155) |
-| #96 | #80  | process-cancellation SERVICE_ROLE_KEY (Fase 6 via #80)  |
+| **180** | **automated-billing: FK joins...** | **4** | **automated-billing/index.ts** |
+## Indice de Melhorias
 ```
 
-Porem, eles **nao aparecem no indice mestre** (linhas 517-694) com strikethrough. Todos os outros 16 duplicatas estao corretamente marcados no indice. Apenas #95 e #96 foram omitidos.
-
-**Impacto**: Durante a implementacao, alguem pode procurar o #95 ou #96 no indice e nao encontrar, gerando confusao sobre se esses itens existem ou nao.
-
-## Acao
-
-Adicionar #95 e #96 ao indice mestre com strikethrough, posicionados entre #94 e #97 (linhas 612-613):
-
-```markdown
-| ~~**95**~~ | ~~**DUPLICATA de #155 — check-overdue-invoices race condition**~~ | **—** | **—** |
-| ~~**96**~~ | ~~**DUPLICATA de #80 — process-cancellation SERVICE_ROLE_KEY**~~ | **—** | **—** |
+**Depois**:
 ```
+| **180** | **automated-billing: FK joins...** | **4** | **automated-billing/index.ts** |
 
-## Verificacao Completa
-
-Apos esta correcao, todas as 18 duplicatas estarao presentes no indice mestre:
-
-1. ~~#59~~ (linha 575) -- ok
-2. ~~#61~~ (linha 577) -- ok
-3. ~~#62~~ (linha 578) -- ok
-4. ~~#63~~ (linha 579) -- ok
-5. ~~#65~~ (linha 581) -- ok
-6. ~~#66~~ (linha 582) -- ok
-7. ~~#81~~ (linha 597) -- ok
-8. ~~#92~~ (linha 608) -- ok
-9. ~~#93~~ (linha 609) -- ok
-10. **~~#95~~** -- FALTANDO (a adicionar)
-11. **~~#96~~** -- FALTANDO (a adicionar)
-12. ~~#98~~ (linha 614) -- ok
-13. ~~#104~~ (linha 620) -- ok
-14. ~~#107~~ (linha 610) -- ok
-15. ~~#108~~ (linha 611) -- ok
-16. ~~#166~~ (linha 680) -- ok
-17. ~~#171~~ (linha 685) -- ok
-18. ~~#178~~ (linha 692) -- ok
-
-Totais permanecem inalterados:
-- 180 total, 18 duplicatas, 2 subsumidas, 160 unicas, 10 implementadas, 150 pendentes
-- Fase 0: 8 itens criticos inalterados
+## Indice de Melhorias
+```
 
 ## Secao Tecnica
 
 ### Arquivo a modificar
-- `docs/hybrid-billing-implementation-plan.md`: Adicionar #95 e #96 ao indice (entre linhas 612 e 613), atualizar versao para v5.28.2, adicionar entrada no historico
+- `docs/hybrid-billing-implementation-plan.md`: Adicionar linha em branco entre linhas 696 e 697
 
 ### Impacto
-Nenhum impacto funcional. Correcao de completude do indice para rastreamento confiavel durante implementacao.
+Nenhum impacto funcional. Correcao puramente cosmetica de formatacao Markdown.
+
+### Status Final
+O documento esta **pronto para execucao da Fase 0** apos esta micro-correcao.
 

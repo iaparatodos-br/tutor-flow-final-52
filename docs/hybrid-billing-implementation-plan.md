@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.33 (Consolidado)
+# Plano de Cobrança Híbrida — v5.34 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 10 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 11 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.33 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **195 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **175 únicas**, **165 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.34 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **198 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **178 únicas**, **168 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -283,7 +283,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 | Fase | Descrição | Pontas Soltas | Status |
 |------|-----------|---------------|--------|
-| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **#87, #155, #156, #158, #160, #169, #170, #175, #187, #195** | 🔴 Pendente |
+| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **#87, #155, #156, #158, #160, #169, #170, #175, #187, #195, #196** | 🔴 Pendente |
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4, M37 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, #197, #198, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (10 itens)
+## Fase 0 — Batch Crítico (11 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -351,6 +351,11 @@ O UPDATE para `status: 'overdue'` (linha 58) não verifica se a fatura já foi p
 **Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linhas 15-123)
 A função não possui NENHUMA verificação de autenticação. Qualquer requisição pode consultar e forçar atualização de status de qualquer fatura, expondo dados financeiros. Também usa `.single()` (linha 40) e não possui guard de status terminal.
 **Ação**: Adicionar `auth.getUser(token)`. Verificar que o caller é `teacher_id` ou `student_id` da fatura. Trocar `.single()` por `.maybeSingle()`. Adicionar guard contra sobrescrita de status terminal.
+
+### #196. change-payment-method — autorização de guardian SEMPRE falsa por sobreposição de `.eq()` (Bug Funcional)
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 83-86)
+Dois `.eq('responsible_id', ...)` consecutivos na mesma coluna — PostgREST aplica apenas o último. A verificação de guardian é **sempre falsa**, impedindo responsáveis financeiros de alterar métodos de pagamento de faturas de seus dependentes. Complementa #170 com evidência concreta do bug de sobreposição documentado em memória `constraints/sobreposicao-filtros-query-supabase`.
+**Ação**: Refatorar para verificação independente: buscar se o `invoice.student_id` possui dependentes cujo `responsible_id === user.id`, usando query separada ou `.or()`.
 
 ## Itens Implementados (10 total)
 
@@ -3444,6 +3449,60 @@ Adicionalmente, usa `.single()` (linha 40) e não possui guard de status termina
 
 ---
 
+### 196. change-payment-method: autorização de guardian quebrada por sobreposição de `.eq()` (Fase 0)
+
+**Arquivo**: `supabase/functions/change-payment-method/index.ts` (linhas 83-86)
+
+```javascript
+const { data: responsibleRelation } = await supabaseClient
+  .from('dependents')
+  .select('id')
+  .eq('responsible_id', invoice.student_id)  // ← Sobrescrito pela próxima linha!
+  .eq('responsible_id', user.id)             // ← Só este filtro é aplicado
+  .limit(1);
+```
+
+Dois `.eq()` consecutivos na mesma coluna (`responsible_id`) — o PostgREST aplica apenas o último filtro (documentado em memória `constraints/sobreposicao-filtros-query-supabase`). Isso torna a verificação de guardian **SEMPRE falsa**, impedindo que responsáveis financeiros alterem o método de pagamento de faturas de seus dependentes.
+
+**Severidade**: ALTA — funcionalidade de troca de método de pagamento completamente quebrada para responsáveis/guardiões. Afeta fluxo crítico de pagamento.
+
+**Ação**: Substituir os dois `.eq()` por `.or(`responsible_id.eq.${invoice.student_id},responsible_id.eq.${user.id}`)` ou, preferencialmente, usar lógica de verificação independente conforme memória `payment/family-invoice-authorization-logic`.
+
+---
+
+### 197. create-connect-onboarding-link: bypass de validação de propriedade quando `stripe_account_id` é fornecido diretamente (Fase 8)
+
+**Arquivo**: `supabase/functions/create-connect-onboarding-link/index.ts` (linhas 53-56)
+
+```javascript
+if (stripe_account_id) {
+  connectAccount = { stripe_account_id };  // ← Nenhuma validação de propriedade!
+  logStep("Using provided stripe_account_id", { stripe_account_id });
+}
+```
+
+Quando `stripe_account_id` é fornecido diretamente (em vez de `payment_account_id`), a função pula a validação de propriedade (`.eq("teacher_id", user.id)` na linha 63) e gera um link de onboarding para qualquer conta Stripe Connect, independente de quem a possui.
+
+**Severidade**: MÉDIA — permite que qualquer professor autenticado gere links de onboarding para contas Stripe de outros professores. O impacto é mitigado porque o link apenas permite completar o setup, não dá acesso a fundos.
+
+**Ação**: Sempre validar propriedade: buscar na tabela `stripe_connect_accounts` com `.eq("stripe_account_id", stripe_account_id).eq("teacher_id", user.id)` antes de gerar o link.
+
+---
+
+### 198. refresh-stripe-connect-account e check-stripe-account-status: `.single()` em lookups de Connect account (Fase 8)
+
+**Arquivos**: 
+- `supabase/functions/refresh-stripe-connect-account/index.ts` (linha 66)
+- `supabase/functions/check-stripe-account-status/index.ts` (linha 59)
+
+Ambas usam `.single()` para buscar `stripe_connect_accounts`. Se a conta não existir, lançam exceção HTTP 500 em vez de mensagem amigável.
+
+**Severidade**: BAIXA — ownership validation já presente, erro é apenas de UX.
+
+**Ação**: Trocar `.single()` por `.maybeSingle()` e retornar HTTP 200 com `{ success: false, error: "..." }`.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -3487,6 +3546,7 @@ Adicionalmente, usa `.single()` (linha 40) e não possui guard de status termina
 | v5.31 | 2026-02-16 | **Auditoria profunda de funções financeiras core**. +3 pontas soltas (#187-#189): check-overdue-invoices sem guard de status terminal — pode sobrescrever `paga` para `overdue` (#187 ALTA → Fase 0), cancel-payment-intent marca `payment_origin: 'manual'` quando PI já `succeeded` (#188 MÉDIA), automated-billing duplica fatura de mensalidade se cron executar duas vezes (#189 ALTA). #187 adicionado à Fase 0 (9 itens). Totais: **189 pontas soltas**, **169 únicas**, **159 pendentes**. |
 | v5.32 | 2026-02-16 | **Auditoria cruzada de resiliência e padrões**. +3 pontas soltas (#190-#192): webhook-stripe-connect `.single()` em lookups de `payment_origin` causa loops de retentativa do Stripe (#190 MÉDIA), process-expired-subscriptions FK joins + `.single()` (#191 MÉDIA), webhook-stripe-connect HTTP 500 no catch global (#192 BAIXA). Totais: **192 pontas soltas**, **172 únicas**, **162 pendentes**. |
 | v5.33 | 2026-02-16 | **Auditoria de funções de criação de pagamento**. +3 pontas soltas (#193-#195): create-invoice FK joins + `.single()` (#193 MÉDIA), create-payment-intent-connect FK joins + `.single()` + sem guard de status (#194 MÉDIA), verify-payment-status sem autenticação/autorização (#195 ALTA → Fase 0). #195 adicionado à Fase 0 (10 itens). Totais: **195 pontas soltas**, **175 únicas**, **165 pendentes**. |
+| v5.34 | 2026-02-16 | **Auditoria de funções Stripe Connect e autorização**. +3 pontas soltas (#196-#198): change-payment-method autorização de guardian quebrada por sobreposição de `.eq()` (#196 ALTA → Fase 0), create-connect-onboarding-link bypass de ownership validation (#197 MÉDIA), refresh/check-stripe-connect `.single()` (#198 BAIXA). #196 adicionado à Fase 0 (11 itens). Totais: **198 pontas soltas**, **178 únicas**, **168 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

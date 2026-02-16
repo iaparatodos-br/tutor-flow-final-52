@@ -1,36 +1,38 @@
 
 
 
-# Verificação Final v5.33 — 3 Novas Pontas Soltas em Funções de Pagamento
+# Verificação Final v5.34 — 3 Novas Pontas Soltas em Funções Stripe Connect e Autorização
 
-## Veredicto: Plano atualizado para v5.33 com 1 nova vulnerabilidade de segurança crítica.
+## Veredicto: Plano atualizado para v5.34 com 1 bug funcional crítico de autorização.
 
 ---
 
-## Auditoria Profunda Realizada (Funções de Criação de Pagamento)
+## Auditoria Profunda Realizada (Funções Stripe Connect & Autorização)
 
 Funções auditadas nesta rodada:
-- `create-invoice/index.ts` (575 linhas) — FK joins + `.single()`
-- `create-payment-intent-connect/index.ts` (659 linhas) — FK joins + `.single()` + sem guard de status
-- `verify-payment-status/index.ts` (124 linhas) — sem auth + `.single()` + sem guard
-- `check-overdue-invoices/index.ts` (152 linhas) — confirmação de #187
-- `cancel-payment-intent/index.ts` (250 linhas) — confirmação de #188
+- `change-payment-method/index.ts` (253 linhas) — bug de sobreposição `.eq()` em guardian auth
+- `create-connect-onboarding-link/index.ts` (104 linhas) — bypass de ownership
+- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()`
+- `check-stripe-account-status/index.ts` (156 linhas) — `.single()`
+- `create-connect-account/index.ts` (148 linhas) — confirmação de #143
+- `customer-portal/index.ts` (75 linhas) — OK
+- `list-subscription-invoices/index.ts` (120 linhas) — OK
 
-### Novos Gaps Encontrados (#193-#195)
+### Novos Gaps Encontrados (#196-#198)
 
-1. **#193 (MÉDIA)**: `create-invoice` usa FK join syntax em 2 locais (linhas 145-153 e 228-241) e `.single()` (linha 154), violando padrões sequenciais e de resiliência do projeto.
+1. **#196 (ALTA → Fase 0)**: `change-payment-method` possui bug de sobreposição de `.eq('responsible_id', ...)` em linhas 83-86. Dois filtros consecutivos na mesma coluna — PostgREST aplica apenas o último. Resultado: **a verificação de guardian é SEMPRE falsa**. Responsáveis financeiros nunca conseguem alterar o método de pagamento de faturas de seus dependentes.
 
-2. **#194 (MÉDIA)**: `create-payment-intent-connect` usa FK joins triplos (linhas 39-49) + `.single()` (linha 51) e **não verifica se a fatura está em status `pendente`** antes de gerar novo Payment Intent — pode gerar cobranças para faturas já pagas.
+2. **#197 (MÉDIA)**: `create-connect-onboarding-link` pula validação de propriedade quando `stripe_account_id` é fornecido diretamente (linhas 53-56). Qualquer professor autenticado pode gerar links de onboarding para contas Stripe de outros professores.
 
-3. **#195 (ALTA → Fase 0)**: `verify-payment-status` não possui NENHUMA verificação de autenticação ou autorização. Qualquer requisição com `invoice_id` válido pode consultar e atualizar status de qualquer fatura. Vulnerabilidade de segurança crítica.
+3. **#198 (BAIXA)**: `refresh-stripe-connect-account` e `check-stripe-account-status` usam `.single()` para lookups de Connect account, violando padrão `.maybeSingle()`.
 
-### Totais Atualizados (v5.33)
-- 195 pontas soltas totais
+### Totais Atualizados (v5.34)
+- 198 pontas soltas totais
 - 18 duplicatas + 2 subsumidas
-- 175 únicas
+- 178 únicas
 - 10 implementadas
-- **165 pendentes**
-- Fase 0: **10 itens** (+1: #195)
+- **168 pendentes**
+- Fase 0: **11 itens** (+1: #196)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 10 itens críticos.
+O documento está **pronto para execução da Fase 0** com 11 itens críticos.

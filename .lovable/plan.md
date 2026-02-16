@@ -1,52 +1,50 @@
 
 
-# Verificação Final v5.41 — 7 Novas Pontas Soltas em Funções Financeiras Core
+# Verificação Final v5.42 — 8 Novas Pontas Soltas (5ª Passagem: Webhooks, Subscrições e Student Management)
 
-## Veredicto: Plano atualizado para v5.41 com 1 bug ALTO (automated-billing não gera boleto para mensalidades) e 1 bug ALTO (check-overdue-invoices pode reverter status 'paga').
+## Veredicto: Plano atualizado para v5.42 com 2 bugs ALTOS adicionais (webhook catch blocks retornam HTTP 500, e handlers de falha/void não protegem status terminal).
 
 ---
 
-## Auditoria de 4ª Passagem (Funções Financeiras Core — Análise Cruzada)
+## Auditoria de 5ª Passagem (Webhooks, Subscrições e Gestão de Alunos — Análise Cruzada de Chamadas)
 
-Funções auditadas nesta rodada (4ª passagem — cruzamento de fluxos):
-- `automated-billing/index.ts` (1057 linhas) — **ALTO: invoca create-payment-intent-connect sem auth header** (#244)
-- `create-invoice/index.ts` (575 linhas) — **MÉDIA: `.single()` em relationship lookup** (#245)
-- `create-payment-intent-connect/index.ts` (659 linhas) — OK (validações robustas)
-- `cancel-payment-intent/index.ts` (250 linhas) — Confirma #234 (status 'paid')
-- `verify-payment-status/index.ts` (124 linhas) — Confirma #232 (sem ownership)
-- `change-payment-method/index.ts` (253 linhas) — **CONFIRMA #196: bug visual de sobreposição `.eq()`** (#246)
-- `check-overdue-invoices/index.ts` (152 linhas) — **ALTO: update sem guard de status terminal** (#243)
-- `end-recurrence/index.ts` (133 linhas) — **CONFIRMA #181: deleção sem cleanup de FKs** (#247)
-- `send-invoice-notification/index.ts` (465 linhas) — **BAIXA: 3× `.single()`** (#248)
-- `materialize-virtual-class/index.ts` (376 linhas) — **MÉDIA: não herda `is_paid_class`** (#249)
-- `process-cancellation/index.ts` (500 linhas) — Confirma #231 (spoofing de cancelled_by)
-- `manage-class-exception/index.ts` (157 linhas) — OK (autorização robusta)
+Funções auditadas nesta rodada (5ª passagem — análise de chamadas cruzadas):
+- `webhook-stripe-connect/index.ts` (560 linhas) — **ALTO: 3× `.single()` em payment_origin check** (#250), **ALTO: handlers de falha sem guard de status** (#251), **ALTO: catch retorna HTTP 500** (#256)
+- `webhook-stripe-subscriptions/index.ts` (802 linhas) — **ALTO: catch retorna HTTP 500** (#257)
+- `smart-delete-student/index.ts` (547 linhas) — Já coberto por #240 (ownership)
+- `process-payment-failure-downgrade/index.ts` (280 linhas) — **CONFIRMAÇÃO #109: parâmetros errados para smart-delete** (#252), **MÉDIA: 2× `.single()`** (#253)
+- `handle-student-overage/index.ts` (238 linhas) — **MÉDIA: `.single()` em user_subscriptions** (#255)
+- `generate-boleto-for-invoice/index.ts` (187 linhas) — OK (já corrigido com .maybeSingle() e guard clause)
+- `request-class/index.ts` (223 linhas) — **CONFIRMAÇÃO #138: não define `is_paid_class`** (#254)
+- `create-student/index.ts` (529 linhas) — OK (auth robusta, ownership validada)
+- `check-subscription-status/index.ts` (846 linhas) — Já coberto por #241
 
-### Novos Gaps Encontrados (#243-#249)
+### Novos Gaps Encontrados (#250-#257)
 
-1. **#243 (ALTA → Fase 0)**: `check-overdue-invoices` atualiza faturas para status `'overdue'` (linha 58) sem cláusula de guarda `.eq('status', 'pendente')`. Se uma fatura paga via webhook automático (que usa status `'paid'` por causa do #237) é depois corrigida para `'paga'`, o cron pode já ter marcado como `'overdue'` antes da correção. Pior: se o #237 for corrigido primeiro, faturas legítimas com status `'paga'` ainda podem ser revertidas se houver race condition com o cron. **Combinação explosiva com #237.**
+1. **#250 (ALTA → Fase 0)**: `webhook-stripe-connect` usa `.single()` em 3 lookups de `payment_origin` (L310, L347, L457) antes de atualizar status de fatura. Se a fatura não existir no banco pelo `stripe_invoice_id`, lança exceção HTTP 500. O Stripe então retenta o webhook indefinidamente. **Fallback ausente**: não tenta buscar por `stripe_payment_intent_id` quando `stripe_invoice_id` não encontra resultado. Deveria usar `.maybeSingle()`.
 
-2. **#244 (ALTA → Fase 0)**: `automated-billing` invoca `create-payment-intent-connect` via `supabaseAdmin.functions.invoke()` (linhas 522-530) sem passar um `Authorization` header. A função target (`create-payment-intent-connect`) não extrai JWT do header — ela usa `service_role_key` diretamente para queries. Porém, na invocação server-to-server com `supabaseAdmin`, o SDK envia automaticamente o `Authorization: Bearer <service_role_key>`, que é aceito pelo gateway. **REANÁLISE: Não é bug — supabaseAdmin injeta auth automaticamente.** RECLASSIFICADO para INFORMATIVO. Mantido para documentação.
+2. **#251 (ALTA → Fase 0)**: `webhook-stripe-connect` handlers `invoice.payment_failed` (L380-386), `invoice.marked_uncollectible` (L401-407) e `invoice.voided` (L425-431) atualizam status para `'falha_pagamento'`, `'overdue'` e `'cancelada'` **sem guard clause** `.in('status', ['pendente', 'open', ...])`. Se a fatura já está paga (`'paga'` ou `'paid'` por causa do #237), o webhook pode reverter o status terminal. **Risco**: professor vê fatura como "vencida" quando o pagamento já foi processado.
 
-3. **#245 (MÉDIA)**: `create-invoice` usa `.single()` na linha 154 para buscar `teacher_student_relationships`. Se o relacionamento não existir, lança exceção HTTP 500 em vez de mensagem amigável. Deveria ser `.maybeSingle()` com retorno de erro descritivo.
+3. **#252 (CONFIRMAÇÃO de #109)**: `process-payment-failure-downgrade` (L144-149) invoca `smart-delete-student` com `{ studentId: student.student_id, reason: 'payment_failure_downgrade' }` mas a função target espera `{ student_id, teacher_id, relationship_id }`. A chamada **SEMPRE falha** com "Missing required fields". Resultado: alunos excedentes NUNCA são removidos automaticamente quando há falha de pagamento.
 
-4. **#246 (CONFIRMAÇÃO de #196)**: `change-payment-method` linhas 84-85 contém o bug visual confirmado: `.eq('responsible_id', invoice.student_id).eq('responsible_id', user.id)`. O segundo `.eq()` sobrescreve o primeiro, anulando a verificação de que o usuário é responsável pelo aluno da fatura. A query efetiva é `.eq('responsible_id', user.id)`, que retorna `true` para QUALQUER responsável, não apenas para o responsável do aluno da fatura.
+4. **#253 (MÉDIA)**: `process-payment-failure-downgrade` usa `.single()` em `user_subscriptions` (L55) e `subscription_plans` (L95). Se o registro não existir, lança HTTP 500 genérico.
 
-5. **#247 (CONFIRMAÇÃO de #181)**: `end-recurrence` linhas 67-73 deleta classes futuras com `DELETE FROM classes WHERE class_template_id = templateId AND class_date >= endDate`. Se essas classes tiverem registros em `class_participants` ou `class_exceptions` com FK RESTRICT, a deleção falha silenciosamente ou lança exceção. A função não limpa essas tabelas dependentes antes.
+5. **#254 (CONFIRMAÇÃO de #138)**: `request-class` (L137-146) não define `is_paid_class` ao criar aula via solicitação de aluno. Herda DEFAULT `true` do banco, potencialmente disparando cobrança imediata no modelo prepaid, mesmo para aulas que deveriam seguir o timing do professor.
 
-6. **#248 (BAIXA)**: `send-invoice-notification` usa `.single()` em 3 lookups: invoice (L57), student profile (L69), teacher profile (L99). Se qualquer registro não existir, a notificação inteira falha com HTTP 500. Deveria usar `.maybeSingle()` e abortar graciosamente.
+6. **#255 (MÉDIA)**: `handle-student-overage` (L79) usa `.single()` em `user_subscriptions`. Se não houver assinatura ativa, lança exceção em vez de retornar graciosamente.
 
-7. **#249 (MÉDIA)**: `materialize-virtual-class` copia campos do template para a classe materializada (linhas 250-263) mas **não inclui `is_paid_class`**. O campo é omitido do INSERT, o que significa que a classe materializada herda o DEFAULT do banco (`true`). Se o template tinha `is_paid_class = false` (aula gratuita), a materialização cria uma aula cobrada indevidamente.
+7. **#256 (ALTA → Fase 0)**: `webhook-stripe-connect` catch block (L555) retorna HTTP 500. **Qualquer** erro não tratado causa retentativas infinitas do Stripe. Deve retornar HTTP 200 com `{ received: true, error: message }`.
 
-### Totais Atualizados (v5.41)
-- 249 pontas soltas totais
-- 18 duplicatas + 2 subsumidas + 2 confirmações (#246→#196, #247→#181)
-- 227 únicas (descontando confirmações)
+8. **#257 (ALTA → Fase 0)**: `webhook-stripe-subscriptions` catch block (L715) retorna HTTP 500. Mesmo problema do #256. Parcialmente documentado em #238 (que cobria apenas os returns explícitos de HTTP 400), mas o catch final NÃO estava coberto.
+
+### Totais Atualizados (v5.42)
+- 257 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 4 confirmações (#246→#196, #247→#181, #252→#109, #254→#138)
+- 233 únicas (descontando confirmações)
 - 10 implementadas
-- **215 pendentes** (incluindo 2 confirmações que reforçam gaps existentes)
-- Fase 0: **22 itens** (+1: #243)
-- **100% cobertura**: 75 funções auditadas (4ª passagem em 12 funções financeiras core)
-- **#244 reclassificado**: supabaseAdmin injeta auth automaticamente (INFORMATIVO)
+- **221 pendentes**
+- Fase 0: **26 itens** (+4: #250, #251, #256, #257)
+- **100% cobertura**: 75 funções auditadas (5ª passagem em webhooks, subscrições e student management)
 
 ### Status Final
-O documento está **pronto para execução da Fase 0** com 22 itens críticos. A prioridade absoluta continua sendo #237 (3 linhas de código) seguida de #243 (1 guard clause em check-overdue-invoices).
+O documento está **pronto para execução da Fase 0** com 26 itens críticos. Prioridade: #237 (3 linhas) → #243 (1 guard) → #251 (3 guards no mesmo arquivo) → #250 (3× .maybeSingle()) → #256/#257 (catch blocks).

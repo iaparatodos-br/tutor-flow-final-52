@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.41 (Consolidado)
+# Plano de Cobrança Híbrida — v5.42 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 22 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 26 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.41 consolida todas as auditorias com 4 passagens completas. Totais finais: **249 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 2 confirmações = **227 únicas**, **215 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 4ª passagem em funções financeiras core). A 4ª passagem revelou que `materialize-virtual-class` não herda `is_paid_class`, criando cobranças indevidas em aulas de reposição, e confirmou visualmente os bugs #196 e #181.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.42 consolida todas as auditorias com 5 passagens completas. Totais finais: **257 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 4 confirmações = **233 únicas**, **221 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 5ª passagem em webhooks, subscrições e student management). A 5ª passagem revelou que ambos os webhooks do Stripe retornam HTTP 500 no catch final (causando retentativas infinitas), que handlers de falha/void não protegem status terminal, e confirmou visualmente os bugs #109 (parâmetros errados em process-payment-failure-downgrade) e #138 (request-class sem is_paid_class).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -3822,6 +3822,58 @@ INSERT omite `is_paid_class`. Aulas de reposição (`is_paid_class = false`) mat
 **Severidade**: MÉDIA — cobrança indevida em aulas de reposição materializadas.
 **Ação**: Adicionar `is_paid_class: template.is_paid_class` ao INSERT.
 
+### 250. webhook-stripe-connect — 3× `.single()` em payment_origin check (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 310, 347, 457)
+Antes de atualizar status de fatura para `'paid'`, os handlers `invoice.paid`, `invoice.payment_succeeded` e `payment_intent.succeeded` usam `.single()` para verificar `payment_origin`. Se a fatura não existir pelo `stripe_invoice_id`, lança HTTP 500 e Stripe retenta. **Fallback ausente**: não tenta buscar por `stripe_payment_intent_id`.
+**Severidade**: ALTA — crash + retentativas infinitas do Stripe.
+**Ação**: Substituir `.single()` por `.maybeSingle()`. Adicionar fallback por `stripe_payment_intent_id`.
+
+### 251. webhook-stripe-connect — handlers de falha/void sem guard de status terminal (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linhas 380-386, 401-407, 425-431)
+`invoice.payment_failed` atualiza para `'falha_pagamento'`, `invoice.marked_uncollectible` para `'overdue'`, `invoice.voided` para `'cancelada'` — **sem verificar o status atual**. Se a fatura já está `'paga'`, o status terminal é sobrescrito. Combinado com #237, faturas com status `'paid'` (inglês) também são vulneráveis.
+**Severidade**: ALTA — reversão de pagamento confirmado.
+**Ação**: Adicionar `.not('status', 'in', '("paga","paid")')` a cada UPDATE.
+
+### 252. CONFIRMAÇÃO de #109: process-payment-failure-downgrade — parâmetros errados para smart-delete-student
+
+**Arquivo**: `supabase/functions/process-payment-failure-downgrade/index.ts` (linhas 144-149)
+Envia `{ studentId, reason }` mas `smart-delete-student` espera `{ student_id, teacher_id, relationship_id }`. A chamada SEMPRE falha com "Missing required fields". Alunos excedentes nunca são removidos automaticamente.
+**Severidade**: CONFIRMAÇÃO de #109 — não incrementa contagem de únicas.
+
+### 253. process-payment-failure-downgrade — 2× `.single()`
+
+**Arquivo**: `supabase/functions/process-payment-failure-downgrade/index.ts` (linhas 55, 95)
+**Severidade**: MÉDIA — crash se registro não existir.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 254. CONFIRMAÇÃO de #138: request-class — não define `is_paid_class`
+
+**Arquivo**: `supabase/functions/request-class/index.ts` (linhas 137-146)
+INSERT de classe não inclui `is_paid_class`. Herda DEFAULT `true`, disparando cobrança imediata no modelo prepaid.
+**Severidade**: CONFIRMAÇÃO de #138 — não incrementa contagem de únicas.
+
+### 255. handle-student-overage — `.single()` em user_subscriptions
+
+**Arquivo**: `supabase/functions/handle-student-overage/index.ts` (linha 79)
+**Severidade**: MÉDIA — crash se assinatura não encontrada.
+**Ação**: Substituir por `.maybeSingle()`.
+
+### 256. webhook-stripe-connect — catch block retorna HTTP 500 (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-connect/index.ts` (linha 555)
+O catch final retorna HTTP 500 para QUALQUER erro não tratado. Isso causa retentativas infinitas do Stripe para erros permanentes (ex: bug de código, schema inválido).
+**Severidade**: ALTA — loop de retentativas infinito.
+**Ação**: Retornar HTTP 200 com `{ received: true, error: message }`.
+
+### 257. webhook-stripe-subscriptions — catch block retorna HTTP 500 (Fase 0)
+
+**Arquivo**: `supabase/functions/webhook-stripe-subscriptions/index.ts` (linha 715)
+Mesmo problema do #256. Parcialmente coberto por #238 (que documentava HTTP 400 nos returns explícitos), mas o catch final NÃO estava incluído.
+**Severidade**: ALTA — loop de retentativas infinito.
+**Ação**: Retornar HTTP 200 com `{ received: true, error: message }`.
+
 ---
 
 | Versão | Data | Mudanças |
@@ -3848,7 +3900,8 @@ INSERT omite `is_paid_class`. Aulas de reposição (`is_paid_class = false`) mat
 | v5.9 | 2026-02-14 | +5 pontas soltas (#114-#118), +2 melhorias (M47-M48) |
 | v5.10 | 2026-02-14 | +5 pontas soltas (#119-#123), +3 melhorias (M49-M51). Cobertura exaustiva concluída. |
 | v5.11-v5.40 | 2026-02-14/16 | Auditorias incrementais: +119 pontas soltas (#124-#242). Detalhes no changelog anterior. |
-| v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249): check-overdue-invoices UPDATE sem guard de status terminal — combinação explosiva com #237 (#243 ALTA → Fase 0), automated-billing invocação s2s OK (INFORMATIVO #244), create-invoice `.single()` em relationship (#245 MÉDIA), CONFIRMAÇÃO VISUAL de #196 — `.eq()` sobreposição (#246), CONFIRMAÇÃO VISUAL de #181 — end-recurrence sem cleanup FKs (#247), send-invoice-notification 3× `.single()` (#248 BAIXA), materialize-virtual-class não herda `is_paid_class` — cobrança indevida em reposições (#249 MÉDIA). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
+| v5.41 | 2026-02-16 | **4ª passagem: funções financeiras core — análise cruzada**. +7 pontas soltas (#243-#249). 1 item adicionado à Fase 0 (22 itens). Totais: **249 pontas soltas**, **227 únicas**, **215 pendentes**. |
+| v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management — análise cruzada de chamadas**. +8 pontas soltas (#250-#257): webhook-stripe-connect 3× `.single()` em payment_origin check (#250 ALTA → Fase 0), webhook-stripe-connect handlers de falha/void sem guard de status terminal — podem reverter 'paga' (#251 ALTA → Fase 0), CONFIRMAÇÃO de #109 — process-payment-failure-downgrade envia parâmetros errados para smart-delete-student (#252), process-payment-failure-downgrade 2× `.single()` (#253 MÉDIA), CONFIRMAÇÃO de #138 — request-class não define is_paid_class (#254), handle-student-overage `.single()` (#255 MÉDIA), webhook-stripe-connect catch retorna HTTP 500 causando retries infinitos (#256 ALTA → Fase 0), webhook-stripe-subscriptions catch retorna HTTP 500 (#257 ALTA → Fase 0). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

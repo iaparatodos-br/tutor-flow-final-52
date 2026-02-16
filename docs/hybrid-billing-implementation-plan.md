@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.25 (Consolidado)
+# Plano de Cobrança Híbrida — v5.26 (Consolidado)
 
 **Data**: 2026-02-15
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
@@ -8,7 +8,7 @@
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.25 consolida auditorias v5.18-v5.23 e resolve inconsistências de fase e duplicatas remanescentes. Totais finais: **180 pontas soltas** (12 implementadas, 4 duplicatas = **176 únicas**, 164 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.26 consolida auditorias v5.18-v5.23, resolve inconsistências de fase, duplicatas remanescentes e adiciona descrições para itens #152-#180. Totais finais: **180 pontas soltas** (12 implementadas, 10 duplicatas = **170 únicas**, 158 pendentes) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -359,6 +359,64 @@ A função usa `SUPABASE_SERVICE_ROLE_KEY` e não valida a identidade do caller.
 
 ---
 
+## Descrições das Pontas Soltas v5.18-v5.23 (#152-#180)
+
+Os itens abaixo foram identificados nas auditorias v5.18 a v5.23 e estão atribuídos a fases no índice acima. Agrupados por padrão:
+
+### FK Joins (Fase 4/5/8)
+
+- **#163**: `automated-billing` query principal usa FK joins `teacher:profiles!teacher_id` (refinamento de #58, na query de `billing_day`). Refatorar para queries sequenciais.
+- **#164**: `create-invoice` FK join para `teacher_student_relationships` (refinamento de #57). Refatorar para query sequencial.
+- **#165**: `create-invoice` FK joins aninhados para `classes` → `class_services` (refinamento de #38). Refatorar para 3 queries sequenciais.
+- ~~**#171**~~: **DUPLICATA de #103** — `generate-boleto-for-invoice` FK joins para student/teacher profiles.
+- **#172**: `automated-billing` FK join diagnóstico em old confirmed classes `classes!inner` (refinamento de #69). Refatorar para query sequencial.
+- **#176**: `create-payment-intent-connect` FK joins triplos (student, teacher, business_profile). Refatorar para 3 queries sequenciais.
+- **#179**: `change-payment-method` FK joins + `.single()` em invoice lookup (refinamento de #114). Refatorar para queries sequenciais + `.maybeSingle()`.
+- **#180**: `automated-billing` FK joins na query principal (duplicata parcial de #163, mas em ponto diferente do código). Refatorar junto com #163.
+
+### `.single()` para `.maybeSingle()` (Fase 5/6/8)
+
+- **#152**: `process-orphan-cancellation-charges` — verificação de `orphanError` ocorre **após** a filtragem por `billedIds`, permitindo que o código processe dados inválidos se a query original falhou. Mover a verificação de erro para imediatamente após a query.
+- **#157**: `verify-payment-status` usa `.single()` em lookup de fatura — pode falhar se a fatura não existir. Trocar por `.maybeSingle()`.
+- **#159**: `send-invoice-notification` usa `.single()` em 3 lookups (fatura, aluno, professor) — refinamento de #53 e #73. Trocar por `.maybeSingle()` nos 3 locais.
+- **#161**: `process-cancellation` usa `.single()` na linha 107 (lookup de dependente) — refinamento de #84. Trocar por `.maybeSingle()`.
+- **#162**: `create-invoice` usa `.single()` nas linhas 154 e 382 (lookups de guardian e relationship) — refinamento de #78. Trocar por `.maybeSingle()`.
+- **#167**: `handle-student-overage` usa `.single()` em lookup de perfil. Trocar por `.maybeSingle()`.
+- **#168**: `send-cancellation-notification` usa `.single()` em 4 lookups (aula, professor, aluno, dependente). Trocar por `.maybeSingle()` nos 4 locais.
+- **#173**: `webhook-stripe-connect` usa `.single()` em 3 handlers (invoice.paid, invoice.payment_succeeded, payment_intent.succeeded) — refinamento de #49 e #64. Trocar por `.maybeSingle()`.
+- **#174**: `cancel-payment-intent` usa `.single()` em lookup de fatura. Trocar por `.maybeSingle()`.
+- **#177**: `create-payment-intent-connect` usa `.single()` em cascata (invoice → student → teacher → business_profile). Subsume #153. Trocar por `.maybeSingle()` em todos os lookups.
+
+### Semântico (Fase 8)
+
+- ~~**#178**~~: **DUPLICATA de #41** — `check-overdue-invoices` usa coluna `class_id` em `class_notifications` para armazenar `invoice_id`, violando integridade referencial.
+
+### Duplicatas Identificadas na v5.26
+
+| Duplicata | Original | Descrição |
+|-----------|----------|-----------|
+| #59 | #5.1 | process-cancellation sem `is_paid_class` (Fase 6 via #5.1) |
+| #92 | #60 | automated-billing hardcoded boleto (Fase 4 via #60) |
+| #93 | #85 | automated-billing sem `payment_method` (Fase 8 via #85) |
+| #107 | #5.1 | process-cancellation sem `is_paid_class` (Fase 6 via #5.1) |
+| #171 | #103 | generate-boleto FK joins (já coberta por #103) |
+| #178 | #41 | check-overdue `class_notifications` semântica (já coberta por #41) |
+
+### Totais Atualizados (v5.26)
+
+```text
+Pontas Soltas Totais:       180
+  Duplicatas anteriores:      4 (#81, #95, #96, #166)
+  Novas duplicatas v5.26:     6 (#59, #92, #93, #107, #171, #178)
+  Total duplicatas:          10
+  Subsumidas:                 2 (#153→#177, #154→#179)
+  Únicas:                   170 (180 - 10)
+  Implementadas:             12
+  Pendentes:               158
+```
+
+---
+
 ## Novas Pontas Soltas v4.4 (#30-#35)
 
 ### 30. process-cancellation — hard-coded minimum `chargeAmount >= 5` (Fase 6)
@@ -500,7 +558,7 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **56** | **check-overdue-invoices atualiza status antes de confirmar envio de notificação** | **8** | **check-overdue-invoices/index.ts** |
 | 57 | create-invoice FK join `business_profiles!...` | 4 | create-invoice/index.ts |
 | 58 | automated-billing FK joins `teacher:profiles!teacher_id` e `student:profiles!student_id` | 4 | automated-billing/index.ts |
-| 59 | process-cancellation não busca `is_paid_class` nem `charge_timing` | 6 | process-cancellation/index.ts |
+| ~~59~~ | ~~DUPLICATA de #5.1 — process-cancellation não busca `is_paid_class` nem `charge_timing`~~ | **—** | **—** |
 | 60 | automated-billing hardcoded `payment_method: 'boleto'` | 4 | automated-billing/index.ts |
 | 61 | materialize-virtual-class backend não propaga `is_paid_class` | 3 | materialize-virtual-class/index.ts |
 | 62 | handleClassSubmit não inclui `is_paid_class` no insert | 3 | Agenda.tsx |
@@ -533,6 +591,9 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **89** | **create-invoice não verifica `charges_enabled` do Stripe Connect antes de gerar pagamento** | **5** | **create-invoice/index.ts** |
 | **90** | **Documentação: decisão sobre cobrança de mensalidade sem aulas não documentada** | **—** | **Documentação** |
 | **91** | **send-invoice-notification label "Pagar com Cartão" quando link é de boleto** | **8** | **send-invoice-notification/index.ts** |
+| ~~**92**~~ | ~~**DUPLICATA de #60 — automated-billing hardcoded `payment_method: 'boleto'`**~~ | **—** | **—** |
+| ~~**93**~~ | ~~**DUPLICATA de #85 — automated-billing não salva `payment_method`**~~ | **—** | **—** |
+| ~~**107**~~ | ~~**DUPLICATA de #5.1 — process-cancellation não verifica `is_paid_class`**~~ | **—** | **—** |
 | **148** | **generate-boleto-for-invoice: `.single()` trocado por `.maybeSingle()`** | **—** | **✅ IMPLEMENTADO (v5.24)** |
 | **149** | **process-orphan-cancellation-charges: `.single()` em 2 lookups internos** | **—** | **✅ IMPLEMENTADO (v5.24)** |
 | **150** | **process-orphan-cancellation-charges: filtro `is_paid_class` adicionado** | **—** | **✅ IMPLEMENTADO (v5.24)** |
@@ -556,14 +617,14 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | **168** | **send-cancellation-notification: `.single()` em 4 lookups** | **8** | **send-cancellation-notification/index.ts** |
 | **169** | **webhook-stripe-connect + cancel-payment-intent: status 'paid' vs 'paga' em 5 locais** | **0** | **webhook-stripe-connect/index.ts, cancel-payment-intent/index.ts** |
 | **170** | **change-payment-method: bypass de autorização — `.eq()` consecutivos se sobrescrevem** | **0** | **change-payment-method/index.ts** |
-| **171** | **generate-boleto-for-invoice: FK joins para student/teacher profiles** | **5** | **generate-boleto-for-invoice/index.ts** |
+| ~~**171**~~ | ~~**DUPLICATA de #103 — generate-boleto-for-invoice: FK joins para student/teacher profiles**~~ | **—** | **—** |
 | **172** | **automated-billing: FK join diagnóstico `classes!inner`** | **4** | **automated-billing/index.ts** |
 | **173** | **webhook-stripe-connect: `.single()` em 3 handlers — causa retries do Stripe** | **8** | **webhook-stripe-connect/index.ts** |
 | **174** | **cancel-payment-intent: `.single()` em lookup de fatura** | **8** | **cancel-payment-intent/index.ts** |
 | **175** | **create-payment-intent-connect: SEM autenticação/autorização — qualquer pessoa pode gerar pagamentos** | **0** | **create-payment-intent-connect/index.ts** |
 | **176** | **create-payment-intent-connect: FK joins triplos (student, teacher, business_profile)** | **5** | **create-payment-intent-connect/index.ts** |
 | **177** | **create-payment-intent-connect: `.single()` em cascata** | **5** | **create-payment-intent-connect/index.ts** |
-| **178** | **check-overdue-invoices: usa `class_notifications` para faturas — violação semântica de schema** | **8** | **check-overdue-invoices/index.ts** |
+| ~~**178**~~ | ~~**DUPLICATA de #41 — check-overdue-invoices: usa `class_notifications` para faturas — violação semântica**~~ | **—** | **—** |
 | **179** | **change-payment-method: FK joins + `.single()` em invoice lookup** | **8** | **change-payment-method/index.ts** |
 | **180** | **automated-billing: FK joins na query principal (duplicata parcial de #163)** | **4** | **automated-billing/index.ts** |
 ## Índice de Melhorias
@@ -3001,6 +3062,7 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.18-5.23 | 2026-02-14/15 | Auditoria profunda via `.lovable/plan.md`: +33 pontas soltas (#148-#180). 4 implementadas (#148-#151). 1 duplicata (#166=#80). 2 subsumidas (#153→#177, #154→#179). Fase 0 (Batch Crítico) criada com 7 itens de segurança/race conditions. |
 | v5.24 | 2026-02-15 | **Consolidação final**. Documentos unificados. Fase 0 integrada. Verificação de fluxos end-to-end. Totais finais: **180 pontas soltas** (12 implementadas, 1 duplicata = 179 únicas, 167 pendentes), **52 melhorias**, **48 funções cobertas**. |
 | v5.25 | 2026-02-15 | **Verificação final de consistência**. #87 movido de Fase 1→Fase 0 (reconciliação de webhooks quebrada). 3 duplicatas adicionais resolvidas: #81=#155, #95=#155, #96=#80. Fase 0 expandida para 8 itens. Totais: **176 únicas** (12 implementadas, 164 pendentes). |
+| v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. Totais finais: **170 únicas** (12 implementadas, **158 pendentes**). Fase 0 inalterada (8 itens). |
 
 ## Memórias do Projeto a Atualizar
 

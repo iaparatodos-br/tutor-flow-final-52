@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.32 (Consolidado)
+# Plano de Cobrança Híbrida — v5.33 (Consolidado)
 
 **Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 9 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 10 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.32 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **192 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **172 únicas**, **162 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.33 consolida todas as auditorias, completa o índice mestre, corrige contagem de implementados (10, não 12) e identifica 18 duplicatas totais. Totais finais: **195 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas = **175 únicas**, **165 pendentes**) e **52 melhorias**. Cobertura: 48 funções auditadas + 27 fora de escopo = 75 diretórios.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -283,7 +283,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 | Fase | Descrição | Pontas Soltas | Status |
 |------|-----------|---------------|--------|
-| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **#87, #155, #156, #158, #160, #169, #170, #175** | 🔴 Pendente |
+| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **#87, #155, #156, #158, #160, #169, #170, #175, #187, #195** | 🔴 Pendente |
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4, M37 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
@@ -291,13 +291,13 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 | 5 | Agenda.tsx: persistir `is_paid_class` + gerar fatura pré-paga | #2.4, #17, #18, #4.3, #23, #24, #25, #31, #36, #38, #40, #42, #55, #162, #164, #165, #171, #176, #177, M5, M7, M9, M13, M35 | Pendente |
 | 6 | Cancelamento: process-cancellation + CancellationModal | #5.1, #5.2, #19, #20, #28, #29, #30, #43, #80, #83, #84, #161, M6, M14, M33 | Pendente |
 | 7 | AmnestyButton: verificação de faturamento + label | #6.1, #28, #37, #82, #100, M11 | Pendente |
-| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
+| 8 | InvoiceTypeBadge consolidação + i18n + testes + notificações + bugs | #9.1, #16, #21, #10.1, #32, #34, #39, #46, #47, #48, #49, #50, #51, #53, #54, #56, #64, #68, #70, #71, #72, #73, #74, #75, #76, #77, #78, #79, #85, #86, #88, #89, #91, #139, #140, #141, #142, #143, #144, #145, #146, #147, #152, #157, #159, #167, #168, #173, #174, #178, #179, #181, #182, #183, #184, #185, #186, #188, #189, #190, #191, #192, #193, #194, M10, M12, M15, M16, M17, M18, M19, M26, M27, M28, M29, M30, M31, M32, M34, M36, M37, M38 | Pendente |
 
 **⚠️ NOTA CRÍTICA**: A **Fase 0** deve ser implementada ANTES de qualquer outra fase, pois contém vulnerabilidades de segurança ativas e race conditions que causam perda financeira.
 
 ---
 
-## Fase 0 — Batch Crítico (9 itens)
+## Fase 0 — Batch Crítico (10 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -346,6 +346,11 @@ A função usa `SUPABASE_SERVICE_ROLE_KEY` e não valida a identidade do caller.
 **Arquivo**: `supabase/functions/check-overdue-invoices/index.ts` (linhas 55-59)
 O UPDATE para `status: 'overdue'` (linha 58) não verifica se a fatura já foi paga manualmente (`payment_origin: 'manual'`). Complementa #155 com um vetor de ataque concreto: faturas pagas pelo professor são revertidas automaticamente pelo cron job.
 **Ação**: Adicionar `.not('payment_origin', 'eq', 'manual').not('status', 'in', '("paga","cancelada")')` ao UPDATE. Também alinhar status com #169 (`vencida` em vez de `overdue`).
+
+### #195. verify-payment-status — sem autenticação/autorização (Segurança)
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linhas 15-123)
+A função não possui NENHUMA verificação de autenticação. Qualquer requisição pode consultar e forçar atualização de status de qualquer fatura, expondo dados financeiros. Também usa `.single()` (linha 40) e não possui guard de status terminal.
+**Ação**: Adicionar `auth.getUser(token)`. Verificar que o caller é `teacher_id` ou `student_id` da fatura. Trocar `.single()` por `.maybeSingle()`. Adicionar guard contra sobrescrita de status terminal.
 
 ## Itens Implementados (10 total)
 
@@ -3382,6 +3387,63 @@ Per memória `infrastructure/stripe-webhook-resilience-pattern`, webhooks devem 
 
 ---
 
+### 193. create-invoice: FK joins violam padrão de queries sequenciais (Fase 8)
+
+**Arquivo**: `supabase/functions/create-invoice/index.ts` (linhas 145-154, 228-241)
+
+A função usa FK join syntax em dois locais:
+1. Linha 145-153: `business_profiles!teacher_student_relationships_business_profile_id_fkey(enabled_payment_methods)` no lookup de relacionamento
+2. Linha 228-241: `classes!inner(...)` com nested `class_services(name, price)` no fetch de participantes
+
+Ambos violam o padrão `constraints/edge-functions-pattern-sequential-queries` e estão sujeitos a falhas por schema cache do Deno. Adicionalmente, linha 154 usa `.single()` em vez de `.maybeSingle()`, e linha 382 repete o mesmo padrão.
+
+**Severidade**: MÉDIA — pode causar falhas silenciosas na criação de faturas em ambiente de produção após atualizações de schema.
+
+**Ação**: Substituir FK joins por queries sequenciais independentes. Trocar `.single()` por `.maybeSingle()` e tratar ausência de relacionamento com mensagem amigável.
+
+---
+
+### 194. create-payment-intent-connect: FK joins + `.single()` + sem guard de status (Fase 8)
+
+**Arquivo**: `supabase/functions/create-payment-intent-connect/index.ts` (linhas 37-51)
+
+```javascript
+const { data: invoice, error: invoiceError } = await supabaseClient
+  .from("invoices")
+  .select(`
+    *,
+    student:profiles!invoices_student_id_fkey(...),
+    teacher:profiles!invoices_teacher_id_fkey(...),
+    business_profile:business_profiles!invoices_business_profile_id_fkey(...)
+  `)
+  .eq("id", invoice_id)
+  .single(); // ← .single() + FK joins
+```
+
+3 problemas: (1) FK joins violam padrão sequencial, (2) `.single()` lança exceção se fatura não existir, (3) **não verifica se a fatura está em status `pendente`** antes de gerar novo Payment Intent — pode gerar pagamento para fatura já paga ou cancelada.
+
+**Severidade**: MÉDIA — pode gerar cobranças duplicadas para faturas já pagas.
+
+**Ação**: Substituir FK joins por queries sequenciais. Trocar `.single()` por `.maybeSingle()`. Adicionar guard: `if (invoice.status !== 'pendente') return HTTP 200 com erro amigável`.
+
+---
+
+### 195. verify-payment-status: sem autenticação/autorização — qualquer usuário pode atualizar status de qualquer fatura (Fase 0)
+
+**Arquivo**: `supabase/functions/verify-payment-status/index.ts` (linhas 15-123)
+
+A função não possui NENHUMA verificação de autenticação ou autorização. Qualquer requisição com um `invoice_id` válido pode:
+1. Consultar detalhes de fatura de qualquer professor/aluno
+2. Forçar atualização do status da fatura baseado no Stripe
+
+Adicionalmente, usa `.single()` (linha 40) e não possui guard de status terminal — pode sobrescrever `paga` (manual) para `falha_pagamento` se o PI no Stripe estiver em estado de falha.
+
+**Severidade**: ALTA — vulnerabilidade de autorização que permite acesso a dados financeiros de outros usuários e manipulação indireta de status.
+
+**Ação**: Adicionar validação de `auth.getUser(token)`. Verificar que o usuário é o `teacher_id` ou `student_id` da fatura. Trocar `.single()` por `.maybeSingle()`. Adicionar guard de status terminal.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -3424,6 +3486,7 @@ Per memória `infrastructure/stripe-webhook-resilience-pattern`, webhooks devem 
 | v5.30 | 2026-02-16 | **Auditoria cruzada código×plano**. +3 pontas soltas (#184-#186): webhook-stripe-connect sem handler `payment_intent.payment_failed` (#184 ALTA — falhas de boleto/PIX não processadas), Stripe SDK v14.24.0 inconsistente (#185 BAIXA), send-invoice-notification `.single()` em monthly_subscriptions (#186 BAIXA). Totais: **186 pontas soltas**, **166 únicas**, **156 pendentes**. |
 | v5.31 | 2026-02-16 | **Auditoria profunda de funções financeiras core**. +3 pontas soltas (#187-#189): check-overdue-invoices sem guard de status terminal — pode sobrescrever `paga` para `overdue` (#187 ALTA → Fase 0), cancel-payment-intent marca `payment_origin: 'manual'` quando PI já `succeeded` (#188 MÉDIA), automated-billing duplica fatura de mensalidade se cron executar duas vezes (#189 ALTA). #187 adicionado à Fase 0 (9 itens). Totais: **189 pontas soltas**, **169 únicas**, **159 pendentes**. |
 | v5.32 | 2026-02-16 | **Auditoria cruzada de resiliência e padrões**. +3 pontas soltas (#190-#192): webhook-stripe-connect `.single()` em lookups de `payment_origin` causa loops de retentativa do Stripe (#190 MÉDIA), process-expired-subscriptions FK joins + `.single()` (#191 MÉDIA), webhook-stripe-connect HTTP 500 no catch global (#192 BAIXA). Totais: **192 pontas soltas**, **172 únicas**, **162 pendentes**. |
+| v5.33 | 2026-02-16 | **Auditoria de funções de criação de pagamento**. +3 pontas soltas (#193-#195): create-invoice FK joins + `.single()` (#193 MÉDIA), create-payment-intent-connect FK joins + `.single()` + sem guard de status (#194 MÉDIA), verify-payment-status sem autenticação/autorização (#195 ALTA → Fase 0). #195 adicionado à Fase 0 (10 itens). Totais: **195 pontas soltas**, **175 únicas**, **165 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

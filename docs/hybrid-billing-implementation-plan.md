@@ -1,4 +1,4 @@
-# Plano de Cobrança Híbrida — v5.28 (Consolidado)
+# Plano de Cobrança Híbrida — v5.28.2 (Consolidado)
 
 **Data**: 2026-02-15
 **Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 8 vulnerabilidades ativas
@@ -610,6 +610,8 @@ A opção 2 é a mais precisa mas requer alterar a query de faturas para incluir
 | ~~**107**~~ | ~~**DUPLICATA de #5.1 — process-cancellation não verifica `is_paid_class`**~~ | **—** | **—** |
 | ~~**108**~~ | ~~**DUPLICATA de #67 — automated-billing tradicional sem notificação**~~ | **—** | **—** |
 | **94** | **automated-billing mensalidade não gera pagamento via Stripe** | **4** | **automated-billing/index.ts** |
+| ~~**95**~~ | ~~**DUPLICATA de #155 — check-overdue-invoices race condition**~~ | **—** | **—** |
+| ~~**96**~~ | ~~**DUPLICATA de #80 — process-cancellation SERVICE_ROLE_KEY**~~ | **—** | **—** |
 | **97** | **Clientes Stripe duplicados: platform vs connected account** | **6** | **create-payment-intent-connect/index.ts** |
 | ~~**98**~~ | ~~**DUPLICATA / Subsumido por #169 — cancel-payment-intent status 'paid' em inglês**~~ | **—** | **—** |
 | **99** | **send-invoice-notification armazena invoice.id em class_notifications.class_id** | **8** | **send-invoice-notification/index.ts** |
@@ -3130,6 +3132,8 @@ Nenhuma ponta solta adicional identificada nestas funções dentro do escopo de 
 | v5.26 | 2026-02-16 | **Completude do documento**. 19 itens (#152-#180) receberam descrições detalhadas. 6 novas duplicatas identificadas: #59=#5.1, #92=#60, #93=#85, #107=#5.1, #171=#103, #178=#41. Total duplicatas: 10. |
 | v5.27 | 2026-02-16 | **Verificação final de consistência**. Índice mestre completado com ~50 itens ausentes (#94-#147). 7 novas duplicatas: #61=#8.1, #62=#2.4, #63=#17, #65=#7.1, #66=#2.3, #104⊂#169, #108=#67. Contagem de implementados corrigida de 12→10. Total duplicatas: 17. Totais finais: **163 únicas** (10 implementadas, **153 pendentes**). Fase 0 inalterada (8 itens). |
 | v5.28 | 2026-02-16 | **Correção aritmética final**. #98 marcado como duplicata/subsumido por #169 (total duplicatas: 18). Fórmula de únicas corrigida para subtrair subsumidas: 180 - 18 - 2 = **160 únicas** (10 implementadas, **150 pendentes**). Fase 0 inalterada (8 itens). |
+| v5.28.1 | 2026-02-16 | **Correção de índice**. #109 descrição corrigida no índice mestre para corresponder ao corpo do documento. |
+| v5.28.2 | 2026-02-16 | **Completude do índice**. #95 e #96 adicionados ao índice mestre com strikethrough (duplicatas que faltavam). Todas 18 duplicatas agora presentes no índice. |
 
 ## Memórias do Projeto a Atualizar
 

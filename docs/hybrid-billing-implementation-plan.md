@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.51 (Consolidado)
+# Plano de Cobrança Híbrida — v5.52 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 53 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 56 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.51 consolida todas as auditorias com 14 passagens completas. Totais finais: **346 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **316 únicas**, **304 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 14ª passagem — análise cruzada profunda: lifecycle de materialização, deleção de alunos e integração de pagamento). A 14ª passagem revelou 8 novas pontas soltas (#339-#346): `create-payment-intent-connect` sem NENHUMA autenticação — IDOR crítico (#339 ALTA), `materialize-virtual-class` não copia `is_paid_class` do template (#340 ALTA), `automated-billing` copia boleto_url para stripe_hosted_invoice_url (#341), `smart-delete-student` não deleta `invoice_classes` antes de `class_participants` (#342), `smart-delete-student` não deleta `student_monthly_subscriptions` antes de `teacher_student_relationships` (#343), `.single()` em `smart-delete-student` (#344), webhook sem fallback stripe_invoice_id→stripe_payment_intent_id (confirma memória #345), `end-recurrence` com SDK sem versão pinada (#346).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.52 consolida todas as auditorias com 15 passagens completas. Totais finais: **358 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **328 únicas**, **316 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 15ª passagem — análise cruzada profunda: notificações, dependentes, assinaturas do professor e resiliência de loops). A 15ª passagem revelou 12 novas pontas soltas (#347-#358): `send-class-reminders` com FK joins proibidos + `.single()` em loops que crasham batch inteiro (#347 ALTA), `send-invoice-notification` com `.single()` em lookups que impedem notificação de ALL faturas (#348 ALTA), `handle-teacher-subscription-cancellation` sem autenticação — IDOR (#350 ALTA), mesma função referencia coluna inexistente `guardian_email` (#349), `check-subscription-status` com FK joins (#351), notificações com `.single()` em loops (#352, #357), `process-payment-failure-downgrade` com `.single()` (#353), gate morto de `RESEND_API_KEY` impedindo envio SES (#354), SDKs não pinados em dependentes (#355), RPC inexistente `write_audit_log` (#356), `resend-confirmation` sem auth (#358).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4284,6 +4284,70 @@ Funções auditadas nesta rodada (13ª passagem — análise cruzada profunda do
 
 ---
 
+## Auditoria de 15ª Passagem (Análise Cruzada Profunda — Notificações, Dependentes, Assinaturas e Resiliência de Loops)
+
+Funções auditadas nesta rodada (15ª passagem — análise cruzada profunda):
+- `send-class-reminders/index.ts` (317 linhas) — FK joins proibidos (#347 ALTA), `.single()` em loops (#347)
+- `send-invoice-notification/index.ts` (465 linhas) — `.single()` em 3 lookups críticos (#348 ALTA), `.single()` em monthly_subscriptions (confirma #335)
+- `send-class-report-notification/index.ts` (294 linhas) — `.single()` em loop de participantes (#352)
+- `send-cancellation-notification/index.ts` (498 linhas) — `.single()` em lookups de dependentes dentro de loops
+- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` em 3 lookups (#357)
+- `send-class-request-notification/index.ts` (210 linhas) — `.single()` em 3 lookups (#357)
+- `send-material-shared-notification/index.ts` (316 linhas) — `.single()` em material/teacher
+- `send-boleto-subscription-notification/index.ts` (345 linhas) — `.single()` em profile (L283)
+- `handle-teacher-subscription-cancellation/index.ts` (304 linhas) — ZERO auth (#350 ALTA), coluna inexistente `guardian_email` (#349), gate morto RESEND_API_KEY (#354)
+- `process-payment-failure-downgrade/index.ts` (280 linhas) — `.single()` (#353), RPC inexistente `write_audit_log` (#356)
+- `check-subscription-status/index.ts` (846 linhas) — FK joins proibidos (#351), múltiplos `.single()`
+- `create-dependent/index.ts` (211 linhas) — SDK não pinado (#355)
+- `update-dependent/index.ts` (148 linhas) — SDK não pinado (#355)
+- `delete-dependent/index.ts` (240 linhas) — SDK não pinado (#355)
+- `create-subscription-checkout/index.ts` (372 linhas) — `.single()` em existingSubscription (L175)
+- `resend-confirmation/index.ts` (202 linhas) — sem auth (#358), `listUsers()` sem filtro (confirma memória)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#347 (ALTA — BATCH DE LEMBRETES QUEBRADO)**: `send-class-reminders` L36-38 usa FK join `class_services (name)` e L91-94 usa `profiles (name, email)` em `class_participants`, violando a constraint de queries sequenciais. Combinado com `.single()` em teacher (L77), dependent (L114) e relationship (L156) dentro de loops, um ÚNICO registro ausente causa crash HTTP 500 que interrompe o envio de lembretes para TODOS os alunos restantes no batch.
+
+2. **#348 (ALTA — NOTIFICAÇÕES DE FATURA SILENCIADAS)**: `send-invoice-notification` L57 (invoice), L69 (student), L99 (teacher) usam `.single()`. Quando chamada de processos automatizados (webhooks, cron), um aluno ou professor deletado causa HTTP 500, impedindo que TODAS as notificações de fatura sejam entregues.
+
+3. **#350 (ALTA — IDOR EM CANCELAMENTO DE PROFESSOR)**: `handle-teacher-subscription-cancellation` NÃO possui autenticação. Aceita `teacher_id` diretamente do body da requisição sem validação JWT. Qualquer chamador com a anon key pode disparar void/cancelamento de TODAS as faturas pendentes de QUALQUER professor e registrar refunds falsos.
+
+### Achados Médios
+
+4. **#349**: `handle-teacher-subscription-cancellation` L263 referencia `student.guardian_email` na tabela `profiles`, mas essa coluna NÃO existe. O campo correto é `student_guardian_email` em `teacher_student_relationships`. Notificações de cancelamento de assinatura do professor NUNCA são enviadas ao responsável financeiro.
+
+5. **#351**: `check-subscription-status` L35 usa FK join `profiles!teacher_student_relationships_student_id_fkey(...)` e L134 usa `subscription_plans (*)`. Viola constraint de queries sequenciais que previne problemas de schema cache no runtime Deno.
+
+6. **#352**: `send-class-report-notification` L107 e L128 usam `.single()` dentro do loop de participantes para student profile e dependent. Um único aluno/dependente deletado crasheia notificações para TODOS os participantes restantes da aula.
+
+7. **#353**: `process-payment-failure-downgrade` L55 usa `.single()` em `user_subscriptions` com filtro `status='active'`. Se nenhuma assinatura ativa existir (race condition com webhook), a função crasheia com HTTP 500.
+
+8. **#354**: `handle-teacher-subscription-cancellation` L199 condiciona envio de notificações à existência de `RESEND_API_KEY`, mas a função `sendNotifications` usa AWS SES via `sendEmail` de `_shared/ses-email.ts`. Se `RESEND_API_KEY` não estiver configurada (o projeto usa SES, não Resend), notificações de cancelamento são SILENCIOSAMENTE ignoradas.
+
+9. **#355**: `create-dependent`, `update-dependent`, `delete-dependent` importam SDK como `@supabase/supabase-js@2` (sem versão pinada), divergindo do padrão `@2.45.0` do projeto. Risco de incompatibilidade em runtime.
+
+10. **#356**: `process-payment-failure-downgrade` L217-229 referencia RPC `write_audit_log` que pode não existir dado o mismatch conhecido do schema `audit_logs` (memória). Falha silenciosa no log de auditoria durante operações críticas de downgrade.
+
+### Achados Baixos
+
+11. **#357**: `send-class-confirmation-notification` L41/L65/L79 e `send-class-request-notification` L41/L53/L67 usam `.single()` para lookups de profile/dependent. Não-crítico pois são disparados por ações de usuário, mas causam erros confusos.
+
+12. **#358**: `resend-confirmation` não possui autenticação. Qualquer chamador pode disparar reenvio de email de confirmação para qualquer endereço. Risco de abuso para spam de email.
+
+### Totais Atualizados (v5.52)
+- 358 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 12 confirmações
+- 328 únicas
+- 10 implementadas + 2 confirmações de memória
+- **316 pendentes**
+- Fase 0: **56 itens** (+3: #347, #348, #350)
+- **100% cobertura**: 75 funções auditadas (15 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (56 itens críticos). A 15ª passagem revelou um padrão SISTÊMICO em funções de notificação: 8 das 9 funções `send-*` usam `.single()` dentro de loops de processamento batch, significando que um ÚNICO registro ausente (aluno deletado, dependente removido) crasheia o envio de notificações para TODOS os destinatários restantes na fila. A correção para `.maybeSingle()` + `continue` deve ser aplicada como batch unificado. Adicionalmente, `handle-teacher-subscription-cancellation` é uma das funções financeiras mais sensíveis do sistema e opera sem NENHUMA autenticação (#350), permitindo que qualquer chamador anônimo cancele faturas de qualquer professor.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4318,6 +4382,8 @@ Funções auditadas nesta rodada (13ª passagem — análise cruzada profunda do
 | v5.48 | 2026-02-17 | **11ª passagem: análise cruzada profunda — notificações, deduplicação e setup**. +9 pontas soltas (#307-#315). 2 itens adicionados à Fase 0 (43 itens). Totais: **315 pontas soltas**, **285 únicas**, **273 pendentes**. |
 | v5.49 | 2026-02-17 | **12ª passagem: análise cruzada profunda — automação, archiver, monitoring e setup**. +13 pontas soltas (#316-#328). 3 itens adicionados à Fase 0 (46 itens). Totais: **328 pontas soltas**, **298 únicas**, **286 pendentes**. |
 | v5.50 | 2026-02-17 | **13ª passagem: análise cruzada profunda — webhook-connect, create-invoice, payment-intent, cancellation e billing lifecycle**. +10 pontas soltas (#329-#338). 4 itens adicionados à Fase 0 (50 itens). Totais: **338 pontas soltas**, **308 únicas**, **296 pendentes**. |
+| v5.51 | 2026-02-17 | **14ª passagem: análise cruzada profunda — materialização, deleção de alunos e integração de pagamento**. +8 pontas soltas (#339-#346). 3 itens adicionados à Fase 0 (53 itens). Totais: **346 pontas soltas**, **316 únicas**, **304 pendentes**. |
+| v5.52 | 2026-02-17 | **15ª passagem: análise cruzada profunda — notificações, dependentes, assinaturas do professor e resiliência de loops**. +12 pontas soltas (#347-#358). 3 itens adicionados à Fase 0 (56 itens). Totais: **358 pontas soltas**, **328 únicas**, **316 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

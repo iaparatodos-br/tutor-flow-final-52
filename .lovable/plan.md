@@ -1,57 +1,33 @@
 
 
-# Verificacao Final v5.65 — 3 Inconsistencias Residuais
+# Verificacao Final v5.65 — 2 Inconsistencias Finais
 
 ## Status Geral
 
-O documento esta em excelente estado apos as 4 rodadas de correcao anteriores. Categorias A-L somam corretamente 148 itens (141 unicos), changelog esta consolidado, padroes sistemicos documentados, e totais finais corretos. Porem, restam **3 inconsistencias** que podem causar confusao durante a implementacao.
+O documento esta em otimo estado apos 5 rodadas de correcao. Categorias A-L somam corretamente **148 itens (141 unicos)**, tabela de cobertura esta expandida com funcoes reclassificadas, padroes sistemicos documentados, e nota de consolidacao precisa. Restam **2 inconsistencias** que devem ser corrigidas para uso como checklist final.
 
 ---
 
-## Problema 1: Contagem "Fora de Escopo" Errada
+## Problema 1: Funcoes Duplicadas em Cobertura E Fora de Escopo
 
-**Local**: Linha 3183 — `Funcoes Fora de Escopo (21 funcoes — atualizado v5.65)`
+Duas funcoes aparecem simultaneamente na **Tabela de Cobertura** (linhas 3281-3282) e na lista **"Fora de Escopo"** (linha 3189):
 
-O titulo afirma 21 funcoes, mas a tabela lista apenas **18**:
-- Setup/Cron: 5 funcoes
-- Auth/Onboarding: 5 funcoes
-- Dados/Consulta: 5 funcoes
-- Dev/Test: 2 funcoes
-- Outros: 1 funcao
+| Funcao | Na Cobertura (achados) | Em Fora de Escopo |
+|--------|----------------------|-------------------|
+| `resend-confirmation` | #358 (Cat A — Fase 0: sem auth, spam de emails) | Sim (Auth/Onboarding) |
+| `resend-student-invitation` | #220, #399 | Sim (Auth/Onboarding) |
 
-**Correcao**: Alterar titulo para `(18 funcoes — atualizado v5.65)`.
+Ambas possuem achados documentados e pertencem a Tabela de Cobertura. `resend-confirmation` inclusive tem o item #358 ativo na Fase 0 (Categoria A). Mante-las em "Fora de Escopo" contradiz a definicao "sem vulnerabilidades criticas".
 
----
-
-## Problema 2: Funcoes com Vulnerabilidades Fase 0 Classificadas como "Fora de Escopo — sem vulnerabilidades"
-
-**Local**: Linha 3185 — "sem vulnerabilidades identificadas"
-
-Sete funcoes listadas como "Fora de Escopo" possuem itens ativos na Fase 0:
-
-| Funcao (Fora de Escopo) | Itens Fase 0 | Categoria |
-|-------------------------|-------------|-----------|
-| check-email-availability | #402 | Cat A (sem auth + enumeracao) |
-| get-teacher-availability | #405 | Cat E (FK join proibido) |
-| setup-billing-automation | #315 | Cat K (ANON_KEY inline) |
-| setup-class-reminders-automation | #316, #495 | Cat K (ANON_KEY + SQL injection) |
-| setup-expired-subscriptions-automation | #317 | Cat K (ANON_KEY inline) |
-| setup-invoice-auto-verification | #318 | Cat K (ANON_KEY inline) |
-| setup-orphan-charges-automation | #319 | Cat K (ANON_KEY inline) |
-
-**Correcao**: Mover estas 7 funcoes da lista "Fora de Escopo" para a Tabela de Cobertura, com seus achados documentados. Atualizar o titulo para `(11 funcoes)` e remover a afirmacao "sem vulnerabilidades identificadas" (substituir por "sem vulnerabilidades criticas de logica de negocio"). Atualizar a contagem de funcoes: cobertura passa de ~57 para ~64, fora de escopo de 18 para 11, total 64 + 11 = 75 (mantendo consistencia).
+**Correcao**: Remover `resend-confirmation` e `resend-student-invitation` da tabela "Fora de Escopo" (linha 3189). Atualizar contagem de 11 para **9 funcoes**.
 
 ---
 
-## Problema 3: Itens Errados na Tabela de Cobertura (check-subscription-status)
+## Problema 2: Changelog v5.65 com Contagem Desatualizada
 
-**Local**: Linha 3229 — `check-subscription-status | #116, #217, #283, #351, #401, #402 |`
+A entrada do changelog na linha 4839 diz "Fase 0: 162 itens", que era o valor ANTES da deduplicacao e reconciliacao feita nas rodadas anteriores. O valor correto (conforme cabecalho e totais finais) e **148 itens listados (141 unicos)**.
 
-Os itens #401 e #402 estao incorretamente atribuidos a `check-subscription-status`:
-- #401 pertence a `stripe-events-monitor` (sem auth) — ja listado na linha 3258
-- #402 pertence a `check-email-availability` (sem auth + enumeracao) — atualmente em "Fora de Escopo"
-
-**Correcao**: Remover #401 e #402 da linha de `check-subscription-status`. O #402 sera adicionado a nova entrada de `check-email-availability` na tabela de cobertura (Problema 2).
+**Correcao**: Atualizar a linha 4839 para "Fase 0: 148 itens listados (141 unicos)".
 
 ---
 
@@ -59,21 +35,18 @@ Os itens #401 e #402 estao incorretamente atribuidos a `check-subscription-statu
 
 ### Arquivo: `docs/hybrid-billing-implementation-plan.md`
 
-1. **Linha 3183**: Alterar `(21 funcoes)` para `(11 funcoes)`
-2. **Linha 3185**: Alterar "sem vulnerabilidades identificadas" para "sem vulnerabilidades criticas de logica de negocio no escopo do plano hibrido"
-3. **Tabela "Fora de Escopo" (linhas 3187-3193)**: Remover as 7 funcoes reclassificadas das linhas da tabela
-4. **Linha 3229**: Remover `#401, #402` da entrada de `check-subscription-status`
-5. **Tabela de Cobertura (apos linha 3267)**: Adicionar 7 novas entradas:
-   - `check-email-availability | #402 |`
-   - `get-teacher-availability | #405 |`
-   - `setup-billing-automation | #315 |`
-   - `setup-class-reminders-automation | #316, #495 |`
-   - `setup-expired-subscriptions-automation | #317 |`
-   - `setup-invoice-auto-verification | #318 |`
-   - `setup-orphan-charges-automation | #319 |`
-6. **Nota de reclassificacao (linha 3195)**: Expandir para incluir as 7 novas funcoes reclassificadas (total de 13 reclassificacoes)
+1. **Linha 3183**: Alterar `(11 funcoes)` para `(9 funcoes)`
+2. **Linha 3189**: Remover `resend-confirmation` e `resend-student-invitation` da linha Auth/Onboarding. Resultado: `| Auth/Onboarding | create-teacher, check-email-confirmation |`
+3. **Linha 4839**: Alterar "Fase 0: 162 itens" para "Fase 0: 148 itens listados (141 unicos)"
+
+### Verificacao Pos-Correcao
+
+- Fora de Escopo: 9 funcoes (4 ficam em Auth/Onboarding → 2, Dados/Consulta 4, Dev/Test 2, Outros 1)
+- Cobertura: 65 funcoes (ja inclui resend-confirmation e resend-student-invitation)
+- Total: 65 + 9 + 1 (_shared) = **75 funcoes** (consistente com o cabecalho)
+- Fase 0: **148 listados / 141 unicos** (consistente em cabecalho, nota e changelog)
 
 ### Estimativa de Impacto
 
-Nenhuma alteracao de codigo. Apenas correcoes de consistencia interna do documento para garantir que nenhuma funcao com vulnerabilidades Fase 0 esteja erroneamente classificada como "sem vulnerabilidades".
+Nenhuma alteracao de codigo. Apenas 3 linhas de correcao no documento de planejamento.
 

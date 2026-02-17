@@ -37,6 +37,7 @@
     "automated": "Automated",
     "manual": "Manual",
     "monthlySubscription": "Monthly Subscription",
+    "prepaidClass": "Prepaid",
     "orphanCharges": "Pending Charges"
   },
   "originalAmount": "Original amount: {amount}",

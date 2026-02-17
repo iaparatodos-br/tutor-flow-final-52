@@ -620,8 +620,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
     
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+    // Return 200 to prevent Stripe retry storms on permanent errors
+    return new Response(JSON.stringify({ error: errorMessage, received: true }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }

@@ -587,12 +587,13 @@ serve(async (req) => {
 
   } catch (error) {
     logStep('General error in billing function', error);
+    // Return 200 to prevent cron job retry storms
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : 'Erro desconhecido',
       success: false 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
+      status: 200,
     });
   }
 });

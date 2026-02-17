@@ -564,12 +564,13 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in create-invoice", { message: errorMessage });
+    // Return 200 with success: false to prevent retry storms when called from other functions
     return new Response(JSON.stringify({ 
       success: false,
       error: errorMessage 
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status: 200,
     });
   }
 });

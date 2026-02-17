@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.52 (Consolidado)
+# Plano de Cobrança Híbrida — v5.53 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 56 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 61 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.52 consolida todas as auditorias com 15 passagens completas. Totais finais: **358 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **328 únicas**, **316 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 15ª passagem — análise cruzada profunda: notificações, dependentes, assinaturas do professor e resiliência de loops). A 15ª passagem revelou 12 novas pontas soltas (#347-#358): `send-class-reminders` com FK joins proibidos + `.single()` em loops que crasham batch inteiro (#347 ALTA), `send-invoice-notification` com `.single()` em lookups que impedem notificação de ALL faturas (#348 ALTA), `handle-teacher-subscription-cancellation` sem autenticação — IDOR (#350 ALTA), mesma função referencia coluna inexistente `guardian_email` (#349), `check-subscription-status` com FK joins (#351), notificações com `.single()` em loops (#352, #357), `process-payment-failure-downgrade` com `.single()` (#353), gate morto de `RESEND_API_KEY` impedindo envio SES (#354), SDKs não pinados em dependentes (#355), RPC inexistente `write_audit_log` (#356), `resend-confirmation` sem auth (#358).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.53 consolida todas as auditorias com 16 passagens completas. Totais finais: **368 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **338 únicas**, **326 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 16ª passagem — análise cruzada profunda: automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência). A 16ª passagem revelou 10 novas pontas soltas (#359-#368): `check-overdue-invoices` com status `'overdue'` inglês (#359 ALTA), tracking de notificações usando FK semântica errada (#360 ALTA), spam de notificações por ausência de INSERT de controle (#361 ALTA), `automated-billing` sem idempotência para mensalidades (#364 ALTA), `end-recurrence` com cascade de deleção incompleta (#365 ALTA), FK joins proibidos em automated-billing (#362, #363), `.single()` em create-invoice (#368), client sem persistSession em end-recurrence (#366), `.single()` em validate-payment-routing (#367).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4344,7 +4344,60 @@ Funções auditadas nesta rodada (15ª passagem — análise cruzada profunda):
 - **100% cobertura**: 75 funções auditadas (15 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (56 itens críticos). A 15ª passagem revelou um padrão SISTÊMICO em funções de notificação: 8 das 9 funções `send-*` usam `.single()` dentro de loops de processamento batch, significando que um ÚNICO registro ausente (aluno deletado, dependente removido) crasheia o envio de notificações para TODOS os destinatários restantes na fila. A correção para `.maybeSingle()` + `continue` deve ser aplicada como batch unificado. Adicionalmente, `handle-teacher-subscription-cancellation` é uma das funções financeiras mais sensíveis do sistema e opera sem NENHUMA autenticação (#350), permitindo que qualquer chamador anônimo cancele faturas de qualquer professor.
+Prioridade de execução: Fase 0 (56 itens críticos). Padrão SISTÊMICO: 8/9 funções `send-*` usam `.single()` em loops batch. Correção `.maybeSingle()` + `continue` deve ser aplicada como batch unificado.
+
+---
+
+## 16ª Passagem: Análise Cruzada Profunda — Automação de Cobrança, Faturas Vencidas, Arquivamento e Ciclo de Vida de Recorrência
+
+Funções auditadas nesta rodada (16ª passagem — análise cruzada profunda):
+- `automated-billing/index.ts` (1057 linhas) — FK joins em L71-89 e L1031-1038 (#362, #363), sem idempotência mensal (#364 ALTA), boleto→hosted_url mismatch (confirma #341)
+- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' inglês (#359 ALTA), tracking semântico quebrado (#360 ALTA), spam de notificações (#361 ALTA)
+- `archive-old-data/index.ts` (330 linhas) — `student_id` inexistente em `classes` (confirma memória), cascade incompleta (confirma memória)
+- `create-invoice/index.ts` (575 linhas) — FK join L148 e L233-238 (confirma #331), `.single()` L382 (#368)
+- `handle-student-overage/index.ts` (238 linhas) — `.single()` L79, tabela inexistente `student_overage_charges` (confirma memória)
+- `validate-payment-routing/index.ts` (321 linhas) — fatura fantasma R$1 (confirma memória), `.single()` L56/L116/L154 (#367)
+- `setup-billing-automation/index.ts` (69 linhas) — ANON_KEY inline (confirma #315/#328)
+- `end-recurrence/index.ts` (133 linhas) — cascade de deleção incompleta (#365 ALTA), client sem persistSession (#366)
+- `resend-confirmation/index.ts` (202 linhas) — `listUsers()` sem filtro (confirma memória), sem auth (confirma #358)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#359 (ALTA — FATURAS VENCIDAS INVISÍVEIS)**: `check-overdue-invoices` L58 atualiza status para `"overdue"` (inglês) em vez de `"vencida"` (português). Mesmo padrão sistêmico de #329/#330/#334. Dashboard financeiro, filtros e cron jobs dependem de `"vencida"`. **Consequência**: faturas marcadas como vencidas ficam invisíveis para professores e alunos, e cron jobs de cobrança subsequentes não as identificam corretamente.
+
+2. **#360 (ALTA — TRACKING DE NOTIFICAÇÕES QUEBRADO)**: `check-overdue-invoices` L47-51 usa `class_notifications.class_id = invoice.id` para rastreamento de deduplicação. O campo `class_id` possui FK para `classes.id`, não para `invoices.id`. **Consequência dupla**: (a) inserir `invoice.id` em `class_id` viola a FK constraint; (b) a busca nunca encontra notificações anteriores porque o ID da fatura nunca coincide com um ID de classe.
+
+3. **#361 (ALTA — SPAM DE NOTIFICAÇÕES)**: `check-overdue-invoices` NUNCA insere registro em `class_notifications` após enviar notificação (L54-70 envia mas não faz INSERT). Combinado com #360, a verificação de deduplicação (L47-51) sempre retorna null. **Consequência**: a cada execução do cron job, TODAS as faturas vencidas recebem notificação novamente, causando spam massivo de emails para alunos.
+
+4. **#364 (ALTA — FATURAS MENSAIS DUPLICADAS)**: `automated-billing` → `processMonthlySubscriptionBilling` (L652-1024) NÃO verifica se já existe fatura `invoice_type = 'monthly_subscription'` para o ciclo atual antes de criar nova fatura. Se o cron job executar mais de uma vez no mesmo dia (retry, execução manual, falha parcial), faturas de mensalidade duplicadas são criadas para TODOS os alunos com assinatura ativa.
+
+5. **#365 (ALTA — END-RECURRENCE SILENCIOSAMENTE FALHA)**: `end-recurrence` L67-73 deleta classes futuras materializadas SEM antes remover registros dependentes de `class_participants`, `class_exceptions` e `invoice_classes`. As FK constraints `RESTRICT` nessas tabelas bloqueiam a deleção, fazendo a função lançar erro e falhar silenciosamente para qualquer aula que tenha participantes ou exceções associados.
+
+### Achados Médios
+
+6. **#362**: `automated-billing` L71-89 — FK joins `profiles!teacher_id(id, name, email, payment_due_days)` e `profiles!student_id(id, name, email)` em `teacher_student_relationships`. Viola constraint de queries sequenciais que previne problemas de schema cache.
+
+7. **#363**: `automated-billing` L1031-1038 — `validateTeacherCanBill` usa FK join `subscription_plans!inner(features)`. Viola mesma constraint.
+
+8. **#368**: `create-invoice` L382 — `.single()` na busca de dados do responsável financeiro. Se o relacionamento não existir, crash da função inteira.
+
+### Achados Baixos
+
+9. **#366**: `end-recurrence` L20-23 — Cria Supabase client sem `{ auth: { persistSession: false } }`. Viola padrão de edge functions stateless.
+
+10. **#367**: `validate-payment-routing` L56, L116, L154 — 3× `.single()` em lookups de diagnóstico. Função não-crítica, mas erros confusos para o professor.
+
+### Totais Atualizados (v5.53)
+- 368 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 12 confirmações
+- 338 únicas
+- 10 implementadas + 2 confirmações de memória
+- **326 pendentes**
+- Fase 0: **61 itens** (+5: #359, #360, #361, #364, #365)
+- **100% cobertura**: 75 funções auditadas (16 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (61 itens críticos). A 16ª passagem revelou um cluster de bugs INTERDEPENDENTES em `check-overdue-invoices`: status inglês (#359) + tracking semântico quebrado (#360) + ausência de INSERT (#361) se combinam para criar um cenário onde TODAS as faturas vencidas recebem notificação spam a cada execução do cron, E as que são atualizadas desaparecem do dashboard. Adicionalmente, `automated-billing` processa mensalidades sem idempotência (#364), arriscando cobranças duplicadas para todos os alunos com plano mensal, e `end-recurrence` (#365) não consegue encerrar recorrências para aulas que já tenham participantes registrados.
 
 ---
 
@@ -4384,6 +4437,7 @@ Prioridade de execução: Fase 0 (56 itens críticos). A 15ª passagem revelou u
 | v5.50 | 2026-02-17 | **13ª passagem: análise cruzada profunda — webhook-connect, create-invoice, payment-intent, cancellation e billing lifecycle**. +10 pontas soltas (#329-#338). 4 itens adicionados à Fase 0 (50 itens). Totais: **338 pontas soltas**, **308 únicas**, **296 pendentes**. |
 | v5.51 | 2026-02-17 | **14ª passagem: análise cruzada profunda — materialização, deleção de alunos e integração de pagamento**. +8 pontas soltas (#339-#346). 3 itens adicionados à Fase 0 (53 itens). Totais: **346 pontas soltas**, **316 únicas**, **304 pendentes**. |
 | v5.52 | 2026-02-17 | **15ª passagem: análise cruzada profunda — notificações, dependentes, assinaturas do professor e resiliência de loops**. +12 pontas soltas (#347-#358). 3 itens adicionados à Fase 0 (56 itens). Totais: **358 pontas soltas**, **328 únicas**, **316 pendentes**. |
+| v5.53 | 2026-02-17 | **16ª passagem: análise cruzada profunda — automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência**. +10 pontas soltas (#359-#368). 5 itens adicionados à Fase 0 (61 itens). Totais: **368 pontas soltas**, **338 únicas**, **326 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

@@ -63,19 +63,58 @@ serve(async (req) => {
       throw new Error(`Failed to update template: ${updateError.message}`);
     }
 
-    // 3. Deletar aulas materializadas futuras não concluídas
-    const { data: deletedClasses, error: deleteError } = await supabase
+    // 3. Identify future classes to delete
+    const { data: futuresToDelete, error: fetchFuturesError } = await supabase
       .from('classes')
-      .delete()
+      .select('id')
       .eq('class_template_id', templateId)
       .gte('class_date', endDate)
-      .neq('status', 'concluida')
-      .select();
+      .neq('status', 'concluida');
 
-    if (deleteError) {
-      console.error('[end-recurrence] Error deleting future classes:', deleteError);
-      throw new Error(`Failed to delete future classes: ${deleteError.message}`);
+    if (fetchFuturesError) {
+      console.error('[end-recurrence] Error fetching future classes:', fetchFuturesError);
+      throw new Error(`Failed to fetch future classes: ${fetchFuturesError.message}`);
     }
+
+    const futureClassIds = (futuresToDelete || []).map(c => c.id);
+    let deletedCount = futureClassIds.length;
+
+    if (futureClassIds.length > 0) {
+      // 3a. Get participant IDs to clean invoice_classes first (FK RESTRICT)
+      const { data: futureParticipants } = await supabase
+        .from('class_participants')
+        .select('id')
+        .in('class_id', futureClassIds);
+      
+      const futureParticipantIds = (futureParticipants || []).map(p => p.id);
+
+      // 3b. Delete invoice_classes referencing these participants
+      if (futureParticipantIds.length > 0) {
+        await supabase.from('invoice_classes').delete().in('participant_id', futureParticipantIds);
+      }
+
+      // 3c. Delete class_exceptions for these classes
+      await supabase.from('class_exceptions').delete().in('original_class_id', futureClassIds);
+
+      // 3d. Delete class_notifications for these classes
+      await supabase.from('class_notifications').delete().in('class_id', futureClassIds);
+
+      // 3e. Delete class_participants
+      await supabase.from('class_participants').delete().in('class_id', futureClassIds);
+
+      // 3f. Now safe to delete the classes
+      const { error: deleteError } = await supabase
+        .from('classes')
+        .delete()
+        .in('id', futureClassIds);
+
+      if (deleteError) {
+        console.error('[end-recurrence] Error deleting future classes:', deleteError);
+        throw new Error(`Failed to delete future classes: ${deleteError.message}`);
+      }
+    }
+
+    const deletedClasses = futuresToDelete;
 
     console.log(`[end-recurrence] Deleted ${deletedClasses?.length || 0} future classes`);
 

@@ -226,6 +226,7 @@ async function deleteDependentsCascade(
     const dependentIds = dependents.map((d: any) => d.id);
 
     // Delete dependent-related records in order (respecting foreign keys)
+    // CRITICAL ORDER: invoice_classes BEFORE class_participants (FK RESTRICT)
     
     // 1. Delete class_report_feedbacks for these dependents
     const { error: feedbackError } = await supabaseAdmin
@@ -247,7 +248,27 @@ async function deleteDependentsCascade(
       console.error('Error deleting material_access:', materialError);
     }
 
-    // 3. Delete class_participants for these dependents
+    // 3. Get participant IDs for these dependents to clean invoice_classes first
+    const { data: depParticipants } = await supabaseAdmin
+      .from('class_participants')
+      .select('id')
+      .in('dependent_id', dependentIds);
+    
+    const depParticipantIds = (depParticipants || []).map((p: any) => p.id);
+    
+    // 3a. Delete invoice_classes referencing these participants (BEFORE class_participants)
+    if (depParticipantIds.length > 0) {
+      const { error: invoiceClassesError } = await supabaseAdmin
+        .from('invoice_classes')
+        .delete()
+        .in('participant_id', depParticipantIds);
+      
+      if (invoiceClassesError) {
+        console.error('Error deleting invoice_classes for dependent participants:', invoiceClassesError);
+      }
+    }
+
+    // 3b. Now safe to delete class_participants
     const { error: participantsError } = await supabaseAdmin
       .from('class_participants')
       .delete()
@@ -400,6 +421,16 @@ Deno.serve(async (req) => {
       }
       dependentsDeleted = cascadeResult.deleted;
       
+      // Delete student_monthly_subscriptions BEFORE relationship (FK RESTRICT)
+      const { error: smsUnlinkError } = await supabaseAdmin
+        .from('student_monthly_subscriptions')
+        .delete()
+        .eq('relationship_id', relationship_id);
+      
+      if (smsUnlinkError) {
+        console.error('Warning: Error deleting student_monthly_subscriptions:', smsUnlinkError);
+      }
+
       const { error: unlinkError } = await supabaseAdmin
         .from('teacher_student_relationships')
         .delete()
@@ -470,8 +501,21 @@ Deno.serve(async (req) => {
         const allDependentIds = allDependents.map((d: any) => d.id);
         
         // Delete dependent-related records
+        // CRITICAL ORDER: invoice_classes BEFORE class_participants (FK RESTRICT)
         await supabaseAdmin.from('class_report_feedbacks').delete().in('dependent_id', allDependentIds);
         await supabaseAdmin.from('material_access').delete().in('dependent_id', allDependentIds);
+        
+        // Get participant IDs to clean invoice_classes first
+        const { data: allDepParticipants } = await supabaseAdmin
+          .from('class_participants')
+          .select('id')
+          .in('dependent_id', allDependentIds);
+        
+        const allDepParticipantIds = (allDepParticipants || []).map((p: any) => p.id);
+        if (allDepParticipantIds.length > 0) {
+          await supabaseAdmin.from('invoice_classes').delete().in('participant_id', allDepParticipantIds);
+        }
+        
         await supabaseAdmin.from('class_participants').delete().in('dependent_id', allDependentIds);
         
         const { error: deleteDepsError } = await supabaseAdmin
@@ -486,6 +530,28 @@ Deno.serve(async (req) => {
           console.log(`Deleted ${dependentsDeleted} dependents for user being deleted`);
         }
       }
+
+      // Delete student_monthly_subscriptions BEFORE relationship (FK RESTRICT)
+      const { error: smsDeleteError } = await supabaseAdmin
+        .from('student_monthly_subscriptions')
+        .delete()
+        .eq('relationship_id', relationship_id);
+      
+      if (smsDeleteError) {
+        console.error('Error deleting student_monthly_subscriptions:', smsDeleteError);
+      }
+
+      // Also clean invoice_classes and class_participants for the student's own participations
+      const { data: studentParticipants } = await supabaseAdmin
+        .from('class_participants')
+        .select('id')
+        .eq('student_id', student_id);
+      
+      const studentParticipantIds = (studentParticipants || []).map((p: any) => p.id);
+      if (studentParticipantIds.length > 0) {
+        await supabaseAdmin.from('invoice_classes').delete().in('participant_id', studentParticipantIds);
+      }
+      await supabaseAdmin.from('class_participants').delete().eq('student_id', student_id);
 
       // Delete the relationship
       const { error: relationshipDeleteError } = await supabaseAdmin

@@ -198,7 +198,35 @@ serve(async (req) => {
       // Continue anyway, not critical
     }
 
-    // Delete the dependent (class_participants.dependent_id will be set to NULL by FK)
+    // CRITICAL: Delete invoice_classes BEFORE class_participants (FK RESTRICT on participant_id)
+    const { data: depParticipants } = await supabaseAdmin
+      .from('class_participants')
+      .select('id')
+      .eq('dependent_id', body.dependent_id);
+    
+    const depParticipantIds = (depParticipants || []).map((p: any) => p.id);
+    if (depParticipantIds.length > 0) {
+      const { error: invoiceClassesError } = await supabaseAdmin
+        .from('invoice_classes')
+        .delete()
+        .in('participant_id', depParticipantIds);
+      
+      if (invoiceClassesError) {
+        console.error('Error deleting invoice_classes for dependent:', invoiceClassesError);
+      }
+    }
+
+    // Now safe to delete class_participants for this dependent
+    const { error: participantsDeleteError } = await supabaseAdmin
+      .from('class_participants')
+      .delete()
+      .eq('dependent_id', body.dependent_id);
+    
+    if (participantsDeleteError) {
+      console.error('Error deleting class_participants:', participantsDeleteError);
+    }
+
+    // Delete the dependent
     const { error: deleteError } = await supabaseAdmin
       .from('dependents')
       .delete()

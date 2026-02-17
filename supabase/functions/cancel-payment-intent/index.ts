@@ -108,7 +108,7 @@ serve(async (req) => {
       const { error: updateError } = await supabase
         .from('invoices')
         .update({
-          status: 'paid',
+          status: 'paga',
           payment_origin: 'manual',
           payment_intent_cancelled_by: user.id,
           payment_intent_cancelled_at: new Date().toISOString(),
@@ -169,7 +169,7 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from('invoices')
       .update({
-        status: 'paid',
+        status: 'paga',
         payment_origin: 'manual',
         payment_intent_cancelled_by: user.id,
         payment_intent_cancelled_at: new Date().toISOString(),
@@ -192,7 +192,7 @@ serve(async (req) => {
       operation: 'UPDATE',
       old_data: { status: invoice.status, payment_origin: invoice.payment_origin },
       new_data: { 
-        status: 'paid', 
+        status: 'paga', 
         payment_origin: 'manual',
         payment_intent_cancelled: paymentIntentCancelled,
         manual_payment_notes: notes 

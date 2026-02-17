@@ -55,7 +55,7 @@ serve(async (req) => {
             // Atualizar status da fatura
             await supabase
               .from("invoices")
-              .update({ status: "overdue" })
+              .update({ status: "vencida" })
               .eq("id", invoice.id);
 
             // Enviar notificação

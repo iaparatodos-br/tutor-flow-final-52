@@ -52,11 +52,25 @@ serve(async (req) => {
             .maybeSingle();
 
           if (!existingNotification) {
-            // Atualizar status da fatura
+            // Guard: só atualizar faturas que ainda estão pendentes (não reverter paga/cancelada)
+            const { data: currentInvoice } = await supabase
+              .from("invoices")
+              .select("status")
+              .eq("id", invoice.id)
+              .maybeSingle();
+
+            const terminalStatuses = ['paga', 'cancelada', 'vencida'];
+            if (currentInvoice && terminalStatuses.includes(currentInvoice.status)) {
+              console.log(`⏭️ Fatura ${invoice.id} já em status terminal (${currentInvoice.status}), pulando`);
+              continue;
+            }
+
+            // Atualizar status da fatura apenas se ainda pendente
             await supabase
               .from("invoices")
               .update({ status: "vencida" })
-              .eq("id", invoice.id);
+              .eq("id", invoice.id)
+              .eq("status", "pendente"); // Guard clause no UPDATE
 
             // Enviar notificação
             await supabase.functions.invoke('send-invoice-notification', {

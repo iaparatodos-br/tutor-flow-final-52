@@ -377,13 +377,31 @@ serve(async (req) => {
           reason: failedInvoice.last_payment_error?.message 
         });
 
+        // Guard: check if invoice was manually confirmed before marking as failed
+        const { data: existingFailed } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', failedInvoice.id)
+          .maybeSingle();
+
+        if (existingFailed?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping payment_failed", { invoiceId: failedInvoice.id });
+          break;
+        }
+
+        if (existingFailed && ['paga', 'cancelada'].includes(existingFailed.status)) {
+          logStep("Invoice in terminal status, skipping payment_failed", { invoiceId: failedInvoice.id, status: existingFailed.status });
+          break;
+        }
+
         const { error: failedError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'falha_pagamento',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', failedInvoice.id);
+          .eq('stripe_invoice_id', failedInvoice.id)
+          .in('status', ['pendente', 'falha_pagamento']); // Guard clause
 
         if (failedError) {
           logStep("Error updating invoice payment failed", failedError);
@@ -398,20 +416,34 @@ serve(async (req) => {
         const uncollectibleInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice marked uncollectible", { invoiceId: uncollectibleInvoice.id });
 
+        // Guard: check if invoice was manually confirmed or already terminal
+        const { data: existingUncollectible } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', uncollectibleInvoice.id)
+          .maybeSingle();
+
+        if (existingUncollectible?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping marked_uncollectible", { invoiceId: uncollectibleInvoice.id });
+          break;
+        }
+
+        if (existingUncollectible && ['paga', 'cancelada'].includes(existingUncollectible.status)) {
+          logStep("Invoice in terminal status, skipping marked_uncollectible", { invoiceId: uncollectibleInvoice.id, status: existingUncollectible.status });
+          break;
+        }
+
         const { error: overdueError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'vencida',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', uncollectibleInvoice.id);
+          .eq('stripe_invoice_id', uncollectibleInvoice.id)
+          .in('status', ['pendente', 'falha_pagamento']); // Guard clause
 
         if (overdueError) {
           logStep("Error updating invoice status to overdue", overdueError);
-          return new Response(JSON.stringify({ error: 'Failed to update invoice to overdue' }), { 
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
         }
         logStep("Invoice marked as overdue", { invoiceId: uncollectibleInvoice.id });
         break;
@@ -422,13 +454,31 @@ serve(async (req) => {
         const voidedInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice voided", { invoiceId: voidedInvoice.id });
 
+        // Guard: don't void invoices that are already paid or manually confirmed
+        const { data: existingVoided } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', voidedInvoice.id)
+          .maybeSingle();
+
+        if (existingVoided?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping void", { invoiceId: voidedInvoice.id });
+          break;
+        }
+
+        if (existingVoided?.status === 'paga') {
+          logStep("Invoice already paid, skipping void", { invoiceId: voidedInvoice.id });
+          break;
+        }
+
         const { error: voidError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'cancelada',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', voidedInvoice.id);
+          .eq('stripe_invoice_id', voidedInvoice.id)
+          .neq('status', 'paga'); // Guard clause
 
         if (voidError) {
           logStep("Error updating invoice status to voided", voidError);
@@ -511,6 +561,23 @@ serve(async (req) => {
           metadata: paymentIntent.metadata
         });
 
+        // Guard: check if invoice was manually confirmed
+        const { data: existingPIFailed } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_payment_intent_id', paymentIntent.id)
+          .maybeSingle();
+
+        if (existingPIFailed?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping PI failed", { paymentIntentId: paymentIntent.id });
+          break;
+        }
+
+        if (existingPIFailed && ['paga', 'cancelada'].includes(existingPIFailed.status)) {
+          logStep("Invoice in terminal status, skipping PI failed", { paymentIntentId: paymentIntent.id, status: existingPIFailed.status });
+          break;
+        }
+
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
@@ -518,6 +585,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString()
           })
           .eq("stripe_payment_intent_id", paymentIntent.id)
+          .in("status", ["pendente", "falha_pagamento"]) // Guard clause
           .select();
 
         if (error) {

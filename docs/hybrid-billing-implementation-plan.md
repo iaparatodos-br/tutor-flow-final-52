@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.64 (Consolidado)
+# Plano de Cobrança Híbrida — v5.65 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 149 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 162 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.64 consolida todas as auditorias com 27 passagens completas. Totais finais: **559 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **529 únicas**, **517 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 27ª passagem — CATASTROPHIC: webhook-stripe-connect usa status ENGLISH 'paid'/'overdue' em 5 handlers tornando TODOS os pagamentos Stripe invisíveis no dashboard; destrói dados de auditoria de pagamento em payment_intent.succeeded; retorna HTTP 500 no catch causando retry storms; check-overdue-invoices usa 'overdue' em inglês e tem erro semântico em class_notifications.class_id = invoice.id que quebra TODO o rastreamento de notificações; automated-billing usa FK joins proibidos em profiles e classes; create-invoice usa FK joins proibidos; process-cancellation passa SERVICE_ROLE como Bearer token). A 27ª passagem revelou 18 novas pontas soltas (#546-#563): `webhook-stripe-connect` status 'paid' inglês em 3 handlers L321/L361/L469 (#546 CATASTRÓFICO), status 'overdue' inglês L404 (#547 CATASTRÓFICO), destruição de dados de pagamento L469-481 (#548 CRÍTICO), HTTP 500 no catch L555 (#549 CRÍTICO), sem guard clauses em 3 handlers L380/L425/L514 (#550 CRÍTICO), .single() L190 em pending_business_profiles (#551 ALTO), .single() L310/L345/L457 em invoice lookups (#552 ALTO); `auto-verify-pending-invoices` missing stripeAccount L75 (#553 ALTO); `verify-payment-status` missing stripeAccount L73 (#554 ALTO); `check-overdue-invoices` status 'overdue' inglês L58 (#555 CATASTRÓFICO), erro semântico class_notifications.class_id=invoice.id L50 (#556 CRÍTICO), sem guard clause L56-59 (#557 CRÍTICO); `automated-billing` FK join profiles!teacher_id/student_id L78-89 (#558 ALTO), FK join classes!inner L212-226 (#559 ALTO); `create-invoice` FK join business_profiles!fkey L148 (#560 ALTO), FK join classes!inner + class_services L233-240 (#561 ALTO); `create-payment-intent-connect` campo fantasma guardian_name L308 (#562 MÉDIO); `process-cancellation` SERVICE_ROLE como Bearer token L455 (#563 ALTO). Passagens anteriores: 26ª passagem (#524-#545), 25ª passagem (#506-#523).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.65 consolida todas as auditorias com 28 passagens completas. Totais finais: **577 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **547 únicas**, **535 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 28ª passagem — CRÍTICO: handle-teacher-subscription-cancellation sem auth com IDOR + PII leak via guardian_email fantasma + stripeAccount missing + guard clause ausente; handle-plan-downgrade-selection com audit_logs schema mismatch confirmado; stripe-events-monitor e validate-business-profile-deletion completamente sem auth; send-class-report-notification com 6x .single() em loop + sem auth; archive-old-data confirma student_id fantasma + FK cascade failure; refresh-stripe-connect-account com IDOR em payment_accounts; check-business-profile-status sem persistSession + .single()). A 28ª passagem revelou 18 novas pontas soltas (#564-#581). Passagens anteriores: 27ª passagem (#546-#563), 26ª passagem (#524-#545).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4875,3 +4875,102 @@ Confirmadas como bem implementadas nesta passagem:
 - 541 pontas soltas totais | 511 únicas | **499 pendentes**
 - Fase 0: **132 itens** (+8: #524, #525, #527, #530, #531, #532, #533, #541)
 - **100% cobertura**: 75 funções auditadas (26 passagens)
+
+---
+
+## Auditoria de 28ª Passagem (Auth Missing em Funções de Administração, Audit Schema Mismatch Confirmado, IDOR em refresh-stripe-connect-account, FK Cascade em archive-old-data)
+
+Funções auditadas nesta rodada (28ª passagem):
+- `handle-teacher-subscription-cancellation/index.ts` — sem auth IDOR (#564 CRÍTICO), guardian_email fantasma L263 (#565 ALTO), sem guard clause L140-146 (#566 ALTO), missing stripeAccount L122 (#567 ALTO), .single() L252 (#577 ALTO), status não-padrão L143 (#578 ALTO)
+- `handle-plan-downgrade-selection/index.ts` — audit_logs schema mismatch L29-37 (#568 ALTO), .single() L111 (#569 ALTO)
+- `stripe-events-monitor/index.ts` — sem auth (#572 CRÍTICO)
+- `validate-business-profile-deletion/index.ts` — sem auth (#573 CRÍTICO)
+- `send-class-report-notification/index.ts` — 6x .single() em loop L37/L49/L74/L107/L128/L142 (#575 ALTO), sem auth (#576 ALTO)
+- `refresh-stripe-connect-account/index.ts` — IDOR em payment_accounts L119 (#574 ALTO)
+- `check-business-profile-status/index.ts` — sem persistSession L27 (#570 MÉDIO), .single() L77/L100 (#571 ALTO), Stripe SDK v14.24.0 (#579 MÉDIO)
+- `archive-old-data/index.ts` — student_id fantasma L132 (#580 ALTO), FK cascade failure sem cleanup de class_exceptions/invoice_classes (#581 ALTO)
+- `list-subscription-invoices/index.ts` — auditada, bom padrão de auth
+- `customer-portal/index.ts` — auditada, bom padrão de auth
+- `check-stripe-account-status/index.ts` — auditada, bom padrão de ownership validation
+- `resend-student-invitation/index.ts` — auditada, bom padrão de auth + ownership
+- `create-connect-account/index.ts` — auditada, bom padrão de auth + ownership
+- `create-connect-onboarding-link/index.ts` — #506 confirmado (stripe_account_id bypass), restante OK
+
+### Achados Críticos (→ Fase 0)
+
+1. **#564 (CRÍTICO: IDOR + NO AUTH)**: `handle-teacher-subscription-cancellation` NÃO possui autenticação. Aceita `teacher_id` do body sem validação JWT. Qualquer chamador anônimo pode cancelar todas as faturas pendentes de qualquer professor, registrar reembolsos falsos e enviar notificações a alunos/professores arbitrários. Impacto financeiro direto: faturas legítimas são canceladas e marcadas como 'cancelada_por_professor_inativo'.
+
+2. **#572 (CRÍTICO: NO AUTH + DATA EXPOSURE)**: `stripe-events-monitor` não possui NENHUMA autenticação. Qualquer chamador pode consultar estatísticas detalhadas de processamento de eventos Stripe, incluindo IDs de eventos, tipos, resultados de processamento e tempos. Expõe metadados sensíveis da infraestrutura de pagamentos.
+
+3. **#573 (CRÍTICO: NO AUTH + PII/FINANCIAL DATA)**: `validate-business-profile-deletion` não possui autenticação. Aceita `business_profile_id` do body e retorna dados de faturas (IDs, status, valores, student_ids) e relacionamentos (IDs, nomes de alunos) sem qualquer verificação de identidade. Vetor de enumeração de dados financeiros.
+
+### Achados Altos (→ Fase 0)
+
+4. **#565 (ALTO: PII LEAK SILENCIOSO)**: `handle-teacher-subscription-cancellation` L263 referencia `profiles.guardian_email` — campo inexistente na tabela. O objeto `students` na função `sendNotifications` nunca contém `guardian_email`, resultando em notificações NUNCA enviadas para responsáveis financeiros (pais). Deve usar `teacher_student_relationships.student_guardian_email` conforme memória do projeto.
+
+5. **#566 (ALTO: REVERSÃO DE STATUS)**: `handle-teacher-subscription-cancellation` L140-146 atualiza status de faturas para `cancelada_por_professor_inativo` SEM guard clause `.eq('status', 'pendente')`. Se o cron `check-overdue-invoices` ou o webhook já tiver alterado o status para 'paga', o professor terá faturas pagas revertidas.
+
+6. **#567 (ALTO: stripeAccount MISSING)**: `handle-teacher-subscription-cancellation` L122 chama `stripe.invoices.retrieve(invoice.stripe_invoice_id)` sem o parâmetro `stripeAccount`. Para faturas de professores conectados via Stripe Connect, o retrieve FALHA com "Resource not found", impedindo a verificação de status real no Stripe antes do cancelamento.
+
+7. **#568 (ALTO: AUDIT SCHEMA MISMATCH)**: `handle-plan-downgrade-selection` L29-37 função `logAuditEvent` usa colunas erradas: `user_id` (→ `actor_id`), `action` (→ `operation`), `details` (→ inexistente), `metadata` (→ inexistente). Faltam campos obrigatórios: `table_name`, `record_id`. **TODOS os logs de auditoria de downgrade falham silenciosamente**. Confirmação direta da memória `database/audit-logs-schema-mismatch`.
+
+8. **#569 (ALTO)**: `handle-plan-downgrade-selection` L111 usa `.single()` para buscar plano por ID. Se o plano não existir ou tiver sido desativado, crash com HTTP 500 em vez de mensagem amigável.
+
+9. **#574 (ALTO: IDOR)**: `refresh-stripe-connect-account` L119 atualiza `payment_accounts` filtrando APENAS por `id` sem filtro de `teacher_id`. Se o `payment_account_id` for adivinhado/enumerado, um professor autenticado pode sobrescrever dados de `stripe_charges_enabled`, `stripe_payouts_enabled` e `stripe_onboarding_status` de contas de OUTROS professores.
+
+10. **#575 (ALTO: CRASH EM LOOP)**: `send-class-report-notification` contém 6 chamadas `.single()` dentro do loop de participantes (L37, L49, L74, L107, L128, L142). Um único registro faltante (ex: teacher deletado, dependent removido, relationship inexistente) causa crash HTTP 500 que interrompe o envio para TODOS os participantes restantes.
+
+11. **#576 (ALTO: NO AUTH)**: `send-class-report-notification` não possui validação de identidade do caller. Aceita `classId` e `reportId` do body. Qualquer chamador pode disparar envio de relatórios (contendo resumo da aula, tarefas, feedback) para emails de alunos/responsáveis arbitrários. 10ª função de notificação sem auth.
+
+12. **#577 (ALTO)**: `handle-teacher-subscription-cancellation` L252 usa `.single()` em lookup de teacher profile dentro de `sendNotifications`. Se o professor não tiver perfil (edge case pós-delete), a função de notificação crasheia sem enviar NENHUM email.
+
+13. **#578 (ALTO: STATUS NÃO-PADRÃO)**: `handle-teacher-subscription-cancellation` L143 usa status `cancelada_por_professor_inativo` — status não reconhecido pelo dashboard financeiro (Financeiro.tsx) nem por outros cron jobs. Faturas com este status ficam invisíveis ou em estado desconhecido.
+
+14. **#580 (ALTO: DADOS CORROMPIDOS)**: `archive-old-data` L132 seleciona `student_id` da tabela `classes` — coluna que NÃO EXISTE. O JSON arquivado em Storage conterá `student_id: null` para todas as aulas, corrompendo o registro histórico. Confirmação direta da memória `infrastructure/data-archiving-corruption-and-fk-blocks`.
+
+15. **#581 (ALTO: FK CASCADE FAILURE)**: `archive-old-data` deleta classes (L281-284) após deletar class_reports (L254-263) e class_participants (L267-278), MAS não deleta `class_exceptions` nem `invoice_classes` vinculados. Constraints FK RESTRICT nestas tabelas causam falha de TODA a operação de deleção, deixando dados parcialmente deletados (reports/participants removidos mas classes mantidas).
+
+### Achados Médios
+
+16. **#570 (MÉDIO)**: `check-business-profile-status` L27 createClient sem `{ auth: { persistSession: false } }`. Inconsistência com padrão do projeto.
+
+17. **#571 (MÉDIO)**: `check-business-profile-status` L77 e L100 usam `.single()` em lookups de pending_business_profiles e business_profiles. Crash se perfis não existirem.
+
+18. **#579 (MÉDIO)**: `check-business-profile-status` L2 usa Stripe SDK `v14.24.0` em vez do padrão `v14.21.0` do projeto. Risco de incompatibilidade de tipos.
+
+### Padrão Sistêmico Expandido: Notification Functions sem Auth (Total: 10 de 11)
+
+Com #576, confirma-se que **10 de 11 funções de notificação por email** são vetores de phishing/data leak:
+1. send-student-invitation (#454)
+2. send-material-shared-notification (#455)
+3. send-cancellation-notification (#500)
+4. send-class-report-notification (#576) — **CONFIRMADO NESTA PASSAGEM**
+5. send-class-request-notification (#507)
+6. send-class-confirmation-notification (#508)
+7. send-invoice-notification (#509)
+8. send-boleto-subscription-notification (#525)
+9. send-class-reminders (#520 — sem auth, .single() em loop)
+10. send-password-reset — sem auth (esperado para recovery)
+
+A única função com bom padrão de auth: `resend-student-invitation`.
+
+### Padrão Sistêmico: Audit Logs Schema Mismatch (Total: 3 funções afetadas)
+
+Confirmado que **3 funções** usam colunas incorretas para `audit_logs`:
+1. `handle-plan-downgrade-selection` (#568) — **CONFIRMADO NESTA PASSAGEM**
+2. `audit-logger` — documentado em memória
+3. Outras funções que usam `logAuditEvent` com o mesmo padrão
+
+### Funções com Bom Padrão (Positivas)
+
+Confirmadas como bem implementadas nesta passagem:
+- `list-subscription-invoices` — auth via JWT, customer lookup por email
+- `customer-portal` — auth via JWT, customer lookup por email
+- `check-stripe-account-status` — auth + ownership validation via teacher_id
+- `resend-student-invitation` — auth + ownership via relationship check + rate limiting implícito
+- `create-connect-account` — auth + ownership validation via payment_account_id + teacher_id
+
+### Totais Atualizados (v5.65)
+- 577 pontas soltas totais | 547 únicas | **535 pendentes**
+- Fase 0: **162 itens** (+13: #564, #565, #566, #567, #568, #572, #573, #574, #575, #576, #577, #578, #580, #581)
+- **100% cobertura**: 75 funções auditadas (28 passagens)

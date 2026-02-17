@@ -26,7 +26,7 @@ serve(async (req) => {
     // 1. Buscar faturas pendentes vencidas
     const { data: overdueInvoices, error: overdueError } = await supabase
       .from("invoices")
-      .select("id, due_date, student_id")
+      .select("id, due_date, student_id, teacher_id")
       .eq("status", "pendente")
       .lt("due_date", now.toISOString().split('T')[0]);
 
@@ -43,12 +43,15 @@ serve(async (req) => {
     if (overdueInvoices && overdueInvoices.length > 0) {
       for (const invoice of overdueInvoices) {
         try {
-          // Verificar se já enviou notificação de vencida
+          // FIX #360/#556: Use teacher_notifications instead of class_notifications
+          // class_notifications.class_id has FK to classes.id — storing invoice.id there
+          // would violate FK constraint and is semantically wrong
           const { data: existingNotification } = await supabase
-            .from("class_notifications")
+            .from("teacher_notifications")
             .select("id")
-            .eq("class_id", invoice.id)
-            .eq("notification_type", "invoice_overdue")
+            .eq("source_type", "invoice")
+            .eq("source_id", invoice.id)
+            .eq("category", "overdue_invoices")
             .maybeSingle();
 
           if (!existingNotification) {
@@ -72,7 +75,20 @@ serve(async (req) => {
               .eq("id", invoice.id)
               .eq("status", "pendente"); // Guard clause no UPDATE
 
-            // Enviar notificação
+            // FIX #361: INSERT tracking record into teacher_notifications
+            // This prevents spam on subsequent cron runs
+            await supabase
+              .from("teacher_notifications")
+              .insert({
+                teacher_id: invoice.teacher_id,
+                source_type: "invoice",
+                source_id: invoice.id,
+                category: "overdue_invoices",
+                status: "inbox",
+                is_read: false,
+              });
+
+            // Enviar notificação por email
             await supabase.functions.invoke('send-invoice-notification', {
               body: {
                 invoice_id: invoice.id,
@@ -82,6 +98,8 @@ serve(async (req) => {
 
             overdueProcessed++;
             console.log(`✅ Notificação de vencimento enviada para fatura ${invoice.id}`);
+          } else {
+            console.log(`⏭️ Notificação já existe para fatura ${invoice.id}, pulando`);
           }
         } catch (error) {
           console.error(`Erro ao processar fatura vencida ${invoice.id}:`, error);
@@ -92,7 +110,7 @@ serve(async (req) => {
     // 2. Buscar faturas próximas ao vencimento (3 dias)
     const { data: upcomingInvoices, error: upcomingError } = await supabase
       .from("invoices")
-      .select("id, due_date, student_id")
+      .select("id, due_date, student_id, teacher_id")
       .eq("status", "pendente")
       .gte("due_date", now.toISOString().split('T')[0])
       .lte("due_date", threeDaysFromNow.toISOString().split('T')[0]);
@@ -110,16 +128,29 @@ serve(async (req) => {
     if (upcomingInvoices && upcomingInvoices.length > 0) {
       for (const invoice of upcomingInvoices) {
         try {
-          // Verificar se já enviou lembrete
+          // FIX #360/#556: Use teacher_notifications for dedup instead of class_notifications
           const { data: existingReminder } = await supabase
-            .from("class_notifications")
+            .from("teacher_notifications")
             .select("id")
-            .eq("class_id", invoice.id)
-            .eq("notification_type", "invoice_payment_reminder")
+            .eq("source_type", "invoice")
+            .eq("source_id", invoice.id)
+            .eq("category", "payment_reminder")
             .maybeSingle();
 
           if (!existingReminder) {
-            // Enviar lembrete
+            // FIX #361: INSERT tracking record to prevent spam
+            await supabase
+              .from("teacher_notifications")
+              .insert({
+                teacher_id: invoice.teacher_id,
+                source_type: "invoice",
+                source_id: invoice.id,
+                category: "payment_reminder",
+                status: "inbox",
+                is_read: false,
+              });
+
+            // Enviar lembrete por email
             await supabase.functions.invoke('send-invoice-notification', {
               body: {
                 invoice_id: invoice.id,
@@ -129,6 +160,8 @@ serve(async (req) => {
 
             remindersProcessed++;
             console.log(`✅ Lembrete de pagamento enviado para fatura ${invoice.id}`);
+          } else {
+            console.log(`⏭️ Lembrete já existe para fatura ${invoice.id}, pulando`);
           }
         } catch (error) {
           console.error(`Erro ao processar lembrete da fatura ${invoice.id}:`, error);

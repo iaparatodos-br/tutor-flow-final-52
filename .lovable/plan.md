@@ -1,52 +1,63 @@
 
 
-# Verificação Final v5.59 — 18 Novas Pontas Soltas (22ª Passagem: Cross-Function Auth Gaps, Cascata de Deleção, Notification Phishing, SDK Inconsistencies)
+# Verificação Final v5.60 — 18 Novas Pontas Soltas (23ª Passagem: Webhook Status Guards, stripeAccount Missing, RPC Inexistente, Notification Spam Loops)
 
-## Veredicto: Plano atualizado para v5.59 com 8 achados expandindo Fase 0 — smart-delete-student aceita teacher_id do body sem JWT (#452 CRÍTICO IDOR), process-cancellation usa service_role para invocar create-invoice violando autenticação (#453 CRÍTICO), send-student-invitation sem auth permite phishing (#454 CRÍTICO), send-material-shared-notification sem auth permite spam (#455 CRÍTICO), send-class-report-notification .single() 3x em loops (#456 ALTO), send-cancellation-notification .single() em dependentes (#457 MÉDIO), check-subscription-status FK join proibido profiles!teacher_student_relationships_student_id_fkey (#458 ALTO), handle-teacher-subscription-cancellation busca guardian_email inexistente em profiles (#459 MÉDIO), smart-delete-student FK join classes!inner 2x (#460 ALTO), create-dependent persistSession ausente (#461 MÉDIO), delete-dependent não limpa invoice_classes (#462 MÉDIO), create-student .single() em plan lookup (#463 MÉDIO), resend-student-invitation .single() 2x (#464 MÉDIO), create-dependent SDK sem versão fixa (#465 BAIXO), delete-dependent SDK sem versão fixa (#466 BAIXO), handle-teacher-subscription-cancellation referencia RESEND_API_KEY obsoleto (#467 BAIXO), send-cancellation-notification persistSession ausente (#468 MÉDIO), process-cancellation invoca create-invoice via functions.invoke com service_role key (#469 ALTO).
+## Veredicto: Plano atualizado para v5.60 com 8 achados expandindo Fase 0 — webhook-stripe-connect retorna HTTP 500 em handlers de invoice (#472 CRÍTICO), sem status guard em invoice.payment_failed (#473 CRÍTICO) e payment_intent.payment_failed (#474 CRÍTICO), process-cancellation chama RPC inexistente teacher_has_financial_module (#481 CRÍTICO), webhook .single() em pending_business_profiles (#470 ALTO) e payment_origin lookups (#471 ALTO), automated-billing invoca create-payment-intent-connect sem Auth header (#475 ALTO), check-overdue-invoices FK semântico class_notifications.class_id=invoice.id (#479 ALTO), sem tracking insert causando spam infinito (#480 ALTO), cancel-payment-intent sem stripeAccount (#476 ALTO), verify-payment-status IDOR (#482 ALTO) e sem stripeAccount (#483 ALTO), auto-verify-pending-invoices sem stripeAccount (#484 ALTO) e sem status guard (#485 MÉDIO), automated-billing FK join subscription_plans!inner (#486 ALTO), invoice.voided sem status guard (#487 ALTO), process-cancellation .single() em dependent (#478 MÉDIO), cancel-payment-intent persistSession ausente (#477 MÉDIO).
 
 ---
 
-## Auditoria de 22ª Passagem (Cross-Function Auth, Cascata de Deleção, Notification Phishing, SDK Inconsistencies)
+## Auditoria de 23ª Passagem (Webhook Status Guards, stripeAccount Missing, RPC Inexistente, Notification Spam Loops)
 
-Funções auditadas nesta rodada (22ª passagem):
-- `smart-delete-student/index.ts` — Sem validação JWT, aceita teacher_id do body (#452 CRÍTICO IDOR), FK join `classes!inner` 2x (#460 ALTO)
-- `process-cancellation/index.ts` — Invoca create-invoice com SERVICE_ROLE_KEY como Bearer (#453/#469 CRÍTICO), persistSession ausente (#448 já registrado)
-- `send-student-invitation/index.ts` — Zero auth, qualquer chamador pode disparar emails de convite com teacher_name arbitrário (#454 CRÍTICO PHISHING)
-- `send-material-shared-notification/index.ts` — Zero auth, qualquer chamador pode disparar emails com material_id/student_ids arbitrários, .single() em material/teacher (#455 CRÍTICO)
-- `send-class-report-notification/index.ts` — .single() em classData, teacher e reportData (#456 ALTO), zero auth
-- `send-cancellation-notification/index.ts` — .single() em dependent lookup dentro de loop (#457 MÉDIO), persistSession ausente (#468 MÉDIO)
-- `check-subscription-status/index.ts` — FK join `profiles!teacher_student_relationships_student_id_fkey` (#458 ALTO), .single() 5x em plan lookups (#463 parcial)
-- `handle-teacher-subscription-cancellation/index.ts` — Referencia `profiles.guardian_email` inexistente (#459 MÉDIO), .single() em teacher profile (#466 parcial), referencia RESEND_API_KEY obsoleto (#467 BAIXO)
-- `create-dependent/index.ts` — SDK sem versão fixa `@supabase/supabase-js@2` (#465 BAIXO), persistSession ausente no supabaseAdmin (#461 MÉDIO)
-- `delete-dependent/index.ts` — SDK sem versão fixa (#466 BAIXO), não limpa invoice_classes antes de deletar (#462 MÉDIO)
-- `create-student/index.ts` — .single() em plan lookup L297 (#463 MÉDIO)
-- `resend-student-invitation/index.ts` — .single() em relationship e student profile L76/L90 (#464 MÉDIO)
+Funções auditadas nesta rodada (23ª passagem):
+- `webhook-stripe-connect/index.ts` — .single() L190 em pending_business_profiles (#470 ALTO), .single() L310/L346/L457 em payment_origin lookups (#471 ALTO), HTTP 500 em invoice.paid L328 e marked_uncollectible L410 (#472 CRÍTICO), invoice.payment_failed L380 sem status guard (#473 CRÍTICO), payment_intent.payment_failed L514 sem status guard (#474 CRÍTICO), invoice.voided L425 sem status guard (#487 ALTO)
+- `automated-billing/index.ts` — Invoca create-payment-intent-connect L522/L850 sem Authorization header (#475 ALTO), FK join subscription_plans!inner L1034 em validateTeacherCanBill (#486 ALTO)
+- `cancel-payment-intent/index.ts` — Cancela PI L139 sem stripeAccount param (#476 ALTO), persistSession ausente L37 (#477 MÉDIO)
+- `process-cancellation/index.ts` — .single() L107 em dependent lookup (#478 MÉDIO), chama RPC inexistente teacher_has_financial_module L377 (#481 CRÍTICO)
+- `check-overdue-invoices/index.ts` — FK semântico: class_notifications.class_id = invoice.id L50/L103 (#479 ALTO), sem inserção de tracking após envio L54-67/L100-114 causando spam infinito (#480 ALTO)
+- `verify-payment-status/index.ts` — IDOR: sem validação auth.uid() L32-40 (#482 ALTO), retrieves PI L73 sem stripeAccount (#483 ALTO)
+- `auto-verify-pending-invoices/index.ts` — Retrieves PI L75 sem stripeAccount (#484 ALTO), sem status guard L91-98 permite reverter 'paga' (#485 MÉDIO)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#452 (CRÍTICO: IDOR)**: `smart-delete-student` L287 aceita `teacher_id` do body da request sem validar contra `auth.uid()`. Qualquer usuário autenticado pode deletar alunos de qualquer professor passando um teacher_id alheio. Função configurada no config.toml como `verify_jwt = true` (default), mas o código NÃO extrai a identidade do JWT.
-2. **#453 (CRÍTICO: AUTH BYPASS)**: `process-cancellation` L454-456 invoca `create-invoice` passando `SUPABASE_SERVICE_ROLE_KEY` como Bearer token. Conforme memória `auth/limite-autenticacao-service-role-edge-functions`, isso falha porque service role key não é JWT de usuário válido para `auth.getUser()`.
-3. **#454 (CRÍTICO: PHISHING)**: `send-student-invitation` não possui nenhuma validação de autenticação. Qualquer caller anônimo pode enviar emails de convite com `teacher_name` arbitrário e `invitation_link` malicioso para qualquer endereço de email.
-4. **#455 (CRÍTICO: PHISHING/SPAM)**: `send-material-shared-notification` não possui autenticação. Qualquer caller pode disparar emails em massa para qualquer lista de student_ids com material_id arbitrário, usando o sistema como plataforma de spam.
-5. **#458 (ALTO: FK JOIN)**: `check-subscription-status` L37 usa FK join proibido `profiles!teacher_student_relationships_student_id_fkey(name, email)` na função `checkNeedsStudentSelection`. Risco de falha silenciosa por cache de schema.
-6. **#460 (ALTO: FK JOIN)**: `smart-delete-student` L132-139 e L158-167 usa FK join `classes!inner(teacher_id)` em `checkPendingClasses`. Falha silenciosa impede detecção de aulas pendentes, permitindo deleção prematura.
-7. **#469 (ALTO: INVOCAÇÃO CRUZADA)**: `process-cancellation` L451-457 usa `functions.invoke('create-invoice')` com headers de Authorization contendo service_role key. Conforme memória `infrastructure/padrao-comunicacao-interna-edge-functions`, inserção direta via supabaseClient com service_role é preferível.
+1. **#472 (CRÍTICO: HTTP 500 → RETRY STORM)**: `webhook-stripe-connect` L328-332 (invoice.paid) e L410-414 (invoice.marked_uncollectible) retornam HTTP 500 quando o UPDATE falha, causando retry storms infinitas do Stripe. Conforme memória `infrastructure/edge-functions-resilience-pattern`, webhooks DEVEM retornar 200 mesmo em erros de negócio.
 
-### Achados Médios/Baixos
+2. **#473 (CRÍTICO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L380-386 handler de `invoice.payment_failed` atualiza status para `falha_pagamento` sem cláusula de guarda `.eq('status', 'pendente')`. Conforme memória `payment/protecao-reversao-status-fatura`, faturas com status terminal `paga` podem ser revertidas por eventos automáticos de falha.
 
-8. **#456 (MÉDIO: .single())**: `send-class-report-notification` L37/L49/L74 usa `.single()` em classData, teacher e reportData. Se qualquer registro estiver ausente, toda a batch de notificações falha.
-9. **#457 (MÉDIO: .single())**: `send-cancellation-notification` L117 e L277/L374 usa `.single()` em lookup de dependentes dentro de loops de notificação.
-10. **#459 (MÉDIO: CAMPO INEXISTENTE)**: `handle-teacher-subscription-cancellation` L263 busca `guardian_email` da tabela `profiles`, mas este campo não existe. Conforme memória `database/responsible-party-contact-teacher-student-relationships`, o email do responsável está em `teacher_student_relationships.student_guardian_email`.
-11. **#461 (MÉDIO: persistSession)**: `create-dependent` L37 cria supabaseAdmin sem `{ auth: { persistSession: false } }`.
-12. **#462 (MÉDIO: CASCADE)**: `delete-dependent` não limpa `invoice_classes` (que referencia `participant_id` via FK) antes de deletar participações do dependente. Conforme memória `database/student-deletion-cascade-order-bug`, isso pode causar falhas por FK RESTRICT.
-13. **#463 (MÉDIO: .single())**: `create-student` L297 usa `.single()` no lookup de `subscription_plans`. Se o plano não existir, a criação do aluno falha com HTTP 500.
-14. **#464 (MÉDIO: .single())**: `resend-student-invitation` L76 e L90 usa `.single()` em lookups de relationship e student profile.
-15. **#465 (BAIXO: SDK)**: `create-dependent` L2 importa `@supabase/supabase-js@2` sem versão fixa. Risco de breaking changes.
-16. **#466 (BAIXO: SDK)**: `delete-dependent` L2 importa `@supabase/supabase-js@2` sem versão fixa.
-17. **#467 (BAIXO: OBSOLETO)**: `handle-teacher-subscription-cancellation` L199 verifica `RESEND_API_KEY` (obsoleto), mas usa `sendEmail` (AWS SES). Guarda de notificação pode impedir envio se variável não existir.
-18. **#468 (MÉDIO: persistSession)**: `send-cancellation-notification` L37 não configura `{ auth: { persistSession: false } }`.
+3. **#474 (CRÍTICO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L514-521 handler de `payment_intent.payment_failed` atualiza para `falha_pagamento` sem guard. Se professor confirma pagamento manual e o PI original falha depois, o status `paga`/`paid` é sobrescrito.
 
-### Totais Atualizados (v5.59)
-- 469 pontas soltas totais | 439 únicas | **427 pendentes**
-- Fase 0: **100 itens** (+6: #452, #453, #454, #455, #460, #469)
-- **100% cobertura**: 75 funções auditadas (22 passagens)
+4. **#481 (CRÍTICO: RPC INEXISTENTE)**: `process-cancellation` L377 chama `supabaseClient.rpc('teacher_has_financial_module', ...)`. Esta RPC NÃO existe no schema do banco de dados. Resultado: a chamada falha, `hasFinancialModule` é `null`/`false`, e ALL cancellation charges são silenciosamente ignoradas. Nenhuma fatura de cancelamento é gerada para nenhum professor.
+
+5. **#470 (ALTO: .single() WEBHOOK)**: `webhook-stripe-connect` L190 usa `.single()` para buscar `pending_business_profiles`. Se Connect account não tem perfil pendente (ex: onboarding via dashboard), evento `account.updated` falha com exceção.
+
+6. **#471 (ALTO: .single() WEBHOOK 3x)**: `webhook-stripe-connect` L310, L346, L457 usa `.single()` para verificar `payment_origin` de faturas. Se fatura não existe localmente (ex: criada diretamente no Stripe), lança exceção → HTTP 500 → retry storm.
+
+7. **#475 (ALTO: INVOCAÇÃO SEM AUTH)**: `automated-billing` L522-529 e L850-858 invoca `create-payment-intent-connect` via `supabaseAdmin.functions.invoke` sem header `Authorization`. A função destino valida JWT via `auth.getUser(token)` — sem token, a chamada falha silenciosamente e NENHUM boleto é gerado para faturas automáticas.
+
+8. **#479 (ALTO: FK SEMÂNTICO VIOLAÇÃO)**: `check-overdue-invoices` L50/L103 insere em `class_notifications` usando `class_id: invoice.id`. O campo `class_id` tem FK para `classes.id`, NÃO para `invoices.id`. A inserção causa violação de FK constraint ou corrompe dados referenciando classes inexistentes.
+
+### Achados Altos/Médios
+
+9. **#480 (ALTO: SPAM INFINITO)**: `check-overdue-invoices` verifica notificação prévia (L47-52/L100-105) mas NÃO insere registro de tracking após enviar a notificação (L62-67/L109-114). A cada execução do cron job, `existingNotification` é sempre null → re-envia TODAS as notificações → spam massivo.
+
+10. **#476 (ALTO: stripeAccount AUSENTE)**: `cancel-payment-intent` L139 cancela Payment Intent sem parâmetro `stripeAccount`. Conforme memória `payment/stripe-connect-sdk-parameter-requirement`, PIs criados em contas Connect não são visíveis da conta platform → "resource not found".
+
+11. **#482 (ALTO: IDOR CONFIRMADO)**: `verify-payment-status` L32-40 aceita `invoice_id` do body sem validar `auth.uid()` contra `teacher_id` ou `student_id` da fatura. Qualquer usuário autenticado pode consultar e atualizar status de qualquer fatura.
+
+12. **#483 (ALTO: stripeAccount)**: `verify-payment-status` L73 retrieves PI sem `stripeAccount`. Faturas de Connect falham.
+
+13. **#484 (ALTO: stripeAccount)**: `auto-verify-pending-invoices` L75-77 retrieves PI sem `stripeAccount`. Verificação automática de todas as faturas Connect falha silenciosamente.
+
+14. **#486 (ALTO: FK JOIN)**: `automated-billing` L1033-1034 `validateTeacherCanBill` usa FK join `subscription_plans!inner (features)`. Schema cache do Deno → falha silenciosa → função retorna false → professores válidos não faturam.
+
+15. **#487 (ALTO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L425-431 `invoice.voided` atualiza para 'cancelada' sem guard `.eq('status', 'pendente')`. Fatura paga pode ser revertida.
+
+16. **#485 (MÉDIO: STATUS GUARD)**: `auto-verify-pending-invoices` L91-98 atualiza status sem guard. Pode reverter `paga` se PI está em estado terminal.
+
+17. **#478 (MÉDIO: .single())**: `process-cancellation` L107 usa `.single()` para buscar dependente. Dependente inexistente → crash total da função.
+
+18. **#477 (MÉDIO: persistSession)**: `cancel-payment-intent` L37 cria client Supabase sem `{ auth: { persistSession: false } }`.
+
+### Totais Atualizados (v5.60)
+- 487 pontas soltas totais | 457 únicas | **445 pendentes**
+- Fase 0: **108 itens** (+8: #472, #473, #474, #481, #470, #471, #475, #479)
+- **100% cobertura**: 75 funções auditadas (23 passagens)

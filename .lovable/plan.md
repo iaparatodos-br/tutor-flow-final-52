@@ -1,53 +1,51 @@
 
 
 
-# Verificação Final v5.50 — 10 Novas Pontas Soltas (13ª Passagem: Análise Cruzada Profunda — Webhook Connect, Lifecycle de Pagamento e Cancelamento)
+# Verificação Final v5.51 — 8 Novas Pontas Soltas (14ª Passagem: Análise Cruzada Profunda — Materialização, Deleção e Integração de Pagamento)
 
-## Veredicto: Plano atualizado para v5.50 com 4 achados CRÍTICOS — status 'paid' inglês no webhook tornando pagamentos INVISÍVEIS (#329), status 'overdue' inglês no webhook (#330), confirmação manual 'paid' no cancel-payment-intent (#334), e auth incompatível process-cancellation→create-invoice quebrando TODAS as faturas de cancelamento (#337).
+## Veredicto: Plano atualizado para v5.51 com 3 achados CRÍTICOS — create-payment-intent-connect sem NENHUMA autenticação permitindo IDOR (#339), materialize-virtual-class não copia is_paid_class causando cobranças fantasma em prepaid (#340), e smart-delete-student com cascata incompleta impedindo deleção de alunos já faturados (#342).
 
 ---
 
-## Auditoria de 13ª Passagem (Análise Cruzada Profunda — Webhook Connect, Lifecycle de Pagamento e Cancelamento)
+## Auditoria de 14ª Passagem (Análise Cruzada Profunda — Materialização, Deleção e Integração de Pagamento)
 
-Funções auditadas nesta rodada (13ª passagem — análise cruzada profunda):
-- `webhook-stripe-connect/index.ts` (560 linhas) — 'paid' inglês em 3 handlers (#329 ALTA), 'overdue' inglês (#330 ALTA), .single() em 3 lookups (#333), sem status guard (#338)
-- `create-invoice/index.ts` (575 linhas) — FK join proibido L148, L228 (#331)
-- `create-payment-intent-connect/index.ts` (659 linhas) — 3 FK joins + .single() (#332)
-- `cancel-payment-intent/index.ts` (250 linhas) — 'paid' inglês L113, L172 (#334 ALTA)
-- `process-cancellation/index.ts` (500 linhas) — .single() L107 (#336), SERVICE_ROLE_KEY como Bearer (#337 ALTA)
-- `verify-payment-status/index.ts` (124 linhas) — .single() + IDOR (confirma #195)
-- `change-payment-method/index.ts` (253 linhas) — bug .eq() duplicado (confirma #196)
-- `send-invoice-notification/index.ts` (465 linhas) — 3× .single() (#335)
-- `automated-billing/index.ts` (1057 linhas) — FK joins (confirma #300), sem idempotência mensal (confirma #303)
-- `handle-student-overage/index.ts` (238 linhas) — tabela inexistente (confirma memória)
+Funções auditadas nesta rodada (14ª passagem — análise cruzada profunda):
+- `create-payment-intent-connect/index.ts` (659 linhas) — ZERO autenticação (#339 ALTA), FK joins (#332 confirma)
+- `materialize-virtual-class/index.ts` (376 linhas) — não copia is_paid_class (#340 ALTA)
+- `smart-delete-student/index.ts` (547 linhas) — cascata incompleta invoice_classes (#342), FK student_monthly_subscriptions (#343), .single() (#344)
+- `automated-billing/index.ts` (1057 linhas) — boleto_url→stripe_hosted_invoice_url (#341), FK joins (confirma #300)
+- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' inglês (confirma #278), dedup quebrada (confirma #308)
+- `verify-payment-status/index.ts` (124 linhas) — sem auth (confirma #195)
+- `end-recurrence/index.ts` (133 linhas) — SDK sem versão pinada (#346), FK cascade incompleta (confirma #181)
+- `webhook-stripe-connect/index.ts` (560 linhas) — sem fallback stripe_invoice_id→payment_intent_id (#345 confirma memória)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#329 (ALTA — IMPACTO MASSIVO)**: `webhook-stripe-connect` L320, L358, L469 — TODOS os handlers de pagamento bem-sucedido usam `status: 'paid'` (inglês). O sistema usa `'paga'`. NENHUM pagamento Stripe é visível no dashboard.
+1. **#339 (ALTA — IDOR CRÍTICO)**: `create-payment-intent-connect` NÃO possui nenhuma validação de autenticação. Qualquer chamador com a anon key pode gerar Payment Intents (boletos, PIX, cards) para QUALQUER invoice_id, expondo URLs de pagamento e dados financeiros. A função usa SERVICE_ROLE_KEY internamente, tornando-a completamente aberta.
 
-2. **#330 (ALTA)**: `webhook-stripe-connect` L404 — `invoice.marked_uncollectible` usa `status: 'overdue'` em vez de `'vencida'`.
+2. **#340 (ALTA — COBRANÇAS FANTASMA)**: `materialize-virtual-class` L252-263 NÃO copia o campo `is_paid_class` do template para a aula materializada. O default do banco é `true`. Para templates de aulas gratuitas/experimentais em modo prepaid, a aula materializada será marcada como paga incorretamente, podendo disparar faturamento imediato indevido.
 
-3. **#334 (ALTA)**: `cancel-payment-intent` L113, L172 — Confirmação manual usa `status: 'paid'` em vez de `'paga'`. Pagamentos manuais invisíveis.
-
-4. **#337 (ALTA — FUNCIONALIDADE QUEBRADA)**: `process-cancellation` L450-457 invoca `create-invoice` com `SERVICE_ROLE_KEY` como Bearer. `create-invoice` rejeita por não ser JWT de usuário. TODAS as faturas de cancelamento falham silenciosamente.
+3. **#342 (ALTA — DELEÇÃO QUEBRADA)**: `smart-delete-student` L245-253 deleta `class_participants` para dependentes SEM primeiro deletar `invoice_classes` que referenciam esses participantes via FK `invoice_classes_participant_id_fkey`. Para qualquer aluno já faturado, a deleção FALHA com erro de FK constraint, deixando o processo de exclusão incompleto.
 
 ### Achados Médios
 
-5. **#331**: `create-invoice` — FK join proibido L148, L228-241.
-6. **#332**: `create-payment-intent-connect` — 3 FK joins aninhados + .single().
-7. **#333**: `webhook-stripe-connect` — .single() em lookups por stripe_invoice_id/payment_intent_id → retry storms.
-8. **#335**: `send-invoice-notification` — 3× .single() em lookups críticos.
-9. **#336**: `process-cancellation` — .single() L107 para dependente.
-10. **#338**: `webhook-stripe-connect` — handlers de falha sem status guard, podem reverter status 'paga'.
+4. **#341**: `automated-billing` L537 copia `boleto_url` para `stripe_hosted_invoice_url`, conflitando semântica e causando CTAs incorretos em notificações por email.
+5. **#343**: `smart-delete-student` não deleta `student_monthly_subscriptions` antes de `teacher_student_relationships`. FK `student_monthly_subscriptions_relationship_id_fkey` impede a deleção para alunos com histórico de mensalidade.
+6. **#344**: `smart-delete-student` L52, L89 usa `.single()` em lookups de `user_subscriptions` e `subscription_plans`. Crash se professor não tiver assinatura ativa.
+7. **#345 (confirma memória)**: `webhook-stripe-connect` handlers de invoice.paid e invoice.payment_succeeded buscam APENAS por `stripe_invoice_id`. Faturas de aulas individuais (que só possuem `stripe_payment_intent_id`) ficam eternamente como 'pendente' mesmo após pagamento confirmado.
 
-### Totais Atualizados (v5.50)
-- 338 pontas soltas totais
-- 18 duplicatas + 2 subsumidas + 10 confirmações
-- 308 únicas
+### Achados Baixos
+
+8. **#346**: `end-recurrence` importa SDK como `@supabase/supabase-js@2` (sem versão pinada) enquanto o padrão do projeto é `@2.45.0`. Risco de incompatibilidade em runtime.
+
+### Totais Atualizados (v5.51)
+- 346 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 12 confirmações
+- 316 únicas
 - 10 implementadas + 2 confirmações de memória
-- **296 pendentes**
-- Fase 0: **50 itens** (+4: #329, #330, #334, #337)
-- **100% cobertura**: 75 funções auditadas (13 passagens completas)
+- **304 pendentes**
+- Fase 0: **53 itens** (+3: #339, #340, #342)
+- **100% cobertura**: 75 funções auditadas (14 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (50 itens críticos), com destaque para o #329 (pagamentos invisíveis) e #337 (faturas de cancelamento quebradas) que têm impacto imediato em produção. O padrão de status em inglês vs português é sistêmico e afeta webhook-stripe-connect (#329, #330), cancel-payment-intent (#334), check-overdue-invoices (#278), e generate-teacher-notifications (#316).
+Prioridade de execução: Fase 0 (53 itens críticos), com destaque para o #339 (IDOR em create-payment-intent-connect) que é uma vulnerabilidade de segurança explorável AGORA por qualquer usuário anônimo. O #340 (is_paid_class não copiado) causa cobranças fantasma para aulas recorrentes materializadas por alunos. O #342 (cascata incompleta em smart-delete-student) impede a remoção de alunos que já foram faturados, afetando operações do dia-a-dia do professor.

@@ -17,8 +17,6 @@ serve(async (req) => {
   }
 
   try {
-    logStep("Setting up automatic invoice verification cron job");
-
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -26,32 +24,35 @@ serve(async (req) => {
     );
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !supabaseAnonKey) {
+    if (!supabaseUrl || !anonKey) {
       throw new Error("Missing Supabase configuration");
     }
 
-    // Remover job existente se houver
+    logStep("Setting up automatic invoice verification cron job");
+
+    const functionUrl = `${supabaseUrl}/functions/v1/auto-verify-pending-invoices`;
+
+    // 1. Remover job existente se houver
     const { error: unscheduleError } = await supabaseClient.rpc('cron_unschedule', {
       p_jobname: 'auto-verify-pending-invoices'
     });
 
     if (unscheduleError) {
-      logStep("Note: No existing cron job to remove (this is normal on first setup)");
+      logStep("No existing cron job to remove (normal on first setup)");
     }
 
-    // Criar novo cron job para rodar a cada 3 horas
+    // 2. Criar novo cron job para rodar a cada 3 horas
     const { data, error } = await supabaseClient.rpc('cron_schedule', {
       p_jobname: 'auto-verify-pending-invoices',
-      p_schedule: '0 */3 * * *', // A cada 3 horas
+      p_schedule: '0 */3 * * *',
       p_command: `
-        SELECT
-          net.http_post(
-            url:='${supabaseUrl}/functions/v1/auto-verify-pending-invoices',
-            headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${supabaseAnonKey}"}'::jsonb,
-            body:='{}'::jsonb
-          ) as request_id;
+        SELECT net.http_post(
+          url:='${functionUrl}',
+          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${anonKey}"}'::jsonb,
+          body:='{}'::jsonb
+        ) as request_id;
       `
     });
 
@@ -69,7 +70,8 @@ serve(async (req) => {
       success: true,
       message: "Automatic invoice verification cron job scheduled successfully",
       schedule: "Every 3 hours",
-      jobname: "auto-verify-pending-invoices"
+      jobname: "auto-verify-pending-invoices",
+      data
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

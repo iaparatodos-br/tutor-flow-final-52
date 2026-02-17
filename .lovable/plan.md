@@ -6,46 +6,50 @@
 # Etapa 0.5 — .single() → .maybeSingle() ✅
 # Etapa 0.6 — FK Joins proibidos no Deno ✅
 # Etapa 0.7 — Categoria A: Auth/IDOR ✅
+# Etapa 0.8 — Categoria H: FK Cascade / Deletion Failures ✅
 
-## Etapa 0.7 — Resumo
+## Etapa 0.8 — Resumo
 
-Adicionada autenticação JWT e validação de propriedade em 17 Edge Functions para corrigir ~25 vulnerabilidades Auth/IDOR.
+Corrigidos ~8 problemas de FK cascade/deletion em 4 Edge Functions que causavam falhas silenciosas ou erros 500 por violação de foreign key RESTRICT.
 
-### Funções Financeiras Críticas (6 funções)
+### Funções Corrigidas
 
-1. **create-payment-intent-connect** — JWT auth + validação de propriedade (student/teacher/responsible)
-2. **verify-payment-status** — JWT auth + verificação student_id/teacher_id
-3. **change-payment-method** — Corrigido bug de `.eq()` sobrepostos no guardian check; adicionada permissão para teacher
-4. **handle-teacher-subscription-cancellation** — JWT auth + validação teacher_id === auth.uid()
-5. **smart-delete-student** — JWT auth + validação teacher_id === auth.uid() + persistSession:false
-6. **process-cancellation** — JWT auth + anti-spoofing (safeCancelledBy = auth.uid()) + persistSession:false
+1. **smart-delete-student** (3 correções)
+   - `deleteDependentsCascade()`: Adicionada limpeza de `invoice_classes` (via participant_ids) ANTES de deletar `class_participants`
+   - Full delete path: Mesma correção + limpeza de `invoice_classes` para participações diretas do aluno
+   - Adicionada limpeza de `student_monthly_subscriptions` ANTES de deletar `teacher_student_relationships` (ambos os paths: unlink e delete)
 
-### Funções Admin/Diagnóstico (3 funções)
+2. **delete-dependent** (2 correções)
+   - Removido comentário incorreto ("FK SET NULL" — era RESTRICT)
+   - Adicionada limpeza de `invoice_classes` para participant_ids do dependente ANTES de deletar `class_participants`
+   - Adicionada deleção explícita de `class_participants` antes de deletar dependente
 
-7. **stripe-events-monitor** — JWT auth + verificação role === 'professor'
-8. **validate-business-profile-deletion** — JWT auth + validação ownership do business_profile
-9. **refresh-stripe-connect-account** — Corrigido IDOR: adicionado `.eq('teacher_id', user.id)` no UPDATE de payment_accounts
+3. **end-recurrence** (1 correção major)
+   - Antes: deletava classes diretamente → FK violation em `class_participants`, `class_exceptions`, `invoice_classes`
+   - Agora: cascade correto em 6 passos: `invoice_classes` → `class_exceptions` → `class_notifications` → `class_participants` → `classes`
 
-### Funções de Notificação (8 funções)
+4. **archive-old-data** (3 correções)
+   - Removida seleção de `student_id` inexistente na tabela `classes`
+   - Removidos FK joins (`class_participants(...)`, `class_reports(...)`) → substituídos por queries sequenciais
+   - Cascade de deleção completo: `invoice_classes` → `class_report_photos` → `class_report_feedbacks` → `class_reports` → `class_notifications` → `class_exceptions` → `class_participants` → `classes`
 
-10. **send-student-invitation** — Auth (JWT ou service role)
-11. **send-class-report-notification** — Auth (JWT ou service role)
-12. **send-material-shared-notification** — Auth (JWT ou service role) + persistSession:false
-13. **send-cancellation-notification** — Auth (JWT ou service role) + persistSession:false
-14. **send-class-request-notification** — Auth (JWT ou service role)
-15. **send-class-confirmation-notification** — Auth (JWT ou service role)
-16. **send-invoice-notification** — Auth (JWT ou service role)
-17. **send-boleto-subscription-notification** — Auth (JWT ou service role)
+### Ordem de Deleção Segura (Padrão)
 
-### Padrão Aplicado
-
-- Funções chamadas pelo frontend: JWT obrigatório + validação de propriedade do recurso
-- Funções chamadas server-to-server: aceita JWT OU service role key
-- Identity spoofing prevenido: campos como `cancelled_by` e `teacher_id` do body são substituídos por `auth.uid()`
+```
+invoice_classes (participant_id FK RESTRICT)
+  → class_report_photos (report_id FK)
+  → class_report_feedbacks (report_id FK)
+  → class_reports (class_id FK)
+  → class_notifications (class_id FK)
+  → class_exceptions (original_class_id FK)
+  → class_participants (class_id FK)
+  → student_monthly_subscriptions (relationship_id FK)
+  → teacher_student_relationships
+  → classes
+```
 
 ## Próximas Etapas Pendentes (Fase 0)
 
-- **Categoria H**: FK Cascade / Deletion failures (~8 itens)
 - **Categoria I**: Data Corruption (~6 itens)
 - **Categoria J**: Integridade de dados (~8 itens)
 - **Categoria K**: ANON_KEY inline / SQL injection em setup (~6 itens)

@@ -26,14 +26,21 @@ const logAuditEvent = async (
   metadata?: Record<string, any>
 ) => {
   try {
+    // Map to actual audit_logs schema: actor_id, operation, table_name, record_id, old_data, new_data, target_teacher_id
+    const tableNameValue = details?.table_name || 'system';
+    const recordIdValue = details?.record_id || userId;
+    const targetTeacherId = details?.target_teacher_id || userId;
+
     const { error } = await supabaseClient
       .from('audit_logs')
       .insert({
-        user_id: userId,
-        action,
-        details,
-        metadata,
-        created_at: new Date().toISOString(),
+        actor_id: userId,
+        operation: action,
+        table_name: tableNameValue,
+        record_id: recordIdValue,
+        old_data: details?.old_data || null,
+        new_data: { ...details, ...(metadata || {}) },
+        target_teacher_id: targetTeacherId,
       });
     
     if (error) {

@@ -9,6 +9,31 @@
 # Etapa 0.8 — Categoria H: FK Cascade / Deletion Failures ✅
 # Etapa 0.9 — Categoria I: Data Corruption ✅
 # Etapa 0.10 — Categoria J: Integridade de dados ✅
+# Etapa 0.11 — Categoria K: ANON_KEY inline / SQL injection em setup ✅
+
+## Etapa 0.11 — Resumo
+
+Corrigidos 5 Edge Functions de setup de automação que usavam padrões inseguros:
+
+### Problemas Corrigidos
+
+1. **`setup-class-reminders-automation`**: Removido uso de `exec_sql` RPC (vetor de SQL injection) → substituído por `cron_schedule`/`cron_unschedule` RPCs tipadas
+2. **`setup-orphan-charges-automation`**: Removido uso de `exec_sql` RPC → substituído por `cron_schedule`/`cron_unschedule` RPCs tipadas
+3. **`setup-billing-automation`**: Padronizado com `cron_unschedule` antes de `cron_schedule` (idempotência) + prefixo de log consistente
+4. **`setup-expired-subscriptions-automation`**: Padronizado com `cron_unschedule` antes de `cron_schedule` (idempotência) + prefixo de log consistente
+5. **`setup-invoice-auto-verification`**: Já usava RPCs corretas, padronizado construção de URL via variável `functionUrl`
+
+### Padrão Seguro Adotado
+
+Todas as 5 funções agora seguem o mesmo padrão:
+```
+1. Validar env vars (SUPABASE_URL, SUPABASE_ANON_KEY)
+2. cron_unschedule(p_jobname) — remover job existente (idempotente)
+3. cron_schedule(p_jobname, p_schedule, p_command) — criar novo job
+4. Retornar resultado com schedule info
+```
+
+Nenhuma função de setup usa mais `exec_sql` ou `rpc('exec_sql', { sql: ... })`.
 
 ## Etapa 0.10 — Resumo
 
@@ -76,5 +101,4 @@ invoice_classes (participant_id FK RESTRICT)
 
 ## Próximas Etapas Pendentes (Fase 0)
 
-- **Categoria K**: ANON_KEY inline / SQL injection em setup (~6 itens)
 - **Categoria L**: Outros itens Fase 0 (~20 itens)

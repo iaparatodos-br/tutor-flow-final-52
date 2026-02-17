@@ -3180,13 +3180,13 @@ Busca o Stripe Customer por email em vez de usar `stripe_customer_id` do profile
 
 **Ação**: Buscar `stripe_customer_id` do profile do usuário no Supabase, e usar diretamente `stripe.billingPortal.sessions.create({ customer: stripe_customer_id })`. Fallback para busca por email se `stripe_customer_id` for null. Adicionar tratamento específico no catch.
 
-### Funções Fora de Escopo (11 funções — atualizado v5.65)
+### Funções Fora de Escopo (9 funções — atualizado v5.65)
 
 As seguintes funções foram auditadas e classificadas como fora do escopo do plano de cobrança híbrida por serem utilitárias, de setup, ou de infraestrutura sem vulnerabilidades críticas de lógica de negócio no escopo do plano híbrido:
 
 | Categoria | Funções |
 |-----------|---------|
-| Auth/Onboarding | `create-teacher`, `resend-confirmation`, `resend-student-invitation`, `check-email-confirmation` |
+| Auth/Onboarding | `create-teacher`, `check-email-confirmation` |
 | Dados/Consulta | `fetch-archived-data`, `security-rls-audit`, `list-business-profiles`, `list-pending-business-profiles` |
 | Dev/Test | `dev-seed-test-data`, `validate-monthly-subscriptions` |
 | Outros | `send-password-reset` |
@@ -4836,7 +4836,7 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 | v5.62 | 2026-02-17 | **25ª passagem** (#506-#523). 8/9 funções de notificação sem auth; padrão sistêmico de phishing. Fase 0: 124 itens. |
 | v5.63 | 2026-02-17 | **26ª passagem** (#524-#545). send-boleto-subscription-notification sem auth; ANON_KEY em setup. Fase 0: 132 itens. |
 | v5.64 | 2026-02-17 | **27ª passagem** (#546-#563). Status 'paid'/'overdue' catastrófico em webhook; check-overdue spam; stripeAccount missing. Fase 0: 149 itens. |
-| v5.65 | 2026-02-17 | **28ª passagem** (#564-#581). handle-teacher-subscription-cancellation sem JWT+IDOR; archive-old-data student_id fantasma; 6 funções reclassificadas de "Fora de Escopo". Fase 0: 162 itens. Totais: **577 pontas soltas**, **547 únicas**, **535 pendentes**. |
+| v5.65 | 2026-02-17 | **28ª passagem** (#564-#581). handle-teacher-subscription-cancellation sem JWT+IDOR; archive-old-data student_id fantasma; 6 funções reclassificadas de "Fora de Escopo". Fase 0: 148 itens listados (141 únicos). Totais: **577 pontas soltas**, **547 únicas**, **535 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

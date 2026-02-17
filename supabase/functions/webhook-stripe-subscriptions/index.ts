@@ -712,9 +712,10 @@ serve(async (req) => {
     // Marcar evento como falhou
     await completeEventProcessing(supabase, event.id, false, error as Error);
     
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
+    // Return 200 to prevent Stripe retry storms on permanent errors
+    return new Response(JSON.stringify({ error: (error as Error).message, received: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
+      status: 200,
     });
   }
 });

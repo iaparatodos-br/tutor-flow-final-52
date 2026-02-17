@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.54 (Consolidado)
+# Plano de Cobrança Híbrida — v5.55 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 66 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 72 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.54 consolida todas as auditorias com 17 passagens completas. Totais finais: **383 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **353 únicas**, **341 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 17ª passagem — análise cruzada profunda: subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto). A 17ª passagem revelou 15 novas pontas soltas (#369-#383): `send-student-invitation` sem autenticação (#372 ALTA SEGURANÇA), `send-class-report-notification` sem autenticação (#373 ALTA SEGURANÇA), `send-material-shared-notification` sem autenticação (#374 ALTA SEGURANÇA), `.single()` em cancel-subscription (#369 ALTA), `.single()` em create-subscription-checkout (#370, #371 ALTA), `send-boleto-subscription-notification` com serve() duplicado (#380), `create-connect-onboarding-link` com bypass de ownership (#382).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.55 consolida todas as auditorias com 18 passagens completas. Totais finais: **399 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **369 únicas**, **357 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 18ª passagem — análise cruzada profunda: gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento). A 18ª passagem revelou 16 novas pontas soltas (#384-#399): `smart-delete-student` sem auth JWT (#384 SEGURANÇA), FK joins proibidos em smart-delete-student (#385) e process-expired-subscriptions (#393), cascade de deleção incompleta em smart-delete-student (#389/#390), tabela inexistente em handle-student-overage (#396), coluna inexistente em archive-old-data (#397), cascade de deleção incompleta em archive-old-data (#398).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4463,6 +4463,65 @@ Prioridade de execução: Fase 0 (66 itens críticos). Padrão SISTÊMICO novo i
 
 ---
 
+## 18ª Passagem: Análise Cruzada Profunda — Gerenciamento de Alunos/Dependentes, Expiração de Subscrições, Arquivamento
+
+Funções auditadas nesta rodada (18ª passagem — análise cruzada profunda):
+- `smart-delete-student/index.ts` (547 linhas) — SEM AUTH JWT (#384 ALTA SEGURANÇA), FK join proibido 2x (#385 ALTA), cascade incompleta (#389 ALTA, #390 ALTA), sem persistSession (#388), `.single()` plano (#387)
+- `create-student/index.ts` (529 linhas) — `.single()` em plan lookup L297 (#391 MÉDIO)
+- `update-student-details/index.ts` (144 linhas) — Sem novos achados (auth OK, ownership OK)
+- `create-dependent/index.ts` (211 linhas) — Sem novos achados (auth OK, .maybeSingle() OK)
+- `delete-dependent/index.ts` (240 linhas) — Sem novos achados (auth OK, .maybeSingle() OK, sequential queries OK)
+- `update-dependent/index.ts` (148 linhas) — Sem novos achados (auth OK, .maybeSingle() OK)
+- `process-expired-subscriptions/index.ts` (233 linhas) — FK join proibido 2x (#393 ALTA), `.single()` free plan (#394 MÉDIO)
+- `handle-student-overage/index.ts` (238 linhas) — `.single()` subscription L79 (#395 MÉDIO), tabela inexistente `student_overage_charges` (#396 ALTA)
+- `archive-old-data/index.ts` (330 linhas) — coluna inexistente `student_id` L132 (#397 ALTA), cascade incompleta (#398 ALTA)
+- `resend-student-invitation/index.ts` (186 linhas) — `.single()` 3x L75/L90/L128 (#399 MÉDIO)
+- `check-subscription-status/index.ts` (846 linhas) — FK join proibido 3x (#401 MÉDIO), `.single()` plan L378 (#402 MÉDIO)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#384 (SEGURANÇA: DELEÇÃO SEM AUTH)**: `smart-delete-student` aceita `teacher_id` do body da requisição SEM validar contra o JWT do chamador. Usa `service_role` diretamente (L285). Qualquer usuário autenticado pode deletar alunos de outro professor forjando o `teacher_id`. **Impacto**: Deleção não autorizada de contas de alunos, incluindo exclusão permanente de `auth.users`.
+
+2. **#385 (FK JOIN PROIBIDO)**: `smart-delete-student` usa `classes!inner(teacher_id)` nas linhas 133-138 e 160-167 dentro de `checkPendingClasses`. Viola a constraint de queries sequenciais, podendo falhar silenciosamente por cache de schema do Deno.
+
+3. **#389 (CASCADE INCOMPLETA — UNLINK PATH)**: `deleteDependentsCascade` (L244-249) deleta `class_participants` sem primeiro limpar `invoice_classes.participant_id`. A FK `invoice_classes_participant_id_fkey` (RESTRICT) bloqueia a deleção para qualquer dependente que já possua faturas emitidas.
+
+4. **#390 (CASCADE INCOMPLETA — DELETE PATH)**: Mesmo problema no caminho de deleção completa (L437-439). `class_participants` são deletados antes de `invoice_classes`, causando falha FK para alunos com histórico de faturamento.
+
+5. **#393 (FK JOIN PROIBIDO — PROCESS-EXPIRED)**: `process-expired-subscriptions` L46-57 usa `subscription_plans!inner(...)` e `profiles!user_id(...)` — dois FK joins proibidos na mesma query. Falha silenciosa por cache de schema causa processamento parcial de assinaturas expiradas.
+
+6. **#396 (TABELA INEXISTENTE)**: `handle-student-overage` L132 insere em `student_overage_charges` — tabela que NÃO EXISTE no schema atual. O INSERT falha silenciosamente, mas a cobrança no Stripe já foi processada. Resultado: pagamento cobrado sem rastreamento local.
+
+### Achados Médios
+
+7. **#387**: `smart-delete-student` L91 `.single()` no lookup de `subscription_plans`. Se plano for deletado, crash na atualização de quantity.
+8. **#388**: `smart-delete-student` L285 `createClient` sem `{ auth: { persistSession: false } }`.
+9. **#391**: `create-student` L297 `.single()` no lookup de `subscription_plans`. Se plano for desativado/deletado, crash HTTP 500 bloqueia criação de alunos.
+10. **#394**: `process-expired-subscriptions` L122 `.single()` no lookup do plano free. Se plano free não existir, processamento de TODAS as assinaturas expiradas para.
+11. **#395**: `handle-student-overage` L79 `.single()` no lookup de `user_subscriptions`. Race condition com webhook pode causar crash.
+12. **#397 (CONFIRMAÇÃO)**: `archive-old-data` L132 seleciona `student_id` da tabela `classes` — coluna inexistente. Corrompe dados do arquivo JSON. (Já catalogado em memória `infrastructure/data-archiving-corruption-and-fk-blocks`.)
+13. **#398 (CONFIRMAÇÃO)**: `archive-old-data` L253-289 cascade de deleção ignora `class_exceptions` e `invoice_classes`. FK RESTRICT bloqueia deleção. (Já catalogado em memória.)
+14. **#399**: `resend-student-invitation` L75/L90/L128 usa `.single()` 3x (relationship, student profile, teacher profile). Qualquer registro ausente crasheia a função.
+
+### Achados Baixos
+
+15. **#401**: `check-subscription-status` L135 usa FK join `subscription_plans(*)`, L38 usa `profiles!teacher_student_relationships_student_id_fkey(name, email)` — queries sequenciais necessárias.
+16. **#402**: `check-subscription-status` L378 `.single()` no lookup de plano por `stripe_price_id`. Se price_id não existir no DB local, crash impede sincronização.
+
+### Totais Atualizados (v5.55)
+- 399 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 12 confirmações + 2 confirmações de memória
+- 369 únicas
+- 10 implementadas
+- **357 pendentes**
+- Fase 0: **72 itens** (+6: #384, #385, #389, #390, #393, #396)
+- **100% cobertura**: 75 funções auditadas (18 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (72 itens críticos). Padrão SISTÊMICO novo identificado: `smart-delete-student` é a função mais vulnerável do projeto — combina ausência total de validação de identidade (#384) com FK joins proibidos (#385) e cascata de deleção incompleta (#389/#390). A combinação permite deleção não autorizada E falha parcial que corrompe dados. `handle-student-overage` cobra no Stripe mas falha ao registrar localmente (#396) por referência a tabela inexistente. `process-expired-subscriptions` pode falhar silenciosamente por FK joins proibidos (#393), deixando assinaturas expiradas ativas indefinidamente.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4501,6 +4560,7 @@ Prioridade de execução: Fase 0 (66 itens críticos). Padrão SISTÊMICO novo i
 | v5.52 | 2026-02-17 | **15ª passagem: análise cruzada profunda — notificações, dependentes, assinaturas do professor e resiliência de loops**. +12 pontas soltas (#347-#358). 3 itens adicionados à Fase 0 (56 itens). Totais: **358 pontas soltas**, **328 únicas**, **316 pendentes**. |
 | v5.53 | 2026-02-17 | **16ª passagem: análise cruzada profunda — automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência**. +10 pontas soltas (#359-#368). 5 itens adicionados à Fase 0 (61 itens). Totais: **368 pontas soltas**, **338 únicas**, **326 pendentes**. |
 | v5.54 | 2026-02-17 | **17ª passagem: análise cruzada profunda — subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto**. +15 pontas soltas (#369-#383). 5 itens adicionados à Fase 0 (66 itens). Totais: **383 pontas soltas**, **353 únicas**, **341 pendentes**. |
+| v5.55 | 2026-02-17 | **18ª passagem: análise cruzada profunda — gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento**. +16 pontas soltas (#384-#399). 6 itens adicionados à Fase 0 (72 itens). Totais: **399 pontas soltas**, **369 únicas**, **357 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 
@@ -4521,3 +4581,5 @@ Após implementação, atualizar:
 14. `infrastructure/stripe-webhook-error-handling` — NOVA: documentar padrão de retorno HTTP 200 para falhas de update vs 500 para falhas de validação (#77/M29)
 15. `infrastructure/cron-automation-security` — NOVA: documentar padrão de funções de automação sem auth (#322-#324) e ANON_KEY inline sistêmico (#315, #328)
 16. `infrastructure/archive-data-integrity` — NOVA: documentar coluna inexistente `student_id` em `classes` (#317) e cascade de deleção incompleta (#318)
+17. `security/student-management-auth-constraints` — ATUALIZAR: documentar que smart-delete-student (#384) aceita teacher_id do body sem validação JWT
+18. `database/student-deletion-cascade-order-bug` — ATUALIZAR: documentar que invoice_classes deve ser limpa antes de class_participants (#389/#390)

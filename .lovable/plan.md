@@ -2,36 +2,37 @@
 
 
 
-# Verificação Final v5.54 — 15 Novas Pontas Soltas (17ª Passagem: Subscrições do Professor, Stripe Connect, Notificações)
+# Verificação Final v5.55 — 16 Novas Pontas Soltas (18ª Passagem: Gerenciamento de Alunos/Dependentes, Expiração de Subscrições, Arquivamento)
 
-## Veredicto: Plano atualizado para v5.54 com 5 achados CRÍTICOS — send-student-invitation sem auth (#372 SEGURANÇA), send-class-report-notification sem auth (#373 SEGURANÇA), send-material-shared-notification sem auth (#374 SEGURANÇA), cancel-subscription crash (#369), e FK join + .single() em checkout (#371).
+## Veredicto: Plano atualizado para v5.55 com 6 achados CRÍTICOS — smart-delete-student sem auth JWT (#384 SEGURANÇA), FK joins proibidos em smart-delete-student (#385) e process-expired-subscriptions (#393), cascade incompleta em smart-delete-student (#389/#390), tabela inexistente em handle-student-overage (#396).
 
 ---
 
-## Auditoria de 17ª Passagem (Subscrições do Professor, Stripe Connect, Notificações de Relatório/Material/Convite/Confirmação/Boleto)
+## Auditoria de 18ª Passagem (Gerenciamento de Alunos/Dependentes, Expiração de Subscrições, Arquivamento)
 
-Funções auditadas nesta rodada (17ª passagem):
-- `cancel-subscription/index.ts` — `.single()` L67 (#369 ALTA)
-- `create-subscription-checkout/index.ts` — `.single()` L138 (#370), FK join L172 (#371 ALTA)
-- `send-student-invitation/index.ts` — SEM AUTH (#372 ALTA SEGURANÇA)
-- `send-class-report-notification/index.ts` — SEM AUTH (#373 ALTA), `.single()` 3x (#377)
-- `send-material-shared-notification/index.ts` — SEM AUTH (#374 ALTA), `.single()` 2x (#375)
-- `send-cancellation-notification/index.ts` — sem persistSession (#376)
-- `send-class-confirmation-notification/index.ts` — `.single()` 3x (#378)
-- `send-boleto-subscription-notification/index.ts` — serve() duplicado (#380), `.single()` (#379)
-- `create-connect-account/index.ts` — `.single()` (#381)
-- `create-connect-onboarding-link/index.ts` — bypass ownership (#382)
-- `refresh-stripe-connect-account/index.ts` — dual-client (#383)
+Funções auditadas nesta rodada (18ª passagem):
+- `smart-delete-student/index.ts` — SEM AUTH JWT (#384 ALTA SEGURANÇA), FK join 2x (#385 ALTA), cascade incompleta (#389/#390 ALTA)
+- `create-student/index.ts` — `.single()` plan L297 (#391)
+- `update-student-details/index.ts` — Sem novos achados
+- `create-dependent/index.ts` — Sem novos achados
+- `delete-dependent/index.ts` — Sem novos achados
+- `update-dependent/index.ts` — Sem novos achados
+- `process-expired-subscriptions/index.ts` — FK join proibido 2x (#393 ALTA), `.single()` free plan (#394)
+- `handle-student-overage/index.ts` — tabela inexistente `student_overage_charges` (#396 ALTA), `.single()` (#395)
+- `archive-old-data/index.ts` — coluna inexistente (#397), cascade incompleta (#398)
+- `resend-student-invitation/index.ts` — `.single()` 3x (#399)
+- `check-subscription-status/index.ts` — FK join 3x (#401), `.single()` (#402)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#372 (SEGURANÇA: PHISHING)**: `send-student-invitation` sem autenticação — permite emails de phishing com links maliciosos usando nome de qualquer professor.
-2. **#373 (SEGURANÇA: RELATÓRIO)**: `send-class-report-notification` sem auth — expõe dados de relatórios.
-3. **#374 (SEGURANÇA: MATERIAL)**: `send-material-shared-notification` sem auth — permite spam e exposição de dados.
-4. **#369**: `cancel-subscription` crash por `.single()` em race condition com webhook.
-5. **#371**: `create-subscription-checkout` FK join proibido + `.single()` em assinaturas existentes.
+1. **#384 (SEGURANÇA: DELEÇÃO SEM AUTH)**: `smart-delete-student` aceita `teacher_id` do body sem validar contra JWT. Permite deleção não autorizada de alunos.
+2. **#385 (FK JOIN PROIBIDO)**: `smart-delete-student` usa `classes!inner(teacher_id)` — falha por cache de schema.
+3. **#389 (CASCADE INCOMPLETA — UNLINK)**: Deleta `class_participants` antes de `invoice_classes` — FK RESTRICT bloqueia.
+4. **#390 (CASCADE INCOMPLETA — DELETE)**: Mesmo problema no caminho de deleção completa.
+5. **#393 (FK JOIN PROIBIDO — EXPIRED)**: `process-expired-subscriptions` usa `subscription_plans!inner` e `profiles!user_id`.
+6. **#396 (TABELA INEXISTENTE)**: `handle-student-overage` insere em `student_overage_charges` — não existe no schema.
 
-### Totais Atualizados (v5.54)
-- 383 pontas soltas totais | 353 únicas | **341 pendentes**
-- Fase 0: **66 itens** (+5: #369, #371, #372, #373, #374)
-- **100% cobertura**: 75 funções auditadas (17 passagens)
+### Totais Atualizados (v5.55)
+- 399 pontas soltas totais | 369 únicas | **357 pendentes**
+- Fase 0: **72 itens** (+6: #384, #385, #389, #390, #393, #396)
+- **100% cobertura**: 75 funções auditadas (18 passagens)

@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.61 (Consolidado)
+# Plano de Cobrança Híbrida — v5.63 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 124 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 132 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.62 consolida todas as auditorias com 25 passagens completas. Totais finais: **523 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **493 únicas**, **481 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 25ª passagem — IDOR em create-connect-onboarding-link, phishing em 4 notification functions, FK joins em get-teacher-availability e send-class-reminders, ANON_KEY inline em setup-expired-subscriptions-automation). A 25ª passagem revelou 18 novas pontas soltas (#506-#523): `create-connect-onboarding-link` aceita stripe_account_id sem validação de ownership (#506 CRÍTICO IDOR), `send-class-request-notification` sem auth phishing (#507 CRÍTICO), `send-class-confirmation-notification` sem auth phishing (#508 CRÍTICO), `send-invoice-notification` sem auth leak de dados financeiros (#509 CRÍTICO), `get-teacher-availability` FK join classes!inner (#510 ALTO), `send-class-reminders` FK joins class_services + profiles (#511 ALTO), `setup-expired-subscriptions-automation` ANON_KEY inline (#512 ALTO), `check-business-profile-status` sem persistSession (#513 MÉDIO), `refresh-stripe-connect-account` sem persistSession L34 (#514 MÉDIO), `cancel-subscription` .single() L47/L67 (#515 MÉDIO), `send-class-request-notification` .single() 3x (#517 MÉDIO), `send-class-confirmation-notification` .single() 2x (#518 MÉDIO), `send-invoice-notification` .single() 3x (#519 MÉDIO), `send-class-reminders` .single() 4x em loops (#520 MÉDIO), `create-connect-onboarding-link` .single() L64 (#521 MÉDIO), `refresh-stripe-connect-account` .single() L66 (#522 MÉDIO), `check-business-profile-status` .single() L100 (#523 BAIXO).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.63 consolida todas as auditorias com 26 passagens completas. Totais finais: **541 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **511 únicas**, **499 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 26ª passagem — dual serve() e phishing em send-boleto-subscription-notification, NO AUTH + IDOR em generate-boleto-for-invoice, email enumeration em resend-confirmation, ANON_KEY inline em setup-orphan-charges-automation e setup-invoice-auto-verification, FK cascade failure em end-recurrence). A 26ª passagem revelou 18 novas pontas soltas (#524-#541): `send-boleto-subscription-notification` dual serve() dead code (#524 CRÍTICO), sem auth phishing com fake boleto URLs (#525 CRÍTICO), .single() L283 (#545 MÉDIO); `resend-confirmation` sem auth + email enumeration via 404/400 (#527 ALTO), listUsers sem filtro (#528 ALTO, confirmado por memory); `generate-boleto-for-invoice` sem auth IDOR access to PII + boleto generation (#532 CRÍTICO), FK joins profiles!fkey (#533 ALTO); `setup-orphan-charges-automation` ANON_KEY inline + exec_sql (#530 ALTO); `setup-invoice-auto-verification` ANON_KEY inline (#531 ALTO); `validate-monthly-subscriptions` FK join monthly_subscriptions!inner (#535 ALTO), sem persistSession (#534 MÉDIO); `end-recurrence` FK cascade failure on class deletion (#541 ALTO), sem persistSession + .single() (#540 MÉDIO); `validate-payment-routing` FK join profiles:student_id (#536 MÉDIO), .single() 3x (#537-#539 MÉDIO); `create-dependent`/`delete-dependent`/`update-dependent` sem persistSession (#542-#544 MÉDIO). (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **493 únicas**, **481 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 25ª passagem — IDOR em create-connect-onboarding-link, phishing em 4 notification functions, FK joins em get-teacher-availability e send-class-reminders, ANON_KEY inline em setup-expired-subscriptions-automation). A 25ª passagem revelou 18 novas pontas soltas (#506-#523): `create-connect-onboarding-link` aceita stripe_account_id sem validação de ownership (#506 CRÍTICO IDOR), `send-class-request-notification` sem auth phishing (#507 CRÍTICO), `send-class-confirmation-notification` sem auth phishing (#508 CRÍTICO), `send-invoice-notification` sem auth leak de dados financeiros (#509 CRÍTICO), `get-teacher-availability` FK join classes!inner (#510 ALTO), `send-class-reminders` FK joins class_services + profiles (#511 ALTO), `setup-expired-subscriptions-automation` ANON_KEY inline (#512 ALTO), `check-business-profile-status` sem persistSession (#513 MÉDIO), `refresh-stripe-connect-account` sem persistSession L34 (#514 MÉDIO), `cancel-subscription` .single() L47/L67 (#515 MÉDIO), `send-class-request-notification` .single() 3x (#517 MÉDIO), `send-class-confirmation-notification` .single() 2x (#518 MÉDIO), `send-invoice-notification` .single() 3x (#519 MÉDIO), `send-class-reminders` .single() 4x em loops (#520 MÉDIO), `create-connect-onboarding-link` .single() L64 (#521 MÉDIO), `refresh-stripe-connect-account` .single() L66 (#522 MÉDIO), `check-business-profile-status` .single() L100 (#523 BAIXO).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4785,3 +4785,93 @@ Com #512, confirma-se que TODAS as 4 funções de setup de automação expõem A
 - 523 pontas soltas totais | 493 únicas | **481 pendentes**
 - Fase 0: **124 itens** (+8: #506, #507, #508, #509, #510, #511, #512, #516 reclassificado)
 - **100% cobertura**: 75 funções auditadas (25 passagens)
+
+---
+
+## 26ª Passagem — v5.63 (Dual serve() em Boleto Notification, NO AUTH em generate-boleto-for-invoice, Email Enumeration, FK Cascade, ANON_KEY Inline)
+
+Funções auditadas nesta rodada (26ª passagem):
+- `send-boleto-subscription-notification/index.ts` — DUAL serve() L9+L253 dead code (#524 CRÍTICO), SEM AUTH phishing com fake boleto URLs (#525 CRÍTICO), .single() L283 (#545 MÉDIO)
+- `resend-confirmation/index.ts` — SEM AUTH + email enumeration via 404/400 (#527 ALTO), listUsers() sem filtro (#528 ALTO, confirmado memory)
+- `generate-boleto-for-invoice/index.ts` — SEM AUTH IDOR + PII exposure (#532 CRÍTICO), FK joins profiles!fkey L37-43 (#533 ALTO)
+- `setup-orphan-charges-automation/index.ts` — ANON_KEY inline L32 + exec_sql L66 (#530 ALTO)
+- `setup-invoice-auto-verification/index.ts` — ANON_KEY inline L52 (#531 ALTO)
+- `validate-monthly-subscriptions/index.ts` — FK join monthly_subscriptions!inner L226-231 (#535 ALTO), sem persistSession L28 (#534 MÉDIO)
+- `end-recurrence/index.ts` — FK cascade failure on class delete L67-73 (#541 ALTO), sem persistSession + .single() L50 (#540 MÉDIO)
+- `validate-payment-routing/index.ts` — FK join profiles:student_id L108-112 (#536 MÉDIO), .single() 3x L56/L116/L154 (#537-#539 MÉDIO)
+- `request-class/index.ts` — auditada, bom padrão de auth e ownership validation
+- `manage-class-exception/index.ts` — auditada, bom padrão de auth com authorization por role
+- `send-password-reset/index.ts` — auditada, anti-enumeração implementada corretamente
+- `check-email-confirmation/index.ts` — auditada, bom padrão com ownership validation via relationships
+- `create-teacher/index.ts` — auditada, endpoint público esperado (registro)
+- `create-dependent/index.ts` — sem persistSession L37 (#542 MÉDIO), bom ownership check
+- `delete-dependent/index.ts` — sem persistSession L35 (#543 MÉDIO), bom ownership check
+- `update-dependent/index.ts` — sem persistSession L37 (#544 MÉDIO), bom ownership check
+
+### Achados Críticos (→ Fase 0)
+
+1. **#524 (CRÍTICO: DEAD CODE)**: `send-boleto-subscription-notification` contém DUAS chamadas `serve()` (L9 e L253). No runtime Deno, apenas a última chamada `serve()` é efetiva. A primeira declaração (L9-L251 com templates de email) define a função `getEmailTemplate` como código regular, mas o bloco `serve()` em L9 é dead code que nunca executa. Embora o template function funcione corretamente por estar fora do serve(), a estrutura é confusa e indica erro de refatoração. O handler em L253 funciona mas o padrão é perigoso para manutenção futura.
+
+2. **#525 (CRÍTICO: PHISHING)**: `send-boleto-subscription-notification` L253 NÃO possui autenticação. Aceita `user_id`, `notification_type`, `boleto_url`, `amount`, `barcode` do body. Qualquer chamador anônimo pode: (a) enviar emails com URLs de boleto FALSOS para phishing ("Baixar Boleto" apontando para site malicioso), (b) enviar notificações falsas de "pagamento confirmado" para criar falsa sensação de segurança, (c) spam massivo de emails para qualquer user_id do sistema.
+
+3. **#532 (CRÍTICO: IDOR + PII)**: `generate-boleto-for-invoice` NÃO possui NENHUMA autenticação. Aceita `invoice_id` do body e usa service_role para acessar dados completos incluindo CPF, endereço, email do aluno/responsável via FK join. Qualquer chamador anônimo pode: (a) enumerar invoice_ids para extrair dados pessoais (CPF, endereço) de alunos, (b) gerar boletos reais no Stripe Connect para faturas de qualquer professor, (c) obter URLs de boleto e linhas digitáveis para faturas arbitrárias.
+
+4. **#530 (ALTO: ANON_KEY + SQL INJECTION)**: `setup-orphan-charges-automation` L32 expõe ANON_KEY inline E L66 usa `exec_sql` RPC (vetor de SQL injection). Combina dois padrões sistêmicos perigosos (#425 + #495). Confirmação: esta é a 5ª função de setup com ANON_KEY inline.
+
+5. **#531 (ALTO: ANON_KEY)**: `setup-invoice-auto-verification` L52 expõe ANON_KEY inline na definição SQL do cron job. 6ª instância confirmada do padrão sistêmico.
+
+6. **#527 (ALTO: NO AUTH + ENUMERATION)**: `resend-confirmation` opera sem autenticação. Retorna HTTP 404 para emails desconhecidos e HTTP 400 para emails já confirmados, habilitando enumeração de contas. Além disso, L45 usa `listUsers()` sem filtros (confirmado pela memory `performance/user-list-memory-constraint`), carregando todo o banco de autenticação na memória.
+
+7. **#533 (ALTO: FK JOIN)**: `generate-boleto-for-invoice` L37-43 usa FK join `profiles!invoices_student_id_fkey(...)` e `profiles!invoices_teacher_id_fkey(...)`. Schema cache do Deno → geração de boleto crasheia silenciosamente.
+
+8. **#535 (ALTO: FK JOIN)**: `validate-monthly-subscriptions` L226-231 usa FK join `monthly_subscriptions!inner(id, is_active)` em student_monthly_subscriptions. Schema cache → validação de cascata de desativação crasheia.
+
+9. **#541 (ALTO: FK CASCADE)**: `end-recurrence` L67-73 deleta classes futuras via `.delete().eq('class_template_id', templateId)` sem antes remover registros dependentes em `class_participants` e `class_exceptions`. Se existirem registros dependentes com constraint RESTRICT, a deleção falha com erro FK, impedindo o encerramento da recorrência. Padrão confirmado pela memory `infrastructure/data-archiving-corruption-and-fk-blocks`.
+
+### Achados Médios/Baixos
+
+10. **#534 (MÉDIO)**: `validate-monthly-subscriptions` L28 createClient sem persistSession.
+11. **#536 (MÉDIO)**: `validate-payment-routing` L108-112 FK join `profiles:student_id(...)`.
+12. **#537-#539 (MÉDIO)**: `validate-payment-routing` .single() 3x L56/L116/L154.
+13. **#540 (MÉDIO)**: `end-recurrence` L20-23 createClient sem persistSession + L50 .single().
+14. **#542-#544 (MÉDIO)**: `create-dependent` L37, `delete-dependent` L35, `update-dependent` L37 — createClient sem persistSession.
+15. **#545 (MÉDIO)**: `send-boleto-subscription-notification` L283 .single() para profile lookup.
+
+### Padrão Sistêmico Expandido: ANON_KEY Inline em Setup Functions (Total: 6)
+
+Confirmado que TODAS as 6 funções de setup/automação expõem ANON_KEY inline:
+1. setup-billing-automation (#425)
+2. setup-class-reminders-automation (#496)
+3. setup-orphan-charges-automation (#530) — **NOVO** (+ exec_sql)
+4. setup-expired-subscriptions-automation (#512)
+5. setup-invoice-auto-verification (#531) — **NOVO**
+6. setup-billing-automation (variante RPC) — confirmado
+
+### Padrão Sistêmico Expandido: Notification Functions sem Auth (Total: 9 de 10)
+
+Com #525, confirma-se que **9 de 10 funções de notificação por email** são vetores de phishing/data leak:
+1. send-student-invitation (#454)
+2. send-material-shared-notification (#455)
+3. send-cancellation-notification (#500)
+4. send-class-report-notification (#502)
+5. send-class-request-notification (#507)
+6. send-class-confirmation-notification (#508)
+7. send-invoice-notification (#509)
+8. send-boleto-subscription-notification (#525) — **NOVO**
+9. send-password-reset — sem auth (esperado para recovery, mas sem rate limiting)
+
+A única função com bom padrão de auth: `resend-student-invitation`.
+
+### Funções com Bom Padrão (Positivas)
+
+Confirmadas como bem implementadas nesta passagem:
+- `request-class` — auth via JWT, ownership via relationship check, dependent validation
+- `manage-class-exception` — auth + authorization por role (professor/aluno), sequential queries para dependents
+- `send-password-reset` — anti-enumeração implementada
+- `check-email-confirmation` — auth + ownership via relationship validation
+- `create-dependent`, `delete-dependent`, `update-dependent` — auth + teacher ownership validation (exceto persistSession)
+
+### Totais Atualizados (v5.63)
+- 541 pontas soltas totais | 511 únicas | **499 pendentes**
+- Fase 0: **132 itens** (+8: #524, #525, #527, #530, #531, #532, #533, #541)
+- **100% cobertura**: 75 funções auditadas (26 passagens)

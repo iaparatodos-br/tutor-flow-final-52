@@ -175,8 +175,20 @@ Adicionado filtro `is_paid_class = true` à RPC e propagação do campo na mater
 3. **Aulas em grupo**: Cada participante recebe fatura individual
 4. **Resiliência**: Erros de fatura não bloqueiam a criação da aula (toast de aviso)
 
+## Fase 6 — Cancelamento: process-cancellation + CancellationModal ✅
+
+1. **process-cancellation**: Adicionado `is_paid_class` ao select da aula + busca `charge_timing` do `business_profiles`
+   - `is_paid_class = false` → `shouldCharge = false` (aula gratuita)
+   - `charge_timing = 'prepaid'` + `is_paid_class = true` → `shouldCharge = false` (já cobrada)
+   - Invariante: faturas `invoice_type = 'cancellation'` nunca criadas para aulas prepaid/gratuitas
+2. **CancellationModal**: Interface `VirtualClassData` e `classData` incluem `is_paid_class` e `charge_timing`
+   - Query da aula inclui `is_paid_class`
+   - Busca `charge_timing` do professor via `business_profiles`
+   - `willBeCharged = false` para aulas gratuitas e pré-pagas
+   - Alertas visuais: prepaid (âmbar) e gratuita (esmeralda) com mensagens contextuais
+3. **i18n**: Adicionadas chaves `alert.prepaid.*` e `alert.unpaid.*` em PT e EN
+
 ## Próximas Etapas
 
-- **Fase 6**: Cancelamento — process-cancellation + CancellationModal
 - **Fase 7**: AmnestyButton — verificação de faturamento + label
 - **Fase 8**: InvoiceTypeBadge consolidação + i18n + testes

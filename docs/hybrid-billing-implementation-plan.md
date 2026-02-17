@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.53 (Consolidado)
+# Plano de Cobrança Híbrida — v5.54 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 61 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 66 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.53 consolida todas as auditorias com 16 passagens completas. Totais finais: **368 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **338 únicas**, **326 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 16ª passagem — análise cruzada profunda: automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência). A 16ª passagem revelou 10 novas pontas soltas (#359-#368): `check-overdue-invoices` com status `'overdue'` inglês (#359 ALTA), tracking de notificações usando FK semântica errada (#360 ALTA), spam de notificações por ausência de INSERT de controle (#361 ALTA), `automated-billing` sem idempotência para mensalidades (#364 ALTA), `end-recurrence` com cascade de deleção incompleta (#365 ALTA), FK joins proibidos em automated-billing (#362, #363), `.single()` em create-invoice (#368), client sem persistSession em end-recurrence (#366), `.single()` em validate-payment-routing (#367).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.54 consolida todas as auditorias com 17 passagens completas. Totais finais: **383 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **353 únicas**, **341 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 17ª passagem — análise cruzada profunda: subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto). A 17ª passagem revelou 15 novas pontas soltas (#369-#383): `send-student-invitation` sem autenticação (#372 ALTA SEGURANÇA), `send-class-report-notification` sem autenticação (#373 ALTA SEGURANÇA), `send-material-shared-notification` sem autenticação (#374 ALTA SEGURANÇA), `.single()` em cancel-subscription (#369 ALTA), `.single()` em create-subscription-checkout (#370, #371 ALTA), `send-boleto-subscription-notification` com serve() duplicado (#380), `create-connect-onboarding-link` com bypass de ownership (#382).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4397,7 +4397,69 @@ Funções auditadas nesta rodada (16ª passagem — análise cruzada profunda):
 - **100% cobertura**: 75 funções auditadas (16 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (61 itens críticos). A 16ª passagem revelou um cluster de bugs INTERDEPENDENTES em `check-overdue-invoices`: status inglês (#359) + tracking semântico quebrado (#360) + ausência de INSERT (#361) se combinam para criar um cenário onde TODAS as faturas vencidas recebem notificação spam a cada execução do cron, E as que são atualizadas desaparecem do dashboard. Adicionalmente, `automated-billing` processa mensalidades sem idempotência (#364), arriscando cobranças duplicadas para todos os alunos com plano mensal, e `end-recurrence` (#365) não consegue encerrar recorrências para aulas que já tenham participantes registrados.
+Prioridade de execução: Fase 0 (61 itens críticos).
+
+---
+
+## 17ª Passagem: Análise Cruzada Profunda — Subscrições do Professor, Stripe Connect, Notificações de Relatório/Material/Convite/Confirmação/Boleto
+
+Funções auditadas nesta rodada (17ª passagem — análise cruzada profunda):
+- `cancel-subscription/index.ts` (118 linhas) — `.single()` L67 (#369 ALTA)
+- `create-subscription-checkout/index.ts` (372 linhas) — `.single()` L138 (#370 ALTA), FK join + `.single()` L172-175 (#371 ALTA)
+- `customer-portal/index.ts` (75 linhas) — Sem novos achados
+- `list-subscription-invoices/index.ts` (120 linhas) — Sem novos achados
+- `refresh-stripe-connect-account/index.ts` (150 linhas) — dual-client ANON_KEY (#383 BAIXO)
+- `check-stripe-account-status/index.ts` (156 linhas) — Sem novos achados (ownership OK)
+- `create-connect-account/index.ts` (148 linhas) — `.single()` L76 (#381 BAIXO)
+- `create-connect-onboarding-link/index.ts` (104 linhas) — bypass ownership (#382 BAIXO)
+- `send-class-report-notification/index.ts` (294 linhas) — SEM AUTH (#373 ALTA), `.single()` L37/L49/L74 (#377)
+- `send-material-shared-notification/index.ts` (316 linhas) — SEM AUTH (#374 ALTA), sem persistSession + `.single()` (#375)
+- `send-student-invitation/index.ts` (158 linhas) — SEM AUTH (#372 ALTA)
+- `resend-student-invitation/index.ts` (186 linhas) — Sem novos achados (auth OK)
+- `send-cancellation-notification/index.ts` (498 linhas) — sem persistSession (#376)
+- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` L41/L65/L79 (#378)
+- `send-boleto-subscription-notification/index.ts` (345 linhas) — serve() duplicado (#380), `.single()` L282 (#379)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#369 (ALTA — CANCEL-SUBSCRIPTION CRASH)**: `cancel-subscription` L67 usa `.single()` para buscar `user_subscriptions` ativas. Se o webhook `customer.subscription.deleted` processar antes desta chamada (race condition), a assinatura já estará 'cancelled' e `.single()` lança HTTP 500 em vez de mensagem amigável.
+
+2. **#370 (ALTA — CHECKOUT CRASH POR PLANO INATIVO)**: `create-subscription-checkout` L138 usa `.single()` em `subscription_plans`. Se plano for desativado entre page load e clique em "Assinar", crash HTTP 500.
+
+3. **#371 (ALTA — FK JOIN + .SINGLE() EM CHECKOUT)**: `create-subscription-checkout` L172 usa FK join `subscription_plans(*)` na query de `user_subscriptions` E `.single()`. Viola constraint de queries sequenciais E crasheia se múltiplas assinaturas existirem.
+
+4. **#372 (ALTA — SEGURANÇA: PHISHING VIA CONVITE)**: `send-student-invitation` NÃO possui validação de identidade. Aceita `email`, `name`, `teacher_name` e `invitation_link` do body. Permite envio de emails de phishing com links maliciosos usando nome de qualquer professor como remetente.
+
+5. **#373 (ALTA — SEGURANÇA: NOTIFICAÇÃO DE RELATÓRIO SEM AUTH)**: `send-class-report-notification` não possui autenticação. Aceita `classId` e `reportId` sem validar identidade. Permite disparo de notificações expondo dados do relatório (resumo, tarefas, feedback).
+
+6. **#374 (ALTA — SEGURANÇA: NOTIFICAÇÃO DE MATERIAL SEM AUTH)**: `send-material-shared-notification` não possui autenticação E sem `persistSession: false`. Aceita `material_id` e `student_ids` — permite spam de notificações e exposição de dados.
+
+### Achados Médios
+
+7. **#375**: `send-material-shared-notification` L40/L50 `.single()` para material e teacher. Crash HTTP 500 se deletado.
+8. **#376**: `send-cancellation-notification` L36-38 sem `{ auth: { persistSession: false } }`.
+9. **#377**: `send-class-report-notification` L37/L49/L74 `.single()`. Registro ausente crasheia toda função.
+10. **#378**: `send-class-confirmation-notification` L41/L65/L79 `.single()`.
+11. **#379**: `send-boleto-subscription-notification` L282 `.single()` + usa SES client raw em vez de `_shared/ses-email.ts`.
+12. **#380**: `send-boleto-subscription-notification` possui DOIS handlers `serve()` (L14 e L253). Primeiro handler é código morto.
+
+### Achados Baixos
+
+13. **#381**: `create-connect-account` L76 `.single()` onde `.maybeSingle()` é correto.
+14. **#382**: `create-connect-onboarding-link` L53-56 aceita `stripe_account_id` direto sem ownership.
+15. **#383**: `refresh-stripe-connect-account` L34 usa ANON_KEY para auth client (dual-client desnecessário).
+
+### Totais Atualizados (v5.54)
+- 383 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 12 confirmações
+- 353 únicas
+- 10 implementadas + 2 confirmações de memória
+- **341 pendentes**
+- Fase 0: **66 itens** (+5: #369, #372, #373, #374, #371)
+- **100% cobertura**: 75 funções auditadas (17 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (66 itens críticos). Padrão SISTÊMICO novo identificado: 3 funções de notificação (`send-student-invitation`, `send-class-report-notification`, `send-material-shared-notification`) operam completamente sem autenticação, criando vetores de phishing e exposição de dados. `#372` é particularmente grave pois permite emails de phishing com nome de professor real como remetente. O fluxo de subscrições contém 3 crashs por `.single()` (#369-#371) que degradam a experiência de compra/cancelamento.
 
 ---
 
@@ -4438,6 +4500,7 @@ Prioridade de execução: Fase 0 (61 itens críticos). A 16ª passagem revelou u
 | v5.51 | 2026-02-17 | **14ª passagem: análise cruzada profunda — materialização, deleção de alunos e integração de pagamento**. +8 pontas soltas (#339-#346). 3 itens adicionados à Fase 0 (53 itens). Totais: **346 pontas soltas**, **316 únicas**, **304 pendentes**. |
 | v5.52 | 2026-02-17 | **15ª passagem: análise cruzada profunda — notificações, dependentes, assinaturas do professor e resiliência de loops**. +12 pontas soltas (#347-#358). 3 itens adicionados à Fase 0 (56 itens). Totais: **358 pontas soltas**, **328 únicas**, **316 pendentes**. |
 | v5.53 | 2026-02-17 | **16ª passagem: análise cruzada profunda — automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência**. +10 pontas soltas (#359-#368). 5 itens adicionados à Fase 0 (61 itens). Totais: **368 pontas soltas**, **338 únicas**, **326 pendentes**. |
+| v5.54 | 2026-02-17 | **17ª passagem: análise cruzada profunda — subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto**. +15 pontas soltas (#369-#383). 5 itens adicionados à Fase 0 (66 itens). Totais: **383 pontas soltas**, **353 únicas**, **341 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

@@ -7,6 +7,18 @@
 # Etapa 0.6 — FK Joins proibidos no Deno ✅
 # Etapa 0.7 — Categoria A: Auth/IDOR ✅
 # Etapa 0.8 — Categoria H: FK Cascade / Deletion Failures ✅
+# Etapa 0.9 — Categoria I: Data Corruption ✅
+
+## Etapa 0.9 — Resumo
+
+Corrigidos 7 problemas de Data Corruption em 4 Edge Functions:
+
+1. **#74 webhook-stripe-connect**: `invoice.payment_succeeded` preserva `payment_method` original
+2. **#548 webhook-stripe-connect**: `payment_intent.succeeded` não apaga mais `boleto_url`/`pix_qr_code` (recibos)
+3. **#202/#493 process-payment-failure-downgrade**: FK join removido, queries sequenciais
+4. **#364 automated-billing**: Idempotência para faturas mensais duplicadas
+5. **automated-billing validateTeacherCanBill**: variável `plan` corrigida
+6. **#259 validate-payment-routing**: Não cria mais fatura REAL como teste
 
 ## Etapa 0.8 — Resumo
 

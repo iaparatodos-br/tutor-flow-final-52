@@ -698,6 +698,28 @@ async function processMonthlySubscriptionBilling(
       startsAt: startsAt.toISOString().split('T')[0]
     });
 
+    // #364 FIX: Idempotência — verificar se já existe fatura de mensalidade para este ciclo
+    const { data: existingMonthlyInvoice } = await supabaseAdmin
+      .from('invoices')
+      .select('id, status')
+      .eq('teacher_id', studentInfo.teacher_id)
+      .eq('student_id', studentInfo.student_id)
+      .eq('invoice_type', 'monthly_subscription')
+      .eq('monthly_subscription_id', subscription.subscription_id)
+      .gte('created_at', cycleStart.toISOString())
+      .lte('created_at', new Date(cycleEnd.getTime() + 86400000).toISOString()) // +1 day buffer
+      .maybeSingle();
+
+    if (existingMonthlyInvoice) {
+      logStep(`⚠️ IDEMPOTENCY: Monthly subscription invoice already exists for this cycle`, {
+        existingInvoiceId: existingMonthlyInvoice.id,
+        status: existingMonthlyInvoice.status,
+        cycle: `${cycleStartStr} - ${cycleEndStr}`,
+        student: studentInfo.student_name
+      });
+      return { success: true, invoiceId: existingMonthlyInvoice.id };
+    }
+
     // Buscar aulas concluídas do período
     const { data: completedParticipations, error: classesError } = await supabaseAdmin
       .rpc('get_unbilled_participants_v2', {
@@ -1053,8 +1075,7 @@ async function processMonthlySubscriptionBilling(
 // Validation function to check if teacher can bill
 async function validateTeacherCanBill(teacher: any): Promise<boolean> {
   try {
-    // Get teacher's subscription separately
-    // Sequential queries to avoid FK join (Etapa 0.6)
+    // Get teacher's subscription separately (sequential — Etapa 0.6)
     const { data: subscription, error: subError } = await supabaseAdmin
       .from('user_subscriptions')
       .select('status, plan_id')
@@ -1065,6 +1086,13 @@ async function validateTeacherCanBill(teacher: any): Promise<boolean> {
     if (subError || !subscription) {
       return false;
     }
+
+    // Fetch plan details separately to check financial_module
+    const { data: plan } = await supabaseAdmin
+      .from('subscription_plans')
+      .select('features')
+      .eq('id', subscription.plan_id)
+      .maybeSingle();
 
     const hasFinancialModule = plan?.features?.financial_module === true;
     

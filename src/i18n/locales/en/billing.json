@@ -13,6 +13,16 @@
       "placeholder": "15"
     }
   },
+  "chargeTiming": {
+    "title": "Billing Model",
+    "description": "Define when classes will be charged to your students.",
+    "prepaid": "Charge Before",
+    "postpaid": "Charge After",
+    "prepaidDescription": "The invoice is generated immediately when scheduling the class. Paid classes cannot be recurring. In case of cancellation, there is no automatic refund.",
+    "postpaidDescription": "Classes are accumulated and charged on the billing cycle closing date. Classes can be recurring. In case of late cancellation, a fee may be applied according to your policy.",
+    "infoTitle": "How does it work?",
+    "infoContent": "The billing model defines when the invoice is generated for paid individual classes. Free or makeup classes are not affected. Monthly subscriptions continue to be charged on the normal cycle regardless of the chosen model."
+  },
   "paymentMethods": {
     "title": "Payment Methods",
     "description": "Select the payment methods your students can use. Methods will be applied in priority order: Boleto → PIX → Card.",

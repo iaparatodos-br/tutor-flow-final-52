@@ -137,9 +137,18 @@ invoice_classes (participant_id FK RESTRICT)
   → classes
 ```
 
+## Fase 2 — Settings/BillingSettings: charge_timing ✅
+
+Adicionado card de seleção do modelo de cobrança (prepaid/postpaid) ao `BillingSettings.tsx`:
+
+1. **Card "Modelo de Cobrança"**: Dois cards selecionáveis ("Cobrar Antes" / "Cobrar Depois") com descrições detalhadas de cada modelo
+2. **Card informativo**: Explica como o modelo afeta aulas avulsas, sem impacto em mensalidades ou aulas gratuitas
+3. **Carregamento**: Query a `business_profiles` com `.maybeSingle()` para buscar `charge_timing` — card só aparece se professor tem business profile
+4. **Salvamento**: `UPDATE business_profiles SET charge_timing = ...` executado junto com as demais configurações
+5. **i18n**: Chaves `chargeTiming.*` adicionadas em PT e EN (`billing.json`)
+
 ## Próximas Etapas
 
-- **Fase 2**: Settings/BillingSettings — card charge_timing + card informativo
 - **Fase 3**: ClassForm — campo `is_paid_class` + bloqueio recorrência
 - **Fase 4**: automated-billing RPC + materialize (filtro `is_paid_class`)
 - **Fase 5**: Agenda.tsx — persistir `is_paid_class` + gerar fatura pré-paga

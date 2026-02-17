@@ -187,7 +187,7 @@ serve(async (req) => {
             .from("pending_business_profiles")
             .select("*")
             .eq("stripe_connect_id", account.id)
-            .single();
+            .maybeSingle();
 
           if (!pendingError && pendingProfile) {
             // Criar na tabela definitiva
@@ -307,7 +307,7 @@ serve(async (req) => {
           .from('invoices')
           .select('payment_origin')
           .eq('stripe_invoice_id', paidInvoice.id)
-          .single();
+          .maybeSingle();
 
         if (existingInvoice?.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: paidInvoice.id });
@@ -344,7 +344,7 @@ serve(async (req) => {
           .from('invoices')
           .select('payment_origin')
           .eq('stripe_invoice_id', succeededInvoice.id)
-          .single();
+          .maybeSingle();
 
         if (existingSucceeded?.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: succeededInvoice.id });
@@ -504,7 +504,7 @@ serve(async (req) => {
           .from('invoices')
           .select('payment_origin')
           .eq('stripe_payment_intent_id', paymentIntent.id)
-          .single();
+          .maybeSingle();
 
         if (existingPI?.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { paymentIntentId: paymentIntent.id });

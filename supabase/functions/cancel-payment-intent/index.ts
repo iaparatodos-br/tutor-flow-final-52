@@ -68,7 +68,7 @@ serve(async (req) => {
       .from('invoices')
       .select('id, teacher_id, stripe_payment_intent_id, status, payment_origin')
       .eq('id', invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       logStep('Invoice not found', { error: invoiceError });

@@ -114,7 +114,7 @@ serve(async (req) => {
             .from('dependents')
             .select('name')
             .eq('id', p.dependent_id)
-            .single();
+            .maybeSingle();
           dependentName = dependent?.name;
         }
 
@@ -144,7 +144,7 @@ serve(async (req) => {
         .from('dependents')
         .select('name')
         .eq('id', removed_dependent_id)
-        .single();
+        .maybeSingle();
       removedDependentName = removedDependent?.name || null;
     }
 
@@ -273,8 +273,8 @@ serve(async (req) => {
         const { data: depData } = await supabaseClient
           .from('dependents')
           .select('name')
-          .eq('id', firstParticipantDep.dependent_id)
-          .single();
+            .eq('id', firstParticipantDep.dependent_id)
+            .maybeSingle();
         if (depData) {
           cancellerDisplayName = `${depData.name} (dependente)`;
         }
@@ -371,7 +371,7 @@ serve(async (req) => {
             .from('dependents')
             .select('name')
             .eq('id', participantData.dependent_id)
-            .single();
+            .maybeSingle();
           dependentName = depData?.name || null;
         }
 

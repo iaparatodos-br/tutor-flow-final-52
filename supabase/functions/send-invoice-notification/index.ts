@@ -54,7 +54,7 @@ serve(async (req) => {
         monthly_subscription_id
       `)
       .eq("id", payload.invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       console.error("Invoice not found:", invoiceError);
@@ -66,7 +66,7 @@ serve(async (req) => {
       .from("profiles")
       .select("name, email, notification_preferences")
       .eq("id", invoice.student_id)
-      .single();
+      .maybeSingle();
 
     if (studentError || !student) {
       console.error("Student not found:", studentError);
@@ -96,7 +96,7 @@ serve(async (req) => {
       .from("profiles")
       .select("name, email")
       .eq("id", invoice.teacher_id)
-      .single();
+      .maybeSingle();
 
     if (teacherError || !teacher) {
       console.error("Teacher not found:", teacherError);
@@ -158,7 +158,7 @@ serve(async (req) => {
         .from("monthly_subscriptions")
         .select("name, price, max_classes, overage_price")
         .eq("id", invoice.monthly_subscription_id)
-        .single();
+        .maybeSingle();
 
       if (!subError && subscription) {
         subscriptionDetails = subscription;

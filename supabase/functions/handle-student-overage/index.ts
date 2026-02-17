@@ -76,7 +76,7 @@ serve(async (req) => {
       .select('stripe_subscription_id, stripe_customer_id, plan_id')
       .eq('user_id', userId)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (subError || !subscriptionData?.stripe_subscription_id) {
       logStep("No active subscription found, proceeding without billing");

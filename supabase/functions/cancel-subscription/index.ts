@@ -44,7 +44,7 @@ serve(async (req) => {
       .from('profiles')
       .select('role')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || profile?.role !== 'professor') {
       throw new Error("Only professors can manage subscriptions");
@@ -64,7 +64,7 @@ serve(async (req) => {
       .select('stripe_subscription_id, status')
       .eq('user_id', user.id)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (dbError || !subscription?.stripe_subscription_id) {
       throw new Error("Assinatura ativa não encontrada.");

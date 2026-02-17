@@ -34,7 +34,7 @@ serve(async (req) => {
         teacher_id
       `)
       .eq('id', classId)
-      .single();
+      .maybeSingle();
 
     if (classError) {
       console.error('Error fetching class data:', classError);
@@ -46,7 +46,7 @@ serve(async (req) => {
       .from('profiles')
       .select('id, name, email')
       .eq('id', classData.teacher_id)
-      .single();
+      .maybeSingle();
 
     if (teacherError || !teacher) {
       console.error('Error fetching teacher:', teacherError);
@@ -71,7 +71,7 @@ serve(async (req) => {
       .from('class_reports')
       .select('*')
       .eq('id', reportId)
-      .single();
+      .maybeSingle();
 
     if (reportError) {
       console.error('Error fetching report data:', reportError);
@@ -104,7 +104,7 @@ serve(async (req) => {
           .from('profiles')
           .select('id, name, email, notification_preferences')
           .eq('id', participant.student_id)
-          .single();
+          .maybeSingle();
 
         if (!student) {
           console.error(`Student not found: ${participant.student_id}`);
@@ -125,7 +125,7 @@ serve(async (req) => {
             .from('dependents')
             .select('name')
             .eq('id', participant.dependent_id)
-            .single();
+            .maybeSingle();
           
           if (dependent) {
             dependentName = dependent.name;
@@ -139,7 +139,7 @@ serve(async (req) => {
           .select('student_guardian_email, student_guardian_name')
           .eq('teacher_id', classData.teacher_id)
           .eq('student_id', participant.student_id)
-          .single();
+          .maybeSingle();
 
         const recipientEmail = relationship?.student_guardian_email || student.email;
         const recipientName = relationship?.student_guardian_name || student.name;

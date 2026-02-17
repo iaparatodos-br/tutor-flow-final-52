@@ -49,7 +49,7 @@ async function updateStripeSubscriptionQuantity(
       .select('stripe_subscription_id, plan_id')
       .eq('user_id', teacherId)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (subError || !subscription?.stripe_subscription_id) {
       console.log('No active subscription found, skipping Stripe update');
@@ -88,7 +88,7 @@ async function updateStripeSubscriptionQuantity(
       .from('subscription_plans')
       .select('student_limit')
       .eq('id', subscription.plan_id)
-      .single();
+      .maybeSingle();
 
     const extraStudents = Math.max(0, (totalStudents || 0) - (plan?.student_limit || 0));
     const extraCostCents = extraStudents * 500;

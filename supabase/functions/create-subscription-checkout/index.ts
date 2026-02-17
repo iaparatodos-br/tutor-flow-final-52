@@ -135,7 +135,7 @@ serve(async (req) => {
       .select('*')
       .eq('slug', planSlug)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
     if (planError || !plan) {
       logStep("ERROR: Plan not found", { planSlug, error: planError?.message });
@@ -172,7 +172,7 @@ serve(async (req) => {
       .select('*, subscription_plans(*)')
       .eq('user_id', user.id)
       .in('status', ['active', 'trialing'])
-      .single();
+      .maybeSingle();
 
     if (existingSubscription && !subError) {
       logStep("Active subscription found, will be cancelled", { 

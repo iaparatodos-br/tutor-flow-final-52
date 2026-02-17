@@ -229,52 +229,47 @@ serve(async (req) => {
       });
     }
 
-    // Teste 5: Simular criação de fatura para validar roteamento
+    // Teste 5: Validar estrutura de fatura (sem criar registro real — #259 FIX)
+    // Anteriormente criava uma fatura REAL e depois deletava, corrompendo dados.
+    // Agora apenas valida se os campos necessários estão presentes.
     try {
       const mockInvoice = {
         teacher_id: user.id,
         student_id: student_id,
         business_profile_id: studentRelation.business_profile_id,
         amount: 1.00,
-        description: "Teste de validação de roteamento",
         due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        status: 'pendente'
       };
 
-      // Não inserir realmente, apenas validar se passaria pelas políticas RLS
-      const { error: insertTestError } = await supabase
-        .from('invoices')
-        .insert(mockInvoice)
-        .select()
-        .single();
+      // Validação sem INSERT: verificar se todos os campos obrigatórios estão preenchidos
+      const requiredFields = ['teacher_id', 'student_id', 'amount', 'due_date'];
+      const missingFields = requiredFields.filter(f => !mockInvoice[f as keyof typeof mockInvoice]);
 
-      if (insertTestError) {
+      if (missingFields.length > 0) {
         results.push({
-          test_name: "Invoice Creation Simulation",
+          test_name: "Invoice Creation Validation",
           status: "error",
-          message: `Simulação de criação de fatura falhou: ${insertTestError.message}`
+          message: `Campos obrigatórios ausentes: ${missingFields.join(', ')}`
         });
       } else {
-        // Se chegou aqui, deletar a fatura de teste
-        await supabase
-          .from('invoices')
-          .delete()
-          .eq('description', 'Teste de validação de roteamento')
-          .eq('teacher_id', user.id)
-          .eq('student_id', student_id);
-
         results.push({
-          test_name: "Invoice Creation Simulation",
+          test_name: "Invoice Creation Validation",
           status: "success",
-          message: "Simulação de criação de fatura bem-sucedida",
-          details: mockInvoice
+          message: "Validação de estrutura de fatura bem-sucedida (sem inserção real)",
+          details: {
+            has_teacher_id: !!mockInvoice.teacher_id,
+            has_student_id: !!mockInvoice.student_id,
+            has_business_profile: !!mockInvoice.business_profile_id,
+            has_amount: mockInvoice.amount > 0,
+            has_due_date: !!mockInvoice.due_date
+          }
         });
       }
     } catch (error) {
       results.push({
-        test_name: "Invoice Creation Simulation",
+        test_name: "Invoice Creation Validation",
         status: "error",
-        message: `Erro na simulação: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Erro na validação: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 

@@ -342,7 +342,7 @@ serve(async (req) => {
         // Check if invoice was manually marked as paid (skip webhook processing)
         const { data: existingSucceeded } = await supabaseClient
           .from('invoices')
-          .select('payment_origin')
+          .select('payment_origin, payment_method')
           .eq('stripe_invoice_id', succeededInvoice.id)
           .maybeSingle();
 
@@ -351,12 +351,16 @@ serve(async (req) => {
           break;
         }
 
+        // #74 FIX: Preserve existing payment_method if already set (e.g. 'boleto', 'pix', 'card')
+        // Only set 'stripe_invoice' if no payment_method was previously recorded
+        const preservedPaymentMethod = existingSucceeded?.payment_method || 'stripe_invoice';
+
         const { error: succeededError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'paga',
             payment_origin: 'automatic',
-            payment_method: 'stripe_invoice',
+            payment_method: preservedPaymentMethod,
             updated_at: new Date().toISOString()
           })
           .eq('stripe_invoice_id', succeededInvoice.id);
@@ -364,7 +368,7 @@ serve(async (req) => {
         if (succeededError) {
           logStep("Error updating invoice payment succeeded", succeededError);
         } else {
-          logStep("Invoice payment succeeded processed", { invoiceId: succeededInvoice.id });
+          logStep("Invoice payment succeeded processed", { invoiceId: succeededInvoice.id, paymentMethod: preservedPaymentMethod });
         }
         break;
       }
@@ -511,8 +515,9 @@ serve(async (req) => {
           break;
         }
 
-        // v2.5: CRITICAL - Clear ALL temporary payment fields when payment succeeds
-        // This prevents stale data from being displayed after payment
+        // #548 FIX: Do NOT wipe payment metadata (boleto_url, pix_qr_code, etc.)
+        // These fields are needed for receipt generation and audit trails.
+        // Only update status and payment info, preserving all payment details.
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
@@ -520,16 +525,10 @@ serve(async (req) => {
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
             updated_at: new Date().toISOString(),
-            // v2.5: Clear all temporary payment fields
-            pix_qr_code: null,
-            pix_copy_paste: null,
-            pix_expires_at: null,
-            boleto_url: null,
-            linha_digitavel: null,
-            boleto_expires_at: null,
-            barcode: null,
-            stripe_hosted_invoice_url: null,
-            // Keep stripe_payment_intent_id for reference
+            // Keep all payment metadata for receipts:
+            // pix_qr_code, pix_copy_paste, pix_expires_at,
+            // boleto_url, linha_digitavel, boleto_expires_at, barcode,
+            // stripe_hosted_invoice_url — ALL PRESERVED
           })
           .eq("stripe_payment_intent_id", paymentIntent.id)
           .select();

@@ -46,10 +46,10 @@ serve(async (req) => {
     // Start transaction-like operations
     logStep("Starting downgrade process", { reason, selectedStudentIds });
 
-    // 1. Get user's current subscription and student count
+    // 1. Get user's current subscription and plan info (sequential queries — Etapa 0.6)
     const { data: currentSubscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
-      .select('*, subscription_plans(*)')
+      .select('id, user_id, plan_id, status, stripe_subscription_id, cancel_at_period_end, extra_students, extra_cost_cents')
       .eq('user_id', user.id)
       .eq('status', 'active')
       .maybeSingle();
@@ -57,6 +57,17 @@ serve(async (req) => {
     if (subError || !currentSubscription) {
       logStep("No active subscription found", { error: subError });
       throw new Error('No active subscription found');
+    }
+
+    // Fetch plan details separately (avoid FK join)
+    let subscriptionPlan: any = null;
+    if (currentSubscription.plan_id) {
+      const { data: plan } = await supabaseClient
+        .from('subscription_plans')
+        .select('*')
+        .eq('id', currentSubscription.plan_id)
+        .maybeSingle();
+      subscriptionPlan = plan;
     }
 
     // 2. Get all teacher's students
@@ -242,7 +253,7 @@ serve(async (req) => {
     
     logStep("Payment failure downgrade completed successfully", {
       userId: user.id,
-      previousPlan: currentSubscription.subscription_plans?.name,
+      previousPlan: subscriptionPlan?.name || 'unknown',
       newPlan: freePlan.name,
       cancelledInvoices: true,
       studentsRemoved,

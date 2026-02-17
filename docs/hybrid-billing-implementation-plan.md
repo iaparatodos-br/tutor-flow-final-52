@@ -3180,19 +3180,18 @@ Busca o Stripe Customer por email em vez de usar `stripe_customer_id` do profile
 
 **Ação**: Buscar `stripe_customer_id` do profile do usuário no Supabase, e usar diretamente `stripe.billingPortal.sessions.create({ customer: stripe_customer_id })`. Fallback para busca por email se `stripe_customer_id` for null. Adicionar tratamento específico no catch.
 
-### Funções Fora de Escopo (21 funções — atualizado v5.65)
+### Funções Fora de Escopo (11 funções — atualizado v5.65)
 
-As seguintes funções foram auditadas e classificadas como fora do escopo do plano de cobrança híbrida por serem utilitárias, de setup, ou de infraestrutura sem vulnerabilidades identificadas:
+As seguintes funções foram auditadas e classificadas como fora do escopo do plano de cobrança híbrida por serem utilitárias, de setup, ou de infraestrutura sem vulnerabilidades críticas de lógica de negócio no escopo do plano híbrido:
 
 | Categoria | Funções |
 |-----------|---------|
-| Setup/Cron | `setup-billing-automation`, `setup-class-reminders-automation`, `setup-expired-subscriptions-automation`, `setup-invoice-auto-verification`, `setup-orphan-charges-automation` |
-| Auth/Onboarding | `create-teacher`, `resend-confirmation`, `resend-student-invitation`, `check-email-availability`, `check-email-confirmation` |
-| Dados/Consulta | `fetch-archived-data`, `security-rls-audit`, `list-business-profiles`, `list-pending-business-profiles`, `get-teacher-availability` |
+| Auth/Onboarding | `create-teacher`, `resend-confirmation`, `resend-student-invitation`, `check-email-confirmation` |
+| Dados/Consulta | `fetch-archived-data`, `security-rls-audit`, `list-business-profiles`, `list-pending-business-profiles` |
 | Dev/Test | `dev-seed-test-data`, `validate-monthly-subscriptions` |
 | Outros | `send-password-reset` |
 
-**⚠️ RECLASSIFICADAS (v5.65)**: As seguintes 6 funções foram removidas de "Fora de Escopo" e movidas para a Tabela de Cobertura após vulnerabilidades CRÍTICAS serem encontradas nas passagens 25-28:
+**⚠️ RECLASSIFICADAS (v5.65)**: As seguintes 13 funções foram removidas de "Fora de Escopo" e movidas para a Tabela de Cobertura após vulnerabilidades serem encontradas durante as passagens de auditoria:
 
 | Função | Achados | Motivo da Reclassificação |
 |--------|---------|--------------------------|
@@ -3202,6 +3201,13 @@ As seguintes funções foram auditadas e classificadas como fora do escopo do pl
 | `archive-old-data` | #580, #581 | student_id fantasma + FK cascade failure |
 | `refresh-stripe-connect-account` | #574 | IDOR em payment_accounts |
 | `send-class-request-notification` | #507 | Sem auth — vetor de phishing |
+| `check-email-availability` | #402 | Sem auth + enumeração de emails (Cat A) |
+| `get-teacher-availability` | #405 | FK join proibido `classes!inner` (Cat E) |
+| `setup-billing-automation` | #315 | ANON_KEY inline (Cat K) |
+| `setup-class-reminders-automation` | #316, #495 | ANON_KEY inline + SQL injection (Cat K) |
+| `setup-expired-subscriptions-automation` | #317 | ANON_KEY inline (Cat K) |
+| `setup-invoice-auto-verification` | #318 | ANON_KEY inline (Cat K) |
+| `setup-orphan-charges-automation` | #319 | ANON_KEY inline (Cat K) |
 
 ---
 
@@ -3226,7 +3232,7 @@ As seguintes funções foram auditadas e classificadas como fora do escopo do pl
 | process-payment-failure-downgrade | #109, #202, #252, #253, #356 | ✅ |
 | process-expired-subscriptions | #111, #191, #213, #285, #393, #394 | ✅ |
 | create-subscription-checkout | #117, #216, #295, #296, #370, #371 | ✅ |
-| check-subscription-status | #116, #217, #283, #351, #401, #402 | ✅ |
+| check-subscription-status | #116, #217, #283, #351 | ✅ |
 | check-pending-boletos | #113, #284 | ✅ |
 | process-orphan-cancellation-charges | #105, #106, #123 | ✅ |
 | send-class-reminders | #120, #267, #268, #347 | ✅ |
@@ -3265,6 +3271,13 @@ As seguintes funções foram auditadas e classificadas como fora do escopo do pl
 | **send-material-shared-notification** | **#274, #374, #375, #455** | ✅ (v5.65 — reclassificada) |
 | **generate-teacher-notifications** | **(sem auth, cron)** | ✅ (v5.65 — reclassificada) |
 | **audit-logger** | **#277** | ✅ (v5.65 — reclassificada) |
+| **check-email-availability** | **#402** | ✅ (v5.65 — reclassificada) |
+| **get-teacher-availability** | **#405** | ✅ (v5.65 — reclassificada) |
+| **setup-billing-automation** | **#315** | ✅ (v5.65 — reclassificada) |
+| **setup-class-reminders-automation** | **#316, #495** | ✅ (v5.65 — reclassificada) |
+| **setup-expired-subscriptions-automation** | **#317** | ✅ (v5.65 — reclassificada) |
+| **setup-invoice-auto-verification** | **#318** | ✅ (v5.65 — reclassificada) |
+| **setup-orphan-charges-automation** | **#319** | ✅ (v5.65 — reclassificada) |
 | resend-student-invitation | #220, #399 | ✅ (v5.18) |
 | resend-confirmation | #358 | ✅ (v5.14) |
 

@@ -37,7 +37,7 @@ serve(async (req) => {
       .from("invoices")
       .select("*")
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");

@@ -115,7 +115,7 @@ serve(async (req) => {
       .from('subscription_plans')
       .select('*')
       .eq('id', new_plan_id)
-      .single();
+      .maybeSingle();
 
     if (planError || !newPlan) {
       throw new Error(`Plan not found: ${new_plan_id}`);

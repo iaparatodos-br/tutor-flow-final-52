@@ -52,7 +52,7 @@ serve(async (req) => {
       .select('*, subscription_plans(*)')
       .eq('user_id', user.id)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (subError || !currentSubscription) {
       logStep("No active subscription found", { error: subError });
@@ -92,7 +92,7 @@ serve(async (req) => {
       .select('*')
       .eq('slug', 'free')
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
     if (freePlanError || !freePlan) {
       logStep("Free plan not found", { error: freePlanError });

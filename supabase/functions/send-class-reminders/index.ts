@@ -74,7 +74,7 @@ serve(async (req) => {
           .from("profiles")
           .select("name")
           .eq("id", classData.teacher_id)
-          .single();
+          .maybeSingle();
 
         if (!teacher) {
           console.error(`Professor não encontrado para aula ${classData.id}`);
@@ -111,7 +111,7 @@ serve(async (req) => {
                 .from("dependents")
                 .select("name")
                 .eq("id", participant.dependent_id)
-                .single();
+                .maybeSingle();
               
               if (dependent) {
                 dependentName = dependent.name;
@@ -124,7 +124,7 @@ serve(async (req) => {
               .from("profiles")
               .select("notification_preferences")
               .eq("id", participant.student_id)
-              .single();
+              .maybeSingle();
 
             // Verificar se aluno/responsável quer receber lembretes
             const preferences = studentProfile?.notification_preferences as any;
@@ -153,7 +153,7 @@ serve(async (req) => {
               .select("student_guardian_email, student_guardian_name")
               .eq("teacher_id", classData.teacher_id)
               .eq("student_id", participant.student_id)
-              .single();
+              .maybeSingle();
 
             const student = participant.profiles as any;
             const recipientEmail = relationship?.student_guardian_email || student.email;

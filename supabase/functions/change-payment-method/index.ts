@@ -50,7 +50,7 @@ serve(async (req) => {
         teacher:profiles!invoices_teacher_id_fkey(id, name)
       `)
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");

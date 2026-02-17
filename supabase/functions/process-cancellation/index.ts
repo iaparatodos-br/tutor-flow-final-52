@@ -104,7 +104,7 @@ serve(async (req) => {
         .from('dependents')
         .select('name, responsible_id')
         .eq('id', dependent_id)
-        .single();
+        .maybeSingle();
       
       if (dependent) {
         dependentData = dependent;

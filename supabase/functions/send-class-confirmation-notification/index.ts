@@ -48,7 +48,6 @@ serve(async (req) => {
         });
       }
     }
-    );
 
     const payload: ConfirmationNotificationPayload = await req.json();
     console.log("📬 Processing class confirmation notification:", payload);

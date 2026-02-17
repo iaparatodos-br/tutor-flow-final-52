@@ -159,9 +159,17 @@ Adicionado campo `is_paid_class` ao formulário de agendamento de aulas:
 6. **request-class Edge Function**: Aulas solicitadas por alunos agora definem `is_paid_class: false` por padrão (professor decide cobrança separadamente)
 7. **i18n**: Chaves `isPaidClass`, `isPaidClassDescription`, `recurrenceBlockedPrepaid` em PT e EN
 
+## Fase 4 — automated-billing RPC + materialize (filtro is_paid_class) ✅
+
+Adicionado filtro `is_paid_class = true` à RPC e propagação do campo na materialização:
+
+1. **RPC `get_unbilled_participants_v2`**: Adicionado `AND c.is_paid_class = true` — apenas aulas pagas são retornadas para faturamento
+2. **Edge function `materialize-virtual-class`**: Campo `is_paid_class` agora é herdado do template ao criar aula materializada
+3. **Frontend `Agenda.tsx`**: `materializeVirtualClass` propaga `is_paid_class` do template virtual para a aula materializada
+4. **Interface `ClassWithParticipants`**: Adicionado campo `is_paid_class?: boolean`
+
 ## Próximas Etapas
 
-- **Fase 4**: automated-billing RPC + materialize (filtro `is_paid_class`)
 - **Fase 5**: Agenda.tsx — persistir `is_paid_class` + gerar fatura pré-paga
 - **Fase 6**: Cancelamento — process-cancellation + CancellationModal
 - **Fase 7**: AmnestyButton — verificação de faturamento + label

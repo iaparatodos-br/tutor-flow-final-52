@@ -195,6 +195,12 @@ Adicionado filtro `is_paid_class = true` à RPC e propagação do campo na mater
 3. **Estado de loading**: `checkingBilling` mantém botão desabilitado enquanto a verificação está em andamento
 4. **i18n**: Adicionada chave `billedTooltip` em PT e EN
 
-## Próximas Etapas
+## Fase 8 — InvoiceTypeBadge consolidação + i18n ✅
 
-- **Fase 8**: InvoiceTypeBadge consolidação + i18n + testes
+1. **Novos tipos**: Adicionados `prepaid_class` (âmbar, ícone CreditCard), `cancellation` (vermelho, ícone XCircle), `orphan_charges` (laranja, ícone AlertTriangle), `regular` (cinza, ícone FileText) ao mapeamento
+2. **i18n**: Adicionada chave `invoiceTypes.prepaidClass` em PT ("Pré-paga") e EN ("Prepaid")
+3. **Fallback**: Tipos desconhecidos usam config `manual` como fallback
+
+## Implementação Híbrida — COMPLETA ✅
+
+Todas as 8 fases (0-8) da cobrança híbrida foram implementadas com sucesso.

@@ -37,6 +37,7 @@
     "automated": "Automática",
     "manual": "Manual",
     "monthlySubscription": "Mensalidade",
+    "prepaidClass": "Pré-paga",
     "orphanCharges": "Cobranças Pendentes"
   },
   "originalAmount": "Valor original: {amount}",

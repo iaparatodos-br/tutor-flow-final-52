@@ -10,6 +10,44 @@
 # Etapa 0.9 — Categoria I: Data Corruption ✅
 # Etapa 0.10 — Categoria J: Integridade de dados ✅
 # Etapa 0.11 — Categoria K: ANON_KEY inline / SQL injection em setup ✅
+# Etapa 0.12 — Categoria L: Outros itens Fase 0 ✅
+
+## Etapa 0.12 — Resumo
+
+Corrigidos 15 problemas em 9 Edge Functions — últimos itens da Fase 0:
+
+### stripeAccount para Connect (#553, #554)
+1. **auto-verify-pending-invoices**: Adicionado lookup de `business_profiles.stripe_connect_id` por `teacher_id` e passagem de `stripeAccount` ao `stripe.paymentIntents.retrieve()` para faturas de Stripe Connect
+2. **verify-payment-status**: Mesmo padrão — stripeAccount passado ao retrieve do Payment Intent
+
+### SERVICE_ROLE_KEY como Bearer (#563/#80)
+3. **process-cancellation**: Substituído `Bearer ${SERVICE_ROLE_KEY}` por `Bearer ${token}` (token JWT do usuário autenticado) na chamada a `create-invoice`, evitando que `getUser()` falhe
+
+### FK Join → Sequential (#113)
+4. **check-pending-boletos**: Substituído FK join `subscription_plans (name)` por query sequencial com `planMap`
+
+### .single() → .maybeSingle() (#387, #391, #394 + check-subscription-status)
+5. **create-student**: `.single()` → `.maybeSingle()` no lookup de `subscription_plans`
+6. **process-expired-subscriptions**: `.single()` → `.maybeSingle()` no lookup do free plan
+7. **check-subscription-status**: 6× `.single()` → `.maybeSingle()` em lookups de `subscription_plans` (linhas 384, 466, 591, 710, 740, 766)
+
+### Duplicatas e persistSession (#146, #142)
+8. **create-business-profile**: Adicionada verificação de `business_profiles` existente antes de criar conta Stripe Connect (previne contas órfãs)
+9. **check-business-profile-status**: Adicionado `{ auth: { persistSession: false } }` ao createClient
+
+### Itens já resolvidos em etapas anteriores
+- #112 (Payment Intents) → Corrigido na Etapa 0.10
+- #110 (RESEND_API_KEY) → Corrigido na Etapa 0.10
+- #109 (subsumido por #202) → Corrigido na Etapa 0.9
+- #387 smart-delete-student: Já não possui `.single()` em plan lookup
+- #264 handle-plan-downgrade-selection: Já usa RPC `count_teacher_students_and_dependents`
+
+### Itens deferidos (risco alto de regressão)
+- check-subscription-status FK join `subscription_plans (*)` na query principal (linha 141-148): refatoração de 856 linhas com 20+ referências a `subscription.subscription_plans` — requer etapa dedicada
+
+## Fase 0 — COMPLETA ✅
+
+Todas as categorias A-L da Fase 0 foram implementadas. O projeto está pronto para prosseguir com as **Fases 2-8** do plano de cobrança híbrida.
 
 ## Etapa 0.11 — Resumo
 
@@ -99,6 +137,12 @@ invoice_classes (participant_id FK RESTRICT)
   → classes
 ```
 
-## Próximas Etapas Pendentes (Fase 0)
+## Próximas Etapas
 
-- **Categoria L**: Outros itens Fase 0 (~20 itens)
+- **Fase 2**: Settings/BillingSettings — card charge_timing + card informativo
+- **Fase 3**: ClassForm — campo `is_paid_class` + bloqueio recorrência
+- **Fase 4**: automated-billing RPC + materialize (filtro `is_paid_class`)
+- **Fase 5**: Agenda.tsx — persistir `is_paid_class` + gerar fatura pré-paga
+- **Fase 6**: Cancelamento — process-cancellation + CancellationModal
+- **Fase 7**: AmnestyButton — verificação de faturamento + label
+- **Fase 8**: InvoiceTypeBadge consolidação + i18n + testes

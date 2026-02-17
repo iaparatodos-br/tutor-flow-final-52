@@ -385,7 +385,7 @@ serve(async (req) => {
             .from('subscription_plans')
             .select('*')
             .eq('stripe_price_id', priceId)
-            .single();
+            .maybeSingle();
           
           if (!planError && plan) {
             // Update subscription record with NEW subscription data
@@ -467,7 +467,7 @@ serve(async (req) => {
             .from('subscription_plans')
             .select('*')
             .eq('stripe_price_id', priceId)
-            .single();
+            .maybeSingle();
             
           if (plan) {
             // Update subscription to active
@@ -592,7 +592,7 @@ serve(async (req) => {
           .from('subscription_plans')
           .select('*')
           .eq('slug', 'free')
-          .single();
+          .maybeSingle();
 
         if (freePlanError || !freePlan) {
           logStep("Error getting free plan", { error: freePlanError });
@@ -711,7 +711,7 @@ serve(async (req) => {
         .from('subscription_plans')
         .select('*')
         .eq('slug', 'free')
-        .single();
+        .maybeSingle();
 
       return new Response(JSON.stringify({
         subscription: null,
@@ -741,7 +741,7 @@ serve(async (req) => {
         .from('subscription_plans')
         .select('*')
         .eq('slug', 'free')
-        .single();
+        .maybeSingle();
 
       return new Response(JSON.stringify({
         subscription: null,
@@ -767,7 +767,7 @@ serve(async (req) => {
       .from('subscription_plans')
       .select('*')
       .eq('stripe_price_id', priceId)
-      .single();
+      .maybeSingle();
 
     if (planError || !plan) {
       logStep("Plan not found for price_id", { priceId, error: planError });

@@ -290,11 +290,12 @@ serve(async (req) => {
     const futureCount = (currentStudentCount ?? 0) + 1;
 
     if (subscription?.plan_id) {
+      // #391: .maybeSingle() to prevent crash if plan not found
       const { data: plan } = await supabaseAdmin
         .from('subscription_plans')
         .select('student_limit, slug')
         .eq('id', subscription.plan_id)
-        .single();
+        .maybeSingle();
 
       // Check if adding this student will exceed the limit
       if (plan && futureCount > plan.student_limit) {

@@ -468,12 +468,12 @@ serve(async (req) => {
           
           console.log('Invoice payload:', JSON.stringify(invoicePayload));
           
-          // Invocar create-invoice (server-to-server com service role key)
+          // #563: Invocar create-invoice com token do usuário autenticado (não SERVICE_ROLE_KEY)
           const { data: invoiceResult, error: invoiceError } = await supabaseClient
             .functions.invoke('create-invoice', {
               body: invoicePayload,
               headers: {
-                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`
+                Authorization: `Bearer ${token}`
               }
             });
           

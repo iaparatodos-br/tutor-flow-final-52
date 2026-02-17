@@ -1,38 +1,42 @@
 
 
 
+# Verificação Final v5.56 — 16 Novas Pontas Soltas (19ª Passagem: Segurança, Validação, Diagnóstico, Auditoria e Stripe Connect)
 
-# Verificação Final v5.55 — 16 Novas Pontas Soltas (18ª Passagem: Gerenciamento de Alunos/Dependentes, Expiração de Subscrições, Arquivamento)
-
-## Veredicto: Plano atualizado para v5.55 com 6 achados CRÍTICOS — smart-delete-student sem auth JWT (#384 SEGURANÇA), FK joins proibidos em smart-delete-student (#385) e process-expired-subscriptions (#393), cascade incompleta em smart-delete-student (#389/#390), tabela inexistente em handle-student-overage (#396).
+## Veredicto: Plano atualizado para v5.56 com 6 achados CRÍTICOS — validate-business-profile-deletion sem auth (#400 SEGURANÇA), stripe-events-monitor sem auth + exposição de dados (#401 SEGURANÇA), check-email-availability enumeração de usuários (#402 SEGURANÇA), audit_logs schema mismatch sistêmico (#403/#404), get-teacher-availability FK join proibido (#405).
 
 ---
 
-## Auditoria de 18ª Passagem (Gerenciamento de Alunos/Dependentes, Expiração de Subscrições, Arquivamento)
+## Auditoria de 19ª Passagem (Segurança, Validação, Diagnóstico, Auditoria e Stripe Connect)
 
-Funções auditadas nesta rodada (18ª passagem):
-- `smart-delete-student/index.ts` — SEM AUTH JWT (#384 ALTA SEGURANÇA), FK join 2x (#385 ALTA), cascade incompleta (#389/#390 ALTA)
-- `create-student/index.ts` — `.single()` plan L297 (#391)
-- `update-student-details/index.ts` — Sem novos achados
-- `create-dependent/index.ts` — Sem novos achados
-- `delete-dependent/index.ts` — Sem novos achados
-- `update-dependent/index.ts` — Sem novos achados
-- `process-expired-subscriptions/index.ts` — FK join proibido 2x (#393 ALTA), `.single()` free plan (#394)
-- `handle-student-overage/index.ts` — tabela inexistente `student_overage_charges` (#396 ALTA), `.single()` (#395)
-- `archive-old-data/index.ts` — coluna inexistente (#397), cascade incompleta (#398)
-- `resend-student-invitation/index.ts` — `.single()` 3x (#399)
-- `check-subscription-status/index.ts` — FK join 3x (#401), `.single()` (#402)
+Funções auditadas nesta rodada (19ª passagem):
+- `validate-business-profile-deletion/index.ts` — SEM AUTH JWT (#400 ALTA SEGURANÇA)
+- `stripe-events-monitor/index.ts` — SEM AUTH JWT + exposição de dados (#401 ALTA SEGURANÇA)
+- `check-email-availability/index.ts` — SEM AUTH + enumeração (#402 MÉDIA SEGURANÇA)
+- `audit-logger/index.ts` — Schema mismatch (#403 ALTA)
+- `handle-plan-downgrade-selection/index.ts` — Audit schema mismatch (#404 ALTA), `.single()` (#407)
+- `security-rls-audit/index.ts` — RPC inexistente (#406), `.single()` (#408), persistSession (#413)
+- `validate-payment-routing/index.ts` — FK join (#409), `.single()` 3x (#407)
+- `get-teacher-availability/index.ts` — FK join proibido `classes!inner` (#405 ALTA)
+- `check-business-profile-status/index.ts` — `.single()` (#410), persistSession (#414)
+- `check-stripe-account-status/index.ts` — `.single()` (#411)
+- `refresh-stripe-connect-account/index.ts` — `.single()` (#412)
+- `check-email-confirmation/index.ts` — Sem novos achados
+- `customer-portal/index.ts` — Sem novos achados
+- `list-business-profiles/index.ts` — Sem novos achados
+- `list-pending-business-profiles/index.ts` — Sem novos achados
+- `list-subscription-invoices/index.ts` — Sem novos achados
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#384 (SEGURANÇA: DELEÇÃO SEM AUTH)**: `smart-delete-student` aceita `teacher_id` do body sem validar contra JWT. Permite deleção não autorizada de alunos.
-2. **#385 (FK JOIN PROIBIDO)**: `smart-delete-student` usa `classes!inner(teacher_id)` — falha por cache de schema.
-3. **#389 (CASCADE INCOMPLETA — UNLINK)**: Deleta `class_participants` antes de `invoice_classes` — FK RESTRICT bloqueia.
-4. **#390 (CASCADE INCOMPLETA — DELETE)**: Mesmo problema no caminho de deleção completa.
-5. **#393 (FK JOIN PROIBIDO — EXPIRED)**: `process-expired-subscriptions` usa `subscription_plans!inner` e `profiles!user_id`.
-6. **#396 (TABELA INEXISTENTE)**: `handle-student-overage` insere em `student_overage_charges` — não existe no schema.
+1. **#400 (SEGURANÇA: VALIDAÇÃO SEM AUTH)**: `validate-business-profile-deletion` sem JWT. Expõe nomes de alunos e dados de faturas.
+2. **#401 (SEGURANÇA: MONITOR SEM AUTH)**: `stripe-events-monitor` sem JWT. Expõe histórico completo de eventos Stripe.
+3. **#402 (SEGURANÇA: ENUMERAÇÃO)**: `check-email-availability` sem auth. Vetor de enumeração de usuários.
+4. **#403 (INTEGRIDADE)**: `audit-logger` insere colunas inexistentes (`user_id`, `action`, `details`). ZERO logs gravados.
+5. **#404 (INTEGRIDADE)**: `handle-plan-downgrade-selection` mesmo schema mismatch de #403. Downgrades não logados.
+6. **#405 (FK JOIN)**: `get-teacher-availability` L90 `classes!inner(...)` — falha por cache de schema.
 
-### Totais Atualizados (v5.55)
-- 399 pontas soltas totais | 369 únicas | **357 pendentes**
-- Fase 0: **72 itens** (+6: #384, #385, #389, #390, #393, #396)
-- **100% cobertura**: 75 funções auditadas (18 passagens)
+### Totais Atualizados (v5.56)
+- 415 pontas soltas totais | 385 únicas | **373 pendentes**
+- Fase 0: **78 itens** (+6: #400, #401, #402, #403, #404, #405)
+- **100% cobertura**: 75 funções auditadas (19 passagens)

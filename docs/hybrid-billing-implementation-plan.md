@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.55 (Consolidado)
+# Plano de Cobrança Híbrida — v5.56 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 72 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 78 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.55 consolida todas as auditorias com 18 passagens completas. Totais finais: **399 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **369 únicas**, **357 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 18ª passagem — análise cruzada profunda: gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento). A 18ª passagem revelou 16 novas pontas soltas (#384-#399): `smart-delete-student` sem auth JWT (#384 SEGURANÇA), FK joins proibidos em smart-delete-student (#385) e process-expired-subscriptions (#393), cascade de deleção incompleta em smart-delete-student (#389/#390), tabela inexistente em handle-student-overage (#396), coluna inexistente em archive-old-data (#397), cascade de deleção incompleta em archive-old-data (#398).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.56 consolida todas as auditorias com 19 passagens completas. Totais finais: **415 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **385 únicas**, **373 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 19ª passagem — análise cruzada profunda: segurança, validação, diagnóstico, auditoria e Stripe Connect). A 19ª passagem revelou 16 novas pontas soltas (#400-#415): `validate-business-profile-deletion` sem auth JWT (#400 SEGURANÇA), `stripe-events-monitor` sem auth + exposição de dados de pagamento (#401 SEGURANÇA), `check-email-availability` sem auth + enumeração de usuários (#402 SEGURANÇA), `audit-logger` schema mismatch (#403), `handle-plan-downgrade-selection` audit_logs schema mismatch (#404), `get-teacher-availability` FK join proibido (#405), `security-rls-audit` RPC inexistente (#406), `check-business-profile-status` `.single()` (#410), `.single()` em múltiplas funções (#407/#408/#411/#412).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4503,22 +4503,77 @@ Funções auditadas nesta rodada (18ª passagem — análise cruzada profunda):
 13. **#398 (CONFIRMAÇÃO)**: `archive-old-data` L253-289 cascade de deleção ignora `class_exceptions` e `invoice_classes`. FK RESTRICT bloqueia deleção. (Já catalogado em memória.)
 14. **#399**: `resend-student-invitation` L75/L90/L128 usa `.single()` 3x (relationship, student profile, teacher profile). Qualquer registro ausente crasheia a função.
 
-### Achados Baixos
+### Achados Baixos (18ª passagem)
 
 15. **#401**: `check-subscription-status` L135 usa FK join `subscription_plans(*)`, L38 usa `profiles!teacher_student_relationships_student_id_fkey(name, email)` — queries sequenciais necessárias.
 16. **#402**: `check-subscription-status` L378 `.single()` no lookup de plano por `stripe_price_id`. Se price_id não existir no DB local, crash impede sincronização.
 
-### Totais Atualizados (v5.55)
-- 399 pontas soltas totais
+---
+
+## Auditoria de 19ª Passagem (Segurança, Validação, Diagnóstico, Auditoria e Stripe Connect)
+
+Funções auditadas nesta rodada (19ª passagem):
+- `validate-business-profile-deletion/index.ts` — SEM AUTH JWT (#400 ALTA SEGURANÇA)
+- `stripe-events-monitor/index.ts` — SEM AUTH JWT + exposição de dados (#401 ALTA SEGURANÇA)
+- `check-email-availability/index.ts` — SEM AUTH + enumeração de usuários (#402 MÉDIA SEGURANÇA)
+- `audit-logger/index.ts` — Schema mismatch em audit_logs (#403)
+- `handle-plan-downgrade-selection/index.ts` — Audit_logs schema mismatch (#404), `.single()` (#407)
+- `security-rls-audit/index.ts` — RPC inexistente (#406), `.single()` (#408), `persistSession` ausente (#413)
+- `validate-payment-routing/index.ts` — FK join proibido (#409), `.single()` 3x (#407)
+- `get-teacher-availability/index.ts` — FK join proibido `classes!inner` (#405)
+- `check-business-profile-status/index.ts` — `.single()` (#410), `persistSession` ausente (#414)
+- `check-stripe-account-status/index.ts` — `.single()` (#411)
+- `refresh-stripe-connect-account/index.ts` — `.single()` (#412)
+- `check-email-confirmation/index.ts` — Sem novos achados (bem implementada)
+- `customer-portal/index.ts` — Sem novos achados
+- `list-business-profiles/index.ts` — Sem novos achados
+- `list-pending-business-profiles/index.ts` — Sem novos achados
+- `list-subscription-invoices/index.ts` — Sem novos achados
+
+### Achados Críticos (→ Fase 0)
+
+1. **#400 (SEGURANÇA: VALIDAÇÃO SEM AUTH)**: `validate-business-profile-deletion` não possui NENHUMA validação JWT. Aceita `business_profile_id` do body sem autenticação. Permite que atacantes anônimos enumerem faturas e nomes de alunos vinculados a qualquer perfil de negócio.
+2. **#401 (SEGURANÇA: MONITOR SEM AUTH)**: `stripe-events-monitor` não possui NENHUMA validação JWT. Expõe histórico completo de eventos Stripe processados, incluindo dados de pagamento, taxas de falha, tempos de processamento e erros a chamadores anônimos.
+3. **#402 (SEGURANÇA: ENUMERAÇÃO)**: `check-email-availability` não requer autenticação e revela se um email existe no sistema. Vetor clássico de enumeração de usuários para ataques de phishing ou brute force.
+4. **#403 (INTEGRIDADE: AUDIT SILENTLY FAILS)**: `audit-logger` insere com colunas `user_id`, `action`, `details`, `metadata` — nenhuma existe na tabela `audit_logs` (schema real: `actor_id`, `operation`, `table_name`, `record_id`, `old_data`, `new_data`). TODOS os logs de auditoria falham silenciosamente.
+5. **#404 (INTEGRIDADE: DOWNGRADE AUDIT FAILS)**: `handle-plan-downgrade-selection` L97/L226/L286 usa a mesma estrutura de audit_logs incorreta de #403. Eventos críticos de downgrade de plano não são registrados.
+6. **#405 (FK JOIN PROIBIDO)**: `get-teacher-availability` L90 usa `classes!inner(class_date, duration_minutes, teacher_id)` — falha por cache de schema do Deno runtime.
+
+### Achados Médios
+
+7. **#406**: `security-rls-audit` L163 chama RPC `teacher_has_financial_module` — esta função não existe no database. Teste 3 (Financial Data Access) sempre crasheia, fazendo o relatório de segurança reportar falsos positivos.
+8. **#407**: `handle-plan-downgrade-selection` L111 `.single()` no lookup de `subscription_plans`. Se plano não existir, toda a operação de downgrade crasheia em vez de retornar erro amigável.
+9. **#408**: `security-rls-audit` L51 `.single()` no lookup de profile. Se perfil estiver em estado inconsistente, auditoria de segurança crasheia.
+10. **#409**: `validate-payment-routing` L108 usa FK join `profiles:student_id(id, name, email)` — padrão proibido que pode falhar por cache de schema.
+11. **#410**: `check-business-profile-status` L77 `.single()` no lookup de `pending_business_profiles`. Se registro não existir (ex: expirado e limpo pelo cron), função crasheia ao invés de retornar "não encontrado".
+12. **#411**: `check-stripe-account-status` L59 `.single()` no lookup de `stripe_connect_accounts`. Se conta não existir, crash ao invés de erro amigável.
+13. **#412**: `refresh-stripe-connect-account` L66 `.single()` no lookup de `stripe_connect_accounts`. Mesmo padrão de #411.
+
+### Achados Baixos
+
+14. **#413**: `security-rls-audit` L29-32 `supabaseAdmin` criado sem `{ auth: { persistSession: false } }`. Padrão obrigatório em Edge Functions.
+15. **#414**: `check-business-profile-status` L26-29 `supabaseClient` criado sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
+16. **#415**: `validate-payment-routing` L26 `supabase` criado sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
+
+### Padrão Sistêmico Novo: Funções de Diagnóstico/Validação sem Auth
+
+Identificado um padrão transversal: funções de **diagnóstico, validação e monitoramento** (`validate-business-profile-deletion`, `stripe-events-monitor`, `check-email-availability`) foram implementadas sem autenticação, presumivelmente por serem consideradas "utilitárias". No entanto, estas funções expõem dados sensíveis (nomes de alunos, dados financeiros, existência de emails) e devem obrigatoriamente requerer JWT ou, no mínimo, validação de service_role para chamadas internas.
+
+### Padrão Sistêmico Confirmado: audit_logs Schema Mismatch
+
+O schema mismatch em `audit_logs` (#403/#404) é SISTÊMICO — afeta `audit-logger`, `handle-plan-downgrade-selection`, e potencialmente qualquer outra função que importe ou replique a função `logAuditEvent`. O resultado é que **ZERO logs de auditoria estão sendo gravados** em todo o sistema, apesar do código existir e não lançar erros visíveis.
+
+### Totais Atualizados (v5.56)
+- 415 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 12 confirmações + 2 confirmações de memória
-- 369 únicas
+- 385 únicas
 - 10 implementadas
-- **357 pendentes**
-- Fase 0: **72 itens** (+6: #384, #385, #389, #390, #393, #396)
-- **100% cobertura**: 75 funções auditadas (18 passagens completas)
+- **373 pendentes**
+- Fase 0: **78 itens** (+6: #400, #401, #402, #403, #404, #405)
+- **100% cobertura**: 75 funções auditadas (19 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (72 itens críticos). Padrão SISTÊMICO novo identificado: `smart-delete-student` é a função mais vulnerável do projeto — combina ausência total de validação de identidade (#384) com FK joins proibidos (#385) e cascata de deleção incompleta (#389/#390). A combinação permite deleção não autorizada E falha parcial que corrompe dados. `handle-student-overage` cobra no Stripe mas falha ao registrar localmente (#396) por referência a tabela inexistente. `process-expired-subscriptions` pode falhar silenciosamente por FK joins proibidos (#393), deixando assinaturas expiradas ativas indefinidamente.
+Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo identificado: funções de diagnóstico/validação (`validate-business-profile-deletion`, `stripe-events-monitor`, `check-email-availability`) operam sem autenticação, expondo dados sensíveis. O schema mismatch de `audit_logs` (#403/#404) é confirmado como sistêmico — NENHUM log de auditoria é gravado em todo o projeto, apesar do código dedicado existir em múltiplas funções. A combinação de zero logging + funções sem auth cria um ponto cego total de segurança.
 
 ---
 
@@ -4561,6 +4616,7 @@ Prioridade de execução: Fase 0 (72 itens críticos). Padrão SISTÊMICO novo i
 | v5.53 | 2026-02-17 | **16ª passagem: análise cruzada profunda — automação de cobrança, faturas vencidas, arquivamento e ciclo de vida de recorrência**. +10 pontas soltas (#359-#368). 5 itens adicionados à Fase 0 (61 itens). Totais: **368 pontas soltas**, **338 únicas**, **326 pendentes**. |
 | v5.54 | 2026-02-17 | **17ª passagem: análise cruzada profunda — subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto**. +15 pontas soltas (#369-#383). 5 itens adicionados à Fase 0 (66 itens). Totais: **383 pontas soltas**, **353 únicas**, **341 pendentes**. |
 | v5.55 | 2026-02-17 | **18ª passagem: análise cruzada profunda — gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento**. +16 pontas soltas (#384-#399). 6 itens adicionados à Fase 0 (72 itens). Totais: **399 pontas soltas**, **369 únicas**, **357 pendentes**. |
+| v5.56 | 2026-02-17 | **19ª passagem: análise cruzada profunda — segurança, validação, diagnóstico, auditoria e Stripe Connect**. +16 pontas soltas (#400-#415). 6 itens adicionados à Fase 0 (78 itens). Totais: **415 pontas soltas**, **385 únicas**, **373 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 
@@ -4583,3 +4639,5 @@ Após implementação, atualizar:
 16. `infrastructure/archive-data-integrity` — NOVA: documentar coluna inexistente `student_id` em `classes` (#317) e cascade de deleção incompleta (#318)
 17. `security/student-management-auth-constraints` — ATUALIZAR: documentar que smart-delete-student (#384) aceita teacher_id do body sem validação JWT
 18. `database/student-deletion-cascade-order-bug` — ATUALIZAR: documentar que invoice_classes deve ser limpa antes de class_participants (#389/#390)
+19. `database/audit-logs-schema-mismatch` — ATUALIZAR: confirmar que o schema mismatch é sistêmico (#403/#404) — ZERO logs de auditoria sendo gravados
+20. `security/diagnostic-functions-no-auth` — NOVA: documentar que validate-business-profile-deletion (#400), stripe-events-monitor (#401) e check-email-availability (#402) operam sem autenticação

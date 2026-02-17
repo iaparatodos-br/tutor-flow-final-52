@@ -168,9 +168,15 @@ Adicionado filtro `is_paid_class = true` à RPC e propagação do campo na mater
 3. **Frontend `Agenda.tsx`**: `materializeVirtualClass` propaga `is_paid_class` do template virtual para a aula materializada
 4. **Interface `ClassWithParticipants`**: Adicionado campo `is_paid_class?: boolean`
 
+## Fase 5 — Agenda.tsx: persistir is_paid_class + gerar fatura pré-paga ✅
+
+1. **`baseClassData`**: Adicionado `is_paid_class: formData.is_paid_class` ao payload de inserção
+2. **Geração de fatura pré-paga**: Após criar aula + participantes, se `charge_timing === 'prepaid'` E `is_paid_class === true` E `!is_experimental` E não-recorrente → invoca `create-invoice` com `invoice_type: 'prepaid_class'` por participante
+3. **Aulas em grupo**: Cada participante recebe fatura individual
+4. **Resiliência**: Erros de fatura não bloqueiam a criação da aula (toast de aviso)
+
 ## Próximas Etapas
 
-- **Fase 5**: Agenda.tsx — persistir `is_paid_class` + gerar fatura pré-paga
 - **Fase 6**: Cancelamento — process-cancellation + CancellationModal
 - **Fase 7**: AmnestyButton — verificação de faturamento + label
 - **Fase 8**: InvoiceTypeBadge consolidação + i18n + testes

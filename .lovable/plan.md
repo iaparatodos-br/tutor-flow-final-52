@@ -2,76 +2,48 @@
 
 
 
-# Verificação Final v5.64 — 18 Novas Pontas Soltas (27ª Passagem: STATUS ENGLISH CATASTRÓFICO em webhook-stripe-connect, Destruição de Dados de Pagamento, HTTP 500 Retry Storm, check-overdue-invoices 3 Bugs Críticos, FK Joins em automated-billing e create-invoice, SERVICE_ROLE como Bearer em process-cancellation)
 
-## Veredicto: Plano atualizado para v5.64 com 17 achados expandindo Fase 0 — webhook-stripe-connect usa status ENGLISH 'paid' em 3 handlers (#546 CATASTRÓFICO), 'overdue' em 1 handler (#547 CATASTRÓFICO), destrói dados de auditoria de pagamento (#548 CRÍTICO), retorna HTTP 500 (#549 CRÍTICO), sem guard clauses em 3 handlers (#550 CRÍTICO); check-overdue-invoices status 'overdue' inglês (#555 CATASTRÓFICO), erro semântico em notification tracking (#556 CRÍTICO), sem guard clause (#557 CRÍTICO); automated-billing FK joins (#558, #559 ALTO); create-invoice FK joins (#560, #561 ALTO); process-cancellation SERVICE_ROLE como Bearer (#563 ALTO).
+# Verificação Final v5.65 — 18 Novas Pontas Soltas (28ª Passagem: handle-teacher-subscription-cancellation IDOR + PII Leak, stripe-events-monitor e validate-business-profile-deletion sem Auth, Audit Schema Mismatch Confirmado, IDOR em refresh-stripe-connect-account, archive-old-data FK Cascade + Dados Corrompidos)
+
+## Veredicto: Plano atualizado para v5.65 com 13 achados expandindo Fase 0 — handle-teacher-subscription-cancellation sem auth IDOR (#564 CRÍTICO), guardian_email fantasma (#565 ALTO), sem guard clause (#566 ALTO), stripeAccount missing (#567 ALTO), .single() (#577 ALTO), status não-padrão (#578 ALTO); handle-plan-downgrade-selection audit schema mismatch (#568 ALTO); stripe-events-monitor sem auth (#572 CRÍTICO); validate-business-profile-deletion sem auth (#573 CRÍTICO); refresh-stripe-connect-account IDOR (#574 ALTO); send-class-report-notification .single() 6x + sem auth (#575, #576 ALTO); archive-old-data student_id fantasma + FK cascade (#580, #581 ALTO).
 
 ---
 
-## Auditoria de 27ª Passagem (Status English Catastrófico, Destruição de Dados, HTTP 500, FK Joins em Billing Core)
+## Auditoria de 28ª Passagem (Auth Missing em Funções de Administração, Audit Schema Mismatch, IDOR, FK Cascade)
 
-Funções auditadas nesta rodada (27ª passagem):
-- `webhook-stripe-connect/index.ts` — STATUS 'paid' ENGLISH em 3 handlers L321/L361/L469 (#546 CATASTRÓFICO), STATUS 'overdue' ENGLISH L404 (#547 CATASTRÓFICO), destruição de dados de pagamento L469-481 (#548 CRÍTICO), HTTP 500 no catch L555 (#549 CRÍTICO), sem guard clauses em L380/L425/L514 (#550 CRÍTICO), .single() L190 (#551 ALTO), .single() L310/L345/L457 (#552 ALTO)
-- `auto-verify-pending-invoices/index.ts` — missing stripeAccount param L75 (#553 ALTO)
-- `verify-payment-status/index.ts` — missing stripeAccount param L73 (#554 ALTO)
-- `check-overdue-invoices/index.ts` — STATUS 'overdue' ENGLISH L58 (#555 CATASTRÓFICO), erro semântico class_notifications.class_id=invoice.id L50 (#556 CRÍTICO), sem guard clause L56-59 (#557 CRÍTICO)
-- `automated-billing/index.ts` — FK join profiles!teacher_id/student_id L78-89 (#558 ALTO), FK join classes!inner L212-226 (#559 ALTO)
-- `create-invoice/index.ts` — FK join business_profiles!fkey L148 (#560 ALTO), FK join classes!inner + class_services L233-240 (#561 ALTO)
-- `create-payment-intent-connect/index.ts` — campo fantasma guardian_name L308 (#562 MÉDIO)
-- `process-cancellation/index.ts` — SERVICE_ROLE como Bearer token L455 (#563 ALTO)
+Funções auditadas nesta rodada (28ª passagem):
+- `handle-teacher-subscription-cancellation/index.ts` — sem auth IDOR (#564 CRÍTICO), guardian_email fantasma L263 (#565 ALTO), sem guard clause L140-146 (#566 ALTO), missing stripeAccount L122 (#567 ALTO), .single() L252 (#577 ALTO), status não-padrão L143 (#578 ALTO)
+- `handle-plan-downgrade-selection/index.ts` — audit_logs schema mismatch L29-37 (#568 ALTO), .single() L111 (#569 ALTO)
+- `stripe-events-monitor/index.ts` — sem auth (#572 CRÍTICO)
+- `validate-business-profile-deletion/index.ts` — sem auth (#573 CRÍTICO)
+- `send-class-report-notification/index.ts` — 6x .single() em loop (#575 ALTO), sem auth (#576 ALTO)
+- `refresh-stripe-connect-account/index.ts` — IDOR em payment_accounts L119 (#574 ALTO)
+- `check-business-profile-status/index.ts` — sem persistSession L27 (#570 MÉDIO), .single() L77/L100 (#571 ALTO), Stripe SDK v14.24.0 (#579 MÉDIO)
+- `archive-old-data/index.ts` — student_id fantasma L132 (#580 ALTO), FK cascade failure (#581 ALTO)
 
-### Achados Catastróficos (→ Fase 0 URGENTE)
+### Achados Críticos (→ Fase 0 URGENTE)
 
-1. **#546 (CATASTRÓFICO: STATUS ENGLISH)**: `webhook-stripe-connect` atualiza status para `'paid'` (inglês) em invoice.paid (L321), invoice.payment_succeeded (L361) e payment_intent.succeeded (L469). **TODOS os pagamentos processados via Stripe são armazenados com status errado**, tornando-os INVISÍVEIS no dashboard financeiro que filtra por 'paga'. Este é o bug mais destrutivo do ecossistema financeiro.
+1. **#564 (CRÍTICO: IDOR)**: `handle-teacher-subscription-cancellation` sem auth. Aceita `teacher_id` do body → qualquer pessoa cancela faturas de qualquer professor.
 
-2. **#547 (CATASTRÓFICO: STATUS ENGLISH)**: `webhook-stripe-connect` atualiza status para `'overdue'` (inglês) em invoice.marked_uncollectible (L404). Deveria ser 'vencida'. Faturas marcadas como incobráveis no Stripe ficam em estado fantasma.
+2. **#572 (CRÍTICO: DATA EXPOSURE)**: `stripe-events-monitor` sem auth. Expõe metadados de processamento de eventos Stripe.
 
-3. **#555 (CATASTRÓFICO: STATUS ENGLISH)**: `check-overdue-invoices` L58 atualiza status para `'overdue'` (inglês). Confirmação de 3º ponto do mesmo bug sistêmico — TODAS as automações de inadimplência usam strings em inglês.
-
-### Achados Críticos (→ Fase 0)
-
-4. **#548 (CRÍTICO: DESTRUIÇÃO DE DADOS)**: `webhook-stripe-connect` L469-481 limpa `pix_qr_code`, `pix_copy_paste`, `boleto_url`, `linha_digitavel`, `stripe_hosted_invoice_url` quando payment_intent.succeeded. Destrói o rastro de auditoria de pagamento necessário para comprovantes históricos.
-
-5. **#549 (CRÍTICO: RETRY STORM)**: `webhook-stripe-connect` L555 retorna HTTP 500 no catch block. O Stripe interpreta 500 como falha temporária e reenvia o evento exponencialmente (até 3 dias). Cada reenvio potencialmente reprocessa a mesma atualização de status.
-
-6. **#550 (CRÍTICO: REVERSÃO DE STATUS)**: `webhook-stripe-connect` handlers de invoice.payment_failed (L380), invoice.voided (L425) e payment_intent.payment_failed (L514) atualizam status SEM guard clause `.eq('status', 'pendente')`. Podem reverter faturas já pagas ('paga') para 'falha_pagamento' ou 'cancelada'.
-
-7. **#556 (CRÍTICO: TRACKING QUEBRADO)**: `check-overdue-invoices` L50 busca `class_notifications.class_id = invoice.id` — mas `class_id` é FK para `classes`, não `invoices`. A query NUNCA encontra notificações existentes, resultando em spam massivo de notificações de vencimento a cada execução do cron.
-
-8. **#557 (CRÍTICO: REVERSÃO DE STATUS)**: `check-overdue-invoices` L56-59 atualiza status sem verificar status atual. Pode reverter faturas manualmente marcadas como 'paga' para 'overdue'/'vencida'.
+3. **#573 (CRÍTICO: PII/FINANCIAL)**: `validate-business-profile-deletion` sem auth. Retorna dados de faturas e relacionamentos para qualquer business_profile_id.
 
 ### Achados Altos (→ Fase 0)
 
-9. **#551 (ALTO)**: `webhook-stripe-connect` L190 usa `.single()` em `pending_business_profiles` — crash no handler de onboarding se perfil pendente não existir.
+4. **#565**: guardian_email fantasma em handle-teacher-subscription-cancellation
+5. **#566**: sem guard clause em UPDATE de status
+6. **#567**: stripeAccount missing em Stripe retrieve
+7. **#568**: audit_logs schema mismatch confirmado
+8. **#574**: IDOR em payment_accounts (refresh-stripe-connect-account)
+9. **#575**: 6x .single() em loop (send-class-report-notification)
+10. **#576**: 10ª função de notificação sem auth
+11. **#577**: .single() em teacher lookup (sendNotifications)
+12. **#578**: status não-padrão 'cancelada_por_professor_inativo'
+13. **#580**: student_id fantasma em archive-old-data (dados corrompidos)
+14. **#581**: FK cascade failure em archive-old-data
 
-10. **#552 (ALTO)**: `webhook-stripe-connect` L310, L345, L457 usam `.single()` em lookups de faturas — crash no webhook handler se fatura não encontrada.
-
-11. **#553 (ALTO)**: `auto-verify-pending-invoices` L75 chama `stripe.paymentIntents.retrieve()` sem `stripeAccount` param — falha silenciosa para pagamentos PIX (Direct charges na conta conectada).
-
-12. **#554 (ALTO)**: `verify-payment-status` L73 mesmo problema — missing `stripeAccount` param.
-
-13. **#558 (ALTO: FK JOIN)**: `automated-billing` L78-89 usa sintaxe proibida `profiles!teacher_id` e `profiles!student_id` — risco de crash do cron de faturamento.
-
-14. **#559 (ALTO: FK JOIN)**: `automated-billing` L212-226 usa `classes!inner` — crash ao verificar aulas confirmadas antigas.
-
-15. **#560 (ALTO: FK JOIN)**: `create-invoice` L148 usa FK join `business_profiles!...fkey` na query de relacionamento.
-
-16. **#561 (ALTO: FK JOIN)**: `create-invoice` L233-240 usa FK join `classes!inner` com `class_services` aninhado.
-
-17. **#563 (ALTO: AUTH BREAK)**: `process-cancellation` L455 passa `SUPABASE_SERVICE_ROLE_KEY` como Bearer token para `create-invoice`. A função `create-invoice` usa `auth.getUser(token)` que NÃO suporta service_role key → a criação de faturas de cancelamento FALHA silenciosamente.
-
-### Achado Médio
-
-18. **#562 (MÉDIO)**: `create-payment-intent-connect` L308 referencia `invoice.student?.guardian_name` — campo inexistente na tabela `profiles`. Usa fallback para `name`, mas indica lógica vestigial incorreta.
-
-### Padrão Sistêmico CATASTRÓFICO: Status Strings em Inglês
-
-Confirmado que **3 funções críticas** usam status em inglês no banco PT-BR:
-- `webhook-stripe-connect`: 'paid' (3x), 'overdue' (1x)
-- `check-overdue-invoices`: 'overdue' (1x)
-- **Impacto**: TODOS os pagamentos via Stripe + TODAS as faturas vencidas por cron ficam invisíveis no dashboard financeiro, gerando impressão de sistema não funcional.
-
-### Totais Atualizados (v5.64)
-- 559 pontas soltas totais | 529 únicas | **517 pendentes**
-- Fase 0: **149 itens** (+17: #546, #547, #548, #549, #550, #551, #552, #553, #554, #555, #556, #557, #558, #559, #560, #561, #563)
-- **100% cobertura**: 75 funções auditadas (27 passagens)
+### Totais Atualizados (v5.65)
+- 577 pontas soltas totais | 547 únicas | **535 pendentes**
+- Fase 0: **162 itens** (+13: #564, #565, #566, #567, #568, #572, #573, #574, #575, #576, #577, #578, #580, #581)
+- **100% cobertura**: 75 funções auditadas (28 passagens)

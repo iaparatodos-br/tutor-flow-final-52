@@ -8,6 +8,20 @@
 # Etapa 0.7 — Categoria A: Auth/IDOR ✅
 # Etapa 0.8 — Categoria H: FK Cascade / Deletion Failures ✅
 # Etapa 0.9 — Categoria I: Data Corruption ✅
+# Etapa 0.10 — Categoria J: Integridade de dados ✅
+
+## Etapa 0.10 — Resumo
+
+Corrigidos 8 problemas de integridade de dados em 3 Edge Functions:
+
+1. **#396 handle-student-overage**: Removido INSERT em tabela `student_overage_charges` inexistente → substituído por audit_log + log de console
+2. **#360/#556 check-overdue-invoices**: Substituído `class_notifications.class_id = invoice.id` (FK violation semântica) por `teacher_notifications` com `source_type='invoice'`
+3. **#361 check-overdue-invoices**: Adicionado INSERT de `teacher_notification` após envio de notificação para prevenir spam infinito em cron runs subsequentes
+4. **#359 check-overdue-invoices**: Confirmado que já usa status pt-BR ('pendente', 'vencida') corretamente + adicionado `teacher_id` à query SELECT
+5. **#565 handle-teacher-subscription-cancellation**: Removida referência a `guardian_email` inexistente em profiles → busca correta via `teacher_student_relationships.student_guardian_email`
+6. **#577 handle-teacher-subscription-cancellation**: Substituído check de `RESEND_API_KEY` por `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (função usa AWS SES, não Resend)
+7. **#578 handle-teacher-subscription-cancellation**: Adicionado cancelamento de Payment Intents pendentes antes de voiding invoices (estados: requires_payment_method, requires_confirmation, requires_action, processing)
+8. **handle-teacher-subscription-cancellation**: Status de cancelamento corrigido de `cancelada_por_professor_inativo` (não padrão) para `cancelada` (padrão pt-BR) com guard clause `.eq('status', 'pendente')`
 
 ## Etapa 0.9 — Resumo
 
@@ -62,7 +76,5 @@ invoice_classes (participant_id FK RESTRICT)
 
 ## Próximas Etapas Pendentes (Fase 0)
 
-- **Categoria I**: Data Corruption (~6 itens)
-- **Categoria J**: Integridade de dados (~8 itens)
 - **Categoria K**: ANON_KEY inline / SQL injection em setup (~6 itens)
 - **Categoria L**: Outros itens Fase 0 (~20 itens)

@@ -41,6 +41,14 @@
     "experimental": {
       "title": "Experimental Class",
       "noCharge": "Experimental classes are not subject to cancellation fees."
+    },
+    "prepaid": {
+      "title": "Prepaid Class",
+      "noCharge": "This class was already billed upfront. Any adjustments should be arranged directly with the teacher."
+    },
+    "unpaid": {
+      "title": "Free Class",
+      "noCharge": "This class is free, so there is no financial impact from cancellation."
     }
   },
   "fields": {

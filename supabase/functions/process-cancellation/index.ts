@@ -63,7 +63,7 @@ serve(async (req) => {
     // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
       .from('classes')
-      .select('id, teacher_id, class_date, status, is_group_class, service_id, is_experimental')
+      .select('id, teacher_id, class_date, status, is_group_class, service_id, is_experimental, is_paid_class')
       .eq('id', class_id)
       .maybeSingle();
 
@@ -240,9 +240,28 @@ serve(async (req) => {
     if (classData.is_experimental === true) {
       console.log('🔬 Experimental class detected - no charge will be applied');
       shouldCharge = false;
-    } else if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
-      // Only charge students who cancel late (and class is NOT experimental)
-      shouldCharge = true;
+    }
+    // FASE 6: Aulas gratuitas (is_paid_class = false) nunca geram cobrança de cancelamento
+    else if (classData.is_paid_class === false) {
+      console.log('🆓 Unpaid class (is_paid_class=false) - no charge will be applied');
+      shouldCharge = false;
+    }
+    // FASE 6: Aulas pré-pagas nunca geram cobrança de cancelamento (ajuste manual professor-aluno)
+    else {
+      // Buscar charge_timing do business_profiles do professor
+      const { data: bpData } = await supabaseClient
+        .from('business_profiles')
+        .select('charge_timing')
+        .eq('user_id', classData.teacher_id)
+        .maybeSingle();
+
+      if (bpData?.charge_timing === 'prepaid' && classData.is_paid_class === true) {
+        console.log('💳 Prepaid class - no cancellation charge (already billed upfront)');
+        shouldCharge = false;
+      } else if (cancelled_by_type === 'student' && hoursUntilClass < hoursBeforeClass && chargePercentage > 0) {
+        // Only charge students who cancel late (postpaid + paid class)
+        shouldCharge = true;
+      }
     }
 
     console.log('Processing cancellation:', {

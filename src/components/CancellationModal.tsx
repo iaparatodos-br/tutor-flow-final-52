@@ -20,6 +20,7 @@ interface VirtualClassData {
   class_template_id: string;
   duration_minutes: number;
   is_experimental?: boolean;
+  is_paid_class?: boolean; // FASE 6
   // student_id REMOVED - use class_participants instead
 }
 
@@ -71,6 +72,8 @@ export function CancellationModal({
     class_date: string;
     class_services: any;
     is_experimental?: boolean;
+    is_paid_class?: boolean; // FASE 6
+    charge_timing?: string; // FASE 6
   } | null>(null);
 
   // Check if teacher has financial module
@@ -97,14 +100,24 @@ export function CancellationModal({
           service_id: virtualClassData.service_id,
           is_group_class: virtualClassData.is_group_class,
           is_experimental: virtualClassData.is_experimental,
+          is_paid_class: virtualClassData.is_paid_class,
           class_services: virtualClassData.service_price ? { price: virtualClassData.service_price } : null
         };
+        
+        // FASE 6: Buscar charge_timing do business_profile do professor
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', virtualClassData.teacher_id)
+          .maybeSingle();
         
         setClassData({ 
           is_group_class: fetchedClassData.is_group_class,
           class_date: fetchedClassData.class_date,
           class_services: fetchedClassData.class_services,
-          is_experimental: fetchedClassData.is_experimental
+          is_experimental: fetchedClassData.is_experimental,
+          is_paid_class: fetchedClassData.is_paid_class,
+          charge_timing: bp?.charge_timing
         });
       } else {
         // Normal behavior: fetch from database
@@ -116,6 +129,7 @@ export function CancellationModal({
             service_id,
             is_group_class,
             is_experimental,
+            is_paid_class,
             class_services(price)
           `)
           .eq('id', classId)
@@ -128,11 +142,20 @@ export function CancellationModal({
         
         fetchedClassData = data;
         
+        // FASE 6: Buscar charge_timing do business_profile do professor
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', fetchedClassData.teacher_id)
+          .maybeSingle();
+        
         setClassData({ 
           is_group_class: fetchedClassData.is_group_class,
           class_date: fetchedClassData.class_date,
           class_services: fetchedClassData.class_services,
-          is_experimental: fetchedClassData.is_experimental
+          is_experimental: fetchedClassData.is_experimental,
+          is_paid_class: fetchedClassData.is_paid_class,
+          charge_timing: bp?.charge_timing
         });
       }
 
@@ -170,6 +193,30 @@ export function CancellationModal({
       // CRITICAL: Experimental classes NEVER generate cancellation charges
       if (fetchedClassData.is_experimental === true) {
         console.log('🔬 Experimental class - charge disabled');
+        setWillBeCharged(false);
+        setChargeAmount(0);
+        return;
+      }
+
+      // FASE 6: Aulas gratuitas nunca geram cobrança de cancelamento
+      if (fetchedClassData.is_paid_class === false) {
+        console.log('🆓 Unpaid class - charge disabled');
+        setWillBeCharged(false);
+        setChargeAmount(0);
+        return;
+      }
+
+      // FASE 6: Buscar charge_timing para determinar se é prepaid
+      // (bp já foi buscado acima e está em classData via setClassData)
+      const { data: bpForCharge } = await supabase
+        .from('business_profiles')
+        .select('charge_timing')
+        .eq('user_id', fetchedClassData.teacher_id)
+        .maybeSingle();
+
+      // FASE 6: Aulas pré-pagas não geram cobrança de cancelamento
+      if (bpForCharge?.charge_timing === 'prepaid' && fetchedClassData.is_paid_class === true) {
+        console.log('💳 Prepaid class - no cancellation charge');
         setWillBeCharged(false);
         setChargeAmount(0);
         return;
@@ -359,6 +406,28 @@ export function CancellationModal({
               <AlertDescription className="text-violet-800 dark:text-violet-200">
                 <strong>{t('alert.experimental.title')}</strong><br />
                 {t('alert.experimental.noCharge')}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* FASE 6: Prepaid Class Alert */}
+          {classData?.charge_timing === 'prepaid' && classData?.is_paid_class === true && !classData?.is_experimental && (
+            <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+              <DollarSign className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <strong>{t('alert.prepaid.title')}</strong><br />
+                {t('alert.prepaid.noCharge')}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* FASE 6: Unpaid Class Alert */}
+          {classData?.is_paid_class === false && !classData?.is_experimental && (
+            <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
+              <DollarSign className="h-4 w-4 text-emerald-600" />
+              <AlertDescription className="text-emerald-800 dark:text-emerald-200">
+                <strong>{t('alert.unpaid.title')}</strong><br />
+                {t('alert.unpaid.noCharge')}
               </AlertDescription>
             </Alert>
           )}

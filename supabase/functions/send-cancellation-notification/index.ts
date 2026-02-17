@@ -32,11 +32,33 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    
+    // AUTH: Validate caller is service role or authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header", success: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === supabaseServiceKey;
+    
+    const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      supabaseServiceKey,
+      { auth: { persistSession: false } }
     );
-
+    
+    if (!isServiceRole) {
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !userData.user) {
+        return new Response(JSON.stringify({ error: "Authentication failed", success: false }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      console.log('[send-cancellation-notification] Authenticated user:', userData.user.id);
+    }
     const { 
       class_id, 
       cancelled_by_type, 
@@ -48,6 +70,8 @@ serve(async (req) => {
       removed_dependent_id,
       participants = []
     }: NotificationRequest = await req.json();
+
+    const supabaseClient = supabase;
 
     // 1. Buscar dados da aula
     const { data: classData, error: classError } = await supabaseClient

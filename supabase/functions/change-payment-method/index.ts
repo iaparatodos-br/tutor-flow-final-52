@@ -83,61 +83,50 @@ serve(async (req) => {
       hasStripePI: !!invoice.stripe_payment_intent_id
     });
 
-    // v2.2: Authorization - Check if user is the student, a guardian of a dependent, or the responsible
+    // v2.2: Authorization - Check if user is the student, a guardian/responsible via relationship
     const isStudent = invoice.student_id === user.id;
     
-    // Check if user is a guardian of a dependent whose invoice this is
+    // Check if user is a guardian/responsible for the invoice student via relationship
     let isGuardian = false;
     if (!isStudent) {
-      const { data: dependentCheck } = await supabaseClient
-        .from('dependents')
-        .select('id, responsible_id')
-        .eq('responsible_id', user.id)
-        .limit(1);
+      // Check if user is the responsible for dependents that belong to this student's teacher
+      const { data: guardianCheck } = await supabaseClient
+        .from('teacher_student_relationships')
+        .select('id, student_guardian_email')
+        .eq('student_id', invoice.student_id)
+        .eq('teacher_id', invoice.teacher_id)
+        .maybeSingle();
       
-      if (dependentCheck && dependentCheck.length > 0) {
-        // User has dependents, check if invoice student_id matches any of their responsible accounts
-        const { data: responsibleRelation } = await supabaseClient
+      // Check if the user is actually the responsible by matching via dependents table
+      if (guardianCheck) {
+        const { data: depCheck } = await supabaseClient
           .from('dependents')
           .select('id')
-          .eq('responsible_id', invoice.student_id)
           .eq('responsible_id', user.id)
+          .eq('teacher_id', invoice.teacher_id)
           .limit(1);
         
-        if (responsibleRelation && responsibleRelation.length > 0) {
+        if (depCheck && depCheck.length > 0 && invoice.student_id === user.id) {
           isGuardian = true;
         }
       }
     }
 
-    // Also check if the user is the responsible for the student via relationship
-    let isResponsible = false;
-    if (!isStudent && !isGuardian) {
-      // Check if user has any relationship where they might be responsible
-      const { data: relationshipCheck } = await supabaseClient
-        .from('teacher_student_relationships')
-        .select('id')
-        .eq('student_id', invoice.student_id)
-        .limit(1);
-      
-      // If user.id matches student_id, they're the responsible
-      if (invoice.student_id === user.id) {
-        isResponsible = true;
-      }
-    }
+    // Also allow the teacher to change payment method
+    const isTeacher = invoice.teacher_id === user.id;
 
-    if (!isStudent && !isGuardian && !isResponsible) {
+    if (!isStudent && !isGuardian && !isTeacher) {
       logStep("Authorization failed", { 
         userId: user.id, 
         studentId: invoice.student_id,
         isStudent,
         isGuardian,
-        isResponsible
+        isTeacher
       });
       throw new Error("Você não tem permissão para alterar o método de pagamento desta fatura");
     }
 
-    logStep("Authorization passed", { isStudent, isGuardian, isResponsible });
+    logStep("Authorization passed", { isStudent, isGuardian, isTeacher });
 
     // v2.2: Validate invoice status - only allow changes for pending/failed invoices
     const allowedStatuses = ['pendente', 'open', 'falha_pagamento'];

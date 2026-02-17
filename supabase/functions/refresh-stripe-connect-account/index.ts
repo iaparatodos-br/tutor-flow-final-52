@@ -106,7 +106,7 @@ serve(async (req) => {
 
     logStep("Database updated successfully");
 
-    // Also update payment_accounts table if it exists
+    // Also update payment_accounts table — with teacher_id filter to prevent IDOR
     const { error: paymentAccountError } = await supabaseService
       .from('payment_accounts')
       .update({
@@ -116,7 +116,8 @@ serve(async (req) => {
         stripe_onboarding_status: stripeAccount.details_submitted ? 'completed' : 'pending',
         updated_at: new Date().toISOString()
       })
-      .eq('id', payment_account_id);
+      .eq('id', payment_account_id)
+      .eq('teacher_id', user.id); // AUTH: Prevent IDOR by filtering on teacher_id
 
     logStep("Payment accounts updated", { error: paymentAccountError });
 

@@ -45,11 +45,36 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
+
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseService.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
     
     const { teacher_id, cancellation_reason, previous_plan_features }: CancellationRequest = await req.json();
     
     if (!teacher_id) {
       throw new Error("teacher_id is required");
+    }
+
+    // AUTH: Verify the authenticated user IS the teacher being cancelled
+    if (teacher_id !== authUserId) {
+      logStep("AUTHORIZATION FAILED: User trying to cancel another teacher", { authUserId, teacher_id });
+      return new Response(JSON.stringify({ error: "Você só pode cancelar sua própria assinatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     logStep("Processing cancellation", { teacher_id, cancellation_reason });

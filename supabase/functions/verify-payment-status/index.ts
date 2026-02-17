@@ -29,6 +29,23 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
+
     const { invoice_id } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
@@ -41,6 +58,14 @@ serve(async (req) => {
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");
+    }
+
+    // AUTH: Verify user is the student or teacher of this invoice
+    if (invoice.student_id !== authUserId && invoice.teacher_id !== authUserId) {
+      logStep("AUTHORIZATION FAILED", { authUserId, studentId: invoice.student_id, teacherId: invoice.teacher_id });
+      return new Response(JSON.stringify({ error: "Você não tem permissão para verificar esta fatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status });

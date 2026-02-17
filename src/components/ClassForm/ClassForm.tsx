@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,11 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useProfile } from '@/contexts/ProfileContext';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 
@@ -54,6 +57,7 @@ interface ClassFormData {
   notes: string;
   is_experimental: boolean;
   is_group_class: boolean;
+  is_paid_class: boolean;
   recurrence?: {
     frequency: 'weekly' | 'biweekly' | 'monthly';
     end_date?: string;
@@ -80,7 +84,9 @@ interface ClassFormProps {
 
 export function ClassForm({ open, onOpenChange, students, dependents = [], services, existingClasses, onSubmit, loading }: ClassFormProps) {
   const { hasFeature, currentPlan } = useSubscription();
+  const { profile } = useProfile();
   const { t } = useTranslation('classes');
+  const [chargeTiming, setChargeTiming] = useState<'prepaid' | 'postpaid' | null>(null);
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
     selectedParticipants: [],
@@ -91,6 +97,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     notes: '',
     is_experimental: false,
     is_group_class: false,
+    is_paid_class: true,
     recurrence: {
       frequency: 'weekly',
       is_infinite: false
@@ -107,6 +114,23 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     timeConflict: false,
   });
 
+  // Load charge_timing from business_profiles
+  useEffect(() => {
+    if (profile?.id && open) {
+      supabase
+        .from('business_profiles')
+        .select('charge_timing')
+        .eq('user_id', profile.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          setChargeTiming((data?.charge_timing as 'prepaid' | 'postpaid') || null);
+        });
+    }
+  }, [profile?.id, open]);
+
+  // Recurrence blocking: prepaid + paid class = no recurrence
+  const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class && !formData.is_experimental;
+
   const resetForm = () => {
     setFormData({
       selectedStudents: [],
@@ -118,6 +142,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       notes: '',
       is_experimental: false,
       is_group_class: false,
+      is_paid_class: true,
       recurrence: {
         frequency: 'weekly',
         is_infinite: false
@@ -447,11 +472,11 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                     setFormData(prev => ({ 
                       ...prev, 
                       is_experimental: checked as boolean,
-                      service_id: checked ? '' : prev.service_id, // Clear service if experimental
-                      recurrence: checked ? undefined : prev.recurrence, // Clear recurrence if experimental
-                      duration_minutes: checked ? 60 : prev.duration_minutes // Reset to default when experimental
+                      service_id: checked ? '' : prev.service_id,
+                      recurrence: checked ? undefined : prev.recurrence,
+                      duration_minutes: checked ? 60 : prev.duration_minutes,
+                      is_paid_class: checked ? false : true, // Experimental = not paid
                     }));
-                    // Reset recurrence UI state when marking as experimental
                     if (checked) {
                       setShowRecurrence(false);
                       setRecurrenceType('date');
@@ -495,6 +520,35 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                     <p className="text-xs text-muted-foreground">
                       Duração entre 15 e 480 minutos
                     </p>
+                  </div>
+                </>
+              )}
+
+              {/* Paid Class Toggle - only show when not experimental */}
+              {!formData.is_experimental && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="is-paid-class" className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4" />
+                        {t('isPaidClass')}
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        {t('isPaidClassDescription')}
+                      </p>
+                    </div>
+                    <Switch
+                      id="is-paid-class"
+                      checked={formData.is_paid_class}
+                      onCheckedChange={(checked) => {
+                        setFormData(prev => ({ ...prev, is_paid_class: checked }));
+                        // If turning on paid + prepaid, disable recurrence
+                        if (checked && chargeTiming === 'prepaid' && showRecurrence) {
+                          setShowRecurrence(false);
+                        }
+                      }}
+                    />
                   </div>
                 </>
               )}
@@ -647,7 +701,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
           {/* Recurrence */}
           {!formData.is_experimental && (
-            <Card>
+            <Card className={isRecurrenceBlocked ? "opacity-60" : ""}>
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -656,25 +710,41 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                       {t('recurrence')}
                     </CardTitle>
                     <CardDescription>
-                      {t('recurrenceDescription')}
+                      {isRecurrenceBlocked
+                        ? t('recurrenceBlockedPrepaid')
+                        : t('recurrenceDescription')}
                     </CardDescription>
                   </div>
-                  <Checkbox
-                    checked={showRecurrence}
-                    onCheckedChange={(checked) => {
-                      setShowRecurrence(checked as boolean);
-                      // Initialize recurrence with default frequency when enabling
-                      if (checked && !formData.recurrence?.frequency) {
-                        setFormData(prev => ({
-                          ...prev,
-                          recurrence: {
-                            frequency: 'weekly',
-                            is_infinite: false
-                          }
-                        }));
-                      }
-                    }}
-                  />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Checkbox
+                            checked={showRecurrence && !isRecurrenceBlocked}
+                            disabled={isRecurrenceBlocked}
+                            onCheckedChange={(checked) => {
+                              if (isRecurrenceBlocked) return;
+                              setShowRecurrence(checked as boolean);
+                              if (checked && !formData.recurrence?.frequency) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  recurrence: {
+                                    frequency: 'weekly',
+                                    is_infinite: false
+                                  }
+                                }));
+                              }
+                            }}
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      {isRecurrenceBlocked && (
+                        <TooltipContent>
+                          <p>{t('recurrenceBlockedPrepaid')}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </CardHeader>
               {showRecurrence && (

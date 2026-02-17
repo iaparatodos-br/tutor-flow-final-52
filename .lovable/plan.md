@@ -147,9 +147,20 @@ Adicionado card de seleção do modelo de cobrança (prepaid/postpaid) ao `Billi
 4. **Salvamento**: `UPDATE business_profiles SET charge_timing = ...` executado junto com as demais configurações
 5. **i18n**: Chaves `chargeTiming.*` adicionadas em PT e EN (`billing.json`)
 
+## Fase 3 — ClassForm: is_paid_class + bloqueio recorrência ✅
+
+Adicionado campo `is_paid_class` ao formulário de agendamento de aulas:
+
+1. **Interface `ClassFormData`**: Novo campo `is_paid_class: boolean` (default `true`)
+2. **Switch "Aula Cobrada"**: Toggle entre tipo de aula (experimental) e seleção de serviço, visível apenas quando `is_experimental = false`
+3. **Bloqueio de recorrência**: Quando `charge_timing = 'prepaid'` E `is_paid_class = true`, checkbox de recorrência é desabilitado com tooltip explicativo
+4. **Aula experimental**: Forçar `is_paid_class = false` quando experimental é marcado
+5. **Carregamento de `charge_timing`**: Query a `business_profiles` ao abrir o dialog para verificar modelo do professor
+6. **request-class Edge Function**: Aulas solicitadas por alunos agora definem `is_paid_class: false` por padrão (professor decide cobrança separadamente)
+7. **i18n**: Chaves `isPaidClass`, `isPaidClassDescription`, `recurrenceBlockedPrepaid` em PT e EN
+
 ## Próximas Etapas
 
-- **Fase 3**: ClassForm — campo `is_paid_class` + bloqueio recorrência
 - **Fase 4**: automated-billing RPC + materialize (filtro `is_paid_class`)
 - **Fase 5**: Agenda.tsx — persistir `is_paid_class` + gerar fatura pré-paga
 - **Fase 6**: Cancelamento — process-cancellation + CancellationModal

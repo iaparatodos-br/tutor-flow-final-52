@@ -1,38 +1,46 @@
 
 
-# Verificação Final v5.57 — 18 Novas Pontas Soltas (20ª Passagem: Boleto, Exceções, Materialização, Request-Class, Auto-Verificação, Cron, Lembretes)
 
-## Veredicto: Plano atualizado para v5.57 com 8 achados CRÍTICOS — generate-boleto-for-invoice sem auth + FK join (#416/#417 SEGURANÇA), materialize-virtual-class não herda is_paid_class (#418 INTEGRIDADE), request-class não define is_paid_class (#419 INTEGRIDADE), auto-verify-pending-invoices sem auth + sem guard clause (#420/#421 SEGURANÇA/INTEGRIDADE), end-recurrence cascade incompleta (#422 INTEGRIDADE).
+# Verificação Final v5.58 — 18 Novas Pontas Soltas (21ª Passagem: Status Mismatch Sistêmico, Destruição de Dados de Pagamento, Webhook Resilience, FK Joins Core)
+
+## Veredicto: Plano atualizado para v5.58 com 7 achados CRÍTICOS — webhook-stripe-connect usa status em INGLÊS ('paid'/'overdue') em vez de Português ('paga'/'vencida') (#434 CATASTRÓFICO), cancel-payment-intent idem (#435), check-overdue-invoices idem (#436), webhook-stripe-connect destrói dados de comprovante após pagamento (#437 INTEGRIDADE), webhook-stripe-connect retorna HTTP 500 no catch (#438 RESILIÊNCIA), automated-billing sem idempotência de mensalidade (#451 INTEGRIDADE).
 
 ---
 
-## Auditoria de 20ª Passagem (Boleto, Exceções, Materialização, Request-Class, Auto-Verificação, Cron Setup, Lembretes e Boletos Pendentes)
+## Auditoria de 21ª Passagem (Status Mismatch Sistêmico, Destruição de Dados, Webhook Resilience, FK Joins em Funções Core)
 
-Funções auditadas nesta rodada (20ª passagem):
-- `generate-boleto-for-invoice/index.ts` — SEM AUTH JWT (#416 SEGURANÇA), FK join proibido (#417 CRÍTICO)
-- `manage-class-exception/index.ts` — `.single()` em profiles e upsert (#428 MÉDIO)
-- `manage-future-class-exceptions/index.ts` — `.single()` em profiles (#429 MÉDIO)
-- `end-recurrence/index.ts` — Cascade incompleta (#422 CRÍTICO), `.single()` (#427), persistSession (#426)
-- `materialize-virtual-class/index.ts` — NÃO herda is_paid_class (#418 CRÍTICO), persistSession (#433)
-- `request-class/index.ts` — NÃO define is_paid_class (#419 CRÍTICO)
-- `auto-verify-pending-invoices/index.ts` — SEM AUTH (#420 SEGURANÇA), sem guard clause (#421 CRÍTICO), Connect key mismatch (#432)
-- `setup-billing-automation/index.ts` — ANON_KEY inline (#425 SEGURANÇA)
-- `check-pending-boletos/index.ts` — FK join (#423 ALTO), `.single()` (#431)
-- `send-class-reminders/index.ts` — FK joins (#424 ALTO), `.single()` 4x em loop (#430 MÉDIO)
-- `fetch-archived-data/index.ts` — Sem novos achados (auth OK)
+Funções auditadas nesta rodada (21ª passagem):
+- `webhook-stripe-connect/index.ts` — Status em INGLÊS (#434 CATASTRÓFICO), destrói dados de pagamento (#437 CRÍTICO), HTTP 500 no catch (#438 RESILIÊNCIA), sem guard clause em payment_failed/uncollectible (#449), `.single()` 3x (#444)
+- `cancel-payment-intent/index.ts` — Status 'paid' em vez de 'paga' (#435 CRÍTICO), persistSession ausente (#447), `.single()` (#444)
+- `check-overdue-invoices/index.ts` — Status 'overdue' em vez de 'vencida' (#436 CRÍTICO), class_notifications errado (#confirmed), sem guard clause (#confirmed)
+- `create-payment-intent-connect/index.ts` — FK join proibido 3x (#439 ALTO), `.single()` (#444), sem auth (#confirmed)
+- `automated-billing/index.ts` — FK join `profiles!teacher_id`/`profiles!student_id` (#440 ALTO), FK join `classes!inner` (#441 ALTO), sem idempotência de mensalidade (#451 INTEGRIDADE)
+- `create-invoice/index.ts` — FK join `classes!inner` (#442 ALTO), FK join em relationship (#443 ALTO), boleto_url→stripe_hosted_invoice_url (#450 MÉDIO)
+- `process-cancellation/index.ts` — persistSession ausente (#448), `.single()` em dependentes (#446)
+- `send-invoice-notification/index.ts` — `.single()` 4x (#445)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#416 (SEGURANÇA: IDOR)**: `generate-boleto-for-invoice` sem JWT. Qualquer chamador pode gerar boletos para faturas alheias.
-2. **#417 (FK JOIN PROIBIDO)**: `generate-boleto-for-invoice` L36-43 `profiles!invoices_student_id_fkey(...)` — falha por cache de schema.
-3. **#418 (INTEGRIDADE FINANCEIRA)**: `materialize-virtual-class` L252-263 não herda `is_paid_class`. Aulas gratuitas materializadas cobram indevidamente.
-4. **#419 (INTEGRIDADE FINANCEIRA)**: `request-class` L137-146 não define `is_paid_class`. Default `true` dispara billing indesejado.
-5. **#420 (SEGURANÇA)**: `auto-verify-pending-invoices` sem auth. Permite alteração em massa de status de faturas.
-6. **#421 (INTEGRIDADE)**: `auto-verify-pending-invoices` sem guard clause. Reverte faturas pagas manualmente.
-7. **#422 (INTEGRIDADE)**: `end-recurrence` cascade incompleta — FK RESTRICT impede deleção de aulas futuras.
-8. **#425 (SEGURANÇA)**: `setup-billing-automation` expõe ANON_KEY inline no SQL.
+1. **#434 (CATASTRÓFICO: STATUS MISMATCH)**: `webhook-stripe-connect` L320/L356/L469 usa `status: 'paid'` em vez de `'paga'` e L404 usa `'overdue'` em vez de `'vencida'`. **Todos os pagamentos confirmados via Stripe ficam INVISÍVEIS no dashboard**. Faturas nunca são reconhecidas como pagas pelo sistema.
+2. **#435 (CRÍTICO: STATUS MISMATCH)**: `cancel-payment-intent` L172 usa `status: 'paid'` em vez de `'paga'`. Confirmações manuais de pagamento ficam invisíveis.
+3. **#436 (CRÍTICO: STATUS MISMATCH)**: `check-overdue-invoices` L58 usa `status: 'overdue'` em vez de `'vencida'`. Faturas vencidas ficam com status não reconhecido.
+4. **#437 (CRÍTICO: DESTRUIÇÃO DE DADOS)**: `webhook-stripe-connect` L474-481 limpa TODOS os dados de pagamento (boleto_url, pix_copy_paste, stripe_hosted_invoice_url) ao processar `payment_intent.succeeded`. Alunos perdem acesso a comprovantes e links de pagamento após confirmação.
+5. **#438 (CRÍTICO: WEBHOOK RESILIENCE)**: `webhook-stripe-connect` L555 retorna HTTP 500 no catch block. Stripe retenta indefinidamente, causando storms de reprocessamento.
+6. **#439 (ALTO: FK JOIN)**: `create-payment-intent-connect` L41-48 usa FK join proibido (`profiles!invoices_student_id_fkey`, `business_profiles!invoices_business_profile_id_fkey`).
+7. **#440 (ALTO: FK JOIN)**: `automated-billing` L72-89 usa FK join `profiles!teacher_id` e `profiles!student_id` na query de relacionamentos.
+8. **#441 (ALTO: FK JOIN)**: `automated-billing` L214-226 usa FK join `classes!inner` na verificação de aulas confirmadas antigas.
+9. **#442 (ALTO: FK JOIN)**: `create-invoice` L233 usa FK join `classes!inner` para buscar dados de class_participants.
+10. **#443 (ALTO: FK JOIN)**: `create-invoice` L148 usa FK join `business_profiles!teacher_student_relationships_business_profile_id_fkey`.
+11. **#444 (MÉDIO: .single())**: `webhook-stripe-connect` L306/L343/L453 e `cancel-payment-intent` L71 usam `.single()` em lookups de fatura — record ausente causa crash.
+12. **#445 (MÉDIO: .single())**: `send-invoice-notification` L57/L68/L99/L161 usa `.single()` 4x — qualquer registro ausente crashea toda a notificação.
+13. **#446 (MÉDIO: .single())**: `process-cancellation` e `send-cancellation-notification` usam `.single()` em lookups de dependentes dentro de loops.
+14. **#447 (MÉDIO: persistSession)**: `cancel-payment-intent` L37 não configura `{ auth: { persistSession: false } }`.
+15. **#448 (MÉDIO: persistSession)**: `process-cancellation` L30 não configura `{ auth: { persistSession: false } }`.
+16. **#449 (MÉDIO: Guard Clause)**: `webhook-stripe-connect` handlers de `invoice.payment_failed` (L380) e `invoice.marked_uncollectible` (L401) não possuem guard clause — podem reverter status `'paga'`.
+17. **#450 (MÉDIO: CTA Enganoso)**: `create-invoice` L443 copia `boleto_url` para `stripe_hosted_invoice_url`, fazendo emails de notificação rotularem boleto como "Cartão de Crédito".
+18. **#451 (CRÍTICO: IDEMPOTÊNCIA)**: `automated-billing` processMonthlySubscriptionBilling (L814-819) não verifica existência de fatura de mensalidade no ciclo atual. Múltiplas execuções do cron geram faturas duplicadas.
 
-### Totais Atualizados (v5.57)
-- 433 pontas soltas totais | 403 únicas | **391 pendentes**
-- Fase 0: **86 itens** (+8: #416, #417, #418, #419, #420, #421, #422, #425)
-- **100% cobertura**: 75 funções auditadas (20 passagens)
+### Totais Atualizados (v5.58)
+- 451 pontas soltas totais | 421 únicas | **409 pendentes**
+- Fase 0: **94 itens** (+8: #434, #435, #436, #437, #438, #439, #440, #451)
+- **100% cobertura**: 75 funções auditadas (21 passagens)

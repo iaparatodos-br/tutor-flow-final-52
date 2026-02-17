@@ -1,5 +1,6 @@
 {
   "button": "Anistia",
+  "billedTooltip": "Não é possível conceder anistia: esta aula já foi incluída em uma fatura processada.",
   "title": "Conceder Anistia",
   "description": "Você está prestes a remover a cobrança de cancelamento para <strong>{{studentName}}</strong>.",
   "alert": {

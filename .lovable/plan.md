@@ -188,7 +188,13 @@ Adicionado filtro `is_paid_class = true` à RPC e propagação do campo na mater
    - Alertas visuais: prepaid (âmbar) e gratuita (esmeralda) com mensagens contextuais
 3. **i18n**: Adicionadas chaves `alert.prepaid.*` e `alert.unpaid.*` em PT e EN
 
+## Fase 7 — AmnestyButton: verificação de faturamento + label ✅
+
+1. **Verificação de billing**: `useEffect` consulta `invoice_classes` com join `invoices!inner` filtrando `status != 'cancelada'` para detectar se a aula já foi incluída em fatura processada
+2. **Bloqueio visual**: Se `isBilled = true`, botão renderiza com ícone `Ban` + tooltip explicativo (`billedTooltip`) em vez do dialog
+3. **Estado de loading**: `checkingBilling` mantém botão desabilitado enquanto a verificação está em andamento
+4. **i18n**: Adicionada chave `billedTooltip` em PT e EN
+
 ## Próximas Etapas
 
-- **Fase 7**: AmnestyButton — verificação de faturamento + label
 - **Fase 8**: InvoiceTypeBadge consolidação + i18n + testes

@@ -30,6 +30,7 @@ interface ClassWithParticipants {
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
+  is_paid_class?: boolean;
   has_report?: boolean;
   charge_applied?: boolean;
   amnesty_granted?: boolean;
@@ -1295,6 +1296,7 @@ export default function Agenda() {
         status: targetStatus,
         is_experimental: virtualClass.is_experimental,
         is_group_class: virtualClass.is_group_class,
+        is_paid_class: virtualClass.is_paid_class, // FASE 4: Herdar is_paid_class do template
         is_template: false,
         class_template_id: templateId
       };

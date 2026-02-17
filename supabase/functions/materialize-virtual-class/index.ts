@@ -250,12 +250,13 @@ serve(async (req) => {
     const { data: materializedClass, error: insertError } = await supabaseClient
       .from('classes')
       .insert({
-        teacher_id: template.teacher_id,
+      teacher_id: template.teacher_id,
         class_date: class_date,
         duration_minutes: template.duration_minutes,
         status: template.status, // Herdar status do template original
         is_experimental: template.is_experimental,
         is_group_class: template.is_group_class,
+        is_paid_class: template.is_paid_class, // FASE 4: Herdar is_paid_class do template
         service_id: template.service_id,
         is_template: false,
         class_template_id: template_id,

@@ -142,7 +142,8 @@ serve(async (req) => {
         status: 'pendente',
         notes: notes?.trim() || null,
         is_experimental: false,
-        is_group_class: false
+        is_group_class: false,
+        is_paid_class: false, // Student-requested classes default to unpaid; teacher confirms billing separately
       })
       .select()
       .single();

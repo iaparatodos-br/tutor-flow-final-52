@@ -48,6 +48,24 @@ serve(async (req) => {
     
     logStep("Request data", { business_name, cnpj });
 
+    // #146: Check for existing business profile to prevent duplicate Stripe Connect accounts
+    const { data: existingProfile } = await supabaseClient
+      .from("business_profiles")
+      .select("id, stripe_connect_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingProfile) {
+      logStep("User already has a business profile", { existingId: existingProfile.id });
+      return new Response(JSON.stringify({ 
+        error: "Você já possui um perfil de negócio ativo. Remova o existente antes de criar outro.",
+        existing_profile_id: existingProfile.id
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const origin = req.headers.get("origin") || "https://www.tutor-flow.app";
 

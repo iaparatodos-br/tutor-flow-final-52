@@ -106,8 +106,25 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // Check payment intent status in Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id);
+    // #554: Buscar stripeAccount do Connect para este professor
+    let stripeAccount: string | undefined = undefined;
+    if (invoice.teacher_id) {
+      const { data: bp } = await supabaseClient
+        .from("business_profiles")
+        .select("stripe_connect_id")
+        .eq("user_id", invoice.teacher_id)
+        .maybeSingle();
+      if (bp?.stripe_connect_id) {
+        stripeAccount = bp.stripe_connect_id;
+      }
+    }
+
+    // Check payment intent status in Stripe (com stripeAccount para Connect)
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      invoice.stripe_payment_intent_id,
+      undefined,
+      stripeAccount ? { stripeAccount } : undefined
+    );
     
     logStep("Payment intent retrieved", { 
       paymentIntentId: paymentIntent.id, 

@@ -31,15 +31,29 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
-    // Get all subscriptions with pending_boleto status
-    const { data: pendingBoletos, error: fetchError } = await supabase
+    // #113: Get all subscriptions with pending_boleto status (sequential queries, no FK join)
+    const { data: pendingBoletosRaw, error: fetchError } = await supabase
       .from("user_subscriptions")
-      .select(`
-        *,
-        subscription_plans (name)
-      `)
+      .select("*")
       .eq("status", "pending_boleto")
       .eq("pending_payment_method", "boleto");
+
+    // Enrich with plan names via sequential query
+    let pendingBoletos: any[] | null = null;
+    if (!fetchError && pendingBoletosRaw && pendingBoletosRaw.length > 0) {
+      const planIds = [...new Set(pendingBoletosRaw.map(s => s.plan_id).filter(Boolean))];
+      const { data: plans } = await supabase
+        .from("subscription_plans")
+        .select("id, name")
+        .in("id", planIds);
+      const planMap = new Map((plans || []).map(p => [p.id, p]));
+      pendingBoletos = pendingBoletosRaw.map(s => ({
+        ...s,
+        subscription_plans: planMap.get(s.plan_id) || null,
+      }));
+    } else {
+      pendingBoletos = pendingBoletosRaw;
+    }
 
     if (fetchError) {
       throw fetchError;

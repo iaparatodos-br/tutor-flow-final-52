@@ -130,11 +130,12 @@ serve(async (req) => {
         }
 
         // 4. Get free plan and update user profile
+        // #394: .maybeSingle() to prevent crash if free plan not found
         const { data: freePlan, error: freePlanError } = await supabaseAdmin
           .from('subscription_plans')
           .select('*')
           .eq('slug', 'free')
-          .single();
+          .maybeSingle();
 
         if (freePlanError || !freePlan) {
           logStep(`Error getting free plan`, { error: freePlanError });

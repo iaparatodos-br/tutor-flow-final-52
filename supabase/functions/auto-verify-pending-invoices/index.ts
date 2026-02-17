@@ -71,9 +71,24 @@ serve(async (req) => {
           paymentIntentId: invoice.stripe_payment_intent_id 
         });
 
-        // Buscar status do payment intent no Stripe
+        // #553: Buscar stripeAccount do Connect para este professor
+        let stripeAccount: string | undefined = undefined;
+        if (invoice.teacher_id) {
+          const { data: bp } = await supabaseClient
+            .from("business_profiles")
+            .select("stripe_connect_id")
+            .eq("user_id", invoice.teacher_id)
+            .maybeSingle();
+          if (bp?.stripe_connect_id) {
+            stripeAccount = bp.stripe_connect_id;
+          }
+        }
+
+        // Buscar status do payment intent no Stripe (com stripeAccount para Connect)
         const paymentIntent = await stripe.paymentIntents.retrieve(
-          invoice.stripe_payment_intent_id
+          invoice.stripe_payment_intent_id,
+          undefined,
+          stripeAccount ? { stripeAccount } : undefined
         );
 
         verifiedCount++;

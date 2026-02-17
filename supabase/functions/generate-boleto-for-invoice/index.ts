@@ -31,18 +31,45 @@ serve(async (req) => {
     logStep("Processing invoice", { invoice_id });
 
     // Get invoice and student profile data
-    const { data: invoice, error: invoiceError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: invoiceRaw, error: invoiceError } = await supabaseClient
       .from("invoices")
-      .select(`
-        *,
-        student:profiles!invoices_student_id_fkey(
-          id, name, email, cpf,
-          address_street, address_city, address_state, address_postal_code, address_complete
-        ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email)
-      `)
+      .select("*")
       .eq("id", invoice_id)
       .maybeSingle();
+
+    if (invoiceError) {
+      logStep("Error fetching invoice", invoiceError);
+      throw new Error("Erro ao buscar fatura");
+    }
+
+    if (!invoiceRaw) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Fatura não encontrada" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
+
+    const { data: studentProfile } = await supabaseClient
+      .from("profiles")
+      .select("id, name, email, cpf, address_street, address_city, address_state, address_postal_code, address_complete")
+      .eq("id", invoiceRaw.student_id)
+      .maybeSingle();
+
+    const { data: teacherProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email")
+      .eq("id", invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    const invoice = {
+      ...invoiceRaw,
+      student: studentProfile,
+      teacher: teacherProfile,
+    };
 
     if (invoiceError) {
       logStep("Error fetching invoice", invoiceError);

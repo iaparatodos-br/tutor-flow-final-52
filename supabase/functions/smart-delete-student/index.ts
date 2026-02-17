@@ -127,16 +127,23 @@ async function checkPendingClasses(
 ): Promise<{ hasPending: boolean; pendingCount: number; dependentsPending: number }> {
   // Check student's own pending classes WITH THIS TEACHER ONLY
   // Need to join with classes table to filter by teacher_id
-  const { data: studentClasses, error: studentError } = await supabaseAdmin
-    .from('class_participants')
-    .select(`
-      id,
-      status,
-      classes!inner(teacher_id)
-    `)
-    .eq('student_id', studentId)
-    .eq('classes.teacher_id', teacherId)
-    .in('status', ['pendente', 'confirmada']);
+  // Sequential queries to avoid FK join (Etapa 0.6)
+  // First get teacher's class IDs, then filter participants
+  const { data: teacherClasses } = await supabaseAdmin
+    .from('classes')
+    .select('id')
+    .eq('teacher_id', teacherId);
+  
+  const teacherClassIds = (teacherClasses || []).map(c => c.id);
+  
+  const { data: studentClasses, error: studentError } = teacherClassIds.length > 0
+    ? await supabaseAdmin
+        .from('class_participants')
+        .select('id, status, class_id')
+        .eq('student_id', studentId)
+        .in('class_id', teacherClassIds)
+        .in('status', ['pendente', 'confirmada'])
+    : { data: [] as any[], error: null };
 
   if (studentError) {
     console.error('Error checking student pending classes:', studentError);
@@ -155,16 +162,15 @@ async function checkPendingClasses(
   if (dependents && dependents.length > 0) {
     const dependentIds = dependents.map((d: any) => d.id);
     
-    const { data: depClasses, error: depError } = await supabaseAdmin
-      .from('class_participants')
-      .select(`
-        id,
-        status,
-        classes!inner(teacher_id)
-      `)
-      .in('dependent_id', dependentIds)
-      .eq('classes.teacher_id', teacherId)
-      .in('status', ['pendente', 'confirmada']);
+    // Reuse teacherClassIds from above (Etapa 0.6)
+    const { data: depClasses, error: depError } = teacherClassIds.length > 0
+      ? await supabaseAdmin
+          .from('class_participants')
+          .select('id, status, class_id')
+          .in('dependent_id', dependentIds)
+          .in('class_id', teacherClassIds)
+          .in('status', ['pendente', 'confirmada'])
+      : { data: [] as any[], error: null };
 
     if (depError) {
       console.error('Error checking dependent pending classes:', depError);

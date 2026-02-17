@@ -27,16 +27,26 @@ const checkNeedsStudentSelection = async (
     }
 
     // Get current student count
-    const { data: students, error: studentsError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: studentsRaw, error: studentsError } = await supabaseClient
       .from('teacher_student_relationships')
-      .select(`
-        id,
-        student_id,
-        student_name,
-        created_at,
-        profiles!teacher_student_relationships_student_id_fkey(name, email)
-      `)
+      .select('id, student_id, student_name, created_at')
       .eq('teacher_id', userId);
+
+    let students: any[] | null = null;
+    if (!studentsError && studentsRaw && studentsRaw.length > 0) {
+      const studentIds = [...new Set(studentsRaw.map(s => s.student_id))];
+      const { data: profiles } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email')
+        .in('id', studentIds);
+      
+      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+      students = studentsRaw.map(s => ({
+        ...s,
+        profiles: profileMap.get(s.student_id) || null,
+      }));
+    }
 
     if (studentsError) {
       logStep("Error fetching students for downgrade check", { error: studentsError });

@@ -35,28 +35,42 @@ serve(async (req) => {
     logStep("Current time", { timestamp: now.toISOString() });
 
     // 1. Find all active subscriptions that have expired (current_period_end < now)
-    const { data: expiredSubscriptions, error: expiredError } = await supabaseAdmin
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: expiredSubsRaw, error: expiredError } = await supabaseAdmin
       .from('user_subscriptions')
-      .select(`
-        id,
-        user_id,
-        plan_id,
-        stripe_subscription_id,
-        current_period_end,
-        subscription_plans!inner (
-          id,
-          name,
-          features
-        ),
-        profiles!user_id (
-          id,
-          name,
-          email,
-          role
-        )
-      `)
+      .select('id, user_id, plan_id, stripe_subscription_id, current_period_end')
       .eq('status', 'active')
       .lt('current_period_end', now.toISOString());
+
+    if (expiredError) {
+      logStep("Error fetching expired subscriptions", { error: expiredError });
+      throw expiredError;
+    }
+
+    let expiredSubscriptions: any[] | null = null;
+    if (expiredSubsRaw && expiredSubsRaw.length > 0) {
+      const planIds = [...new Set(expiredSubsRaw.map(s => s.plan_id))];
+      const userIds = [...new Set(expiredSubsRaw.map(s => s.user_id))];
+
+      const { data: plans } = await supabaseAdmin
+        .from('subscription_plans')
+        .select('id, name, features')
+        .in('id', planIds);
+
+      const { data: profiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, email, role')
+        .in('id', userIds);
+
+      const planMap = new Map((plans || []).map(p => [p.id, p]));
+      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+
+      expiredSubscriptions = expiredSubsRaw.map(sub => ({
+        ...sub,
+        subscription_plans: planMap.get(sub.plan_id) || null,
+        profiles: profileMap.get(sub.user_id) || null,
+      }));
+    }
 
     if (expiredError) {
       logStep("Error fetching expired subscriptions", { error: expiredError });

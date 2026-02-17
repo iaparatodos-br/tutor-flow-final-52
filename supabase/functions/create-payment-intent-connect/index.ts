@@ -34,21 +34,44 @@ serve(async (req) => {
 
     // Get invoice details with business profile (v2.5: including enabled_payment_methods)
     // NOTE: Guardian data is now stored ONLY in teacher_student_relationships
-    const { data: invoice, error: invoiceError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: invoiceRaw, error: invoiceError } = await supabaseClient
       .from("invoices")
-      .select(`
-        *,
-        student:profiles!invoices_student_id_fkey(
-          name, email, cpf,
-          address_street, address_city, address_state, address_postal_code, address_complete
-        ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email, payment_due_days),
-        business_profile:business_profiles!invoices_business_profile_id_fkey(
-          id, business_name, stripe_connect_id, enabled_payment_methods
-        )
-      `)
+      .select("*")
       .eq("id", invoice_id)
       .maybeSingle();
+
+    if (invoiceError || !invoiceRaw) {
+      throw new Error("Invoice not found");
+    }
+
+    // Fetch related data sequentially
+    const { data: studentProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email, cpf, address_street, address_city, address_state, address_postal_code, address_complete")
+      .eq("id", invoiceRaw.student_id)
+      .maybeSingle();
+
+    const { data: teacherProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email, payment_due_days")
+      .eq("id", invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    const { data: businessProfile } = invoiceRaw.business_profile_id
+      ? await supabaseClient
+          .from("business_profiles")
+          .select("id, business_name, stripe_connect_id, enabled_payment_methods")
+          .eq("id", invoiceRaw.business_profile_id)
+          .maybeSingle()
+      : { data: null };
+
+    const invoice = {
+      ...invoiceRaw,
+      student: studentProfile,
+      teacher: teacherProfile,
+      business_profile: businessProfile,
+    };
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");

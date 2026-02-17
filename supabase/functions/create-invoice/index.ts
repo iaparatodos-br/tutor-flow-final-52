@@ -142,16 +142,21 @@ serve(async (req) => {
     // Usar billingStudentId (responsável) em vez de body.student_id
     const { data: relationship, error: relationshipError } = await supabaseClient
       .from('teacher_student_relationships')
-      .select(`
-        business_profile_id, 
-        teacher_id,
-        business_profile:business_profiles!teacher_student_relationships_business_profile_id_fkey(
-          enabled_payment_methods
-        )
-      `)
+      .select('business_profile_id, teacher_id')
       .eq('student_id', billingStudentId)
       .eq('teacher_id', user.id)
       .single();
+
+    // Fetch enabled_payment_methods separately (Etapa 0.6)
+    let enabledPaymentMethods: string[] | null = null;
+    if (relationship?.business_profile_id) {
+      const { data: bp } = await supabaseClient
+        .from('business_profiles')
+        .select('enabled_payment_methods')
+        .eq('id', relationship.business_profile_id)
+        .maybeSingle();
+      enabledPaymentMethods = bp?.enabled_payment_methods || null;
+    }
 
     if (relationshipError || !relationship) {
       logStep("Relationship not found", { error: relationshipError, billingStudentId });
@@ -223,22 +228,34 @@ serve(async (req) => {
     if (body.class_ids && body.class_ids.length > 0) {
       // Buscar dados das aulas e participantes
       // Considerar tanto participantes do aluno quanto de dependentes
-      const { data: classData, error: classDataError } = await supabaseClient
+      // Sequential queries to avoid FK join (Etapa 0.6)
+      // First get participants
+      const { data: participantData, error: participantError } = await supabaseClient
         .from('class_participants')
-        .select(`
-          id,
-          class_id,
-          student_id,
-          dependent_id,
-          classes!inner (
-            id,
-            class_date,
-            service_id,
-            class_services (name, price)
-          )
-        `)
+        .select('id, class_id, student_id, dependent_id')
         .in('class_id', body.class_ids)
         .or(`student_id.eq.${billingStudentId},dependent_id.not.is.null`);
+
+      // Then get class details
+      const { data: classDetails, error: classDetailsError } = await supabaseClient
+        .from('classes')
+        .select('id, class_date, service_id')
+        .in('id', body.class_ids);
+
+      // Get services for those classes
+      const serviceIds = [...new Set((classDetails || []).map(c => c.service_id).filter(Boolean))];
+      const { data: services } = serviceIds.length > 0
+        ? await supabaseClient.from('class_services').select('id, name, price').in('id', serviceIds)
+        : { data: [] as any[] };
+
+      const serviceMap = new Map((services || []).map(s => [s.id, s]));
+      const classMap = new Map((classDetails || []).map(c => [c.id, { ...c, class_services: c.service_id ? serviceMap.get(c.service_id) || null : null }]));
+      
+      const classData = (participantData || []).map(p => ({
+        ...p,
+        classes: classMap.get(p.class_id) || null,
+      }));
+      const classDataError = participantError || classDetailsError;
 
       if (classDataError) {
         logStep("ERROR: Failed to fetch class data for invoice_classes", { error: classDataError });
@@ -364,7 +381,7 @@ serve(async (req) => {
 
     // v2.5: Generate payment URL automatically using hierarchy: Boleto → PIX → None
     // Get enabled payment methods from business profile
-    const enabledMethods: string[] = (relationship as any)?.business_profile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
+    const enabledMethods: string[] = enabledPaymentMethods || ['boleto', 'pix', 'card'];
     
     logStep("Generating payment URL with hierarchy", { 
       invoiceId: newInvoice.id,

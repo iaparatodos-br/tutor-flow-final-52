@@ -30,34 +30,53 @@ serve(async (req) => {
     cutoffDate.setDate(cutoffDate.getDate() - 45);
 
     // Buscar participantes órfãos não faturados via LEFT JOIN com invoice_classes
-    let { data: orphanParticipants, error: orphanError } = await supabaseAdmin
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    // Step 1: Get cancelled participants with charge_applied
+    let { data: rawParticipants, error: rawError } = await supabaseAdmin
       .from('class_participants')
-      .select(`
-        id,
-        class_id,
-        student_id,
-        cancelled_at,
-        charge_applied,
-        cancellation_reason,
-        classes!inner (
-          id,
-          teacher_id,
-          service_id,
-          class_services (
-            id,
-            name,
-            price
-          )
-        ),
-        student:profiles!class_participants_student_id_fkey (
-          id,
-          name,
-          email
-        )
-      `)
+      .select('id, class_id, student_id, cancelled_at, charge_applied, cancellation_reason')
       .eq('status', 'cancelada')
       .eq('charge_applied', true)
       .lt('cancelled_at', cutoffDate.toISOString());
+
+    if (rawError || !rawParticipants || rawParticipants.length === 0) {
+      if (rawError) logStep("Error fetching participants", rawError);
+      logStep("No orphan participants found");
+      return new Response(JSON.stringify({ success: true, message: 'No orphan charges found' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
+      });
+    }
+
+    // Step 2: Get class details
+    const classIds = [...new Set(rawParticipants.map(p => p.class_id))];
+    const { data: classes } = await supabaseAdmin
+      .from('classes')
+      .select('id, teacher_id, service_id')
+      .in('id', classIds);
+
+    // Step 3: Get services
+    const serviceIds = [...new Set((classes || []).map(c => c.service_id).filter(Boolean))];
+    const { data: classServices } = serviceIds.length > 0
+      ? await supabaseAdmin.from('class_services').select('id, name, price').in('id', serviceIds)
+      : { data: [] as any[] };
+
+    // Step 4: Get student profiles
+    const studentIds = [...new Set(rawParticipants.map(p => p.student_id))];
+    const { data: studentProfiles } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, email')
+      .in('id', studentIds);
+
+    // Build maps
+    const serviceMap = new Map((classServices || []).map(s => [s.id, s]));
+    const classMap = new Map((classes || []).map(c => [c.id, { ...c, class_services: c.service_id ? serviceMap.get(c.service_id) || null : null }]));
+    const studentMap = new Map((studentProfiles || []).map(s => [s.id, s]));
+
+    let orphanParticipants = rawParticipants.map(p => ({
+      ...p,
+      classes: classMap.get(p.class_id) || null,
+      student: studentMap.get(p.student_id) || null,
+    }));
     
     // Filtrar apenas os não faturados (sem invoice_classes)
     if (orphanParticipants) {
@@ -91,10 +110,7 @@ serve(async (req) => {
       }
     }
 
-    if (orphanError) {
-      logStep("Error fetching orphan participants", orphanError);
-      throw orphanError;
-    }
+    // orphanError check removed — error handling is now done inline above (Etapa 0.6)
 
     if (!orphanParticipants || orphanParticipants.length === 0) {
       logStep('No orphan cancellation charges found');

@@ -67,27 +67,44 @@ serve(async (req) => {
     const today = new Date().getDate();
 
     // 1. Encontrar todos os relacionamentos professor-aluno que devem ser cobrados hoje
-    const { data: relationshipsToBill, error: relationshipsError } = await supabaseAdmin
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: relationshipsRaw, error: relationshipsError } = await supabaseAdmin
       .from('teacher_student_relationships')
-      .select(`
-        id,
-        student_id,
-        teacher_id,
-        billing_day,
-        business_profile_id,
-        teacher:profiles!teacher_id (
-          id,
-          name,
-          email,
-          payment_due_days
-        ),
-        student:profiles!student_id (
-          id,
-          name,
-          email
-        )
-      `)
+      .select('id, student_id, teacher_id, billing_day, business_profile_id')
       .eq('billing_day', today);
+
+    if (relationshipsError) {
+      logStep("Error fetching relationships", relationshipsError);
+      throw relationshipsError;
+    }
+
+    // Enrich with teacher and student profiles sequentially
+    const relationshipsToBill: any[] = [];
+    if (relationshipsRaw && relationshipsRaw.length > 0) {
+      const teacherIds = [...new Set(relationshipsRaw.map(r => r.teacher_id))];
+      const studentIds = [...new Set(relationshipsRaw.map(r => r.student_id))];
+
+      const { data: teachers } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, email, payment_due_days')
+        .in('id', teacherIds);
+
+      const { data: students } = await supabaseAdmin
+        .from('profiles')
+        .select('id, name, email')
+        .in('id', studentIds);
+
+      const teacherMap = new Map((teachers || []).map(t => [t.id, t]));
+      const studentMap = new Map((students || []).map(s => [s.id, s]));
+
+      for (const rel of relationshipsRaw) {
+        relationshipsToBill.push({
+          ...rel,
+          teacher: teacherMap.get(rel.teacher_id) || null,
+          student: studentMap.get(rel.student_id) || null,
+        });
+      }
+    }
 
     if (relationshipsError) {
       logStep("Error fetching relationships", relationshipsError);
@@ -209,21 +226,30 @@ serve(async (req) => {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         
-        const { data: oldConfirmedParticipations, error: oldClassesError } = await supabaseAdmin
+        // Sequential queries to avoid FK join (Etapa 0.6)
+        // First get participant IDs, then filter by class data
+        const { data: confirmedParticipations, error: cpError } = await supabaseAdmin
           .from('class_participants')
-          .select(`
-            id,
-            classes!inner (
-              id,
-              class_date,
-              status,
-              teacher_id
-            )
-          `)
+          .select('id, class_id')
           .eq('student_id', studentInfo.student_id)
-          .eq('classes.teacher_id', studentInfo.teacher_id)
-          .eq('status', 'confirmada')
-          .lt('classes.class_date', thirtyDaysAgo.toISOString());
+          .eq('status', 'confirmada');
+
+        let oldConfirmedParticipations: any[] = [];
+        let oldClassesError = cpError;
+        if (!cpError && confirmedParticipations && confirmedParticipations.length > 0) {
+          const classIds = confirmedParticipations.map(p => p.class_id);
+          const { data: oldClasses } = await supabaseAdmin
+            .from('classes')
+            .select('id, class_date, status, teacher_id')
+            .in('id', classIds)
+            .eq('teacher_id', studentInfo.teacher_id)
+            .lt('class_date', thirtyDaysAgo.toISOString());
+          
+          const oldClassIds = new Set((oldClasses || []).map(c => c.id));
+          oldConfirmedParticipations = confirmedParticipations
+            .filter(p => oldClassIds.has(p.class_id))
+            .map(p => ({ ...p, classes: oldClasses?.find(c => c.id === p.class_id) }));
+        }
         
         if (!oldClassesError && oldConfirmedParticipations && oldConfirmedParticipations.length > 0) {
           logStep(`⚠️ ALERTA: ${oldConfirmedParticipations.length} aulas confirmadas com mais de 30 dias não foram marcadas como concluídas`, {
@@ -1028,14 +1054,10 @@ async function processMonthlySubscriptionBilling(
 async function validateTeacherCanBill(teacher: any): Promise<boolean> {
   try {
     // Get teacher's subscription separately
+    // Sequential queries to avoid FK join (Etapa 0.6)
     const { data: subscription, error: subError } = await supabaseAdmin
       .from('user_subscriptions')
-      .select(`
-        status,
-        subscription_plans!inner (
-          features
-        )
-      `)
+      .select('status, plan_id')
       .eq('user_id', teacher.id)
       .eq('status', 'active')
       .maybeSingle();
@@ -1044,10 +1066,6 @@ async function validateTeacherCanBill(teacher: any): Promise<boolean> {
       return false;
     }
 
-    // Check if plan has financial module - subscription_plans é um array
-    const plan = Array.isArray(subscription.subscription_plans) 
-      ? subscription.subscription_plans[0] 
-      : subscription.subscription_plans;
     const hasFinancialModule = plan?.features?.financial_module === true;
     
     return hasFinancialModule;

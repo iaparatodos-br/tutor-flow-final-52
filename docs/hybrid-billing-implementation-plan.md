@@ -499,7 +499,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #391 | create-student | MÉDIA | .single() em plan lookup | 18ª |
 | #394 | process-expired-subscriptions | MÉDIA | .single() em free plan | 18ª |
 
-**Nota**: Alguns itens podem aparecer em mais de uma categoria por afetar múltiplos padrões. A contagem total de 162 considera itens únicos. Os itens das passagens 19-24 (#403-#505) e passagens 25-28 (#506-#581) que não estão listados acima mas foram marcados como Fase 0 nas suas respectivas seções de passagem também fazem parte deste batch. Consultar cada seção de passagem para descrições detalhadas.
+**Nota**: Alguns itens podem aparecer em mais de uma categoria por afetar múltiplos padrões. A contagem total de 162 considera itens únicos. As tabelas acima (categorias A-L) consolidam todos os 162 itens da Fase 0. Para descrições detalhadas de cada item, consultar a seção de passagem correspondente.
 
 ---
 
@@ -3206,7 +3206,7 @@ As seguintes funções foram auditadas e classificadas como fora do escopo do pl
 | cancel-payment-intent | ~~#98~~, #122, #199, #262, M44, M50 | ✅ |
 | create-payment-intent-connect | #119, #125, #175, #176, #177, #194, M45 | ✅ |
 | change-payment-method | #114, #115, #170, #179, #196 | ✅ |
-| generate-boleto-for-invoice | #103, #121 | ✅ |
+| generate-boleto-for-invoice | #103, #121, #532, #533 | ✅ (v5.63) |
 | check-overdue-invoices | #41, #47, #56, #71, #81, #95, #126, #155, #187, #209, #278, #279, #359, #360, #361, #470, #471, #479, #480, #546, #555, #556, #557 | ✅ |
 | auto-verify-pending-invoices | #102, #156, #553, M52 | ✅ |
 | verify-payment-status | #102, #157, #158, #195, #554 | ✅ |
@@ -3239,7 +3239,7 @@ As seguintes funções foram auditadas e classificadas como fora do escopo do pl
 | update-dependent | #139, #355 | ✅ (v5.15) |
 | create-connect-onboarding-link | #140, #197, #263, #382 | ✅ (v5.15) |
 | list-subscription-invoices | #141 | ✅ (v5.15) |
-| check-business-profile-status | #142, #286 | ✅ (v5.16) |
+| check-business-profile-status | #142, #286, #513, #523, #570, #571, #579 | ✅ (v5.65) |
 | create-connect-account | #143, #381 | ✅ (v5.16) |
 | send-class-confirmation-notification | #144, #357, #378, #508 | ✅ (v5.16) |
 | check-stripe-account-status | #145 | ✅ (v5.17) |
@@ -4810,6 +4810,11 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 | v5.59 | 2026-02-17 | **22ª passagem: análise cruzada profunda — auth gaps em create/update students, deletion cascades, phishing vectors em invitations/material sharing**. +18 pontas soltas (#452-#469). 6 itens adicionados à Fase 0 (100 itens). Totais: **469 pontas soltas**, **439 únicas**, **427 pendentes**. |
 | v5.60 | 2026-02-17 | **23ª passagem: análise cruzada profunda — webhook status guards, stripeAccount missing, RPC inexistente, notification spam loops**. +18 pontas soltas (#470-#487). 8 itens adicionados à Fase 0 (108 itens). Totais: **487 pontas soltas**, **457 únicas**, **445 pendentes**. |
 | v5.61 | 2026-02-17 | **24ª passagem: análise cruzada profunda — auth gaps em teacher subscription cancellation e notification functions, raw SQL injection em setup automation, smart-delete wrong params, FK joins em checkout**. +18 pontas soltas (#488-#505). 8 itens adicionados à Fase 0 (116 itens). Totais: **505 pontas soltas**, **475 únicas**, **463 pendentes**. |
+| v5.62 | 2026-02-17 | **25ª passagem** (#506-#523). 8/9 funções de notificação sem auth; padrão sistêmico de phishing. Fase 0: 124 itens. |
+| v5.63 | 2026-02-17 | **26ª passagem** (#524-#545). send-boleto-subscription-notification sem auth; ANON_KEY em setup. Fase 0: 132 itens. |
+| v5.64 | 2026-02-17 | **27ª passagem** (#546-#563). Status 'paid'/'overdue' catastrófico em webhook; check-overdue spam; stripeAccount missing. Fase 0: 149 itens. |
+| v5.65 | 2026-02-17 | **28ª passagem** (#564-#581). handle-teacher-subscription-cancellation sem JWT+IDOR; archive-old-data student_id fantasma; 6 funções reclassificadas de "Fora de Escopo". Fase 0: 162 itens. Totais: **577 pontas soltas**, **547 únicas**, **535 pendentes**. |
+
 ## Memórias do Projeto a Atualizar
 
 Após implementação, atualizar:
@@ -5089,7 +5094,9 @@ Com #576, confirma-se que **10 de 11 funções de notificação por email** são
 7. send-invoice-notification (#509)
 8. send-boleto-subscription-notification (#525)
 9. send-class-reminders (#520 — sem auth, .single() em loop)
-10. send-password-reset — sem auth (esperado para recovery)
+10. generate-teacher-notifications — sem auth (cron, mas invocável externamente)
+
+**Nota**: `send-password-reset` é intencionalmente sem auth (recovery flow — usuário não está logado). Não é uma vulnerabilidade.
 
 A única função com bom padrão de auth: `resend-student-invitation`.
 
@@ -5141,17 +5148,6 @@ Funções setup-* passam ANON_KEY como string literal dentro de queries SQL via 
 
 ---
 
-## Changelog v5.62-v5.65
-
-| Versão | Passagem | Itens | Fase 0 | Destaques |
-|--------|----------|-------|--------|-----------|
-| v5.62 | 25ª | #506-#523 | 124 | 8/9 funções de notificação sem auth; padrão sistêmico de phishing |
-| v5.63 | 26ª | #524-#545 | 132 | send-boleto-subscription-notification sem auth; ANON_KEY em setup |
-| v5.64 | 27ª | #546-#563 | 149 | Status 'paid'/'overdue' catastrófico em webhook; check-overdue spam; stripeAccount missing |
-| v5.65 | 28ª | #564-#581 | 162 | handle-teacher-subscription-cancellation sem JWT+IDOR; archive-old-data student_id fantasma; 6 funções reclassificadas de "Fora de Escopo" |
-
----
-
 ## Memórias a Atualizar (v5.65 — 24 memórias)
 
 1. `features/billing/arquitetura-implementacao-hibrida-v4`
@@ -5197,9 +5193,3 @@ Fase 0 (Crítico):          162 itens
 Melhorias:                  52
 Cobertura:                 100% (75 funções, 28 passagens)
 ```
-- `create-connect-account` — auth + ownership validation via payment_account_id + teacher_id
-
-### Totais Atualizados (v5.65)
-- 577 pontas soltas totais | 547 únicas | **535 pendentes**
-- Fase 0: **162 itens** (+13: #564, #565, #566, #567, #568, #572, #573, #574, #575, #576, #577, #578, #580, #581)
-- **100% cobertura**: 75 funções auditadas (28 passagens)

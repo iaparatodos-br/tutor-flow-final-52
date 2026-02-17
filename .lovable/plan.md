@@ -1,53 +1,56 @@
 
 
 
-# Verificação Final v5.47 — 7 Novas Pontas Soltas (10ª Passagem: Análise Cruzada — Billing Automation, Materialização, Recorrência e Exceções)
+# Verificação Final v5.48 — 9 Novas Pontas Soltas (11ª Passagem: Análise Cruzada Profunda — Notificações, Deduplicação e Setup)
 
-## Veredicto: Plano atualizado para v5.47 com 3 achados CRÍTICOS — FK joins em automated-billing, is_paid_class não herdado em materialização, e idempotência de mensalidades.
+## Veredicto: Plano atualizado para v5.48 com 2 achados CRÍTICOS — deduplicação de notificações quebrada em check-overdue-invoices e faturas fantasma em validate-payment-routing.
 
 ---
 
-## Auditoria de 10ª Passagem (Análise Cruzada — Fluxos de Aula e Faturamento)
+## Auditoria de 11ª Passagem (Análise Cruzada Profunda — Notificações, Deduplicação e Setup)
 
-Funções auditadas nesta rodada (10ª passagem — análise cruzada):
-- `automated-billing/index.ts` (1057 linhas) — FK joins proibidos em 4 locais (#300), sem idempotência para mensalidades (#303), invoca payment-intent sem auth (#304)
-- `materialize-virtual-class/index.ts` (376 linhas) — NÃO herda `is_paid_class` do template (#301)
-- `request-class/index.ts` (223 linhas) — NÃO define `is_paid_class` (#302)
-- `end-recurrence/index.ts` (133 linhas) — `.single()` L50, sem cleanup de FK antes de delete (#305, confirma #181)
-- `create-invoice/index.ts` (575 linhas) — FK joins confirmados (#291), `.single()` confirmado (#292)
-- `manage-class-exception/index.ts` (157 linhas) — `.single()` para profile L47 (#306)
-- `manage-future-class-exceptions/index.ts` (220 linhas) — `.single()` para profile L53 (#306)
-- `send-class-request-notification/index.ts` (210 linhas) — `.single()` em teacher/student/dependent lookups (padrão sistêmico)
-- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` em student/dependent/relationship lookups (padrão sistêmico)
+Funções auditadas nesta rodada (11ª passagem — análise cruzada profunda):
+- `send-class-reminders/index.ts` (317 linhas) — FK join em class_services (#309), `.single()` confirmados
+- `send-invoice-notification/index.ts` (465 linhas) — `.single()` confirmados
+- `send-class-report-notification/index.ts` (294 linhas) — 6× `.single()` confirmados
+- `send-cancellation-notification/index.ts` (498 linhas) — `.single()` em dependentes confirmados
+- `send-material-shared-notification/index.ts` (316 linhas) — `.single()` confirmados
+- `send-boleto-subscription-notification/index.ts` (345 linhas) — SES direto (#312), `.single()` confirmado
+- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` confirmados
+- `send-class-request-notification/index.ts` (210 linhas) — `.single()` confirmados
+- `validate-payment-routing/index.ts` (321 linhas) — insere fatura real como teste (#307 ALTA)
+- `validate-monthly-subscriptions/index.ts` (355 linhas) — FK join (#311)
+- `check-overdue-invoices/index.ts` (152 linhas) — deduplicação quebrada (#308 ALTA), TOCTOU (#310)
+- `setup-billing-automation/index.ts` (69 linhas) — ANON_KEY inline (#315)
+- `send-password-reset`, `send-student-invitation`, `resend-student-invitation` — sem rate limiting (#313), `.single()` (#314)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#300 (ALTA)**: `automated-billing` — Usa FK join syntax (`profiles!teacher_id`, `profiles!student_id`, `classes!inner`, `subscription_plans!inner`) em 4 locais. Viola constraint documentada de queries sequenciais. Risco de falha silenciosa por schema cache do Deno.
+1. **#307 (ALTA)**: `validate-payment-routing` — INSERE fatura REAL de R$1,00 no banco como "teste" (L245-263). Se deleção falhar → faturas fantasma processadas pelo billing automation.
 
-2. **#301 (ALTA)**: `materialize-virtual-class` — NÃO herda `is_paid_class` do template na inserção (L252-263). Campo default é `true`, então aulas de reposição/gratuitas se tornam cobradas após materialização.
-
-3. **#303 (ALTA)**: `automated-billing` — Sem guarda de idempotência para faturamento de mensalidade. Se cron executa 2x no mesmo dia, cria faturas duplicadas. O valor base da mensalidade é SEMPRE adicionado sem verificar se já existe fatura `monthly_subscription` para o ciclo atual.
+2. **#308 (ALTA)**: `check-overdue-invoices` — Deduplicação COMPLETAMENTE QUEBRADA. Verifica duplicatas em `class_notifications.class_id` com IDs de fatura (FK violation), e nenhuma função insere o registro de dedup. Resultado: **spam massivo** a cada execução do cron.
 
 ### Achados Médios
 
-4. **#302 (MÉDIA)**: `request-class` — Não define `is_paid_class` na criação da aula (L135-146). Default `true` pode gerar cobranças indesejadas no modelo prepaid. Confirma memória #138.
-
-5. **#304 (MÉDIA)**: `automated-billing` — Invoca `create-payment-intent-connect` (L522-529) sem auth header. Função destino espera JWT de usuário para validação (#175). Funciona por service_role implícito mas é inconsistente.
-
-6. **#305 (MÉDIA)**: `end-recurrence` — L50 usa `.single()` para template. L67-73 deleta classes sem limpar `class_participants` e `class_exceptions` primeiro. FK RESTRICT pode causar falha de delete. Confirma #181.
+3. **#309**: `send-class-reminders` L36 — FK join `class_services(name)`.
+4. **#310**: `check-overdue-invoices` — TOCTOU race condition no UPDATE sem guard clause.
+5. **#311**: `validate-monthly-subscriptions` L230 — FK join `monthly_subscriptions!inner`.
+6. **#312**: `send-boleto-subscription-notification` — SES direto sem shared helper.
 
 ### Achados Baixos
 
-7. **#306 (BAIXA)**: `manage-class-exception` (L47) e `manage-future-class-exceptions` (L53) usam `.single()` para profile lookup. Menor risco pois profile do usuário autenticado deveria sempre existir.
+7. **#313**: `send-password-reset`/`send-student-invitation` — sem rate limiting.
+8. **#314**: `resend-student-invitation` — 3× `.single()`.
+9. **#315**: `setup-billing-automation` — ANON_KEY inline no cron SQL.
 
-### Totais Atualizados (v5.47)
-- 306 pontas soltas totais
+### Totais Atualizados (v5.48)
+- 315 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 10 confirmações
-- 276 únicas
+- 285 únicas
 - 10 implementadas + 2 confirmações de memória
-- **264 pendentes**
-- Fase 0: **41 itens** (+3: #300, #301, #303)
-- **100% cobertura**: 75 funções auditadas (10 passagens completas)
+- **273 pendentes**
+- Fase 0: **43 itens** (+2: #307, #308)
+- **100% cobertura**: 75 funções auditadas (11 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (41 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições) e utilitários (~15 substituições). Os 3 novos achados críticos afetam diretamente a integridade financeira: materialização de aulas gratuitas como pagas (#301), faturas mensais duplicadas (#303), e instabilidade em produção por FK joins (#300).
+Prioridade de execução: Fase 0 (43 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~35 substituições). Os 2 novos achados críticos afetam diretamente a experiência do usuário final: faturas de teste fantasma (#307) e spam massivo de notificações de vencimento (#308).

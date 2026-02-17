@@ -1,7 +1,7 @@
 # Plano de Cobrança Híbrida — v5.65 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 162 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 148 itens listados (141 únicos, 7 duplicatas marcadas)
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
@@ -283,7 +283,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 | Fase | Descrição | Pontas Soltas | Status |
 |------|-----------|---------------|--------|
-| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **162 itens — ver seção consolidada abaixo** | 🔴 Pendente |
+| **0** | **Batch Crítico: segurança, race conditions, reconciliação, status** | **148 listados / 141 únicos — ver seção consolidada abaixo** | 🔴 Pendente |
 | 1 | Migração SQL: `charge_timing` + `is_paid_class` | — | ✅ Concluída |
 | 2 | Settings/BillingSettings: card charge_timing + card informativo | #3.2, #22, M4, M37 | Pendente |
 | 3 | ClassForm: campo `is_paid_class` + bloqueio recorrência + request-class | #2.3, #138, M1, M8 | Pendente |
@@ -297,7 +297,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 ---
 
-## Fase 0 — Batch Crítico (162 itens consolidados)
+## Fase 0 — Batch Crítico (148 itens listados, 141 únicos)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas. Organizados por categoria para facilitar a implementação em batch. Cada item referencia sua descrição detalhada na seção da passagem correspondente.
 
@@ -323,12 +323,14 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #508 | send-class-confirmation-notification | ALTA | Sem auth | 25ª |
 | #509 | send-invoice-notification | ALTA | Sem auth | 25ª |
 | #525 | send-boleto-subscription-notification | ALTA | Sem auth | 26ª |
-| #564 | handle-teacher-subscription-cancellation | CRÍTICA | Sem JWT — cancela/refund qualquer professor | 28ª |
+| #564 | handle-teacher-subscription-cancellation | CRÍTICA | Sem JWT — cancela/refund qualquer professor (confirmado por #350) | 28ª |
 | #572 | stripe-events-monitor | CRÍTICA | Sem auth — expõe metadata Stripe | 28ª |
 | #573 | validate-business-profile-deletion | CRÍTICA | Sem auth — enumera dados financeiros | 28ª |
 | #574 | refresh-stripe-connect-account | ALTA | IDOR — atualiza payment_accounts sem filtro teacher_id | 28ª |
 | #576 | send-class-report-notification | ALTA | Sem auth (10ª função de notificação) | 28ª |
 | #358 | resend-confirmation | MÉDIA | Sem auth — spam de emails de confirmação | 14ª |
+| #290 | process-cancellation | ALTA | Identity spoofing via cancelled_by do body | 9ª |
+| #402 | check-email-availability | ALTA | Sem auth + enumeração de emails | 19ª |
 
 ### Categoria B: Status Mismatch pt-BR (~8 itens)
 
@@ -339,9 +341,11 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #203 | webhook-stripe-connect | ALTA | 'paid' e 'overdue' em 4 handlers | 5ª |
 | #209 | check-overdue-invoices | ALTA | 'overdue' vs 'vencida' | 5ª |
 | #262 | cancel-payment-intent | ALTA | Extensão de #199 | 8ª |
-| #546 | webhook-stripe-connect | CATASTRÓFICA | Status 'paid' em handler principal | 27ª |
+| #546 | webhook-stripe-connect | CATASTRÓFICA | Status 'paid' em handler principal (confirmado por #169) | 27ª |
 | #547 | webhook-stripe-connect | CATASTRÓFICA | Status 'overdue' | 27ª |
-| #555 | check-overdue-invoices | CATASTRÓFICA | Status 'overdue' sistêmico | 27ª |
+| #555 | check-overdue-invoices | CATASTRÓFICA | Status 'overdue' sistêmico (confirmado por #209) | 27ª |
+| #329 | webhook-stripe-connect | ALTA | TODOS handlers de sucesso escrevem 'paid' — locais adicionais | 13ª |
+| #334 | cancel-payment-intent | ALTA | Confirmação manual escreve 'paid' | 13ª |
 
 ### Categoria C: Guard Clauses / Race Conditions (~12 itens)
 
@@ -358,6 +362,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #557 | check-overdue-invoices | CRÍTICA | Guard clause ausente | 27ª |
 | #216 | create-subscription-checkout | ALTA | Cancela assinatura ANTES do checkout | 6ª |
 | #566 | handle-teacher-subscription-cancellation | ALTA | Guard clause ausente — sobrescreve faturas pagas | 28ª |
+| #296 | create-subscription-checkout | ALTA | Cancela assinatura ANTES do checkout completar | 9ª |
 
 ### Categoria D: Webhook Resilience / HTTP 500 (~10 itens)
 
@@ -371,6 +376,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #76 | automated-billing | MÉDIA | HTTP 500 no catch | 4ª |
 | #72 | create-invoice | MÉDIA | HTTP 500 no catch | 4ª |
 | #83 | process-cancellation | MÉDIA | HTTP 500 no catch | 4ª |
+| #294 | webhook-stripe-subscriptions | ALTA | HTTP 400 para "user not found" causa retry storm | 9ª |
 
 ### Categoria E: FK Joins proibidos no Deno (~15 itens)
 
@@ -391,6 +397,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #120 | send-class-reminders | MÉDIA | FK joins em classes/participants | 5ª |
 | #121 | generate-boleto-for-invoice | ALTA | FK joins + sem auth | 5ª |
 | #347 | send-class-reminders | ALTA | FK join + .single() em loop — batch crash | 15ª |
+| #405 | get-teacher-availability | ALTA | FK join proibido `classes!inner` | 19ª |
 
 ### Categoria F: .single() críticos em loops/batch (~20 itens)
 
@@ -416,6 +423,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #268 | send-class-reminders | MÉDIA | .single() em relationship | 7ª |
 | #271 | send-cancellation-notification | MÉDIA | 4× .single() em dependentes | 7ª |
 | #272 | send-class-report-notification | MÉDIA | 5× .single() | 7ª |
+| #297 | webhook-stripe-connect | ALTA | .single() em invoice lookups causa retry storm | 9ª |
 
 ### Categoria G: Audit Logs schema mismatch (~4 itens)
 
@@ -435,9 +443,9 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #390 | smart-delete-student | ALTA | Cascade incompleta — delete path | 18ª |
 | #580 | archive-old-data | ALTA | student_id fantasma — coluna inexistente em classes | 28ª |
 | #581 | archive-old-data | ALTA | FK cascade failure — class_exceptions/invoice_classes | 28ª |
-| #397 | archive-old-data | ALTA | Coluna student_id inexistente confirmada | 18ª |
-| #398 | archive-old-data | ALTA | Cascade incompleta confirmada | 18ª |
-| #181 | end-recurrence | ALTA | Sem cleanup de FKs | 4ª |
+| #397 | archive-old-data | ALTA | Coluna student_id inexistente (confirmado por #580) | 18ª |
+| #398 | archive-old-data | ALTA | Cascade incompleta (confirmado por #581) | 18ª |
+| #181 | end-recurrence | ALTA | Sem cleanup de FKs (confirmado por #365) | 4ª |
 
 ### Categoria I: Data Corruption (~6 itens)
 
@@ -449,6 +457,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #364 | automated-billing | ALTA | Faturas mensais duplicadas sem idempotência | 16ª |
 | #259 | validate-payment-routing | MÉDIA | Cria fatura real como teste | 7ª |
 | #74 | webhook-stripe-connect | MÉDIA | invoice.payment_succeeded sobrescreve payment_method | 4ª |
+| #493 | process-payment-failure-downgrade | ALTA | Parâmetros errados para smart-delete-student | 24ª |
 
 ### Categoria J: Integridade de dados (~8 itens)
 
@@ -473,6 +482,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #318 | setup-invoice-auto-verification | MÉDIA | ANON_KEY inline | 11ª |
 | #319 | setup-orphan-charges-automation | MÉDIA | ANON_KEY inline | 11ª |
 | #328 | Todos os setup functions | MÉDIA | Padrão sistêmico confirmado | 12ª |
+| #495 | setup-class-reminders-automation | ALTA | exec_sql com SQL injection | 24ª |
 
 ### Categoria L: Outros itens Fase 0 (~20 itens)
 
@@ -488,7 +498,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #122 | cancel-payment-intent | MÉDIA | Não verifica status PI antes de cancelar | 5ª |
 | #146 | create-business-profile | MÉDIA | Sem verificação de duplicatas — contas Stripe órfãs | 5ª |
 | #94 | automated-billing | CRÍTICA | Mensalidade não gera pagamento Stripe | 5ª |
-| #80 | process-cancellation | ALTA | SERVICE_ROLE_KEY como Bearer | 4ª |
+| #80 | process-cancellation | ALTA | SERVICE_ROLE_KEY como Bearer (confirmado por #563) | 4ª |
 | #110 | handle-teacher-subscription-cancellation | ALTA | RESEND_API_KEY condicional | 5ª |
 | #116 | check-subscription-status | MÉDIA | FK join em checkNeedsStudentSelection | 5ª |
 | #111 | process-expired-subscriptions | MÉDIA | FK joins | 5ª |
@@ -499,7 +509,7 @@ Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vu
 | #391 | create-student | MÉDIA | .single() em plan lookup | 18ª |
 | #394 | process-expired-subscriptions | MÉDIA | .single() em free plan | 18ª |
 
-**Nota**: Alguns itens podem aparecer em mais de uma categoria por afetar múltiplos padrões. A contagem total de 162 considera itens únicos. As tabelas acima (categorias A-L) consolidam todos os 162 itens da Fase 0. Para descrições detalhadas de cada item, consultar a seção de passagem correspondente.
+**Nota**: As tabelas acima (categorias A-L) consolidam **148 itens listados** da Fase 0. Destes, **7 são duplicatas** marcadas com "(confirmado por #XXX)" para rastreabilidade, resultando em **141 itens únicos**. Itens duplicados: #564↔#350 (Cat A), #546↔#169 (Cat B), #555↔#209 (Cat B), #181↔#365 (Cat H), #397↔#580 (Cat H), #398↔#581 (Cat H), #80↔#563 (Cat L). Para descrições detalhadas de cada item, consultar a seção de passagem correspondente.
 
 ---
 
@@ -5189,7 +5199,7 @@ Pontas Soltas Totais:       577
   Confirmações de memória:    2
   Pendentes:               535
 
-Fase 0 (Crítico):          162 itens
+Fase 0 (Crítico):          148 listados / 141 únicos
 Melhorias:                  52
 Cobertura:                 100% (75 funções, 28 passagens)
 ```

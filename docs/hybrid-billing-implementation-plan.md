@@ -4176,17 +4176,71 @@ Funções auditadas nesta rodada (11ª passagem — análise cruzada profunda):
 
 9. **#315 (BAIXA)**: `setup-billing-automation` L31 — Expõe `SUPABASE_ANON_KEY` inline no comando SQL do cron job.
 
-### Totais Atualizados (v5.48)
-- 315 pontas soltas totais
+### Totais Atualizados (v5.49)
+- 328 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 10 confirmações
-- 285 únicas
+- 298 únicas
 - 10 implementadas + 2 confirmações de memória
-- **273 pendentes**
-- Fase 0: **43 itens** (+2: #307, #308)
-- **100% cobertura**: 75 funções auditadas (11 passagens completas)
+- **286 pendentes**
+- Fase 0: **46 itens** (+3: #316, #317, #318)
+- **100% cobertura**: 75 funções auditadas (12 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (43 itens críticos). Os 2 novos achados críticos afetam diretamente a experiência do usuário: faturas de teste fantasma (#307) e spam massivo de notificações de vencimento (#308). O batch fix de `.single()` sistêmico permanece como segunda prioridade (~35 substituições).
+Prioridade de execução: Fase 0 (46 itens críticos). Os 3 novos achados críticos: status em inglês no inbox do professor (#316), coluna inexistente no archiver (#317), e cascade de deleção incompleta no archiver (#318). A 12ª passagem revelou padrão sistêmico de funções de automação/cron sem autenticação (#322-#324) e ANON_KEY inline sistêmico em 4 funções setup (#328).
+
+---
+
+## 12ª Passagem (Análise Cruzada Profunda — Automação, Archiver, Monitoring e Setup)
+
+Funções auditadas nesta rodada (12ª passagem — análise cruzada profunda):
+- `auto-verify-pending-invoices/index.ts` (162 linhas) — sem auth (#324), sem TOCTOU guard (#319)
+- `check-pending-boletos/index.ts` (239 linhas) — FK join (#320), `.single()` (#320)
+- `archive-old-data/index.ts` (330 linhas) — coluna inexistente (#317), FK joins (#321), cascade incompleta (#318)
+- `dev-seed-test-data/index.ts` (300 linhas) — FK join (#326), 5× `.single()` (#326)
+- `stripe-events-monitor/index.ts` (124 linhas) — sem autenticação (#322)
+- `check-email-availability/index.ts` (74 linhas) — sem autenticação, enumeração (#323)
+- `generate-teacher-notifications/index.ts` (351 linhas) — status inglês 'overdue' (#316)
+- `security-rls-audit/index.ts` (379 linhas) — `.single()` (#327)
+- `list-subscription-invoices/index.ts` (120 linhas) — OK
+- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()` (#327)
+- `check-stripe-account-status/index.ts` (156 linhas) — `.single()` (#327)
+- `check-email-confirmation/index.ts` (139 linhas) — OK (bem implementada)
+- `setup-invoice-auto-verification/index.ts` (89 linhas) — ANON_KEY inline (#328)
+- `setup-class-reminders-automation/index.ts` (102 linhas) — ANON_KEY inline (#328)
+- `setup-expired-subscriptions-automation/index.ts` (70 linhas) — ANON_KEY inline (#328), parâmetros RPC errados (#325)
+- `setup-orphan-charges-automation/index.ts` (109 linhas) — ANON_KEY inline (#328)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#316 (ALTA)**: `generate-teacher-notifications` L187 — Busca faturas com `status: 'overdue'` (inglês), mas o sistema usa `'vencida'` (português). Faturas vencidas **NUNCA** aparecem na inbox do professor na categoria `overdue_invoices`. Cross-referência com #287.
+
+2. **#317 (ALTA)**: `archive-old-data` L130 — SELECT inclui `student_id` na query de `classes`, mas a tabela `classes` **NÃO TEM** coluna `student_id`. A query retorna `null` para este campo, corrompendo silenciosamente os dados nos arquivos JSON do Storage.
+
+3. **#318 (ALTA)**: `archive-old-data` L251-284 — Cascade de deleção incompleta. Deleta apenas `class_reports`, `class_participants` e `classes`, mas ignora: `class_exceptions`, `class_notifications`, `invoice_classes`, `class_report_feedbacks`, `class_report_photos`. Constraints FK RESTRICT causam **falha total** da deleção, deixando arquivos JSON órfãos no Storage sem os dados correspondentes serem removidos do banco.
+
+### Achados Moderados
+
+4. **#319 (MÉDIA)**: `auto-verify-pending-invoices` L91-98 — UPDATE de status sem TOCTOU guard clause (`.eq('status', 'pendente')`). Pode sobrescrever confirmações manuais do professor (`payment_origin: 'manual'`).
+
+5. **#320 (MÉDIA)**: `check-pending-boletos` L37-42 — FK join `subscription_plans (name)`. L122 — `.single()` para busca do plano gratuito (crash se plano não existir).
+
+6. **#321 (MÉDIA)**: `archive-old-data` L127-162 — FK join syntax `class_participants(...)`, `class_reports(...)`. Viola constraint de queries sequenciais.
+
+7. **#322 (MÉDIA)**: `stripe-events-monitor` — Sem autenticação. Qualquer chamador pode consultar **todos** os eventos Stripe processados, incluindo dados financeiros sensíveis (valores, IDs de pagamento, status).
+
+8. **#323 (MÉDIA)**: `check-email-availability` — Sem autenticação. Permite **enumeração de emails** de todos os usuários registrados. Vetor de ataque para phishing/credential stuffing.
+
+9. **#324 (MÉDIA)**: `auto-verify-pending-invoices` — Sem autenticação. Pode ser acionada por qualquer chamador, disparando chamadas à API do Stripe e atualizações no banco de dados.
+
+10. **#325 (MÉDIA)**: `setup-expired-subscriptions-automation` L24 — Usa nomes de parâmetros **errados** para `cron_schedule` RPC (`job_name`/`schedule`/`command` em vez de `p_jobname`/`p_schedule`/`p_command`). O cron job **nunca é criado**.
+
+### Achados Baixos
+
+11. **#326 (BAIXA)**: `dev-seed-test-data` L251 — FK join `profiles!inner(name, email)`. 5× `.single()` (L71, L102, L132, L148, L179).
+
+12. **#327 (BAIXA)**: `.single()` sistêmico: `security-rls-audit` L51, `refresh-stripe-connect-account` L66, `check-stripe-account-status` L59.
+
+13. **#328 (BAIXA)**: Expansão sistêmica de #315 — Todas as 4 funções `setup-*` (`setup-invoice-auto-verification`, `setup-class-reminders-automation`, `setup-expired-subscriptions-automation`, `setup-orphan-charges-automation`) expõem `SUPABASE_ANON_KEY` inline no SQL de cron jobs.
 
 ---
 
@@ -4222,6 +4276,7 @@ Prioridade de execução: Fase 0 (43 itens críticos). Os 2 novos achados críti
 | v5.46 | 2026-02-17 | **9ª passagem: análise cruzada profunda — webhooks, pagamentos, cancelamento e checkout**. +13 pontas soltas (#287-#299). 7 itens adicionados à Fase 0 (38 itens). Totais: **299 pontas soltas**, **269 únicas**, **257 pendentes**. |
 | v5.47 | 2026-02-17 | **10ª passagem: análise cruzada — billing automation, materialização, recorrência e exceções**. +7 pontas soltas (#300-#306). 3 itens adicionados à Fase 0 (41 itens). Totais: **306 pontas soltas**, **276 únicas**, **264 pendentes**. |
 | v5.48 | 2026-02-17 | **11ª passagem: análise cruzada profunda — notificações, deduplicação e setup**. +9 pontas soltas (#307-#315). 2 itens adicionados à Fase 0 (43 itens). Totais: **315 pontas soltas**, **285 únicas**, **273 pendentes**. |
+| v5.49 | 2026-02-17 | **12ª passagem: análise cruzada profunda — automação, archiver, monitoring e setup**. +13 pontas soltas (#316-#328). 3 itens adicionados à Fase 0 (46 itens). Totais: **328 pontas soltas**, **298 únicas**, **286 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 
@@ -4240,3 +4295,5 @@ Após implementação, atualizar:
 12. `features/monthly-subscriptions/billing-logic` — deve documentar processamento de cancelamentos com cobrança dentro da mensalidade (#68/M26)
 13. `constraints/error-handling-user-friendly-messages` — deve listar create-invoice (#72), automated-billing (#76) e webhook-stripe-connect (#77) como exemplos de correção
 14. `infrastructure/stripe-webhook-error-handling` — NOVA: documentar padrão de retorno HTTP 200 para falhas de update vs 500 para falhas de validação (#77/M29)
+15. `infrastructure/cron-automation-security` — NOVA: documentar padrão de funções de automação sem auth (#322-#324) e ANON_KEY inline sistêmico (#315, #328)
+16. `infrastructure/archive-data-integrity` — NOVA: documentar coluna inexistente `student_id` em `classes` (#317) e cascade de deleção incompleta (#318)

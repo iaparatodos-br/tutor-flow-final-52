@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.48 (Consolidado)
+# Plano de Cobrança Híbrida — v5.50 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 43 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 50 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.48 consolida todas as auditorias com 11 passagens completas. Totais finais: **315 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **285 únicas**, **273 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 11ª passagem — análise cruzada profunda de notificações, deduplicação e setup). A 11ª passagem revelou 9 novas pontas soltas (#307-#315): `validate-payment-routing` insere faturas reais como teste (#307 ALTA), `check-overdue-invoices` tem deduplicação completamente quebrada por uso de `class_notifications` com IDs de fatura (#308 ALTA), `send-class-reminders` usa FK join proibido (#309), `check-overdue-invoices` sofre de TOCTOU race condition (#310), `validate-monthly-subscriptions` usa FK join proibido (#311), `send-boleto-subscription-notification` duplica SES client (#312), funções de notificação sem rate limiting (#313), `.single()` sistêmico em `resend-student-invitation` (#314), e `setup-billing-automation` expõe ANON_KEY inline (#315).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.50 consolida todas as auditorias com 13 passagens completas. Totais finais: **338 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **308 únicas**, **296 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 13ª passagem — análise cruzada profunda do lifecycle completo de faturamento). A 13ª passagem revelou 10 novas pontas soltas (#329-#338): `webhook-stripe-connect` usa `'paid'` (inglês) em TODOS os handlers de sucesso — pagamentos ficam invisíveis (#329 ALTA), `webhook-stripe-connect` usa `'overdue'` em vez de `'vencida'` (#330 ALTA), `cancel-payment-intent` usa `'paid'` em confirmação manual (#334 ALTA), `process-cancellation` invoca `create-invoice` com SERVICE_ROLE_KEY como Bearer — faturas de cancelamento NUNCA são criadas (#337 ALTA), FK joins proibidos em `create-invoice` (#331) e `create-payment-intent-connect` (#332), `.single()` sistêmico em `send-invoice-notification` (#335) e `process-cancellation` (#336), e handlers de falha sem status guard no webhook (#338).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4176,17 +4176,17 @@ Funções auditadas nesta rodada (11ª passagem — análise cruzada profunda):
 
 9. **#315 (BAIXA)**: `setup-billing-automation` L31 — Expõe `SUPABASE_ANON_KEY` inline no comando SQL do cron job.
 
-### Totais Atualizados (v5.49)
-- 328 pontas soltas totais
+### Totais Atualizados (v5.50)
+- 338 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 10 confirmações
-- 298 únicas
+- 308 únicas
 - 10 implementadas + 2 confirmações de memória
-- **286 pendentes**
-- Fase 0: **46 itens** (+3: #316, #317, #318)
-- **100% cobertura**: 75 funções auditadas (12 passagens completas)
+- **296 pendentes**
+- Fase 0: **50 itens** (+4: #329, #330, #334, #337)
+- **100% cobertura**: 75 funções auditadas (13 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (46 itens críticos). Os 3 novos achados críticos: status em inglês no inbox do professor (#316), coluna inexistente no archiver (#317), e cascade de deleção incompleta no archiver (#318). A 12ª passagem revelou padrão sistêmico de funções de automação/cron sem autenticação (#322-#324) e ANON_KEY inline sistêmico em 4 funções setup (#328).
+Prioridade de execução: Fase 0 (50 itens críticos). Os 4 novos achados críticos da 13ª passagem: `webhook-stripe-connect` usa `'paid'` em vez de `'paga'` em TODOS os handlers de sucesso — pagamentos confirmados pelo Stripe ficam INVISÍVEIS no dashboard (#329); `webhook-stripe-connect` usa `'overdue'` em vez de `'vencida'` (#330); `cancel-payment-intent` usa `'paid'` em confirmação manual (#334); e `process-cancellation` invoca `create-invoice` com `SERVICE_ROLE_KEY` como Bearer, mas `create-invoice` rejeita por não ser JWT de usuário — todas as faturas de cancelamento falham silenciosamente (#337).
 
 ---
 
@@ -4244,6 +4244,46 @@ Funções auditadas nesta rodada (12ª passagem — análise cruzada profunda):
 
 ---
 
+## 13ª Passagem: Análise Cruzada Profunda — Webhook Connect, Lifecycle de Pagamento e Cancelamento
+
+Funções auditadas nesta rodada (13ª passagem — análise cruzada profunda do lifecycle completo de faturamento):
+- `webhook-stripe-connect/index.ts` (560 linhas) — status 'paid' inglês em 3 handlers (#329 ALTA), status 'overdue' inglês (#330 ALTA), `.single()` em 3 lookups (#333), sem status guard em failure handlers (#338)
+- `create-invoice/index.ts` (575 linhas) — FK join proibido L148 (#331 confirma #25), FK join L228-241 (#331)
+- `create-payment-intent-connect/index.ts` (659 linhas) — FK join proibido L37-49 com 3 FK joins aninhados (#332), `.single()` L51 (#332)
+- `cancel-payment-intent/index.ts` (250 linhas) — status 'paid' inglês L113, L172 (#334 ALTA)
+- `process-cancellation/index.ts` (500 linhas) — `.single()` L107 (#336), auth incompatível com create-invoice (#337 ALTA)
+- `verify-payment-status/index.ts` (124 linhas) — `.single()` L40, sem IDOR protection (#339 confirma #195)
+- `change-payment-method/index.ts` (253 linhas) — bug .eq() duplicado L85 (#340 confirma #196)
+- `send-invoice-notification/index.ts` (465 linhas) — `.single()` L57, L69, L99 (#335)
+- `automated-billing/index.ts` (1057 linhas) — FK join L71-89 (#342 confirma #300), FK join L1034 (#343), sem idempotência mensal (confirma #303)
+- `handle-student-overage/index.ts` (238 linhas) — `.single()` L79, tabela inexistente L132 (confirma memória)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#329 (ALTA — IMPACTO MASSIVO)**: `webhook-stripe-connect` — **TODOS** os handlers de pagamento bem-sucedido (`invoice.paid` L320, `invoice.payment_succeeded` L358, `payment_intent.succeeded` L469) atualizam o status da fatura para `'paid'` (inglês). O sistema inteiro (dashboard financeiro, faturas, filtros, cron jobs) usa `'paga'` (português). **Consequência**: NENHUM pagamento confirmado pelo Stripe é visível no dashboard do professor ou do aluno. As faturas permanecem como "pendente" visualmente, gerando confusão e potencialmente cobranças duplicadas.
+
+2. **#330 (ALTA)**: `webhook-stripe-connect` L404 — Handler `invoice.marked_uncollectible` atualiza status para `'overdue'` (inglês) em vez de `'vencida'` (português). Cross-referência com #316 e #287.
+
+3. **#334 (ALTA)**: `cancel-payment-intent` L113 e L172 — Confirmação de pagamento manual atualiza status para `'paid'` em vez de `'paga'`. Pagamentos confirmados manualmente pelo professor ficam invisíveis no dashboard.
+
+4. **#337 (ALTA — FUNCIONALIDADE QUEBRADA)**: `process-cancellation` L450-457 — Invoca `create-invoice` passando `SUPABASE_SERVICE_ROLE_KEY` como Bearer token. Porém, `create-invoice` L44-46 usa `auth.getUser(token)` que **rejeita** tokens de service_role (não são JWTs de usuário). **Consequência**: TODAS as faturas de cancelamento com cobrança de multa falham silenciosamente. Professores nunca recebem a taxa de cancelamento.
+
+### Achados Moderados
+
+5. **#331 (MÉDIA → confirma #25/#291)**: `create-invoice` — FK join proibido em L148 (`business_profile:business_profiles!...`) e L228-241 (`classes!inner`, `class_services`). Viola constraint de queries sequenciais.
+
+6. **#332 (MÉDIA)**: `create-payment-intent-connect` L37-49 — 3 FK joins aninhados (`student:profiles!...`, `teacher:profiles!...`, `business_profile:business_profiles!...`) + `.single()` L51. Viola constraint e crash se fatura não existir.
+
+7. **#333 (MÉDIA → extensão #297)**: `webhook-stripe-connect` — `.single()` confirmado em lookups de fatura por `stripe_invoice_id` (L310, L346) e `stripe_payment_intent_id` (L457). Se a fatura não existir no DB (evento órfão), retorna 500 → retry storm.
+
+8. **#335 (MÉDIA)**: `send-invoice-notification` — 3× `.single()` em lookups críticos: invoice (L57), student profile (L69), teacher profile (L99). Se qualquer registro estiver ausente, a função inteira falha, impedindo notificação de TODAS as faturas subsequentes no batch.
+
+9. **#336 (MÉDIA)**: `process-cancellation` L107 — Usa `.single()` para buscar dependente. Se o dependente não existir, crash completo do cancelamento.
+
+10. **#338 (MÉDIA)**: `webhook-stripe-connect` — Handlers de falha `invoice.payment_failed` (L380-386) e `payment_intent.payment_failed` (L514-521) atualizam status para `'falha_pagamento'` **SEM** status guard clause. Se o pagamento já foi confirmado manualmente (`payment_origin: 'manual'`, status: 'paga'), um evento de falha atrasado do Stripe sobrescreve o status 'paga', revertendo a confirmação do professor.
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4277,6 +4317,7 @@ Funções auditadas nesta rodada (12ª passagem — análise cruzada profunda):
 | v5.47 | 2026-02-17 | **10ª passagem: análise cruzada — billing automation, materialização, recorrência e exceções**. +7 pontas soltas (#300-#306). 3 itens adicionados à Fase 0 (41 itens). Totais: **306 pontas soltas**, **276 únicas**, **264 pendentes**. |
 | v5.48 | 2026-02-17 | **11ª passagem: análise cruzada profunda — notificações, deduplicação e setup**. +9 pontas soltas (#307-#315). 2 itens adicionados à Fase 0 (43 itens). Totais: **315 pontas soltas**, **285 únicas**, **273 pendentes**. |
 | v5.49 | 2026-02-17 | **12ª passagem: análise cruzada profunda — automação, archiver, monitoring e setup**. +13 pontas soltas (#316-#328). 3 itens adicionados à Fase 0 (46 itens). Totais: **328 pontas soltas**, **298 únicas**, **286 pendentes**. |
+| v5.50 | 2026-02-17 | **13ª passagem: análise cruzada profunda — webhook-connect, create-invoice, payment-intent, cancellation e billing lifecycle**. +10 pontas soltas (#329-#338). 4 itens adicionados à Fase 0 (50 itens). Totais: **338 pontas soltas**, **308 únicas**, **296 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

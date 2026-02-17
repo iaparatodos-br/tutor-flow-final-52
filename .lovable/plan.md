@@ -1,64 +1,53 @@
 
 
 
-# Verificação Final v5.49 — 13 Novas Pontas Soltas (12ª Passagem: Análise Cruzada Profunda — Automação, Archiver, Monitoring e Setup)
+# Verificação Final v5.50 — 10 Novas Pontas Soltas (13ª Passagem: Análise Cruzada Profunda — Webhook Connect, Lifecycle de Pagamento e Cancelamento)
 
-## Veredicto: Plano atualizado para v5.49 com 3 achados CRÍTICOS — status inglês no inbox do professor (#316), coluna inexistente no archiver (#317), e cascade de deleção incompleta (#318).
+## Veredicto: Plano atualizado para v5.50 com 4 achados CRÍTICOS — status 'paid' inglês no webhook tornando pagamentos INVISÍVEIS (#329), status 'overdue' inglês no webhook (#330), confirmação manual 'paid' no cancel-payment-intent (#334), e auth incompatível process-cancellation→create-invoice quebrando TODAS as faturas de cancelamento (#337).
 
 ---
 
-## Auditoria de 12ª Passagem (Análise Cruzada Profunda — Automação, Archiver, Monitoring e Setup)
+## Auditoria de 13ª Passagem (Análise Cruzada Profunda — Webhook Connect, Lifecycle de Pagamento e Cancelamento)
 
-Funções auditadas nesta rodada (12ª passagem — análise cruzada profunda):
-- `auto-verify-pending-invoices/index.ts` (162 linhas) — sem auth (#324), sem TOCTOU guard (#319)
-- `check-pending-boletos/index.ts` (239 linhas) — FK join (#320), `.single()` (#320)
-- `archive-old-data/index.ts` (330 linhas) — coluna inexistente (#317 ALTA), FK joins (#321), cascade incompleta (#318 ALTA)
-- `dev-seed-test-data/index.ts` (300 linhas) — FK join (#326), 5× `.single()` (#326)
-- `stripe-events-monitor/index.ts` (124 linhas) — sem autenticação (#322)
-- `check-email-availability/index.ts` (74 linhas) — sem autenticação, enumeração (#323)
-- `generate-teacher-notifications/index.ts` (351 linhas) — status inglês 'overdue' (#316 ALTA)
-- `security-rls-audit/index.ts` (379 linhas) — `.single()` (#327)
-- `list-subscription-invoices/index.ts` (120 linhas) — OK
-- `refresh-stripe-connect-account/index.ts` (150 linhas) — `.single()` (#327)
-- `check-stripe-account-status/index.ts` (156 linhas) — `.single()` (#327)
-- `check-email-confirmation/index.ts` (139 linhas) — OK
-- `setup-invoice-auto-verification/index.ts` (89 linhas) — ANON_KEY inline (#328)
-- `setup-class-reminders-automation/index.ts` (102 linhas) — ANON_KEY inline (#328)
-- `setup-expired-subscriptions-automation/index.ts` (70 linhas) — ANON_KEY inline (#328), parâmetros RPC errados (#325)
-- `setup-orphan-charges-automation/index.ts` (109 linhas) — ANON_KEY inline (#328)
+Funções auditadas nesta rodada (13ª passagem — análise cruzada profunda):
+- `webhook-stripe-connect/index.ts` (560 linhas) — 'paid' inglês em 3 handlers (#329 ALTA), 'overdue' inglês (#330 ALTA), .single() em 3 lookups (#333), sem status guard (#338)
+- `create-invoice/index.ts` (575 linhas) — FK join proibido L148, L228 (#331)
+- `create-payment-intent-connect/index.ts` (659 linhas) — 3 FK joins + .single() (#332)
+- `cancel-payment-intent/index.ts` (250 linhas) — 'paid' inglês L113, L172 (#334 ALTA)
+- `process-cancellation/index.ts` (500 linhas) — .single() L107 (#336), SERVICE_ROLE_KEY como Bearer (#337 ALTA)
+- `verify-payment-status/index.ts` (124 linhas) — .single() + IDOR (confirma #195)
+- `change-payment-method/index.ts` (253 linhas) — bug .eq() duplicado (confirma #196)
+- `send-invoice-notification/index.ts` (465 linhas) — 3× .single() (#335)
+- `automated-billing/index.ts` (1057 linhas) — FK joins (confirma #300), sem idempotência mensal (confirma #303)
+- `handle-student-overage/index.ts` (238 linhas) — tabela inexistente (confirma memória)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#316 (ALTA)**: `generate-teacher-notifications` L187 — Busca faturas com `status: 'overdue'` (inglês), mas o sistema usa `'vencida'` (português). Faturas vencidas NUNCA aparecem na inbox do professor.
+1. **#329 (ALTA — IMPACTO MASSIVO)**: `webhook-stripe-connect` L320, L358, L469 — TODOS os handlers de pagamento bem-sucedido usam `status: 'paid'` (inglês). O sistema usa `'paga'`. NENHUM pagamento Stripe é visível no dashboard.
 
-2. **#317 (ALTA)**: `archive-old-data` L130 — SELECT inclui `student_id` na query de `classes`, mas a tabela `classes` NÃO TEM coluna `student_id`. Corrompe silenciosamente os arquivos JSON.
+2. **#330 (ALTA)**: `webhook-stripe-connect` L404 — `invoice.marked_uncollectible` usa `status: 'overdue'` em vez de `'vencida'`.
 
-3. **#318 (ALTA)**: `archive-old-data` L251-284 — Cascade de deleção incompleta: ignora `class_exceptions`, `class_notifications`, `invoice_classes`, `class_report_feedbacks`, `class_report_photos`. FK RESTRICT causa falha total da deleção.
+3. **#334 (ALTA)**: `cancel-payment-intent` L113, L172 — Confirmação manual usa `status: 'paid'` em vez de `'paga'`. Pagamentos manuais invisíveis.
+
+4. **#337 (ALTA — FUNCIONALIDADE QUEBRADA)**: `process-cancellation` L450-457 invoca `create-invoice` com `SERVICE_ROLE_KEY` como Bearer. `create-invoice` rejeita por não ser JWT de usuário. TODAS as faturas de cancelamento falham silenciosamente.
 
 ### Achados Médios
 
-4. **#319**: `auto-verify-pending-invoices` — sem TOCTOU guard no UPDATE.
-5. **#320**: `check-pending-boletos` — FK join + `.single()`.
-6. **#321**: `archive-old-data` — FK join syntax.
-7. **#322**: `stripe-events-monitor` — sem autenticação, exposição de dados financeiros.
-8. **#323**: `check-email-availability` — sem autenticação, enumeração de emails.
-9. **#324**: `auto-verify-pending-invoices` — sem autenticação.
-10. **#325**: `setup-expired-subscriptions-automation` — parâmetros RPC errados, cron nunca criado.
+5. **#331**: `create-invoice` — FK join proibido L148, L228-241.
+6. **#332**: `create-payment-intent-connect` — 3 FK joins aninhados + .single().
+7. **#333**: `webhook-stripe-connect` — .single() em lookups por stripe_invoice_id/payment_intent_id → retry storms.
+8. **#335**: `send-invoice-notification` — 3× .single() em lookups críticos.
+9. **#336**: `process-cancellation` — .single() L107 para dependente.
+10. **#338**: `webhook-stripe-connect` — handlers de falha sem status guard, podem reverter status 'paga'.
 
-### Achados Baixos
-
-11. **#326**: `dev-seed-test-data` — FK join + 5× `.single()`.
-12. **#327**: `.single()` sistêmico em `security-rls-audit`, `refresh-stripe-connect-account`, `check-stripe-account-status`.
-13. **#328**: ANON_KEY inline sistêmico em todas as 4 funções `setup-*`.
-
-### Totais Atualizados (v5.49)
-- 328 pontas soltas totais
+### Totais Atualizados (v5.50)
+- 338 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 10 confirmações
-- 298 únicas
+- 308 únicas
 - 10 implementadas + 2 confirmações de memória
-- **286 pendentes**
-- Fase 0: **46 itens** (+3: #316, #317, #318)
-- **100% cobertura**: 75 funções auditadas (12 passagens completas)
+- **296 pendentes**
+- Fase 0: **50 itens** (+4: #329, #330, #334, #337)
+- **100% cobertura**: 75 funções auditadas (13 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (46 itens críticos), seguido por batch fix de `.single()` (~40 substituições) e remoção de FK joins (~15 funções). Padrão sistêmico identificado: funções de automação/cron carecem de autenticação (#322-#324), e ANON_KEY é exposta inline em todas as funções setup (#315, #328).
+Prioridade de execução: Fase 0 (50 itens críticos), com destaque para o #329 (pagamentos invisíveis) e #337 (faturas de cancelamento quebradas) que têm impacto imediato em produção. O padrão de status em inglês vs português é sistêmico e afeta webhook-stripe-connect (#329, #330), cancel-payment-intent (#334), check-overdue-invoices (#278), e generate-teacher-notifications (#316).

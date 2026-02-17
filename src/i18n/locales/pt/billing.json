@@ -13,6 +13,16 @@
       "placeholder": "15"
     }
   },
+  "chargeTiming": {
+    "title": "Modelo de Cobrança",
+    "description": "Defina quando as aulas serão cobradas dos seus alunos.",
+    "prepaid": "Cobrar Antes",
+    "postpaid": "Cobrar Depois",
+    "prepaidDescription": "A fatura é gerada imediatamente ao agendar a aula. Aulas pagas não podem ser recorrentes. Em caso de cancelamento, não há reembolso automático.",
+    "postpaidDescription": "As aulas são acumuladas e cobradas no dia de fechamento do ciclo. Aulas podem ser recorrentes. Em caso de cancelamento tardio, uma taxa pode ser aplicada conforme sua política.",
+    "infoTitle": "Como funciona?",
+    "infoContent": "O modelo de cobrança define quando a fatura é gerada para aulas avulsas pagas. Aulas gratuitas ou de reposição não são afetadas. Mensalidades continuam sendo cobradas no ciclo normal independente do modelo escolhido."
+  },
   "paymentMethods": {
     "title": "Métodos de Pagamento",
     "description": "Selecione os métodos de pagamento que seus alunos podem usar. Os métodos serão aplicados na ordem de prioridade: Boleto → PIX → Cartão.",

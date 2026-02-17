@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.56 (Consolidado)
+# Plano de Cobrança Híbrida — v5.57 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 78 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 86 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.56 consolida todas as auditorias com 19 passagens completas. Totais finais: **415 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **385 únicas**, **373 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 19ª passagem — análise cruzada profunda: segurança, validação, diagnóstico, auditoria e Stripe Connect). A 19ª passagem revelou 16 novas pontas soltas (#400-#415): `validate-business-profile-deletion` sem auth JWT (#400 SEGURANÇA), `stripe-events-monitor` sem auth + exposição de dados de pagamento (#401 SEGURANÇA), `check-email-availability` sem auth + enumeração de usuários (#402 SEGURANÇA), `audit-logger` schema mismatch (#403), `handle-plan-downgrade-selection` audit_logs schema mismatch (#404), `get-teacher-availability` FK join proibido (#405), `security-rls-audit` RPC inexistente (#406), `check-business-profile-status` `.single()` (#410), `.single()` em múltiplas funções (#407/#408/#411/#412).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.57 consolida todas as auditorias com 20 passagens completas. Totais finais: **433 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **403 únicas**, **391 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 20ª passagem — análise cruzada profunda: geração de boleto, exceções de aula, materialização, request-class, auto-verificação, cron setup, lembretes e boletos pendentes). A 20ª passagem revelou 18 novas pontas soltas (#416-#433): `generate-boleto-for-invoice` sem auth JWT + FK join proibido (#416/#417 SEGURANÇA/CRÍTICO), `materialize-virtual-class` não herda `is_paid_class` (#418 CRÍTICO), `request-class` não define `is_paid_class` (#419 CRÍTICO), `auto-verify-pending-invoices` sem auth + sem guard clause (#420/#421 SEGURANÇA/CRÍTICO), `end-recurrence` cascade de deleção incompleta (#422 CRÍTICO), `check-pending-boletos` FK join (#423), `send-class-reminders` FK joins + `.single()` em loop (#424/#430), `setup-billing-automation` ANON_KEY inline (#425 SEGURANÇA), `.single()` em múltiplas funções (#427/#428/#429/#431), `auto-verify-pending-invoices` Stripe Connect key mismatch (#432), `materialize-virtual-class` persistSession (#433).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -297,7 +297,7 @@ Todos devem incluir `is_paid_class` no payload de inserção.
 
 ---
 
-## Fase 0 — Batch Crítico (21 itens)
+## Fase 0 — Batch Crítico (86 itens)
 
 Estes itens devem ser implementados ANTES de qualquer outra fase por conterem vulnerabilidades ativas.
 
@@ -4555,6 +4555,27 @@ Funções auditadas nesta rodada (19ª passagem):
 15. **#414**: `check-business-profile-status` L26-29 `supabaseClient` criado sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
 16. **#415**: `validate-payment-routing` L26 `supabase` criado sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
 
+### 20ª Passagem — Geração de Boleto, Exceções, Materialização, Request-Class, Auto-Verificação, Cron Setup, Lembretes
+
+1. **#416** (CRÍTICO - Segurança): `generate-boleto-for-invoice` **sem autenticação JWT**. Qualquer chamador anônimo pode gerar boletos para qualquer fatura por ID (IDOR). Permite ataque de enumeração e geração de cobranças indevidas.
+2. **#417** (CRÍTICO): `generate-boleto-for-invoice` L36-43 usa FK join proibido (`profiles!invoices_student_id_fkey(...)`, `profiles!invoices_teacher_id_fkey(...)`). Risco de falha silenciosa por cache de schema.
+3. **#418** (CRÍTICO - Integridade): `materialize-virtual-class` L252-263 **NÃO herda `is_paid_class`** do template. O campo reverte ao default `true`, causando cobranças indevidas para aulas de reposição/gratuitas materializadas.
+4. **#419** (CRÍTICO - Integridade): `request-class` L137-146 **NÃO define `is_paid_class`** explicitamente. Default `true` pode disparar faturamento prepaid indesejado quando professor confirma a solicitação.
+5. **#420** (CRÍTICO - Segurança): `auto-verify-pending-invoices` **sem autenticação JWT**. Qualquer chamador pode disparar verificação em massa e alterar status de faturas.
+6. **#421** (CRÍTICO - Integridade): `auto-verify-pending-invoices` L90-98 atualiza status **sem guard clause para estados terminais**. Fatura confirmada manualmente como `paga` pode ser revertida para `falha_pagamento` se o PI no Stripe estiver cancelado.
+7. **#422** (CRÍTICO - Integridade): `end-recurrence` L67-73 deleta aulas futuras **sem primeiro remover** `class_participants`, `class_exceptions` e `invoice_classes` dependentes. Causa falha total por FK RESTRICT.
+8. **#423** (ALTO): `check-pending-boletos` L37-41 usa FK join proibido (`subscription_plans (name)`). Risco de falha silenciosa.
+9. **#424** (ALTO): `send-class-reminders` L30-43 e L87-95 usam FK join proibido (`class_services (name)` e `profiles (...)`). Risco de falha silenciosa em loop de envio.
+10. **#425** (ALTO - Segurança): `setup-billing-automation` L31 expõe `SUPABASE_ANON_KEY` inline na definição SQL do cron job. Chave visível em logs de sistema e definições de banco.
+11. **#426** (MÉDIO): `end-recurrence` L20-22 `createClient` sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
+12. **#427** (MÉDIO): `end-recurrence` L50 usa `.single()` em busca de template. Crash se template não existir ou duplicata.
+13. **#428** (MÉDIO): `manage-class-exception` L47 usa `.single()` em profiles e L134 usa `.single()` em resultado de upsert.
+14. **#429** (MÉDIO): `manage-future-class-exceptions` L53 usa `.single()` em profiles.
+15. **#430** (MÉDIO - Resiliência): `send-class-reminders` usa `.single()` em **4 locais** dentro de loops (L77 teacher, L114 dependent, L127 studentProfile, L156 relationship). Qualquer registro ausente crasha todo o loop de lembretes.
+16. **#431** (MÉDIO): `check-pending-boletos` L122 usa `.single()` em busca de plano free. Crash se plano free não existir.
+17. **#432** (MÉDIO): `auto-verify-pending-invoices` L75-77 usa chave Stripe da plataforma para recuperar Payment Intents criados em contas Connect. Requer parâmetro `stripeAccount` para acessar PI correto.
+18. **#433** (MÉDIO): `materialize-virtual-class` L28 `createClient` sem `{ auth: { persistSession: false } }`. Padrão obrigatório.
+
 ### Padrão Sistêmico Novo: Funções de Diagnóstico/Validação sem Auth
 
 Identificado um padrão transversal: funções de **diagnóstico, validação e monitoramento** (`validate-business-profile-deletion`, `stripe-events-monitor`, `check-email-availability`) foram implementadas sem autenticação, presumivelmente por serem consideradas "utilitárias". No entanto, estas funções expõem dados sensíveis (nomes de alunos, dados financeiros, existência de emails) e devem obrigatoriamente requerer JWT ou, no mínimo, validação de service_role para chamadas internas.
@@ -4617,6 +4638,7 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 | v5.54 | 2026-02-17 | **17ª passagem: análise cruzada profunda — subscrições do professor, Stripe Connect, notificações de relatório/material/convite/confirmação/boleto**. +15 pontas soltas (#369-#383). 5 itens adicionados à Fase 0 (66 itens). Totais: **383 pontas soltas**, **353 únicas**, **341 pendentes**. |
 | v5.55 | 2026-02-17 | **18ª passagem: análise cruzada profunda — gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento**. +16 pontas soltas (#384-#399). 6 itens adicionados à Fase 0 (72 itens). Totais: **399 pontas soltas**, **369 únicas**, **357 pendentes**. |
 | v5.56 | 2026-02-17 | **19ª passagem: análise cruzada profunda — segurança, validação, diagnóstico, auditoria e Stripe Connect**. +16 pontas soltas (#400-#415). 6 itens adicionados à Fase 0 (78 itens). Totais: **415 pontas soltas**, **385 únicas**, **373 pendentes**. |
+| v5.57 | 2026-02-17 | **20ª passagem: análise cruzada profunda — geração de boleto, exceções de aula, materialização, request-class, auto-verificação, cron setup, lembretes e boletos pendentes**. +18 pontas soltas (#416-#433). 8 itens adicionados à Fase 0 (86 itens). Totais: **433 pontas soltas**, **403 únicas**, **391 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

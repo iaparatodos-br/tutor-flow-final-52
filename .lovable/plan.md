@@ -1,69 +1,109 @@
 
 
-# Verificacao Final v5.65 — Correcoes Residuais
+# Verificacao Final v5.65 — Contagem Fase 0 Incorreta
 
-## Diagnostico
+## Diagnostico Principal
 
-Apos leitura completa das 5205 linhas do documento, confirmo que a consolidacao anterior (aprovada no ultimo ciclo) resolveu os 8 problemas principais. O documento agora possui:
+Apos leitura completa das 5195 linhas e contagem item-a-item de cada tabela nas categorias A-L, identifiquei **1 problema critico** que impede o uso como checklist de implementacao.
 
-- Fase 0 consolidada com 12 categorias (A-L) e 162 itens listados
-- Funcoes reclassificadas de "Fora de Escopo" para cobertura (6 funcoes)
-- Padroes Sistemicos Consolidados (4 padroes documentados)
-- Changelog v5.62-v5.65 presente
-- Memorias atualizadas (24 entradas)
-- Totais finais corretos (577/547/535/162)
+## Problema: Categorias A-L Contam 138 Itens, Nao 162
 
-Porem, restam **5 inconsistencias menores** que impedem o uso como checklist 100% confiavel.
+A nota na linha 502 afirma: "As tabelas acima (categorias A-L) consolidam todos os 162 itens da Fase 0." Isso e **falso**. A contagem real por categoria:
 
-## Problemas Residuais Encontrados
+| Categoria | Descricao | Itens Listados |
+|-----------|-----------|---------------|
+| A | Auth/IDOR | 24 |
+| B | Status Mismatch pt-BR | 8 |
+| C | Guard Clauses / Race Conditions | 11 |
+| D | Webhook Resilience / HTTP 500 | 8 |
+| E | FK Joins proibidos no Deno | 15 |
+| F | .single() criticos em loops | 20 |
+| G | Audit Logs schema mismatch | 4 |
+| H | FK Cascade / Deletion failures | 8 |
+| I | Data Corruption | 6 |
+| J | Integridade de dados | 8 |
+| K | ANON_KEY inline / SQL injection | 6 |
+| L | Outros itens Fase 0 | 20 |
+| **Total** | | **138** |
 
-### 1. Conteudo Orfao no Final do Documento (Linhas 5200-5205)
+### Itens Faltantes (24 itens ausentes das tabelas A-L)
 
-Apos a secao "Totais Finais" (que termina na linha 5199 com o bloco de codigo), ha conteudo solto:
-- Linha 5200: `- create-connect-account -- auth + ownership validation via payment_account_id + teacher_id` (fragmento de lista de funcoes com bom padrao, que deveria estar na secao da 28a passagem)
-- Linhas 5202-5205: Bloco duplicado "Totais Atualizados (v5.65)" que repete informacao ja presente nas linhas 5184-5198
+Os seguintes itens foram marcados como Fase 0 nas secoes de passagem mas NUNCA adicionados as tabelas consolidadas:
 
-**Correcao**: Remover linhas 5200-5205.
+**Da 9a passagem** (6 itens):
+- #287: webhook-stripe-connect handlers invoice.paid/payment_intent.succeeded escrevem 'paid' (extensao de #546, Cat B)
+- #288: webhook-stripe-connect invoice.marked_uncollectible escreve 'overdue' (extensao de #547, Cat B)
+- #290: process-cancellation identity spoofing via cancelled_by do body (Cat A)
+- #294: webhook-stripe-subscriptions HTTP 400 para "user not found" causa retry storm (Cat D)
+- #296: create-subscription-checkout cancela assinatura ANTES do checkout (Cat C)
+- #297: webhook-stripe-connect .single() em invoice lookups causa retry storm (Cat F)
 
-### 2. Categoria L da Fase 0 Incompleta (Linha 502)
+**Da 13a passagem** (4 itens):
+- #329: webhook-stripe-connect TODOS handlers de sucesso escrevem 'paid' (extensao de #546, Cat B)
+- #330: webhook-stripe-connect 'overdue' em marked_uncollectible (extensao de #547, Cat B)
+- #334: cancel-payment-intent confirmacao manual escreve 'paid' (Cat B)
+- #337: process-cancellation SERVICE_ROLE_KEY como Bearer para create-invoice (extensao de #563, Cat L)
 
-A nota na linha 502 admite: "Os itens das passagens 19-24 (#403-#505) que nao estao listados acima mas foram marcados como Fase 0 nas suas respectivas secoes de passagem tambem fazem parte deste batch."
+**Da 19a passagem** (6 itens):
+- #400: validate-business-profile-deletion sem auth (confirmado por #573, ja em Cat A)
+- #401: stripe-events-monitor sem auth (confirmado por #572, ja em Cat A)
+- #402: check-email-availability sem auth + enumeracao (Cat A)
+- #403: audit-logger colunas erradas — ZERO logs de auditoria (confirmado por #277, ja em Cat G)
+- #404: handle-plan-downgrade-selection audit mismatch (confirmado por #568, ja em Cat G)
+- #405: get-teacher-availability FK join proibido `classes!inner` (Cat E)
 
-Isso significa que ha itens de Fase 0 das passagens 19-24 que NAO estao nas tabelas consolidadas. Para ser um checklist confiavel, todos os 162 itens devem estar visiveis.
+**Da 24a passagem** (8 itens):
+- #488: handle-teacher-subscription-cancellation sem auth (confirmado por #564, ja em Cat A)
+- #489: handle-teacher-subscription-cancellation sem stripeAccount (confirmado por #567, ja em Cat L)
+- #491: handle-teacher-subscription-cancellation guardian_email fantasma (confirmado por #565, ja em Cat J)
+- #493: process-payment-failure-downgrade params errados para smart-delete (Cat I)
+- #495: setup-class-reminders-automation exec_sql SQL injection (Cat K)
+- #497: create-subscription-checkout FK join (confirmado por #371, ja em Cat E)
+- #502: send-class-report-notification sem auth (confirmado por #576, ja em Cat A)
+- #516: item nao identificado na secao detalhada
 
-**Correcao**: Revisar as passagens 19-24 e adicionar os itens faltantes a Categoria L ou a categoria apropriada. Alternativamente, remover a nota e garantir que a contagem nas tabelas soma exatamente 162.
+### Duplicatas Internas nas Tabelas A-L (7 pares)
 
-### 3. Changelog em Dois Locais Disjuntos
+Alem dos itens faltantes, as tabelas A-L contem itens que sao a MESMA vulnerabilidade catalogada duas vezes sob numeros diferentes:
 
-O changelog principal (passagens 1-24) termina na linha 4812 com v5.61. As entradas v5.62-v5.65 foram adicionadas em uma secao separada na linha 5144 ("Changelog v5.62-v5.65"). Isso cria dois locais para consulta.
+1. Cat A: #350 e #564 (handle-teacher-subscription-cancellation sem auth)
+2. Cat B: #169 e #546 (webhook status 'paid')
+3. Cat B: #209 e #555 (check-overdue-invoices status 'overdue')
+4. Cat H: #181 e #365 (end-recurrence FK cascade)
+5. Cat H: #397 e #580 (archive-old-data student_id fantasma)
+6. Cat H: #398 e #581 (archive-old-data FK cascade failure)
+7. Cat L: #80 e #563 (process-cancellation SERVICE_ROLE_KEY como Bearer)
 
-**Correcao**: Mover as 4 entradas da linha 5144-5151 para o final do changelog principal (apos linha 4812), e remover a secao separada.
+## Correcao Proposta
 
-### 4. Tabela de Cobertura com Pontas Faltantes (2 funcoes)
+### Abordagem: Deduplicate + Adicionar Faltantes
 
-- `generate-boleto-for-invoice` (linha 3209): lista apenas #103, #121. Faltam **#532** (sem auth IDOR + PII da 26a passagem) e **#533** (FK joins da 26a passagem).
-- `check-business-profile-status` (linha 3242): lista apenas #142, #286. Faltam **#513, #523** (25a passagem), **#570, #571, #579** (28a passagem).
+1. **Marcar duplicatas internas** com nota "(confirmado por #XXX)" para manter rastreabilidade sem inflacionar a contagem
+2. **Adicionar itens genuinamente faltantes** (aqueles que NAO sao confirmacoes de itens ja listados):
+   - #290 → Cat A (identity spoofing)
+   - #294 → Cat D (webhook HTTP 400 retry)
+   - #296 → Cat C (cancela antes do checkout)
+   - #297 → Cat F (.single() em webhook)
+   - #329, #334 → Cat B (status 'paid' em mais locais)
+   - #402 → Cat A (check-email-availability sem auth)
+   - #405 → Cat E (get-teacher-availability FK join)
+   - #493 → Cat I (params errados smart-delete)
+   - #495 → Cat K (SQL injection exec_sql)
+3. **Atualizar nota da linha 502** para refletir contagem real corrigida
+4. **Recalcular total da Fase 0** apos deduplicacao + adicoes
 
-**Correcao**: Adicionar os achados faltantes nas duas linhas da tabela de cobertura.
+### Impacto Estimado
 
-### 5. send-password-reset na Lista de Notificacoes sem Auth
+- Itens genuinamente novos a adicionar: ~10
+- Duplicatas a marcar: ~7 pares (14 itens, contar como 7 unicos)
+- Total corrigido da Fase 0: provavelmente ~148-155 itens unicos (vs 162 com duplicatas)
+- A contagem no cabecalho e totais finais deve ser ajustada
 
-Na secao "Padroes Sistemicos Consolidados" (linha 5092), `send-password-reset` esta listada como item 10 de 10 funcoes sem auth. Porem, esta funcao e INTENCIONALMENTE sem auth (endpoint de recuperacao de senha -- o usuario nao esta logado). Incluir na lista de "vulnerabilidades" e misleading.
+### Arquivo Afetado
 
-**Correcao**: Substituir `send-password-reset` por `generate-teacher-notifications` (que ja esta na tabela da linha 5128 mas nao na lista numerada da linha 5092). Adicionar nota: "send-password-reset e intencionalmente sem auth (recovery flow)".
-
-## Secao Tecnica: Alteracoes
-
-### Arquivo: `docs/hybrid-billing-implementation-plan.md`
-
-1. **Remover linhas 5200-5205** (conteudo orfao e bloco duplicado)
-2. **Atualizar linha 3209** para: `generate-boleto-for-invoice | #103, #121, #532, #533 | (v5.63)`
-3. **Atualizar linha 3242** para: `check-business-profile-status | #142, #286, #513, #523, #570, #571, #579 | (v5.65)`
-4. **Mover changelog v5.62-v5.65** (linhas 5144-5153) para apos linha 4812 e remover secao separada
-5. **Corrigir lista de notificacoes** (linha 5092): substituir send-password-reset por generate-teacher-notifications com nota
-6. **Remover ou resolver nota da linha 502**: contar itens nas tabelas A-L e garantir que somam 162, ou adicionar itens faltantes
+- `docs/hybrid-billing-implementation-plan.md` — correcao das tabelas A-L, nota da linha 502, totais finais
 
 ### Estimativa de Impacto
 
-Nenhuma alteracao de codigo. Apenas correcoes cosmeticas e de consistencia interna do documento de planejamento.
+Nenhuma alteracao de codigo. Apenas correcao de contagem e consolidacao do documento de planejamento para refletir numeros reais.
 

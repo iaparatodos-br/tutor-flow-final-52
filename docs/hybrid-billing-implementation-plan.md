@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.50 (Consolidado)
+# Plano de Cobrança Híbrida — v5.51 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 50 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 53 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.50 consolida todas as auditorias com 13 passagens completas. Totais finais: **338 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **308 únicas**, **296 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 13ª passagem — análise cruzada profunda do lifecycle completo de faturamento). A 13ª passagem revelou 10 novas pontas soltas (#329-#338): `webhook-stripe-connect` usa `'paid'` (inglês) em TODOS os handlers de sucesso — pagamentos ficam invisíveis (#329 ALTA), `webhook-stripe-connect` usa `'overdue'` em vez de `'vencida'` (#330 ALTA), `cancel-payment-intent` usa `'paid'` em confirmação manual (#334 ALTA), `process-cancellation` invoca `create-invoice` com SERVICE_ROLE_KEY como Bearer — faturas de cancelamento NUNCA são criadas (#337 ALTA), FK joins proibidos em `create-invoice` (#331) e `create-payment-intent-connect` (#332), `.single()` sistêmico em `send-invoice-notification` (#335) e `process-cancellation` (#336), e handlers de falha sem status guard no webhook (#338).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.51 consolida todas as auditorias com 14 passagens completas. Totais finais: **346 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **316 únicas**, **304 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 14ª passagem — análise cruzada profunda: lifecycle de materialização, deleção de alunos e integração de pagamento). A 14ª passagem revelou 8 novas pontas soltas (#339-#346): `create-payment-intent-connect` sem NENHUMA autenticação — IDOR crítico (#339 ALTA), `materialize-virtual-class` não copia `is_paid_class` do template (#340 ALTA), `automated-billing` copia boleto_url para stripe_hosted_invoice_url (#341), `smart-delete-student` não deleta `invoice_classes` antes de `class_participants` (#342), `smart-delete-student` não deleta `student_monthly_subscriptions` antes de `teacher_student_relationships` (#343), `.single()` em `smart-delete-student` (#344), webhook sem fallback stripe_invoice_id→stripe_payment_intent_id (confirma memória #345), `end-recurrence` com SDK sem versão pinada (#346).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 

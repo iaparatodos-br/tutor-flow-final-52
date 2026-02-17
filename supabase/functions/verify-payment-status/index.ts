@@ -45,11 +45,23 @@ serve(async (req) => {
 
     logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status });
 
-    // If already paid, return current status
-    if (invoice.status === 'paga') {
+    // Guard: If already in terminal status, return current status
+    const terminalStatuses = ['paga', 'cancelada'];
+    if (terminalStatuses.includes(invoice.status)) {
       return new Response(JSON.stringify({
-        status: 'paga',
-        message: 'Invoice is already paid'
+        status: invoice.status,
+        message: `Invoice is already in terminal status: ${invoice.status}`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // Guard: don't overwrite manual payments
+    if (invoice.payment_origin === 'manual') {
+      return new Response(JSON.stringify({
+        status: invoice.status,
+        message: 'Invoice was manually confirmed, skipping automatic verification'
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -85,12 +97,13 @@ serve(async (req) => {
       newStatus = 'falha_pagamento';
     }
 
-    // Update invoice status if it changed
+    // Update invoice status if it changed (with guard clause)
     if (newStatus !== invoice.status) {
       const { error: updateError } = await supabaseClient
         .from("invoices")
         .update({ status: newStatus })
-        .eq("id", invoice_id);
+        .eq("id", invoice_id)
+        .in("status", ["pendente", "falha_pagamento"]); // Guard: only update non-terminal
 
       if (updateError) {
         logStep("Error updating invoice status", updateError);

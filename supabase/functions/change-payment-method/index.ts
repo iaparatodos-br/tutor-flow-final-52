@@ -42,15 +42,34 @@ serve(async (req) => {
     if (!invoice_id) throw new Error("invoice_id is required");
 
     // Fetch invoice with related data
-    const { data: invoice, error: invoiceError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: invoiceRaw, error: invoiceError } = await supabaseClient
       .from("invoices")
-      .select(`
-        *,
-        student:profiles!invoices_student_id_fkey(id, name, email),
-        teacher:profiles!invoices_teacher_id_fkey(id, name)
-      `)
+      .select("*")
       .eq("id", invoice_id)
       .maybeSingle();
+
+    if (invoiceError || !invoiceRaw) {
+      throw new Error("Invoice not found");
+    }
+
+    const { data: studentProfile } = await supabaseClient
+      .from("profiles")
+      .select("id, name, email")
+      .eq("id", invoiceRaw.student_id)
+      .maybeSingle();
+
+    const { data: teacherProfile } = await supabaseClient
+      .from("profiles")
+      .select("id, name")
+      .eq("id", invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    const invoice = {
+      ...invoiceRaw,
+      student: studentProfile,
+      teacher: teacherProfile,
+    };
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");

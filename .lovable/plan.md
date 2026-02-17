@@ -1,54 +1,41 @@
 
-# Etapa 0.1 — Corrigir Status Mismatch pt-BR
+# Etapa 0.1 — Corrigir Status Mismatch pt-BR ✅
+# Etapa 0.2 — Guard Clauses / Race Conditions ✅
+# Etapa 0.3 — Webhook Resilience / HTTP 500 ✅
+# Etapa 0.4 — Audit Logs Schema Mismatch ✅
+# Etapa 0.5 — .single() → .maybeSingle() ✅
+# Etapa 0.6 — FK Joins proibidos no Deno ✅
 
-## Problema
+## Etapa 0.6 — Resumo
 
-O sistema padroniza status de faturas em portugues (`paga`, `vencida`, `pendente`, `cancelada`, `falha_pagamento`), porem tres Edge Functions escrevem status em ingles (`paid`, `overdue`). Isso causa:
+Refatoradas todas as FK join syntax (`profiles!`, `classes!inner`, `subscription_plans!inner`) para queries sequenciais independentes em 10 Edge Functions:
 
-- Faturas pagas pelo Stripe ficam "invisiveis" no painel financeiro (que filtra por `paga`)
-- Faturas vencidas nunca sao encontradas pelo cron job (que busca por `vencida`)
-- Confirmacoes manuais do professor podem ser revertidas porque o webhook nao reconhece o status correto
+### Arquivos Modificados
 
-## Alteracoes por Arquivo
+1. **automated-billing** — 3 FK joins removidos (relationship profiles, classes!inner, subscription_plans!inner)
+2. **create-payment-intent-connect** — 3 FK joins removidos (student/teacher/business_profile)
+3. **get-teacher-availability** — 1 FK join removido (classes!inner)
+4. **create-invoice** — 2 FK joins removidos (business_profiles!fkey, classes!inner)
+5. **generate-boleto-for-invoice** — 2 FK joins removidos (student/teacher profiles)
+6. **process-orphan-cancellation-charges** — 2 FK joins removidos (classes!inner, profiles!fkey)
+7. **smart-delete-student** — 2 FK joins removidos (classes!inner 2x)
+8. **process-expired-subscriptions** — 2 FK joins removidos (subscription_plans!inner, profiles!user_id)
+9. **change-payment-method** — 2 FK joins removidos (student/teacher profiles)
+10. **check-subscription-status** — 1 FK join removido (profiles!fkey)
 
-### 1. `supabase/functions/webhook-stripe-connect/index.ts` (4 pontos)
+### Padrão Aplicado
 
-| Linha | De | Para |
-|-------|-----|------|
-| 320 | `status: 'paid'` | `status: 'paga'` |
-| 357 | `status: 'paid'` | `status: 'paga'` |
-| 404 | `status: 'overdue'` | `status: 'vencida'` |
-| 469 | `status: "paid"` | `status: "paga"` |
+Todas as queries foram convertidas para o padrão sequencial:
+1. Query principal sem joins
+2. Queries separadas para dados relacionados
+3. Montagem de maps para eficiência em listas
+4. Objetos compostos reconstruídos manualmente
 
-Handlers afetados:
-- `invoice.paid` (linha 320)
-- `invoice.payment_succeeded` (linha 357)
-- `invoice.marked_uncollectible` (linha 404)
-- `payment_intent.succeeded` (linha 469)
+## Próximas Etapas Pendentes (Fase 0)
 
-### 2. `supabase/functions/cancel-payment-intent/index.ts` (3 pontos)
-
-| Linha | De | Para |
-|-------|-----|------|
-| 111 | `status: 'paid'` | `status: 'paga'` |
-| 172 | `status: 'paid'` | `status: 'paga'` |
-| 195 | `status: 'paid'` (audit log new_data) | `status: 'paga'` |
-
-### 3. `supabase/functions/check-overdue-invoices/index.ts` (1 ponto)
-
-| Linha | De | Para |
-|-------|-----|------|
-| 58 | `status: "overdue"` | `status: "vencida"` |
-
-## O Que NAO Muda
-
-- Os status `falha_pagamento` e `cancelada` ja estao corretos em portugues
-- O frontend (`InvoiceStatusBadge`) ja suporta ambos os formatos — mas a fonte da verdade deve ser portugues
-- Nenhuma migracao de banco necessaria
-- Nenhuma alteracao de traducoes
-
-## Resumo
-
-- 3 arquivos modificados
-- 8 substituicoes de string (todas triviais e sem risco de efeito colateral)
-- Apos deploy, as Edge Functions passam a escrever status consistentes com o padrao pt-BR do sistema
+- **Categoria A**: Auth/IDOR (~25 itens) — vulnerabilidades de autenticação
+- **Categoria H**: FK Cascade / Deletion failures (~8 itens)
+- **Categoria I**: Data Corruption (~6 itens)
+- **Categoria J**: Integridade de dados (~8 itens)
+- **Categoria K**: ANON_KEY inline / SQL injection em setup (~6 itens)
+- **Categoria L**: Outros itens Fase 0 (~20 itens)

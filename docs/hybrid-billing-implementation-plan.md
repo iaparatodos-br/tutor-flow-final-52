@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.57 (Consolidado)
+# Plano de Cobrança Híbrida — v5.58 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 86 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 94 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.57 consolida todas as auditorias com 20 passagens completas. Totais finais: **433 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **403 únicas**, **391 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 20ª passagem — análise cruzada profunda: geração de boleto, exceções de aula, materialização, request-class, auto-verificação, cron setup, lembretes e boletos pendentes). A 20ª passagem revelou 18 novas pontas soltas (#416-#433): `generate-boleto-for-invoice` sem auth JWT + FK join proibido (#416/#417 SEGURANÇA/CRÍTICO), `materialize-virtual-class` não herda `is_paid_class` (#418 CRÍTICO), `request-class` não define `is_paid_class` (#419 CRÍTICO), `auto-verify-pending-invoices` sem auth + sem guard clause (#420/#421 SEGURANÇA/CRÍTICO), `end-recurrence` cascade de deleção incompleta (#422 CRÍTICO), `check-pending-boletos` FK join (#423), `send-class-reminders` FK joins + `.single()` em loop (#424/#430), `setup-billing-automation` ANON_KEY inline (#425 SEGURANÇA), `.single()` em múltiplas funções (#427/#428/#429/#431), `auto-verify-pending-invoices` Stripe Connect key mismatch (#432), `materialize-virtual-class` persistSession (#433).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.58 consolida todas as auditorias com 21 passagens completas. Totais finais: **451 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **421 únicas**, **409 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 21ª passagem — análise cruzada profunda: status mismatch sistêmico, destruição de dados de pagamento, webhook resilience, FK joins em funções core). A 21ª passagem revelou 18 novas pontas soltas (#434-#451): `webhook-stripe-connect` usa status em INGLÊS 'paid'/'overdue' em vez de Português 'paga'/'vencida' (#434 CATASTRÓFICO — pagamentos confirmados ficam INVISÍVEIS no dashboard), `cancel-payment-intent` idem (#435 CRÍTICO), `check-overdue-invoices` idem (#436 CRÍTICO), `webhook-stripe-connect` destrói dados de comprovante após pagamento (#437 CRÍTICO), `webhook-stripe-connect` HTTP 500 no catch block (#438 RESILIÊNCIA), FK joins proibidos em `create-payment-intent-connect` (#439), `automated-billing` (#440/#441), `create-invoice` (#442/#443), `.single()` em webhook/notification/cancellation (#444/#445/#446), persistSession ausente (#447/#448), guard clause ausente em payment_failed/uncollectible (#449), boleto_url→stripe_hosted_invoice_url CTA enganoso (#450), `automated-billing` sem idempotência de mensalidade (#451 CRÍTICO).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4639,6 +4639,7 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 | v5.55 | 2026-02-17 | **18ª passagem: análise cruzada profunda — gerenciamento de alunos/dependentes, expiração de subscrições, arquivamento**. +16 pontas soltas (#384-#399). 6 itens adicionados à Fase 0 (72 itens). Totais: **399 pontas soltas**, **369 únicas**, **357 pendentes**. |
 | v5.56 | 2026-02-17 | **19ª passagem: análise cruzada profunda — segurança, validação, diagnóstico, auditoria e Stripe Connect**. +16 pontas soltas (#400-#415). 6 itens adicionados à Fase 0 (78 itens). Totais: **415 pontas soltas**, **385 únicas**, **373 pendentes**. |
 | v5.57 | 2026-02-17 | **20ª passagem: análise cruzada profunda — geração de boleto, exceções de aula, materialização, request-class, auto-verificação, cron setup, lembretes e boletos pendentes**. +18 pontas soltas (#416-#433). 8 itens adicionados à Fase 0 (86 itens). Totais: **433 pontas soltas**, **403 únicas**, **391 pendentes**. |
+| v5.58 | 2026-02-17 | **21ª passagem: análise cruzada profunda — status mismatch sistêmico, destruição de dados de pagamento, webhook resilience, FK joins em funções core**. +18 pontas soltas (#434-#451). 8 itens adicionados à Fase 0 (94 itens). Totais: **451 pontas soltas**, **421 únicas**, **409 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

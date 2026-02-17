@@ -1,63 +1,72 @@
 
 
-# Verificação Final v5.60 — 18 Novas Pontas Soltas (23ª Passagem: Webhook Status Guards, stripeAccount Missing, RPC Inexistente, Notification Spam Loops)
 
-## Veredicto: Plano atualizado para v5.60 com 8 achados expandindo Fase 0 — webhook-stripe-connect retorna HTTP 500 em handlers de invoice (#472 CRÍTICO), sem status guard em invoice.payment_failed (#473 CRÍTICO) e payment_intent.payment_failed (#474 CRÍTICO), process-cancellation chama RPC inexistente teacher_has_financial_module (#481 CRÍTICO), webhook .single() em pending_business_profiles (#470 ALTO) e payment_origin lookups (#471 ALTO), automated-billing invoca create-payment-intent-connect sem Auth header (#475 ALTO), check-overdue-invoices FK semântico class_notifications.class_id=invoice.id (#479 ALTO), sem tracking insert causando spam infinito (#480 ALTO), cancel-payment-intent sem stripeAccount (#476 ALTO), verify-payment-status IDOR (#482 ALTO) e sem stripeAccount (#483 ALTO), auto-verify-pending-invoices sem stripeAccount (#484 ALTO) e sem status guard (#485 MÉDIO), automated-billing FK join subscription_plans!inner (#486 ALTO), invoice.voided sem status guard (#487 ALTO), process-cancellation .single() em dependent (#478 MÉDIO), cancel-payment-intent persistSession ausente (#477 MÉDIO).
+# Verificação Final v5.61 — 18 Novas Pontas Soltas (24ª Passagem: Auth Gaps em Cancellation/Notification, Raw SQL Injection, Smart-Delete Wrong Params, FK Joins em Checkout)
+
+## Veredicto: Plano atualizado para v5.61 com 8 achados expandindo Fase 0 — handle-teacher-subscription-cancellation sem auth JWT (#488 CRÍTICO), send-cancellation-notification sem auth permitindo phishing (#500 CRÍTICO), send-class-report-notification sem auth phishing (#502 CRÍTICO), setup-class-reminders-automation exec_sql raw SQL injection (#495 CRÍTICO), process-payment-failure-downgrade invoca smart-delete-student com params errados (#493 ALTO), create-subscription-checkout FK join subscription_plans (#497 ALTO), handle-teacher-subscription-cancellation sem stripeAccount (#489 ALTO), handle-teacher-subscription-cancellation envia email para student.email ao invés de guardian_email (#491 ALTO).
 
 ---
 
-## Auditoria de 23ª Passagem (Webhook Status Guards, stripeAccount Missing, RPC Inexistente, Notification Spam Loops)
+## Auditoria de 24ª Passagem (Auth Gaps em Cancellation/Notification, Raw SQL, Smart-Delete Wrong Params, FK Joins em Checkout)
 
-Funções auditadas nesta rodada (23ª passagem):
-- `webhook-stripe-connect/index.ts` — .single() L190 em pending_business_profiles (#470 ALTO), .single() L310/L346/L457 em payment_origin lookups (#471 ALTO), HTTP 500 em invoice.paid L328 e marked_uncollectible L410 (#472 CRÍTICO), invoice.payment_failed L380 sem status guard (#473 CRÍTICO), payment_intent.payment_failed L514 sem status guard (#474 CRÍTICO), invoice.voided L425 sem status guard (#487 ALTO)
-- `automated-billing/index.ts` — Invoca create-payment-intent-connect L522/L850 sem Authorization header (#475 ALTO), FK join subscription_plans!inner L1034 em validateTeacherCanBill (#486 ALTO)
-- `cancel-payment-intent/index.ts` — Cancela PI L139 sem stripeAccount param (#476 ALTO), persistSession ausente L37 (#477 MÉDIO)
-- `process-cancellation/index.ts` — .single() L107 em dependent lookup (#478 MÉDIO), chama RPC inexistente teacher_has_financial_module L377 (#481 CRÍTICO)
-- `check-overdue-invoices/index.ts` — FK semântico: class_notifications.class_id = invoice.id L50/L103 (#479 ALTO), sem inserção de tracking após envio L54-67/L100-114 causando spam infinito (#480 ALTO)
-- `verify-payment-status/index.ts` — IDOR: sem validação auth.uid() L32-40 (#482 ALTO), retrieves PI L73 sem stripeAccount (#483 ALTO)
-- `auto-verify-pending-invoices/index.ts` — Retrieves PI L75 sem stripeAccount (#484 ALTO), sem status guard L91-98 permite reverter 'paga' (#485 MÉDIO)
+Funções auditadas nesta rodada (24ª passagem):
+- `handle-teacher-subscription-cancellation/index.ts` — SEM AUTH JWT (#488 CRÍTICO), sem stripeAccount L122 (#489 ALTO), .single() L252 em teacher profile (#490 MÉDIO), envia email para student.email ao invés de guardian_email L285 (#491 ALTO)
+- `process-payment-failure-downgrade/index.ts` — persistSession ausente L22 (#492 MÉDIO), smart-delete-student com params errados L144-152 (#493 ALTO), .single() L55 em subscription (#494 MÉDIO)
+- `setup-class-reminders-automation/index.ts` — exec_sql RPC para SQL arbitrário L24/L37/L51 (#495 CRÍTICO SEGURANÇA), ANON_KEY inline L49/L61 (#496 ALTO)
+- `create-subscription-checkout/index.ts` — FK join subscription_plans(*) L172-173 (#497 ALTO), .single() L175 em existing subscription (#498 MÉDIO), .single() L138 em plan lookup (#505 MÉDIO)
+- `send-cancellation-notification/index.ts` — SEM AUTH JWT (#500 CRÍTICO phishing), persistSession ausente L37 (#499 MÉDIO), .single() 4x em dependent lookups L117/L147/L277/L374 (#501 MÉDIO)
+- `send-class-report-notification/index.ts` — SEM AUTH JWT (#502 CRÍTICO phishing), .single() 5x L37/L49/L74/L107/L142 (#503 MÉDIO)
+- `create-connect-account/index.ts` — .single() L76 em existing account (#504 BAIXO)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#472 (CRÍTICO: HTTP 500 → RETRY STORM)**: `webhook-stripe-connect` L328-332 (invoice.paid) e L410-414 (invoice.marked_uncollectible) retornam HTTP 500 quando o UPDATE falha, causando retry storms infinitas do Stripe. Conforme memória `infrastructure/edge-functions-resilience-pattern`, webhooks DEVEM retornar 200 mesmo em erros de negócio.
+1. **#488 (CRÍTICO: SEM AUTH)**: `handle-teacher-subscription-cancellation` não possui NENHUMA validação JWT. Aceita `teacher_id` do body da request. Qualquer chamador anônimo pode cancelar todas as faturas pendentes de qualquer professor, gerar pending_refunds e enviar emails de notificação para todos os alunos. Vetor de sabotagem financeira massiva.
 
-2. **#473 (CRÍTICO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L380-386 handler de `invoice.payment_failed` atualiza status para `falha_pagamento` sem cláusula de guarda `.eq('status', 'pendente')`. Conforme memória `payment/protecao-reversao-status-fatura`, faturas com status terminal `paga` podem ser revertidas por eventos automáticos de falha.
+2. **#495 (CRÍTICO: SQL INJECTION)**: `setup-class-reminders-automation` L24/L37/L51 usa RPC `exec_sql` para executar strings SQL arbitrárias. Isto viola a regra fundamental de Edge Functions: "Never execute raw SQL queries". Se a RPC `exec_sql` existir e for acessível, constitui um vetor de SQL injection catastrófico. Mesmo sem injeção externa, o padrão é inseguro e não auditável.
 
-3. **#474 (CRÍTICO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L514-521 handler de `payment_intent.payment_failed` atualiza para `falha_pagamento` sem guard. Se professor confirma pagamento manual e o PI original falha depois, o status `paga`/`paid` é sobrescrito.
+3. **#500 (CRÍTICO: PHISHING)**: `send-cancellation-notification` não possui NENHUMA autenticação. Aceita `class_id`, `cancelled_by_type`, `cancellation_reason` e `participants` do body. Qualquer chamador anônimo pode enviar emails de cancelamento falsos com nomes de professores spoofados para qualquer aluno, constituindo um vetor de phishing direto. Conforme memória `security/notification-auth-phishing-prevention`.
 
-4. **#481 (CRÍTICO: RPC INEXISTENTE)**: `process-cancellation` L377 chama `supabaseClient.rpc('teacher_has_financial_module', ...)`. Esta RPC NÃO existe no schema do banco de dados. Resultado: a chamada falha, `hasFinancialModule` é `null`/`false`, e ALL cancellation charges são silenciosamente ignoradas. Nenhuma fatura de cancelamento é gerada para nenhum professor.
+4. **#502 (CRÍTICO: PHISHING)**: `send-class-report-notification` não possui NENHUMA autenticação. Aceita `classId` e `reportId` do body. Usa service_role para acessar dados. Qualquer chamador anônimo pode disparar emails com conteúdo de relatórios reais para alunos, ou explorar IDs para enumerar dados.
 
-5. **#470 (ALTO: .single() WEBHOOK)**: `webhook-stripe-connect` L190 usa `.single()` para buscar `pending_business_profiles`. Se Connect account não tem perfil pendente (ex: onboarding via dashboard), evento `account.updated` falha com exceção.
+5. **#493 (ALTO: PARAMS ERRADOS)**: `process-payment-failure-downgrade` L144-152 invoca `smart-delete-student` com `{ studentId: student.student_id, reason: 'payment_failure_downgrade' }`. Conforme memória `features/downgrade/payment-failure-student-removal-bug`, `smart-delete-student` espera `student_id` (snake_case), `teacher_id` e `relationship_id`. Resultado: TODAS as remoções de alunos excedentes falham silenciosamente no downgrade por falha de pagamento.
 
-6. **#471 (ALTO: .single() WEBHOOK 3x)**: `webhook-stripe-connect` L310, L346, L457 usa `.single()` para verificar `payment_origin` de faturas. Se fatura não existe localmente (ex: criada diretamente no Stripe), lança exceção → HTTP 500 → retry storm.
+6. **#497 (ALTO: FK JOIN)**: `create-subscription-checkout` L172-173 `user_subscriptions.select('*, subscription_plans(*)')` usa FK join proibido. Schema cache do Deno → crash do checkout → professor não consegue mudar de plano.
 
-7. **#475 (ALTO: INVOCAÇÃO SEM AUTH)**: `automated-billing` L522-529 e L850-858 invoca `create-payment-intent-connect` via `supabaseAdmin.functions.invoke` sem header `Authorization`. A função destino valida JWT via `auth.getUser(token)` — sem token, a chamada falha silenciosamente e NENHUM boleto é gerado para faturas automáticas.
+7. **#489 (ALTO: stripeAccount AUSENTE)**: `handle-teacher-subscription-cancellation` L122 `stripe.invoices.retrieve(invoice.stripe_invoice_id)` sem parâmetro `stripeAccount`. Se faturas foram criadas em contas Connect, são invisíveis da plataforma → "resource not found" → faturas NÃO são voidadas no Stripe mas SIM atualizadas localmente → inconsistência.
 
-8. **#479 (ALTO: FK SEMÂNTICO VIOLAÇÃO)**: `check-overdue-invoices` L50/L103 insere em `class_notifications` usando `class_id: invoice.id`. O campo `class_id` tem FK para `classes.id`, NÃO para `invoices.id`. A inserção causa violação de FK constraint ou corrompe dados referenciando classes inexistentes.
+8. **#491 (ALTO: DESTINATÁRIO ERRADO)**: `handle-teacher-subscription-cancellation` L285 envia email de notificação para `student.email` diretamente. Conforme memória `database/responsible-party-contact-teacher-student-relationships`, o email correto está em `teacher_student_relationships.student_guardian_email`. Responsáveis/pais NÃO recebem notificação de suspensão de cobranças.
 
-### Achados Altos/Médios
+### Achados Médios/Baixos
 
-9. **#480 (ALTO: SPAM INFINITO)**: `check-overdue-invoices` verifica notificação prévia (L47-52/L100-105) mas NÃO insere registro de tracking após enviar a notificação (L62-67/L109-114). A cada execução do cron job, `existingNotification` é sempre null → re-envia TODAS as notificações → spam massivo.
+9. **#490 (MÉDIO)**: `handle-teacher-subscription-cancellation` L252 `.single()` para teacher profile em sendNotifications. Se teacher profile não existir, função de notificação crasheia.
 
-10. **#476 (ALTO: stripeAccount AUSENTE)**: `cancel-payment-intent` L139 cancela Payment Intent sem parâmetro `stripeAccount`. Conforme memória `payment/stripe-connect-sdk-parameter-requirement`, PIs criados em contas Connect não são visíveis da conta platform → "resource not found".
+10. **#492 (MÉDIO)**: `process-payment-failure-downgrade` L22-23 `createClient` sem `{ auth: { persistSession: false } }`. Padrão obrigatório em Edge Functions.
 
-11. **#482 (ALTO: IDOR CONFIRMADO)**: `verify-payment-status` L32-40 aceita `invoice_id` do body sem validar `auth.uid()` contra `teacher_id` ou `student_id` da fatura. Qualquer usuário autenticado pode consultar e atualizar status de qualquer fatura.
+11. **#494 (MÉDIO)**: `process-payment-failure-downgrade` L55 `.single()` para active subscription. Se múltiplas subscriptions ativas (estado de bug), downgrade crasheia.
 
-12. **#483 (ALTO: stripeAccount)**: `verify-payment-status` L73 retrieves PI sem `stripeAccount`. Faturas de Connect falham.
+12. **#496 (ALTO SEGURANÇA)**: `setup-class-reminders-automation` L49/L61 expõe `SUPABASE_ANON_KEY` inline na definição SQL do cron job. Mesmo padrão de #425 (setup-billing-automation). Chave visível em logs de sistema e definições pg_cron.
 
-13. **#484 (ALTO: stripeAccount)**: `auto-verify-pending-invoices` L75-77 retrieves PI sem `stripeAccount`. Verificação automática de todas as faturas Connect falha silenciosamente.
+13. **#498 (MÉDIO)**: `create-subscription-checkout` L175 `.single()` para existing subscription. Múltiplas subscriptions ativas → crash do checkout.
 
-14. **#486 (ALTO: FK JOIN)**: `automated-billing` L1033-1034 `validateTeacherCanBill` usa FK join `subscription_plans!inner (features)`. Schema cache do Deno → falha silenciosa → função retorna false → professores válidos não faturam.
+14. **#499 (MÉDIO)**: `send-cancellation-notification` L37-38 `createClient` sem `{ auth: { persistSession: false } }`.
 
-15. **#487 (ALTO: STATUS GUARD AUSENTE)**: `webhook-stripe-connect` L425-431 `invoice.voided` atualiza para 'cancelada' sem guard `.eq('status', 'pendente')`. Fatura paga pode ser revertida.
+15. **#501 (MÉDIO)**: `send-cancellation-notification` L117/L147/L277/L374 usa `.single()` para buscar dependentes dentro de loops de notificação. Dependente inexistente → crash do loop → demais participantes não são notificados.
 
-16. **#485 (MÉDIO: STATUS GUARD)**: `auto-verify-pending-invoices` L91-98 atualiza status sem guard. Pode reverter `paga` se PI está em estado terminal.
+16. **#503 (MÉDIO)**: `send-class-report-notification` L37/L49/L74/L107/L142 usa `.single()` em 5 locais (class, teacher, report, student profile, relationship). Qualquer registro ausente crasheia a função inteira.
 
-17. **#478 (MÉDIO: .single())**: `process-cancellation` L107 usa `.single()` para buscar dependente. Dependente inexistente → crash total da função.
+17. **#504 (BAIXO)**: `create-connect-account` L76-77 `.single()` para existing connect account. Múltiplos registros para mesmo payment_account_id → crash ao invés de graceful handling.
 
-18. **#477 (MÉDIO: persistSession)**: `cancel-payment-intent` L37 cria client Supabase sem `{ auth: { persistSession: false } }`.
+18. **#505 (MÉDIO)**: `create-subscription-checkout` L138 `.single()` para plan lookup. Plano inativo ou inexistente → crash 500 ao invés de erro amigável.
 
-### Totais Atualizados (v5.60)
-- 487 pontas soltas totais | 457 únicas | **445 pendentes**
-- Fase 0: **108 itens** (+8: #472, #473, #474, #481, #470, #471, #475, #479)
-- **100% cobertura**: 75 funções auditadas (23 passagens)
+### Padrão Sistêmico Novo: exec_sql RPC em Setup Functions
+
+Identificado que `setup-class-reminders-automation` usa uma RPC `exec_sql` para executar strings SQL arbitrárias, contornando todas as proteções do Supabase client. Este padrão é uma violação grave de segurança. Diferente de `setup-billing-automation` que usa `cron_schedule` RPC (seguro), esta função monta e executa SQL bruto, incluindo `CREATE EXTENSION` e `cron.schedule` com interpolação de variáveis.
+
+### Padrão Sistêmico Confirmado: Notification Functions sem Auth
+
+Com #500 e #502, confirma-se que TODAS as funções de notificação por email são vetores de phishing: `send-cancellation-notification`, `send-class-report-notification`, `send-student-invitation` (#454), `send-material-shared-notification` (#455). O padrão é sistêmico: funções que enviam emails aceitam dados do corpo da request sem autenticação, permitindo spoofing de identidade do professor.
+
+### Totais Atualizados (v5.61)
+- 505 pontas soltas totais | 475 únicas | **463 pendentes**
+- Fase 0: **116 itens** (+8: #488, #495, #500, #502, #493, #497, #489, #491)
+- **100% cobertura**: 75 funções auditadas (24 passagens)

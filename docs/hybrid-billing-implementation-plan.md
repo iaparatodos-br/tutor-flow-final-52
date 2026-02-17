@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.60 (Consolidado)
+# Plano de Cobrança Híbrida — v5.61 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 108 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 116 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.60 consolida todas as auditorias com 23 passagens completas. Totais finais: **487 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **457 únicas**, **445 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 23ª passagem — webhook status guards, stripeAccount missing, RPC inexistente, notification spam loops, FK semântico em check-overdue-invoices). A 23ª passagem revelou 18 novas pontas soltas (#470-#487): `webhook-stripe-connect` .single() em pending_business_profiles (#470), .single() 3x em lookups de payment_origin (#471), HTTP 500 em handlers invoice.paid/marked_uncollectible (#472 CRÍTICO), sem status guard em invoice.payment_failed (#473 CRÍTICO) e payment_intent.payment_failed (#474 CRÍTICO), `automated-billing` invoca create-payment-intent-connect sem Authorization header (#475 ALTO), `cancel-payment-intent` sem stripeAccount param (#476 ALTO), persistSession ausente (#477 MÉDIO), `process-cancellation` .single() em dependent (#478 MÉDIO), `check-overdue-invoices` FK semântico class_notifications.class_id = invoice.id (#479 ALTO), sem inserção de tracking pós-envio causando spam infinito (#480 ALTO), `process-cancellation` chama RPC inexistente teacher_has_financial_module (#481 CRÍTICO), `verify-payment-status` IDOR confirmado (#482 ALTO), sem stripeAccount (#483 ALTO), `auto-verify-pending-invoices` sem stripeAccount (#484 ALTO), sem status guard (#485 MÉDIO), `automated-billing` FK join subscription_plans!inner (#486 ALTO), `webhook-stripe-connect` invoice.voided sem status guard (#487 ALTO).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.61 consolida todas as auditorias com 24 passagens completas. Totais finais: **505 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **475 únicas**, **463 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 24ª passagem — auth gaps em handle-teacher-subscription-cancellation e notification functions, raw SQL injection em setup-class-reminders-automation, smart-delete-student wrong params em process-payment-failure-downgrade, FK joins em create-subscription-checkout). A 24ª passagem revelou 18 novas pontas soltas (#488-#505): `handle-teacher-subscription-cancellation` sem auth JWT (#488 CRÍTICO), sem stripeAccount L122 (#489 ALTO), .single() L252 teacher (#490 MÉDIO), email para student.email ao invés de guardian_email L285 (#491 ALTO), `process-payment-failure-downgrade` persistSession ausente (#492 MÉDIO), smart-delete-student params errados (#493 ALTO), .single() L55 (#494 MÉDIO), `setup-class-reminders-automation` exec_sql raw SQL injection (#495 CRÍTICO), ANON_KEY inline (#496 ALTO), `create-subscription-checkout` FK join subscription_plans (#497 ALTO), .single() L175 (#498 MÉDIO), .single() L138 (#505 MÉDIO), `send-cancellation-notification` sem auth phishing (#500 CRÍTICO), persistSession ausente (#499 MÉDIO), .single() 4x dependents (#501 MÉDIO), `send-class-report-notification` sem auth phishing (#502 CRÍTICO), .single() 5x (#503 MÉDIO), `create-connect-account` .single() L76 (#504 BAIXO).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4598,6 +4598,34 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 
 ---
 
+### 24ª Passagem — Auth Gaps em Teacher Cancellation/Notifications, Raw SQL, Smart-Delete Wrong Params, FK Joins em Checkout
+
+1. **#488** (CRÍTICO - Segurança): `handle-teacher-subscription-cancellation` **sem auth JWT**. Aceita `teacher_id` do body. Qualquer chamador anônimo pode cancelar faturas, gerar pending_refunds e disparar emails de notificação para todos os alunos de qualquer professor.
+2. **#489** (ALTO): `handle-teacher-subscription-cancellation` L122 `stripe.invoices.retrieve()` sem `stripeAccount`. Faturas Connect invisíveis → inconsistência.
+3. **#490** (MÉDIO): `handle-teacher-subscription-cancellation` L252 `.single()` para teacher profile em sendNotifications.
+4. **#491** (ALTO): `handle-teacher-subscription-cancellation` L285 envia email para `student.email` ao invés de `teacher_student_relationships.student_guardian_email`.
+5. **#492** (MÉDIO): `process-payment-failure-downgrade` L22-23 `createClient` sem `{ auth: { persistSession: false } }`.
+6. **#493** (ALTO): `process-payment-failure-downgrade` L144-152 invoca `smart-delete-student` com params errados (camelCase `studentId` ao invés de `student_id`, missing `teacher_id`/`relationship_id`). TODAS as remoções falham.
+7. **#494** (MÉDIO): `process-payment-failure-downgrade` L55 `.single()` para active subscription.
+8. **#495** (CRÍTICO - SQL Injection): `setup-class-reminders-automation` L24/L37/L51 usa `exec_sql` RPC para SQL arbitrário. Vetor de injection catastrófico.
+9. **#496** (ALTO): `setup-class-reminders-automation` L49/L61 ANON_KEY inline em SQL.
+10. **#497** (ALTO): `create-subscription-checkout` L172-173 FK join `subscription_plans(*)`.
+11. **#498** (MÉDIO): `create-subscription-checkout` L175 `.single()` para existing subscription.
+12. **#499** (MÉDIO): `send-cancellation-notification` L37-38 persistSession ausente.
+13. **#500** (CRÍTICO - Phishing): `send-cancellation-notification` **sem auth JWT**. Permite envio de emails falsos.
+14. **#501** (MÉDIO): `send-cancellation-notification` `.single()` 4x em dependent lookups.
+15. **#502** (CRÍTICO - Phishing): `send-class-report-notification` **sem auth JWT**. Permite envio de emails com dados reais.
+16. **#503** (MÉDIO): `send-class-report-notification` `.single()` 5x.
+17. **#504** (BAIXO): `create-connect-account` L76-77 `.single()`.
+18. **#505** (MÉDIO): `create-subscription-checkout` L138 `.single()` para plan lookup.
+
+### Totais Atualizados (v5.61)
+- 505 pontas soltas totais | 475 únicas | **463 pendentes**
+- Fase 0: **116 itens** (+8: #488, #495, #500, #502, #493, #497, #489, #491)
+- **100% cobertura**: 75 funções auditadas (24 passagens)
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4640,7 +4668,9 @@ Prioridade de execução: Fase 0 (78 itens críticos). Padrão SISTÊMICO novo i
 | v5.56 | 2026-02-17 | **19ª passagem: análise cruzada profunda — segurança, validação, diagnóstico, auditoria e Stripe Connect**. +16 pontas soltas (#400-#415). 6 itens adicionados à Fase 0 (78 itens). Totais: **415 pontas soltas**, **385 únicas**, **373 pendentes**. |
 | v5.57 | 2026-02-17 | **20ª passagem: análise cruzada profunda — geração de boleto, exceções de aula, materialização, request-class, auto-verificação, cron setup, lembretes e boletos pendentes**. +18 pontas soltas (#416-#433). 8 itens adicionados à Fase 0 (86 itens). Totais: **433 pontas soltas**, **403 únicas**, **391 pendentes**. |
 | v5.58 | 2026-02-17 | **21ª passagem: análise cruzada profunda — status mismatch sistêmico, destruição de dados de pagamento, webhook resilience, FK joins em funções core**. +18 pontas soltas (#434-#451). 8 itens adicionados à Fase 0 (94 itens). Totais: **451 pontas soltas**, **421 únicas**, **409 pendentes**. |
-
+| v5.59 | 2026-02-17 | **22ª passagem: análise cruzada profunda — auth gaps em create/update students, deletion cascades, phishing vectors em invitations/material sharing**. +18 pontas soltas (#452-#469). 6 itens adicionados à Fase 0 (100 itens). Totais: **469 pontas soltas**, **439 únicas**, **427 pendentes**. |
+| v5.60 | 2026-02-17 | **23ª passagem: análise cruzada profunda — webhook status guards, stripeAccount missing, RPC inexistente, notification spam loops**. +18 pontas soltas (#470-#487). 8 itens adicionados à Fase 0 (108 itens). Totais: **487 pontas soltas**, **457 únicas**, **445 pendentes**. |
+| v5.61 | 2026-02-17 | **24ª passagem: análise cruzada profunda — auth gaps em teacher subscription cancellation e notification functions, raw SQL injection em setup automation, smart-delete wrong params, FK joins em checkout**. +18 pontas soltas (#488-#505). 8 itens adicionados à Fase 0 (116 itens). Totais: **505 pontas soltas**, **475 únicas**, **463 pendentes**. |
 ## Memórias do Projeto a Atualizar
 
 Após implementação, atualizar:

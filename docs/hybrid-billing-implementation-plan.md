@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.45 (Consolidado)
+# Plano de Cobrança Híbrida — v5.46 (Consolidado)
 
-**Data**: 2026-02-16
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 31 vulnerabilidades ativas
+**Data**: 2026-02-17
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 38 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.14 implementou 6 pontas soltas (#132-#137). A v5.45 consolida todas as auditorias com 8 passagens completas. Totais finais: **286 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 7 confirmações = **257 únicas**, **245 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 8ª passagem em automação, verificação e utilitários). A 8ª passagem revelou que `audit-logger` (a função compartilhada de auditoria) insere com colunas erradas — o mesmo bug que #258 mas na função exportada, significando que TODOS os audit logs do sistema falham silenciosamente. Também identificou que `smart-delete-student` não tem autenticação e que `check-overdue-invoices` usa status em inglês ('overdue') e a tabela errada para deduplicação.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.46 consolida todas as auditorias com 9 passagens completas. Totais finais: **299 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **269 únicas**, **257 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 9ª passagem — análise cruzada profunda de webhooks, pagamentos, cancelamentos e checkout). A 9ª passagem revelou 13 novas pontas soltas (#287-#299): status em inglês nos webhooks do Stripe Connect ('paid'/'overdue'), ausência total de autenticação em `process-cancellation`, FK joins proibidos em `create-invoice`, bug de autorização em `change-payment-method` (double `.eq()` confirmado), `resend-confirmation` carrega todos os usuários em memória, `verify-payment-status` sem auth, webhook-stripe-subscriptions retorna HTTP 400 causando retries do Stripe, e checkout cancela assinatura antes da confirmação do pagamento.
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4073,6 +4073,66 @@ Cinco chamadas `.single()` em `subscription_plans` ao longo da função. Se plan
 
 ---
 
+## 9ª Passagem: Análise Cruzada Profunda — Webhooks, Pagamentos, Cancelamento e Checkout
+
+Funções auditadas nesta rodada (9ª passagem — análise cruzada):
+- `webhook-stripe-connect/index.ts` (560 linhas) — status em inglês (#287, #288), .single() em invoice lookups (#297), sem guard em invoice.voided (#182 confirmado)
+- `webhook-stripe-subscriptions/index.ts` (802 linhas) — HTTP 400 para user not found (#294), .single() em plans dentro de upsertUserSubscription L346 (#265 confirmado)
+- `create-subscription-checkout/index.ts` (372 linhas) — .single() em user_subscriptions L175 (#295), cancela assinatura antes de confirmar pagamento (#296 confirma memória)
+- `create-payment-intent-connect/index.ts` (659 linhas) — SEM AUTH (#175 confirmado), .single() em invoice L51 (#293 extensão)
+- `process-cancellation/index.ts` (500 linhas) — SEM AUTH (#289 ALTA), confia em cancelled_by do body (#290), .single() em dependent L107 (#291)
+- `create-invoice/index.ts` (575 linhas) — usa FK joins proibidos em class_participants L233 (#291), .single() em relationship L154 (#292)
+- `verify-payment-status/index.ts` (124 linhas) — SEM AUTH (#293 confirma #195), .single() em invoice L40
+- `change-payment-method/index.ts` (253 linhas) — double .eq() em L84-85 (#261 confirmado com código), audit_logs correto ✅
+- `handle-student-overage/index.ts` (238 linhas) — insere em student_overage_charges que NÃO EXISTE (#298 confirma memória), .single() em user_subscriptions L79
+- `resend-confirmation/index.ts` (202 linhas) — listUsers() sem filtro carrega TODOS os auth users (#299 confirma memória)
+- `audit-logger/index.ts` (86 linhas) — colunas erradas (#277 confirmado com código)
+- `smart-delete-student/index.ts` (547 linhas) — SEM AUTH (#282 confirmado com código), FK joins em class_participants L132-139
+
+### Achados Críticos (→ Fase 0)
+
+1. **#287 (ALTA)**: `webhook-stripe-connect` — handlers `invoice.paid` (L320) e `payment_intent.succeeded` (L469) escrevem `status: "paid"` em inglês. Faturas pagas via Stripe Connect ficam invisíveis no dashboard financeiro que filtra por `'paga'`. **Extensão sistêmica de #237.**
+
+2. **#288 (ALTA)**: `webhook-stripe-connect` — handler `invoice.marked_uncollectible` (L404) escreve `status: "overdue"` em inglês. Faturas inadimplentes ficam invisíveis. **Extensão de #237.**
+
+3. **#289 (ALTA)**: `process-cancellation` — **ZERO autenticação**. Aceita `cancelled_by` do body da request sem validar contra `auth.uid()`. Qualquer chamador com a URL e um class_id pode cancelar aulas e gerar faturas de multa.
+
+4. **#290 (ALTA)**: `process-cancellation` — **Identity spoofing**: o campo `cancelled_by` (L35-36) vem do request body e é usado diretamente nos updates sem comparar com o JWT. Um atacante pode forjar a identidade de qualquer professor ou aluno para cancelar aulas. **Extensão de #289.**
+
+5. **#294 (ALTA)**: `webhook-stripe-subscriptions` — retorna HTTP 400 para "User not found for customer" (L421-427, L513-521, L565-572, L601-607). O Stripe interpreta 400 como falha e retenta o evento infinitamente, causando overhead de processamento. Deve retornar 200 com `{ received: true, skipped: true }`.
+
+6. **#296 (ALTA)**: `create-subscription-checkout` — cancela a assinatura Stripe existente ANTES de o usuário completar o checkout (L186-188). Se o usuário abandona a página, perde todos os benefícios do plano atual. Deve cancelar apenas após `checkout.session.completed`. **Confirma memória existente.**
+
+7. **#297 (ALTA)**: `webhook-stripe-connect` — handlers `invoice.paid` (L310), `invoice.payment_succeeded` (L346), e `payment_intent.succeeded` (L456) usam `.single()` para buscar faturas. Se a fatura não existir no DB (evento órfão), o webhook inteiro retorna 500, causando retentativas infinitas do Stripe.
+
+### Achados Moderados (→ Fase 2-3)
+
+8. **#291 (MÉDIA)**: `create-invoice` — usa FK join proibido em `class_participants` (L233: `classes!inner(...)` e `class_services(...)`) que pode falhar por cache de schema do Deno. Deve usar queries sequenciais.
+
+9. **#292 (MÉDIA)**: `create-invoice` — usa `.single()` em `teacher_student_relationships` (L154) para buscar relationship. Deve usar `.maybeSingle()` com erro descritivo.
+
+10. **#293 (MÉDIA → confirma #195)**: `verify-payment-status` — **SEM autenticação**. Qualquer chamador com um `invoice_id` pode consultar e atualizar status de faturas arbitrárias via Stripe API.
+
+11. **#295 (MÉDIA)**: `create-subscription-checkout` — `.single()` em `user_subscriptions` (L175). Se múltiplas subscriptions existirem para o mesmo usuário (edge case), crash.
+
+12. **#298 (MÉDIA → confirma memória)**: `handle-student-overage` — insere em `student_overage_charges` (L132) que **não existe** no schema. Todas as cobranças de overage falham silenciosamente no tracking.
+
+13. **#299 (MÉDIA → confirma memória)**: `resend-confirmation` — `listUsers()` sem filtro (L45) carrega TODA a tabela `auth.users` em memória. Risco de DoS e exhaustão de memória conforme a base cresce.
+
+### Totais Atualizados (v5.46)
+- 299 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 10 confirmações
+- 269 únicas
+- 10 implementadas
+- **257 pendentes**
+- Fase 0: **38 itens** (+7: #287, #288, #289, #290, #294, #296, #297)
+- **100% cobertura**: 75 funções auditadas (9 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (38 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições) e utilitários (~15 substituições).
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4101,7 +4161,8 @@ Cinco chamadas `.single()` em `subscription_plans` ao longo da função. Se plan
 | v5.42 | 2026-02-16 | **5ª passagem: webhooks, subscrições e student management**. +8 pontas soltas (#250-#257). 4 itens adicionados à Fase 0 (26 itens). Totais: **257 pontas soltas**, **233 únicas**, **221 pendentes**. |
 | v5.43 | 2026-02-16 | **6ª passagem: subscription management, payment flows e Connect**. +9 pontas soltas (#258-#266). 2 itens adicionados à Fase 0 (28 itens). Totais: **266 pontas soltas**, **238 únicas**, **226 pendentes**. |
 | v5.44 | 2026-02-16 | **7ª passagem: notificações, entity management e CRUD**. +10 pontas soltas (#267-#276). Nenhum item adicionado à Fase 0 (28 itens mantidos). Totais: **276 pontas soltas**, **247 únicas**, **235 pendentes**. |
-| v5.45 | 2026-02-16 | **8ª passagem: automação, verificação e utilitários**. +10 pontas soltas (#277-#286): audit-logger insere com colunas erradas — extensão sistêmica de #258, TODOS os audit logs falham silenciosamente (#277 ALTA → Fase 0), check-overdue-invoices escreve 'overdue' (inglês) — extensão de #237 (#278 ALTA → Fase 0), check-overdue-invoices usa class_notifications para dedup de invoices (#279 MÉDIA), smart-delete-student .single() em subscription (#280 ALTA → Fase 0), smart-delete-student .single() em plan (#281 MÉDIA), smart-delete-student SEM AUTENTICAÇÃO (#282 ALTA → Fase 0), check-subscription-status 5× .single() em plans (#283 MÉDIA), check-pending-boletos .single() em free plan (#284 MÉDIA), process-expired-subscriptions .single() em free plan (#285 MÉDIA), check-business-profile-status .single() em pending profile (#286 BAIXA). 3 itens adicionados à Fase 0 (31 itens). Totais: **286 pontas soltas**, **257 únicas**, **245 pendentes**. |
+| v5.45 | 2026-02-16 | **8ª passagem: automação, verificação e utilitários**. +10 pontas soltas (#277-#286). 3 itens adicionados à Fase 0 (31 itens). Totais: **286 pontas soltas**, **257 únicas**, **245 pendentes**. |
+| v5.46 | 2026-02-17 | **9ª passagem: análise cruzada profunda — webhooks, pagamentos, cancelamento e checkout**. +13 pontas soltas (#287-#299): webhook-stripe-connect escreve 'paid'/'overdue' em inglês (#287/#288 ALTA → Fase 0), process-cancellation SEM AUTH + identity spoofing (#289/#290 ALTA → Fase 0), webhook-stripe-subscriptions retorna HTTP 400 causando retries (#294 ALTA → Fase 0), create-subscription-checkout cancela assinatura antes de confirmar pagamento (#296 ALTA → Fase 0), webhook-stripe-connect .single() em invoice lookups (#297 ALTA → Fase 0), create-invoice FK joins proibidos (#291 MÉDIA), create-invoice .single() em relationship (#292 MÉDIA), verify-payment-status SEM AUTH confirma #195 (#293 MÉDIA), checkout .single() em subscriptions (#295 MÉDIA), handle-student-overage tabela inexistente confirma memória (#298 MÉDIA), resend-confirmation listUsers() sem filtro confirma memória (#299 MÉDIA). 7 itens adicionados à Fase 0 (38 itens). Totais: **299 pontas soltas**, **269 únicas**, **257 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

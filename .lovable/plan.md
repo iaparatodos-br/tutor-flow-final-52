@@ -1,52 +1,53 @@
 
 
 
-# Verificação Final v5.46 — 13 Novas Pontas Soltas (9ª Passagem: Análise Cruzada Profunda — Webhooks, Pagamentos, Cancelamento e Checkout)
+# Verificação Final v5.47 — 7 Novas Pontas Soltas (10ª Passagem: Análise Cruzada — Billing Automation, Materialização, Recorrência e Exceções)
 
-## Veredicto: Plano atualizado para v5.46 com 7 achados CRÍTICOS — webhook status em inglês, process-cancellation sem auth, webhook retries, checkout race condition, webhook .single() crashes.
+## Veredicto: Plano atualizado para v5.47 com 3 achados CRÍTICOS — FK joins em automated-billing, is_paid_class não herdado em materialização, e idempotência de mensalidades.
 
 ---
 
-## Auditoria de 9ª Passagem (Análise Cruzada Profunda)
+## Auditoria de 10ª Passagem (Análise Cruzada — Fluxos de Aula e Faturamento)
 
-Funções auditadas nesta rodada (9ª passagem — análise cruzada):
-- `webhook-stripe-connect/index.ts` (560 linhas) — status em inglês (#287, #288), .single() em invoice lookups (#297)
-- `webhook-stripe-subscriptions/index.ts` (802 linhas) — HTTP 400 para user not found (#294), .single() em plans L346
-- `create-subscription-checkout/index.ts` (372 linhas) — .single() em subscriptions L175 (#295), cancela assinatura antes de confirmar (#296)
-- `create-payment-intent-connect/index.ts` (659 linhas) — SEM AUTH (#175 confirmado), .single() em invoice L51
-- `process-cancellation/index.ts` (500 linhas) — SEM AUTH (#289), identity spoofing (#290), .single() em dependent L107
-- `create-invoice/index.ts` (575 linhas) — FK joins proibidos L233 (#291), .single() em relationship L154 (#292)
-- `verify-payment-status/index.ts` (124 linhas) — SEM AUTH (#293 confirma #195)
-- `change-payment-method/index.ts` (253 linhas) — double .eq() em L84-85 (#261 confirmado)
-- `handle-student-overage/index.ts` (238 linhas) — tabela inexistente (#298 confirma memória)
-- `resend-confirmation/index.ts` (202 linhas) — listUsers() sem filtro (#299 confirma memória)
-- `audit-logger/index.ts` (86 linhas) — colunas erradas (#277 confirmado)
-- `smart-delete-student/index.ts` (547 linhas) — SEM AUTH (#282 confirmado), FK joins L132-139
+Funções auditadas nesta rodada (10ª passagem — análise cruzada):
+- `automated-billing/index.ts` (1057 linhas) — FK joins proibidos em 4 locais (#300), sem idempotência para mensalidades (#303), invoca payment-intent sem auth (#304)
+- `materialize-virtual-class/index.ts` (376 linhas) — NÃO herda `is_paid_class` do template (#301)
+- `request-class/index.ts` (223 linhas) — NÃO define `is_paid_class` (#302)
+- `end-recurrence/index.ts` (133 linhas) — `.single()` L50, sem cleanup de FK antes de delete (#305, confirma #181)
+- `create-invoice/index.ts` (575 linhas) — FK joins confirmados (#291), `.single()` confirmado (#292)
+- `manage-class-exception/index.ts` (157 linhas) — `.single()` para profile L47 (#306)
+- `manage-future-class-exceptions/index.ts` (220 linhas) — `.single()` para profile L53 (#306)
+- `send-class-request-notification/index.ts` (210 linhas) — `.single()` em teacher/student/dependent lookups (padrão sistêmico)
+- `send-class-confirmation-notification/index.ts` (212 linhas) — `.single()` em student/dependent/relationship lookups (padrão sistêmico)
 
 ### Achados Críticos (→ Fase 0)
 
-1. **#287 (ALTA)**: `webhook-stripe-connect` — `invoice.paid` (L320) e `payment_intent.succeeded` (L469) escrevem `status: "paid"` em inglês → faturas invisíveis no dashboard. Extensão de #237.
+1. **#300 (ALTA)**: `automated-billing` — Usa FK join syntax (`profiles!teacher_id`, `profiles!student_id`, `classes!inner`, `subscription_plans!inner`) em 4 locais. Viola constraint documentada de queries sequenciais. Risco de falha silenciosa por schema cache do Deno.
 
-2. **#288 (ALTA)**: `webhook-stripe-connect` — `invoice.marked_uncollectible` (L404) escreve `status: "overdue"` → faturas inadimplentes invisíveis. Extensão de #237.
+2. **#301 (ALTA)**: `materialize-virtual-class` — NÃO herda `is_paid_class` do template na inserção (L252-263). Campo default é `true`, então aulas de reposição/gratuitas se tornam cobradas após materialização.
 
-3. **#289 (ALTA)**: `process-cancellation` — **ZERO autenticação**. Aceita `cancelled_by` do body sem validar JWT.
+3. **#303 (ALTA)**: `automated-billing` — Sem guarda de idempotência para faturamento de mensalidade. Se cron executa 2x no mesmo dia, cria faturas duplicadas. O valor base da mensalidade é SEMPRE adicionado sem verificar se já existe fatura `monthly_subscription` para o ciclo atual.
 
-4. **#290 (ALTA)**: `process-cancellation` — **Identity spoofing** via `cancelled_by` forjado. Extensão de #289.
+### Achados Médios
 
-5. **#294 (ALTA)**: `webhook-stripe-subscriptions` — HTTP 400 para "User not found" causa retries infinitos do Stripe.
+4. **#302 (MÉDIA)**: `request-class` — Não define `is_paid_class` na criação da aula (L135-146). Default `true` pode gerar cobranças indesejadas no modelo prepaid. Confirma memória #138.
 
-6. **#296 (ALTA)**: `create-subscription-checkout` — cancela assinatura Stripe ANTES do checkout completar. Race condition crítica.
+5. **#304 (MÉDIA)**: `automated-billing` — Invoca `create-payment-intent-connect` (L522-529) sem auth header. Função destino espera JWT de usuário para validação (#175). Funciona por service_role implícito mas é inconsistente.
 
-7. **#297 (ALTA)**: `webhook-stripe-connect` — `.single()` em invoice lookups (3 handlers). Evento órfão → crash 500 → retries infinitos.
+6. **#305 (MÉDIA)**: `end-recurrence` — L50 usa `.single()` para template. L67-73 deleta classes sem limpar `class_participants` e `class_exceptions` primeiro. FK RESTRICT pode causar falha de delete. Confirma #181.
 
-### Totais Atualizados (v5.46)
-- 299 pontas soltas totais
+### Achados Baixos
+
+7. **#306 (BAIXA)**: `manage-class-exception` (L47) e `manage-future-class-exceptions` (L53) usam `.single()` para profile lookup. Menor risco pois profile do usuário autenticado deveria sempre existir.
+
+### Totais Atualizados (v5.47)
+- 306 pontas soltas totais
 - 18 duplicatas + 2 subsumidas + 10 confirmações
-- 269 únicas
-- 10 implementadas
-- **257 pendentes**
-- Fase 0: **38 itens** (+7: #287, #288, #289, #290, #294, #296, #297)
-- **100% cobertura**: 75 funções auditadas (9 passagens completas)
+- 276 únicas
+- 10 implementadas + 2 confirmações de memória
+- **264 pendentes**
+- Fase 0: **41 itens** (+3: #300, #301, #303)
+- **100% cobertura**: 75 funções auditadas (10 passagens completas)
 
 ### Status Final
-Prioridade de execução: Fase 0 (38 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições) e utilitários (~15 substituições).
+Prioridade de execução: Fase 0 (41 itens críticos), seguido por batch fix de `.single()` em funções de notificação (~30 substituições) e utilitários (~15 substituições). Os 3 novos achados críticos afetam diretamente a integridade financeira: materialização de aulas gratuitas como pagas (#301), faturas mensais duplicadas (#303), e instabilidade em produção por FK joins (#300).

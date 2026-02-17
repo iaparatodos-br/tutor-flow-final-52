@@ -1428,6 +1428,7 @@ export default function Agenda() {
         // Professor-created classes are confirmed by default
         is_experimental: formData.is_experimental, // Use form value directly
         is_group_class: formData.is_group_class,
+        is_paid_class: formData.is_paid_class, // FASE 5: Persistir is_paid_class
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };
       let insertedClasses;
@@ -1509,8 +1510,59 @@ export default function Agenda() {
           throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
         }
       }
-      // Note: Individual classes without selectedStudents are now handled 
-      // by the selectedParticipants array above (no separate logic needed)
+      // FASE 5: Gerar faturas pré-pagas para aulas não-recorrentes
+      if (!formData.recurrence && formData.is_paid_class && !formData.is_experimental && participantsToInsert.length > 0) {
+        try {
+          // Buscar charge_timing do business_profile do professor
+          const { data: bp } = await supabase
+            .from('business_profiles')
+            .select('charge_timing')
+            .eq('user_id', profile.id)
+            .maybeSingle();
+
+          if (bp?.charge_timing === 'prepaid') {
+            // Determinar preço do serviço
+            const servicePrice = formData.service_id
+              ? services.find(s => s.id === formData.service_id)?.price || 0
+              : 0;
+
+            if (servicePrice > 0 && insertedClasses?.[0]) {
+              const classId = insertedClasses[0].id;
+              let prepaidErrors = 0;
+
+              for (const participant of participantsToInsert) {
+                const { data: invoiceResult, error: invoiceError } = await supabase.functions.invoke('create-invoice', {
+                  body: {
+                    student_id: participant.student_id,
+                    dependent_id: participant.dependent_id || undefined,
+                    amount: servicePrice,
+                    description: `Aula pré-paga - ${new Date(classDateTime).toLocaleDateString('pt-BR')}`,
+                    class_id: classId,
+                    invoice_type: 'prepaid_class',
+                  }
+                });
+
+                if (invoiceError || (invoiceResult && !invoiceResult.success)) {
+                  console.error('[PREPAID] Erro ao gerar fatura pré-paga:', invoiceError || invoiceResult?.error);
+                  prepaidErrors++;
+                }
+              }
+
+              if (prepaidErrors > 0) {
+                toast({
+                  title: "Aviso",
+                  description: `${prepaidErrors} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
+                  variant: "destructive"
+                });
+              }
+            }
+          }
+        } catch (prepaidError) {
+          console.error('[PREPAID] Erro ao verificar/gerar faturas pré-pagas:', prepaidError);
+          // Não falhar a criação da aula por erro na fatura
+        }
+      }
+
       if (formData.recurrence) {
         toast({
           title: t('messages.recurringConfirmed'),

@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.47 (Consolidado)
+# Plano de Cobrança Híbrida — v5.48 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 41 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 43 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.47 consolida todas as auditorias com 10 passagens completas. Totais finais: **306 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **276 únicas**, **264 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 10ª passagem — análise cruzada profunda de billing automation, materialização, recorrência e exceções). A 10ª passagem revelou 7 novas pontas soltas (#300-#306): `automated-billing` usa FK joins proibidos em 4 locais, `materialize-virtual-class` não herda `is_paid_class` do template, `request-class` não define `is_paid_class`, `automated-billing` sem guarda de idempotência para mensalidades duplicadas, `automated-billing` invoca `create-payment-intent-connect` sem auth header, `end-recurrence` usa `.single()` e não limpa FKs antes de deletar aulas, e `manage-class-exception`/`manage-future-class-exceptions` usam `.single()` para profile lookup.
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.48 consolida todas as auditorias com 11 passagens completas. Totais finais: **315 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 10 confirmações = **285 únicas**, **273 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 11ª passagem — análise cruzada profunda de notificações, deduplicação e setup). A 11ª passagem revelou 9 novas pontas soltas (#307-#315): `validate-payment-routing` insere faturas reais como teste (#307 ALTA), `check-overdue-invoices` tem deduplicação completamente quebrada por uso de `class_notifications` com IDs de fatura (#308 ALTA), `send-class-reminders` usa FK join proibido (#309), `check-overdue-invoices` sofre de TOCTOU race condition (#310), `validate-monthly-subscriptions` usa FK join proibido (#311), `send-boleto-subscription-notification` duplica SES client (#312), funções de notificação sem rate limiting (#313), `.single()` sistêmico em `resend-student-invitation` (#314), e `setup-billing-automation` expõe ANON_KEY inline (#315).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 
@@ -4133,6 +4133,63 @@ Prioridade de execução: Fase 0 (38 itens críticos), seguido por batch fix de 
 
 ---
 
+## 11ª Passagem: Análise Cruzada Profunda — Notificações, Deduplicação e Setup
+
+Funções auditadas nesta rodada (11ª passagem — análise cruzada profunda):
+- `send-class-reminders/index.ts` (317 linhas) — FK join em class_services L36 (#309), 4× `.single()` em loops (#267-#268 confirmados)
+- `send-invoice-notification/index.ts` (465 linhas) — 4× `.single()` (#269-#270 confirmados)
+- `send-class-report-notification/index.ts` (294 linhas) — 6× `.single()` (#272 confirmado), throw em participants vazios L92
+- `send-cancellation-notification/index.ts` (498 linhas) — 3× `.single()` em dependentes (#271 confirmado)
+- `send-material-shared-notification/index.ts` (316 linhas) — 2× `.single()` (#274 confirmado)
+- `send-boleto-subscription-notification/index.ts` (345 linhas) — SES direto sem shared helper (#312), `.single()` em profile L283 (#275 confirmado)
+- `send-class-confirmation-notification/index.ts` (212 linhas) — 3× `.single()` (#306 extensão)
+- `send-class-request-notification/index.ts` (210 linhas) — 3× `.single()` (#273 confirmado)
+- `send-student-invitation/index.ts` (158 linhas) — sem auth (intencional), sem rate limiting (#313)
+- `send-password-reset/index.ts` (244 linhas) — sem rate limiting (#314)
+- `resend-student-invitation/index.ts` (186 linhas) — 3× `.single()` (L76, L90, L128)
+- `validate-payment-routing/index.ts` (321 linhas) — 3× `.single()` (L56, L116, L154), FK join em profiles (#266 confirmado), insere fatura de teste real em produção (#307)
+- `validate-monthly-subscriptions/index.ts` (355 linhas) — FK join `monthly_subscriptions!inner` L230 (#311)
+- `check-overdue-invoices/index.ts` (152 linhas) — status 'overdue' inglês (#278 confirmado), deduplicação quebrada (#308), TOCTOU race condition (#310)
+- `setup-billing-automation/index.ts` (69 linhas) — expõe ANON_KEY inline no cron command (#315)
+
+### Achados Críticos (→ Fase 0)
+
+1. **#307 (ALTA)**: `validate-payment-routing` — Na simulação de criação de fatura (L245-263), **INSERE uma fatura REAL** no banco de produção como "teste" e tenta deletar depois. Se a deleção falhar (RLS, timeout, erro de rede), faturas fantasma de R$1,00 permanecem no sistema e podem ser processadas pelo `automated-billing` ou aparecer no dashboard do aluno.
+
+2. **#308 (ALTA)**: `check-overdue-invoices` — Deduplicação de notificações de faturas vencidas é **COMPLETAMENTE QUEBRADA**. A função verifica duplicatas em `class_notifications` usando `class_id = invoice.id` (L47-52), mas: (a) o campo `class_id` tem FK para `classes`, então IDs de faturas violam a constraint; (b) nenhuma função insere o registro de dedup após enviar a notificação de invoice; (c) resultado: **cada execução do cron re-envia notificações para TODAS as faturas vencidas**, gerando spam massivo.
+
+### Achados Moderados
+
+3. **#309 (MÉDIA)**: `send-class-reminders` L36 — Usa FK join inline `class_services(name)` no SELECT. Viola a constraint de queries sequenciais para Edge Functions.
+
+4. **#310 (MÉDIA)**: `check-overdue-invoices` L56-59 — Race condition TOCTOU: o SELECT filtra `status = 'pendente'`, mas o UPDATE subsequente não inclui `.eq('status', 'pendente')` como guard clause. Se outra função marca a fatura como 'paga' entre o SELECT e o UPDATE, o status 'paga' é sobrescrito para 'overdue'.
+
+5. **#311 (MÉDIA)**: `validate-monthly-subscriptions` L230 — Usa FK join `monthly_subscriptions!inner` na query de verificação de cascade. Viola constraint de queries sequenciais.
+
+6. **#312 (MÉDIA)**: `send-boleto-subscription-notification` — Cria instância de `SESClient` diretamente (L304-309) em vez de usar o helper compartilhado `_shared/ses-email.ts`. Duplica configuração SES.
+
+### Achados Baixos
+
+7. **#313 (BAIXA)**: `send-password-reset` e `send-student-invitation` — Sem rate limiting. Chamador pode disparar emails ilimitados, habilitando spam/flooding via SES.
+
+8. **#314 (BAIXA)**: `resend-student-invitation` — 3× `.single()` (L76, L90, L128). Menor risco pois tem auth e validação prévia.
+
+9. **#315 (BAIXA)**: `setup-billing-automation` L31 — Expõe `SUPABASE_ANON_KEY` inline no comando SQL do cron job.
+
+### Totais Atualizados (v5.48)
+- 315 pontas soltas totais
+- 18 duplicatas + 2 subsumidas + 10 confirmações
+- 285 únicas
+- 10 implementadas + 2 confirmações de memória
+- **273 pendentes**
+- Fase 0: **43 itens** (+2: #307, #308)
+- **100% cobertura**: 75 funções auditadas (11 passagens completas)
+
+### Status Final
+Prioridade de execução: Fase 0 (43 itens críticos). Os 2 novos achados críticos afetam diretamente a experiência do usuário: faturas de teste fantasma (#307) e spam massivo de notificações de vencimento (#308). O batch fix de `.single()` sistêmico permanece como segunda prioridade (~35 substituições).
+
+---
+
 | Versão | Data | Mudanças |
 |--------|------|----------|
 | v4.0 | 2026-02-12 | Simplificação radical: charge_timing + is_paid_class |
@@ -4163,7 +4220,8 @@ Prioridade de execução: Fase 0 (38 itens críticos), seguido por batch fix de 
 | v5.44 | 2026-02-16 | **7ª passagem: notificações, entity management e CRUD**. +10 pontas soltas (#267-#276). Nenhum item adicionado à Fase 0 (28 itens mantidos). Totais: **276 pontas soltas**, **247 únicas**, **235 pendentes**. |
 | v5.45 | 2026-02-16 | **8ª passagem: automação, verificação e utilitários**. +10 pontas soltas (#277-#286). 3 itens adicionados à Fase 0 (31 itens). Totais: **286 pontas soltas**, **257 únicas**, **245 pendentes**. |
 | v5.46 | 2026-02-17 | **9ª passagem: análise cruzada profunda — webhooks, pagamentos, cancelamento e checkout**. +13 pontas soltas (#287-#299). 7 itens adicionados à Fase 0 (38 itens). Totais: **299 pontas soltas**, **269 únicas**, **257 pendentes**. |
-| v5.47 | 2026-02-17 | **10ª passagem: análise cruzada — billing automation, materialização, recorrência e exceções**. +7 pontas soltas (#300-#306): `automated-billing` usa FK joins proibidos em 4 locais (#300 ALTA → Fase 0), `materialize-virtual-class` não herda `is_paid_class` (#301 ALTA → Fase 0), `request-class` não define `is_paid_class` (#302 MÉDIA), `automated-billing` sem idempotência para mensalidades (#303 ALTA → Fase 0), `automated-billing` invoca payment-intent sem auth header (#304 MÉDIA), `end-recurrence` `.single()` + sem cleanup FK (#305 MÉDIA, confirma #181), `manage-class-exception`/`manage-future-class-exceptions` `.single()` em profile (#306 BAIXA). 3 itens adicionados à Fase 0 (41 itens). Totais: **306 pontas soltas**, **276 únicas**, **264 pendentes**. |
+| v5.47 | 2026-02-17 | **10ª passagem: análise cruzada — billing automation, materialização, recorrência e exceções**. +7 pontas soltas (#300-#306). 3 itens adicionados à Fase 0 (41 itens). Totais: **306 pontas soltas**, **276 únicas**, **264 pendentes**. |
+| v5.48 | 2026-02-17 | **11ª passagem: análise cruzada profunda — notificações, deduplicação e setup**. +9 pontas soltas (#307-#315). 2 itens adicionados à Fase 0 (43 itens). Totais: **315 pontas soltas**, **285 únicas**, **273 pendentes**. |
 
 ## Memórias do Projeto a Atualizar
 

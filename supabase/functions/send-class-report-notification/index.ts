@@ -19,6 +19,25 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate caller is authenticated (teacher or service role)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header", success: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!isServiceRole) {
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !userData.user) {
+        return new Response(JSON.stringify({ error: "Authentication failed", success: false }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      console.log('[send-class-report-notification] Authenticated user:', userData.user.id);
+    }
+
     const { classId, reportId } = await req.json();
     
     console.log(`Processing notification for class ${classId} and report ${reportId}`);

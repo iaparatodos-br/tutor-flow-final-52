@@ -26,8 +26,30 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
+      supabaseServiceKey,
+      { auth: { persistSession: false } }
+    );
+
+    // AUTH: Validate caller
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header", success: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === supabaseServiceKey;
+    if (!isServiceRole) {
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !userData.user) {
+        return new Response(JSON.stringify({ error: "Authentication failed", success: false }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+    }
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );

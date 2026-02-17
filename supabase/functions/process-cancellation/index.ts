@@ -27,8 +27,26 @@ serve(async (req) => {
   try {
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
     );
+
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    console.log('✅ User authenticated:', authUserId);
 
     const { 
       class_id, 
@@ -38,6 +56,9 @@ serve(async (req) => {
       dependent_id,
       participants: requestParticipants 
     }: CancellationRequest = await req.json();
+
+    // AUTH: Prevent identity spoofing — force cancelled_by to be the authenticated user
+    const safeCancelledBy = authUserId;
 
     // 1. Buscar dados da aula sem FK
     const { data: classData, error: classError } = await supabaseClient
@@ -112,7 +133,7 @@ serve(async (req) => {
         console.log(`📌 Cancelamento para dependente: ${dependentName}`);
         
         // Validar que o cancelled_by é o responsável pelo dependente
-        if (cancelled_by_type === 'student' && dependent.responsible_id !== cancelled_by) {
+        if (cancelled_by_type === 'student' && dependent.responsible_id !== safeCancelledBy) {
           throw new Error('Você não tem permissão para cancelar aulas deste dependente');
         }
       }
@@ -139,7 +160,7 @@ serve(async (req) => {
       is_group_class: classData.is_group_class,
       participants_count: participants.length,
       participants_ids: participants.map(p => p.student_id),
-      cancelled_by,
+      cancelled_by: safeCancelledBy,
       cancelled_by_type,
       dependent_id,
       dependent_name: dependentName,
@@ -171,7 +192,7 @@ serve(async (req) => {
 
     // VALIDAÇÃO 3: Verificar permissão do usuário
     if (cancelled_by_type === 'teacher') {
-      if (classData.teacher_id !== cancelled_by) {
+      if (classData.teacher_id !== safeCancelledBy) {
         throw new Error('Você não tem permissão para cancelar esta aula');
       }
     } else if (cancelled_by_type === 'student') {
@@ -184,7 +205,7 @@ serve(async (req) => {
           .from('class_participants')
           .select('id')
           .eq('class_id', class_id)
-          .eq('student_id', cancelled_by)
+          .eq('student_id', safeCancelledBy)
           .maybeSingle();
 
         if (participationError || !participation) {
@@ -246,14 +267,14 @@ serve(async (req) => {
       // NEW: Para dependentes, buscar participação pelo dependent_id
       const participantFilter = dependent_id 
         ? { class_id, dependent_id }
-        : { class_id, student_id: cancelled_by };
+        : { class_id, student_id: safeCancelledBy };
 
       let updateQuery = supabaseClient
         .from('class_participants')
         .update({
           status: 'cancelada',
           cancelled_at: now.toISOString(),
-          cancelled_by: cancelled_by,
+          cancelled_by: safeCancelledBy,
           charge_applied: shouldCharge,
           cancellation_reason: reason
         })
@@ -262,7 +283,7 @@ serve(async (req) => {
       if (dependent_id) {
         updateQuery = updateQuery.eq('dependent_id', dependent_id);
       } else {
-        updateQuery = updateQuery.eq('student_id', cancelled_by);
+        updateQuery = updateQuery.eq('student_id', safeCancelledBy);
       }
 
       const { error: updateParticipantError } = await updateQuery;
@@ -289,7 +310,7 @@ serve(async (req) => {
           cancellation_reason: reason,
           is_group_class: true,
           notification_target: 'teacher',
-          removed_student_id: cancelled_by,
+          removed_student_id: safeCancelledBy,
           removed_dependent_id: dependent_id // NEW: Passar dependent_id
         }
       }).then(({ error: emailError }) => {
@@ -298,7 +319,7 @@ serve(async (req) => {
         }
       });
 
-      console.log(`Participant ${dependent_id ? `dependent ${dependent_id}` : cancelled_by} removed from group class ${class_id}`);
+      console.log(`Participant ${dependent_id ? `dependent ${dependent_id}` : safeCancelledBy} removed from group class ${class_id}`);
 
     } else {
       // CENÁRIO 2: Professor cancela ou aula individual
@@ -310,7 +331,7 @@ serve(async (req) => {
         .update({
           status: 'cancelada',
           cancelled_at: now.toISOString(),
-          cancelled_by: cancelled_by,
+          cancelled_by: safeCancelledBy,
           charge_applied: shouldCharge,
           cancellation_reason: reason
         })
@@ -327,7 +348,7 @@ serve(async (req) => {
         .update({
           status: 'cancelada',
           cancelled_at: now.toISOString(),
-          cancelled_by: cancelled_by,
+          cancelled_by: safeCancelledBy,
           cancellation_reason: reason,
           charge_applied: shouldCharge
         })
@@ -392,7 +413,7 @@ serve(async (req) => {
         if (dependent_id) {
           updateChargeQuery = updateChargeQuery.eq('dependent_id', dependent_id);
         } else {
-          updateChargeQuery = updateChargeQuery.eq('student_id', cancelled_by);
+          updateChargeQuery = updateChargeQuery.eq('student_id', safeCancelledBy);
         }
 
         await updateChargeQuery;
@@ -413,7 +434,7 @@ serve(async (req) => {
       console.log('Creating immediate cancellation invoice...');
       
       // Determinar quem será cobrado (responsável se for dependente)
-      let billingStudentId = cancelled_by;
+      let billingStudentId = safeCancelledBy;
       if (dependent_id && dependentData) {
         billingStudentId = dependentData.responsible_id;
       }

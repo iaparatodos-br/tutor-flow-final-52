@@ -5,35 +5,46 @@
 # Etapa 0.4 — Audit Logs Schema Mismatch ✅
 # Etapa 0.5 — .single() → .maybeSingle() ✅
 # Etapa 0.6 — FK Joins proibidos no Deno ✅
+# Etapa 0.7 — Categoria A: Auth/IDOR ✅
 
-## Etapa 0.6 — Resumo
+## Etapa 0.7 — Resumo
 
-Refatoradas todas as FK join syntax (`profiles!`, `classes!inner`, `subscription_plans!inner`) para queries sequenciais independentes em 10 Edge Functions:
+Adicionada autenticação JWT e validação de propriedade em 17 Edge Functions para corrigir ~25 vulnerabilidades Auth/IDOR.
 
-### Arquivos Modificados
+### Funções Financeiras Críticas (6 funções)
 
-1. **automated-billing** — 3 FK joins removidos (relationship profiles, classes!inner, subscription_plans!inner)
-2. **create-payment-intent-connect** — 3 FK joins removidos (student/teacher/business_profile)
-3. **get-teacher-availability** — 1 FK join removido (classes!inner)
-4. **create-invoice** — 2 FK joins removidos (business_profiles!fkey, classes!inner)
-5. **generate-boleto-for-invoice** — 2 FK joins removidos (student/teacher profiles)
-6. **process-orphan-cancellation-charges** — 2 FK joins removidos (classes!inner, profiles!fkey)
-7. **smart-delete-student** — 2 FK joins removidos (classes!inner 2x)
-8. **process-expired-subscriptions** — 2 FK joins removidos (subscription_plans!inner, profiles!user_id)
-9. **change-payment-method** — 2 FK joins removidos (student/teacher profiles)
-10. **check-subscription-status** — 1 FK join removido (profiles!fkey)
+1. **create-payment-intent-connect** — JWT auth + validação de propriedade (student/teacher/responsible)
+2. **verify-payment-status** — JWT auth + verificação student_id/teacher_id
+3. **change-payment-method** — Corrigido bug de `.eq()` sobrepostos no guardian check; adicionada permissão para teacher
+4. **handle-teacher-subscription-cancellation** — JWT auth + validação teacher_id === auth.uid()
+5. **smart-delete-student** — JWT auth + validação teacher_id === auth.uid() + persistSession:false
+6. **process-cancellation** — JWT auth + anti-spoofing (safeCancelledBy = auth.uid()) + persistSession:false
+
+### Funções Admin/Diagnóstico (3 funções)
+
+7. **stripe-events-monitor** — JWT auth + verificação role === 'professor'
+8. **validate-business-profile-deletion** — JWT auth + validação ownership do business_profile
+9. **refresh-stripe-connect-account** — Corrigido IDOR: adicionado `.eq('teacher_id', user.id)` no UPDATE de payment_accounts
+
+### Funções de Notificação (8 funções)
+
+10. **send-student-invitation** — Auth (JWT ou service role)
+11. **send-class-report-notification** — Auth (JWT ou service role)
+12. **send-material-shared-notification** — Auth (JWT ou service role) + persistSession:false
+13. **send-cancellation-notification** — Auth (JWT ou service role) + persistSession:false
+14. **send-class-request-notification** — Auth (JWT ou service role)
+15. **send-class-confirmation-notification** — Auth (JWT ou service role)
+16. **send-invoice-notification** — Auth (JWT ou service role)
+17. **send-boleto-subscription-notification** — Auth (JWT ou service role)
 
 ### Padrão Aplicado
 
-Todas as queries foram convertidas para o padrão sequencial:
-1. Query principal sem joins
-2. Queries separadas para dados relacionados
-3. Montagem de maps para eficiência em listas
-4. Objetos compostos reconstruídos manualmente
+- Funções chamadas pelo frontend: JWT obrigatório + validação de propriedade do recurso
+- Funções chamadas server-to-server: aceita JWT OU service role key
+- Identity spoofing prevenido: campos como `cancelled_by` e `teacher_id` do body são substituídos por `auth.uid()`
 
 ## Próximas Etapas Pendentes (Fase 0)
 
-- **Categoria A**: Auth/IDOR (~25 itens) — vulnerabilidades de autenticação
 - **Categoria H**: FK Cascade / Deletion failures (~8 itens)
 - **Categoria I**: Data Corruption (~6 itens)
 - **Categoria J**: Integridade de dados (~8 itens)

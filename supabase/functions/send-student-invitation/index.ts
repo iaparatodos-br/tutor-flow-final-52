@@ -19,6 +19,35 @@ serve(async (req) => {
   }
 
   try {
+    // AUTH: Validate caller is authenticated (teacher sending invitation)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "No authorization header provided" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    // Validate token (accept both service role and user JWT)
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!isServiceRole) {
+      const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+      if (userError || !userData.user) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Authentication failed" }),
+          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      console.log('[send-student-invitation] Authenticated user:', userData.user.id);
+    } else {
+      console.log('[send-student-invitation] Service role caller');
+    }
+
     const body: InvitationRequest = await req.json();
     console.log('[send-student-invitation] Received request:', {
       email: body.email,

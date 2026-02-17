@@ -29,6 +29,23 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT and get authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
+
     const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email, payer_address } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
@@ -76,6 +93,40 @@ serve(async (req) => {
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");
     }
+
+    // AUTH: Verify user is the student, teacher, or responsible for a dependent on this invoice
+    const isInvoiceStudent = invoiceRaw.student_id === authUserId;
+    const isInvoiceTeacher = invoiceRaw.teacher_id === authUserId;
+    let isResponsibleForStudent = false;
+    if (!isInvoiceStudent && !isInvoiceTeacher) {
+      // Check if user is a responsible for dependents linked to this student
+      const { data: depCheck } = await supabaseClient
+        .from('dependents')
+        .select('id')
+        .eq('responsible_id', authUserId)
+        .eq('teacher_id', invoiceRaw.teacher_id)
+        .limit(1);
+      if (depCheck && depCheck.length > 0) {
+        // Check if the invoice student is actually this user (responsible)
+        // or if the invoice is for a dependent's responsible
+        const { data: relCheck } = await supabaseClient
+          .from('teacher_student_relationships')
+          .select('id')
+          .eq('student_id', invoiceRaw.student_id)
+          .eq('teacher_id', invoiceRaw.teacher_id)
+          .limit(1);
+        if (relCheck && relCheck.length > 0) {
+          isResponsibleForStudent = true;
+        }
+      }
+    }
+    if (!isInvoiceStudent && !isInvoiceTeacher && !isResponsibleForStudent) {
+      logStep("AUTHORIZATION FAILED", { authUserId, studentId: invoiceRaw.student_id, teacherId: invoiceRaw.teacher_id });
+      return new Response(JSON.stringify({ error: "Você não tem permissão para gerar pagamentos desta fatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    logStep("Authorization passed", { isInvoiceStudent, isInvoiceTeacher, isResponsibleForStudent });
 
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
 

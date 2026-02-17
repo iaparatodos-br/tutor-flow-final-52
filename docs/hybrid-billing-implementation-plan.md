@@ -1,14 +1,14 @@
-# Plano de Cobrança Híbrida — v5.58 (Consolidado)
+# Plano de Cobrança Híbrida — v5.59 (Consolidado)
 
 **Data**: 2026-02-17
-**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 94 vulnerabilidades ativas
+**Status Fase 0 (Batch Crítico)**: 🔴 Pendente — 100 vulnerabilidades ativas
 **Status Fase 1 (Migração SQL)**: ✅ Concluída
 
 ---
 
 ## Contexto
 
-O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.58 consolida todas as auditorias com 21 passagens completas. Totais finais: **451 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **421 únicas**, **409 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 21ª passagem — análise cruzada profunda: status mismatch sistêmico, destruição de dados de pagamento, webhook resilience, FK joins em funções core). A 21ª passagem revelou 18 novas pontas soltas (#434-#451): `webhook-stripe-connect` usa status em INGLÊS 'paid'/'overdue' em vez de Português 'paga'/'vencida' (#434 CATASTRÓFICO — pagamentos confirmados ficam INVISÍVEIS no dashboard), `cancel-payment-intent` idem (#435 CRÍTICO), `check-overdue-invoices` idem (#436 CRÍTICO), `webhook-stripe-connect` destrói dados de comprovante após pagamento (#437 CRÍTICO), `webhook-stripe-connect` HTTP 500 no catch block (#438 RESILIÊNCIA), FK joins proibidos em `create-payment-intent-connect` (#439), `automated-billing` (#440/#441), `create-invoice` (#442/#443), `.single()` em webhook/notification/cancellation (#444/#445/#446), persistSession ausente (#447/#448), guard clause ausente em payment_failed/uncollectible (#449), boleto_url→stripe_hosted_invoice_url CTA enganoso (#450), `automated-billing` sem idempotência de mensalidade (#451 CRÍTICO).
+O plano anterior (v3.10, 228 gaps, ~2939 linhas) foi substituído por regras de negócio simplificadas na v4.0. Versões subsequentes adicionaram pontas soltas e melhorias incrementais. A v5.59 consolida todas as auditorias com 22 passagens completas. Totais finais: **469 pontas soltas** (10 implementadas, 18 duplicatas, 2 subsumidas, 12 confirmações = **439 únicas**, **427 pendentes**) e **52 melhorias**. Cobertura: 75 funções auditadas (100% cobertura, 22ª passagem — cross-function auth gaps, cascata de deleção, notification phishing, SDK inconsistencies). A 22ª passagem revelou 18 novas pontas soltas (#452-#469): `smart-delete-student` IDOR crítico sem JWT (#452), `process-cancellation` invoca create-invoice com service_role key inválida (#453), `send-student-invitation` phishing sem auth (#454), `send-material-shared-notification` spam sem auth (#455), FK joins em `check-subscription-status` (#458) e `smart-delete-student` (#460), campo inexistente `guardian_email` em profiles (#459), `delete-dependent` sem limpeza de invoice_classes (#462), `.single()` em loops de notificação (#456/#457/#463/#464), SDKs sem versão fixa (#465/#466), RESEND_API_KEY obsoleto (#467), persistSession ausente (#461/#468), invocação cruzada com service_role (#469).
 
 Principais mudanças na v5.17: Identificadas 3 funções completamente ausentes de ambas as listas (cobertura e fora de escopo) na v5.16, invalidando a claim de "100% cobertura". `create-business-profile` apresenta risco MÉDIO de criação de contas Stripe Connect órfãs por falta de verificação de duplicatas. Tabela de cobertura expandida para 47 funções. 27 funções fora de escopo. Contagem verificada: 47 + 27 + 1 (_shared) = 75 diretórios.
 

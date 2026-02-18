@@ -106,43 +106,24 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     logStep("Authenticating user with token");
     
-    // Use getClaims for JWT validation (doesn't require active session)
-    const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token);
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     
-    if (claimsError || !claimsData?.claims) {
-      logStep("Authentication failed via getClaims", { 
-        error: claimsError?.message 
+    if (userError || !userData.user) {
+      logStep("Authentication failed", { 
+        error: userError?.message, 
+        hasUser: !!userData?.user 
       });
       
-      // Fallback: try getUser for backward compatibility
-      const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-      
-      if (userError || !userData.user) {
-        logStep("Authentication failed via getUser fallback", { 
-          error: userError?.message, 
-          hasUser: !!userData?.user 
-        });
-        
-        return new Response(JSON.stringify({ 
-          error: "Authentication failed", 
-          code: "INVALID_SESSION" 
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        });
-      }
-      
-      // getUser succeeded
-      var user = userData.user;
-    } else {
-      // getClaims succeeded - construct user object from claims
-      const claims = claimsData.claims;
-      var user = { 
-        id: claims.sub as string, 
-        email: claims.email as string 
-      } as any;
+      return new Response(JSON.stringify({ 
+        error: "Authentication failed", 
+        code: "INVALID_SESSION" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
     }
-
+    
+    const user = userData.user;
     if (!user?.email) {
       logStep("User email not available");
       return new Response(JSON.stringify({ 

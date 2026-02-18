@@ -383,18 +383,20 @@ export function CancellationModal({
                   </AlertDescription>
                 </Alert>
               ) : (
-                <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                  <DollarSign className="h-4 w-4 text-green-600" />
-                  <AlertDescription className="text-green-800 dark:text-green-200">
-                    <strong>{t('alert.free.title')}</strong><br />
-                    {isProfessor ? 
-                      t('alert.free.professor') :
-                      teacherHasFinancialModule ?
-                        t('alert.free.withinDeadline', { hours: policy.hours_before_class }) :
-                        t('alert.free.systemUnavailable')
-                    }
-                  </AlertDescription>
-                </Alert>
+                !classData?.is_experimental && classData?.is_paid_class !== false && classData?.charge_timing !== 'prepaid' && (
+                  <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                    <AlertDescription className="text-green-800 dark:text-green-200">
+                      <strong>{t('alert.free.title')}</strong><br />
+                      {isProfessor ? 
+                        t('alert.free.professor') :
+                        teacherHasFinancialModule ?
+                          t('alert.free.withinDeadline', { hours: policy.hours_before_class }) :
+                          t('alert.free.systemUnavailable')
+                      }
+                    </AlertDescription>
+                  </Alert>
+                )
               )}
             </div>
           )}

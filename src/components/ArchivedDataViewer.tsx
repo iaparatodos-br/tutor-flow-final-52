@@ -116,6 +116,7 @@ export function ArchivedDataViewer() {
       'pendente': { label: t('status.pending'), variant: 'secondary' as const },
       'cancelada': { label: t('status.cancelled'), variant: 'destructive' as const },
       'concluida': { label: t('status.completed'), variant: 'outline' as const },
+      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), variant: 'warning' as const },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'secondary' as const };

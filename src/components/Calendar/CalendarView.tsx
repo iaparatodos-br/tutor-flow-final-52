@@ -24,7 +24,7 @@ export interface ClassParticipant {
   student_id: string;
   dependent_id?: string | null;
   dependent_name?: string | null;
-  status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   student: {
     name: string;
     email: string;
@@ -40,7 +40,7 @@ export interface CalendarClass {
   title: string;
   start: Date;
   end: Date;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   student_id?: string;
   student: {
     name: string;
@@ -140,7 +140,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       pendente: 'hsl(var(--warning))',
       confirmada: 'hsl(var(--primary))',
       cancelada: 'hsl(var(--destructive))',
-      concluida: 'hsl(var(--success))'
+      concluida: 'hsl(var(--success))',
+      aguardando_pagamento: 'hsl(30 80% 55%)'
     };
 
     let backgroundColor = statusColors[classEvent.status];
@@ -185,7 +186,8 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       pendente: { label: t('status.pending'), variant: "secondary" as const },
       confirmada: { label: t('status.confirmed'), variant: "default" as const },
       cancelada: { label: t('status.cancelled'), variant: "destructive" as const },
-      concluida: { label: t('status.completed'), variant: "outline" as const }
+      concluida: { label: t('status.completed'), variant: "outline" as const },
+      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "warning" as const }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
@@ -447,7 +449,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   })()}
 
                   {/* Action Buttons */}
-                  {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' ? (
+                  {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' || (selectedEvent as CalendarClass).status === 'aguardando_pagamento' ? (
                     <div className="flex justify-end gap-2 pt-2">
                       {/* Cancel Button - Available for both students and professors */}
                       {onCancelClass && (

@@ -309,7 +309,7 @@ serve(async (req) => {
 
         const { data: byInvoiceId } = await supabaseClient
           .from('invoices')
-          .select('id, payment_origin, payment_method, status')
+          .select('id, payment_origin, payment_method, status, class_id')
           .eq('stripe_invoice_id', paidInvoice.id)
           .maybeSingle();
 
@@ -322,7 +322,7 @@ serve(async (req) => {
             : paidInvoice.payment_intent.id;
           const { data: byPiId } = await supabaseClient
             .from('invoices')
-            .select('id, payment_origin, payment_method, status')
+            .select('id, payment_origin, payment_method, status, class_id')
             .eq('stripe_payment_intent_id', piId)
             .maybeSingle();
           if (byPiId) {
@@ -367,6 +367,37 @@ serve(async (req) => {
           logStep("Error updating invoice status to paid", paidError);
         } else {
           logStep("Invoice marked as paid", { invoiceId: existingInvoice.id, paymentMethod: inferredPaymentMethod });
+          
+          // Auto-transition: If the invoice has a class_id and the class is awaiting payment, confirm it
+          if (existingInvoice.class_id) {
+            const { data: classData } = await supabaseClient
+              .from('classes')
+              .select('id, status')
+              .eq('id', existingInvoice.class_id)
+              .eq('status', 'aguardando_pagamento')
+              .maybeSingle();
+            
+            if (classData) {
+              const { error: classUpdateError } = await supabaseClient
+                .from('classes')
+                .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                .eq('id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              if (!classUpdateError) {
+                // Also update participants
+                await supabaseClient
+                  .from('class_participants')
+                  .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                  .eq('class_id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+                
+                logStep("Class auto-confirmed after payment", { classId: classData.id });
+              } else {
+                logStep("Error auto-confirming class", classUpdateError);
+              }
+            }
+          }
         }
         break;
       }
@@ -606,6 +637,33 @@ serve(async (req) => {
             paymentIntentId: paymentIntent.id,
             paymentMethod: paymentIntent.payment_method_types[0]
           });
+          
+          // Auto-transition: If the invoice has a class_id and the class is awaiting payment, confirm it
+          const paidInvoice = updatedInvoices[0];
+          if (paidInvoice.class_id) {
+            const { data: classData } = await supabaseClient
+              .from('classes')
+              .select('id, status')
+              .eq('id', paidInvoice.class_id)
+              .eq('status', 'aguardando_pagamento')
+              .maybeSingle();
+            
+            if (classData) {
+              await supabaseClient
+                .from('classes')
+                .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                .eq('id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              await supabaseClient
+                .from('class_participants')
+                .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                .eq('class_id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              logStep("Class auto-confirmed after payment intent", { classId: classData.id });
+            }
+          }
         } else {
           logStep("No invoice found for payment intent", { 
             paymentIntentId: paymentIntent.id,

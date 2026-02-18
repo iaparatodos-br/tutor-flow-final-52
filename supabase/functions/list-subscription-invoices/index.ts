@@ -38,37 +38,20 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     
-    // Use getClaims for resilient JWT validation (doesn't require active session)
-    const { data: claimsData, error: claimsError } = await supabaseClient.auth.getClaims(token);
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     
-    let userId: string;
-    let userEmail: string;
-    
-    if (!claimsError && claimsData?.claims) {
-      userId = claimsData.claims.sub as string;
-      userEmail = claimsData.claims.email as string;
-      logStep("Authenticated via getClaims", { userId, email: userEmail });
-    } else {
-      // Fallback to getUser
-      const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-      
-      if (userError || !userData.user) {
-        logStep("Authentication failed", { 
-          claimsError: claimsError?.message,
-          userError: userError?.message 
-        });
-        return new Response(JSON.stringify({ 
-          error: "Authentication failed", 
-          code: "INVALID_SESSION" 
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 401,
-        });
-      }
-      userId = userData.user.id;
-      userEmail = userData.user.email || '';
+    if (userError || !userData.user) {
+      logStep("Authentication failed", { error: userError?.message });
+      return new Response(JSON.stringify({ 
+        error: "Authentication failed", 
+        code: "INVALID_SESSION" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
     }
     
+    const userEmail = userData.user.email || '';
     if (!userEmail) {
       logStep("User email not available");
       return new Response(JSON.stringify({ 
@@ -79,7 +62,7 @@ serve(async (req) => {
       });
     }
     
-    logStep("User authenticated", { userId, email: userEmail });
+    logStep("User authenticated", { userId: userData.user.id, email: userEmail });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     

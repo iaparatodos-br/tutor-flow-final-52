@@ -56,6 +56,7 @@ export interface CalendarClass {
   has_report?: boolean;
   charge_applied?: boolean;
   amnesty_granted?: boolean;
+  is_paid_class?: boolean;
 }
 
 export interface AvailabilityBlock {
@@ -81,7 +82,7 @@ interface CalendarViewProps {
   classes: CalendarClass[];
   availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
-  onConfirmClass?: (classId: string) => void;
+  onConfirmClass?: (classId: string, isPaidClass: boolean) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onEditReport?: (classData: CalendarClass) => void;
@@ -485,7 +486,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                       {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
                         <Button
                           onClick={() => {
-                            onConfirmClass((selectedEvent as CalendarClass).id);
+                            onConfirmClass((selectedEvent as CalendarClass).id, true);
                             setSelectedEvent(null);
                           }}
                           className="bg-gradient-success shadow-success hover:bg-success"

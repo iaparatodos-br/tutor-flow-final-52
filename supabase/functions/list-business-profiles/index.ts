@@ -30,10 +30,18 @@ serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
+    if (userError || !userData.user) {
+      logStep("Authentication failed", { error: userError?.message });
+      return new Response(JSON.stringify({ 
+        error: "Authentication failed", 
+        code: "INVALID_SESSION" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
     
     const user = userData.user;
-    if (!user) throw new Error("User not authenticated");
     logStep("User authenticated", { userId: user.id });
 
     // Get business profiles for the authenticated user

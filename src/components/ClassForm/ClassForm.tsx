@@ -524,36 +524,33 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                 </>
               )}
 
-              {/* Paid Class Toggle - only show when not experimental */}
-              {!formData.is_experimental && (
-                <>
-                  <Separator className="my-4" />
-                  <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <Label htmlFor="is-paid-class" className="flex items-center gap-2">
-                        <DollarSign className="h-4 w-4" />
-                        {t('isPaidClass')}
-                      </Label>
-                      <p className="text-sm text-muted-foreground">
-                        {t('isPaidClassDescription')}
-                      </p>
-                    </div>
-                    <Switch
-                      id="is-paid-class"
-                      checked={formData.is_paid_class}
-                      onCheckedChange={(checked) => {
-                        setFormData(prev => ({ ...prev, is_paid_class: checked }));
-                        // If turning on paid + prepaid, disable recurrence
-                        if (checked && chargeTiming === 'prepaid' && showRecurrence) {
-                          setShowRecurrence(false);
-                        }
-                      }}
-                    />
-                  </div>
-                </>
-              )}
             </CardContent>
           </Card>
+
+          {/* Paid Class Toggle - only show when not experimental */}
+          {!formData.is_experimental && (
+            <div className="flex items-center justify-between rounded-lg border bg-card p-4">
+              <div className="space-y-0.5">
+                <Label htmlFor="is-paid-class" className="flex items-center gap-2">
+                  <DollarSign className="h-4 w-4" />
+                  {t('isPaidClass')}
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  {t('isPaidClassDescription')}
+                </p>
+              </div>
+              <Switch
+                id="is-paid-class"
+                checked={formData.is_paid_class}
+                onCheckedChange={(checked) => {
+                  setFormData(prev => ({ ...prev, is_paid_class: checked }));
+                  if (checked && chargeTiming === 'prepaid' && showRecurrence) {
+                    setShowRecurrence(false);
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* Service Selection */}
           {!formData.is_experimental && (

@@ -461,7 +461,10 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
           {/* Class Type Options */}
           <Card>
             <CardHeader className="pb-4">
-              <CardTitle className="text-lg">{t('classType')}</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Star className="h-4 w-4" />
+                {t('classType')}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center space-x-2">

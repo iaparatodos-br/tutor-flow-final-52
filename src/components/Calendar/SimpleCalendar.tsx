@@ -185,33 +185,24 @@ export function SimpleCalendar({
     return map;
   }, [classes, availabilityBlocks]);
 
-  // ✅ CORREÇÃO: useEffect dedicado para notificar o range visível (pós-render, sem loop)
-  useEffect(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1);
-    const startDate = new Date(firstDayOfMonth);
-    startDate.setDate(startDate.getDate() - firstDayOfMonth.getDay());
-    const endDate = new Date(startDate);
-    endDate.setDate(endDate.getDate() + 41);
-
-    if (onVisibleRangeChange) {
-      onVisibleRangeChange(startDate, endDate);
-    }
-  }, [currentDate, onVisibleRangeChange]);
-
   // Gerar os dias do mês atual
   const calendarData = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
     const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
     const startDate = new Date(firstDayOfMonth);
     startDate.setDate(startDate.getDate() - firstDayOfMonth.getDay());
     
     // Calculate end date (6 weeks of calendar grid)
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 41); // 42 days (6 weeks) - 1
+    
+    // Notify parent about visible range change
+    if (onVisibleRangeChange) {
+      onVisibleRangeChange(startDate, endDate);
+    }
     
     const days = [];
     const current = new Date(startDate);

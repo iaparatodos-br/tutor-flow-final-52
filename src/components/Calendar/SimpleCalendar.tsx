@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,7 +37,7 @@ interface SimpleCalendarProps {
   availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
   currentUserId?: string;
-  onConfirmClass?: (classId: string) => void;
+  onConfirmClass?: (classId: string, isPaidClass: boolean) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onManageReport?: (classData: CalendarClass) => void;
@@ -79,6 +81,11 @@ export function SimpleCalendar({
   const [showEndRecurrenceDialog, setShowEndRecurrenceDialog] = useState(false);
   const [endRecurrenceData, setEndRecurrenceData] = useState<{ templateId: string; endDate: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Confirm class dialog state
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmClassId, setConfirmClassId] = useState<string | null>(null);
+  const [confirmIsPaidClass, setConfirmIsPaidClass] = useState(true);
 
   // Reagir a mudanças no initialDate (para deep-links)
   useEffect(() => {
@@ -452,7 +459,9 @@ export function SimpleCalendar({
                 {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
                   <Button
                     onClick={() => {
-                      onConfirmClass((selectedEvent as CalendarClass).id);
+                      setConfirmClassId((selectedEvent as CalendarClass).id);
+                      setConfirmIsPaidClass(true);
+                      setShowConfirmDialog(true);
                       setSelectedEvent(null);
                     }}
                     className="w-full h-12 bg-gradient-success text-base font-semibold"
@@ -1062,6 +1071,50 @@ export function SimpleCalendar({
               ) : (
                 'Confirmar Encerramento'
               )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Class Dialog with Paid Class option */}
+      <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('actions.confirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('actions.confirmDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex items-center justify-between py-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="confirm-paid-class" className="text-sm font-medium">
+                {t('actions.isPaidClass')}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('actions.isPaidClassDescription')}
+              </p>
+            </div>
+            <Switch
+              id="confirm-paid-class"
+              checked={confirmIsPaidClass}
+              onCheckedChange={setConfirmIsPaidClass}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowConfirmDialog(false);
+              setConfirmClassId(null);
+            }}>
+              {t('actions.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmClassId && onConfirmClass) {
+                  onConfirmClass(confirmClassId, confirmIsPaidClass);
+                }
+                setShowConfirmDialog(false);
+                setConfirmClassId(null);
+              }}
+            >
+              {t('actions.confirmClass')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

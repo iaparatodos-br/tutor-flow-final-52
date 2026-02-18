@@ -131,7 +131,11 @@
     "markAsCompleted": "Marcar como Concluída",
     "createReport": "Criar Relatório",
     "editReport": "Editar Relatório",
-    "chargeManagement": "Gestão de Cobrança"
+    "chargeManagement": "Gestão de Cobrança",
+    "confirmTitle": "Confirmar Aula",
+    "confirmDescription": "Deseja confirmar esta aula?",
+    "isPaidClass": "Aula Cobrada",
+    "isPaidClassDescription": "Esta aula será cobrada do aluno"
   },
   "daysOfWeek": {
     "sun": "Dom",

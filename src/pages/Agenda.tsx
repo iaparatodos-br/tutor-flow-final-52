@@ -1168,17 +1168,17 @@ export default function Agenda() {
       console.error('Erro ao carregar serviços:', error);
     }
   };
-  const handleConfirmClass = async (classId: string) => {
+  const handleConfirmClass = async (classId: string, isPaidClass: boolean = true) => {
     try {
       // Check if it's a virtual instance (needs materialization)
       if (classId.includes('_virtual_')) {
         await materializeVirtualClass(classId);
         return;
       }
-      // Atualizar status da aula
+      // Atualizar status da aula e is_paid_class
       const { error } = await supabase
         .from('classes')
-        .update({ status: 'confirmada' })
+        .update({ status: 'confirmada', is_paid_class: isPaidClass })
         .eq('id', classId);
 
       if (error) throw error;

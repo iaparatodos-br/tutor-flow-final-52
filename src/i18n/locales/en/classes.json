@@ -131,7 +131,11 @@
     "markAsCompleted": "Mark as Completed",
     "createReport": "Create Report",
     "editReport": "Edit Report",
-    "chargeManagement": "Charge Management"
+    "chargeManagement": "Charge Management",
+    "confirmTitle": "Confirm Class",
+    "confirmDescription": "Do you want to confirm this class?",
+    "isPaidClass": "Paid Class",
+    "isPaidClassDescription": "This class will be charged to the student"
   },
   "daysOfWeek": {
     "sun": "Sun",

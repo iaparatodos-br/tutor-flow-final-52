@@ -39,8 +39,9 @@ serve(async (req) => {
       }
     );
 
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    // Get authenticated user - pass token explicitly
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     
     if (userError || !user) {
       console.error('[CHECK-EMAIL-CONFIRMATION] User not authenticated:', userError);

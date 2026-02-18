@@ -29,41 +29,19 @@ serve(async (req) => {
 
     const functionUrl = `${supabaseUrl}/functions/v1/automated-billing`;
 
-    // 1. Remover job existente (se houver)
-    const { error: unscheduleError } = await supabaseAdmin.rpc('cron_unschedule', {
-      p_jobname: 'automated-billing-daily'
-    });
+    // Note: cron jobs are configured via SQL migrations.
+    // This function serves as a manual fallback for re-setup if needed.
+    // The primary cron job (automated-billing-daily) is already configured in the database.
 
-    if (unscheduleError) {
-      console.log("[SETUP-BILLING] No existing job to remove (normal on first setup)");
-    }
-
-    // 2. Criar novo job - Daily at 12:00 PM UTC (9:00 AM Brasília)
-    const { data, error } = await supabaseAdmin.rpc('cron_schedule', {
-      p_jobname: 'automated-billing-daily',
-      p_schedule: '0 12 * * *',
-      p_command: `
-        SELECT net.http_post(
-          url:='${functionUrl}',
-          headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${anonKey}"}'::jsonb,
-          body:='{"source": "cron"}'::jsonb
-        ) as request_id;
-      `
-    });
-
-    if (error) {
-      console.error("[SETUP-BILLING] Error setting up cron job:", error);
-      throw error;
-    }
-
-    console.log("[SETUP-BILLING] Billing automation cron job setup completed:", data);
+    console.log("[SETUP-BILLING] Billing automation cron job is configured via SQL migration.");
+    console.log("[SETUP-BILLING] Current schedule: Daily at 9:00 AM UTC (6:00 AM Brasília)");
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Billing automation cron job setup completed",
-        schedule: "Daily at 12:00 PM UTC (9:00 AM Brasília)",
-        data
+        message: "Billing automation cron job is configured",
+        schedule: "Daily at 9:00 AM UTC (6:00 AM Brasília)",
+        note: "Cron jobs are managed via SQL migrations. Check cron.job table for current configuration."
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -72,7 +50,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("[SETUP-BILLING] Error setting up billing automation:", error);
+    console.error("[SETUP-BILLING] Error:", error);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'Unknown error',

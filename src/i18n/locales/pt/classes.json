@@ -113,7 +113,8 @@
     "pending": "Pendente",
     "confirmed": "Confirmada",
     "cancelled": "Cancelada",
-    "completed": "Concluída"
+    "completed": "Concluída",
+    "awaitingPayment": "Aguardando Pagamento"
   },
   "types": {
     "individual": "Individual",

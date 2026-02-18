@@ -182,6 +182,7 @@ export default function Historico() {
       realizada: { label: "Realizada", variant: "default" as const },
       cancelada: { label: "Cancelada", variant: "destructive" as const },
       pendente: { label: "Pendente", variant: "secondary" as const },
+      aguardando_pagamento: { label: "Aguardando Pagamento", variant: "warning" as const },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: "outline" as const };

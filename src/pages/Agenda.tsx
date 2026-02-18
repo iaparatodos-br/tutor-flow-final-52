@@ -26,7 +26,7 @@ interface ClassWithParticipants {
   id: string;
   class_date: string;
   duration_minutes: number;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
@@ -46,7 +46,7 @@ interface ClassWithParticipants {
   participants: Array<{
     student_id: string;
     dependent_id?: string | null;
-    status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+    status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
     cancelled_at?: string;
     charge_applied?: boolean;
     confirmed_at?: string;
@@ -1175,10 +1175,26 @@ export default function Agenda() {
         await materializeVirtualClass(classId);
         return;
       }
+      // Determinar o status baseado no charge_timing
+      let targetStatus = 'confirmada';
+      
+      if (isPaidClass) {
+        // Verificar charge_timing do business profile
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        
+        if (bp?.charge_timing === 'prepaid') {
+          targetStatus = 'aguardando_pagamento';
+        }
+      }
+
       // Atualizar status da aula e is_paid_class
       const { error } = await supabase
         .from('classes')
-        .update({ status: 'confirmada', is_paid_class: isPaidClass })
+        .update({ status: targetStatus, is_paid_class: isPaidClass })
         .eq('id', classId);
 
       if (error) throw error;
@@ -1187,7 +1203,7 @@ export default function Agenda() {
       const { error: participantsError } = await supabase
         .from('class_participants')
         .update({ 
-          status: 'confirmada',
+          status: targetStatus,
           confirmed_at: new Date().toISOString()
         })
         .eq('class_id', classId)
@@ -1417,6 +1433,20 @@ export default function Agenda() {
       // Conflict detected but allowing scheduling
       // Teacher will receive a warning in the UI
 
+      // Determinar status inicial baseado no charge_timing para aulas pagas
+      let initialStatus = 'confirmada';
+      if (formData.is_paid_class && !formData.is_experimental && !formData.recurrence) {
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        
+        if (bp?.charge_timing === 'prepaid') {
+          initialStatus = 'aguardando_pagamento';
+        }
+      }
+
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
@@ -1424,11 +1454,10 @@ export default function Agenda() {
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
-        status: 'confirmada',
-        // Professor-created classes are confirmed by default
-        is_experimental: formData.is_experimental, // Use form value directly
+        status: initialStatus,
+        is_experimental: formData.is_experimental,
         is_group_class: formData.is_group_class,
-        is_paid_class: formData.is_paid_class, // FASE 5: Persistir is_paid_class
+        is_paid_class: formData.is_paid_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };
       let insertedClasses;
@@ -1491,7 +1520,7 @@ export default function Agenda() {
               class_id: classInstance.id,
               student_id: participant.student_id,
               dependent_id: participant.dependent_id || null,
-              status: 'confirmada' // Professor-created classes are confirmed by default
+              status: initialStatus
             }));
             const {
               error: participantError

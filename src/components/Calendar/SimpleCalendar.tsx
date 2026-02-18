@@ -249,7 +249,8 @@ export function SimpleCalendar({
       pendente: 'bg-warning text-warning-foreground',
       confirmada: 'bg-primary text-primary-foreground',
       cancelada: 'bg-destructive text-destructive-foreground',
-      concluida: 'bg-success text-success-foreground'
+      concluida: 'bg-success text-success-foreground',
+      aguardando_pagamento: 'bg-amber-500 text-white'
     };
     return colors[status as keyof typeof colors] || colors.pendente;
   };
@@ -259,7 +260,8 @@ export function SimpleCalendar({
       pendente: t('status.pending'),
       confirmada: t('status.confirmed'),
       cancelada: t('status.cancelled'),
-      concluida: t('status.completed')
+      concluida: t('status.completed'),
+      aguardando_pagamento: t('status.awaitingPayment')
     };
     return labels[status as keyof typeof labels] || t('status.pending');
   };
@@ -506,7 +508,7 @@ export function SimpleCalendar({
 
               {/* Secondary Actions */}
               {(
-                (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass) ||
+                (((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' || (selectedEvent as CalendarClass).status === 'aguardando_pagamento') && onCancelClass) ||
                 (isProfessor && onEndRecurrence && (() => {
                   const classEvent = selectedEvent as CalendarClass;
                   const isVirtual = classEvent.isVirtual;
@@ -522,8 +524,8 @@ export function SimpleCalendar({
                     Ações Secundárias
                   </p>
                   
-                  {/* Cancel Button */}
-                  {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada') && onCancelClass && (
+                {/* Cancel Button */}
+                  {((selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' || (selectedEvent as CalendarClass).status === 'aguardando_pagamento') && onCancelClass && (
                     <Button
                       variant="outline"
                       className="w-full h-11 border-destructive/50 text-destructive hover:bg-destructive hover:text-destructive-foreground"

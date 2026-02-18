@@ -107,7 +107,8 @@ export function MobileCalendarList({
       pendente: 'bg-warning text-warning-foreground',
       confirmada: 'bg-primary text-primary-foreground',
       cancelada: 'bg-destructive text-destructive-foreground',
-      concluida: 'bg-success text-success-foreground'
+      concluida: 'bg-success text-success-foreground',
+      aguardando_pagamento: 'bg-amber-500 text-white'
     };
     return colors[status as keyof typeof colors] || colors.pendente;
   };
@@ -117,7 +118,8 @@ export function MobileCalendarList({
       pendente: t('status.pending'),
       confirmada: t('status.confirmed'),
       cancelada: t('status.cancelled'),
-      concluida: t('status.completed')
+      concluida: t('status.completed'),
+      aguardando_pagamento: t('status.awaitingPayment')
     };
     return labels[status as keyof typeof labels] || t('status.pending');
   };

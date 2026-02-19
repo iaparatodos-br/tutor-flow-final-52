@@ -199,11 +199,6 @@ export function SimpleCalendar({
     const endDate = new Date(startDate);
     endDate.setDate(endDate.getDate() + 41); // 42 days (6 weeks) - 1
     
-    // Notify parent about visible range change
-    if (onVisibleRangeChange) {
-      onVisibleRangeChange(startDate, endDate);
-    }
-    
     const days = [];
     const current = new Date(startDate);
     
@@ -223,7 +218,21 @@ export function SimpleCalendar({
     }
     
     return days;
-  }, [currentDate, classes, availabilityBlocks]);
+  }, [currentDate, eventsByDate]);
+
+  // Notify parent about visible range change (useEffect to avoid side-effect inside useMemo)
+  useEffect(() => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1);
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(startDate.getDate() - firstDayOfMonth.getDay());
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 41);
+    if (onVisibleRangeChange) {
+      onVisibleRangeChange(startDate, endDate);
+    }
+  }, [currentDate, onVisibleRangeChange]);
 
   const navigateMonth = (direction: 'prev' | 'next') => {
     setCurrentDate(prev => {

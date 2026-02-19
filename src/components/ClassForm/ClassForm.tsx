@@ -129,7 +129,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
   }, [profile?.id, open]);
 
   // Recurrence blocking: prepaid + paid class = no recurrence
-  const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class && !formData.is_experimental;
+  const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class;
 
   const resetForm = () => {
     setFormData({
@@ -236,7 +236,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
     const errors = {
       students: formData.selectedParticipants.length === 0,
-      service: !formData.is_experimental && !formData.service_id,
+      service: formData.is_paid_class && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
       timeConflict: false,
@@ -246,12 +246,12 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     if (formData.class_date && formData.time) {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
 
-      // Get duration from selected service or use form value for experimental classes
-      let duration = formData.is_experimental 
+      // Get duration from selected service or use form value for unpaid classes
+      let duration = !formData.is_paid_class && !formData.service_id
         ? formData.duration_minutes 
         : 60; // Default fallback
       
-      if (!formData.is_experimental && formData.service_id) {
+      if (formData.service_id) {
         const selectedService = services.find(s => s.id === formData.service_id);
         if (selectedService) {
           duration = selectedService.duration_minutes;
@@ -295,12 +295,12 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       return;
     }
 
-    // Get duration from selected service or use form value for experimental classes
-    let finalDuration = formData.is_experimental 
+    // Get duration from selected service or use form value for unpaid classes
+    let finalDuration = !formData.is_paid_class && !formData.service_id
       ? formData.duration_minutes 
       : 60; // Default fallback
     
-    if (!formData.is_experimental && formData.service_id) {
+    if (formData.service_id) {
       const selectedService = services.find(s => s.id === formData.service_id);
       if (selectedService) {
         finalDuration = selectedService.duration_minutes;
@@ -458,105 +458,68 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
             </CardContent>
           </Card>
 
-          {/* Class Type Options */}
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Star className="h-4 w-4" />
-                {t('classType')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="experimental"
-                  checked={formData.is_experimental}
-                  onCheckedChange={(checked) => {
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      is_experimental: checked as boolean,
-                      service_id: checked ? '' : prev.service_id,
-                      recurrence: checked ? undefined : prev.recurrence,
-                      duration_minutes: checked ? 60 : prev.duration_minutes,
-                      is_paid_class: checked ? false : true, // Experimental = not paid
-                    }));
-                    if (checked) {
-                      setShowRecurrence(false);
-                      setRecurrenceType('date');
-                    }
-                  }}
-                />
-                <Label htmlFor="experimental" className="flex items-center gap-2 cursor-pointer">
-                  <Star className="h-4 w-4 text-warning" />
-                  {t('experimental')}
-                </Label>
-              </div>
-              {formData.is_experimental && (
-                <>
-                  <p className="text-sm text-muted-foreground ml-6">
-                    {t('experimentalNote')}
-                  </p>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <Label htmlFor="experimental-duration">
-                      {t('fields.duration')} *
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="experimental-duration"
-                        type="number"
-                        min="15"
-                        max="480"
-                        step="15"
-                        value={formData.duration_minutes}
-                        onChange={(e) => {
-                          const value = Math.max(15, Math.min(480, parseInt(e.target.value) || 60));
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            duration_minutes: value
-                          }));
-                        }}
-                        className="w-32"
-                      />
-                      <span className="text-sm text-muted-foreground">minutos</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Duração entre 15 e 480 minutos
-                    </p>
-                  </div>
-                </>
-              )}
-
-            </CardContent>
-          </Card>
-
-          {/* Paid Class Toggle - only show when not experimental */}
-          {!formData.is_experimental && (
-            <div className="flex items-center justify-between rounded-lg border bg-card p-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="is-paid-class" className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  {t('isPaidClass')}
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  {t('isPaidClassDescription')}
-                </p>
-              </div>
-              <Switch
-                id="is-paid-class"
-                checked={formData.is_paid_class}
-                onCheckedChange={(checked) => {
-                  setFormData(prev => ({ ...prev, is_paid_class: checked }));
-                  if (checked && chargeTiming === 'prepaid' && showRecurrence) {
-                    setShowRecurrence(false);
-                  }
-                }}
-              />
+          {/* Paid Class Toggle */}
+          <div className="flex items-center justify-between rounded-lg border bg-card p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="is-paid-class" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                {t('isPaidClass')}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t('isPaidClassDescription')}
+              </p>
             </div>
+            <Switch
+              id="is-paid-class"
+              checked={formData.is_paid_class}
+              onCheckedChange={(checked) => {
+                setFormData(prev => ({ 
+                  ...prev, 
+                  is_paid_class: checked,
+                  service_id: checked ? prev.service_id : '',
+                  is_experimental: false,
+                }));
+                if (checked && chargeTiming === 'prepaid' && showRecurrence) {
+                  setShowRecurrence(false);
+                }
+              }}
+            />
+          </div>
+
+          {/* Duration selector for unpaid classes without service */}
+          {!formData.is_paid_class && !formData.service_id && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <Label htmlFor="unpaid-duration">
+                    {t('fields.duration')} *
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="unpaid-duration"
+                      type="number"
+                      min="15"
+                      max="480"
+                      step="15"
+                      value={formData.duration_minutes}
+                      onChange={(e) => {
+                        const value = Math.max(15, Math.min(480, parseInt(e.target.value) || 60));
+                        setFormData(prev => ({ ...prev, duration_minutes: value }));
+                      }}
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">minutos</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Duração entre 15 e 480 minutos
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
-          {/* Service Selection */}
-          {!formData.is_experimental && (
+          {/* Service Selection - only for paid classes */}
+          {formData.is_paid_class && (
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">

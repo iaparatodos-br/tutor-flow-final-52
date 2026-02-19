@@ -1018,11 +1018,11 @@ export default function Agenda() {
           if (!isProfessor) {
             const myStatus = myParticipationByClassId.get(cls.id)?.status;
             if (myStatus) {
-              return ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myStatus);
+              return ['pendente', 'confirmada', 'concluida', 'cancelada', 'aguardando_pagamento'].includes(myStatus);
             }
             if (cls.participants.length > 0) {
               const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-              return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myParticipation.status || cls.status);
+              return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada', 'aguardando_pagamento'].includes(myParticipation.status || cls.status);
             }
           }
           return true;

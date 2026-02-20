@@ -104,6 +104,15 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const loadSubscription = async () => {
     if (!user) return;
 
+    // Students don't have their own subscription - skip edge function call entirely
+    // Teacher subscription is loaded reactively via useEffect + loadTeacherSubscriptions
+    if (profile?.role === 'aluno') {
+      const freePlan = plans.find(p => p.slug === 'free');
+      setCurrentPlan(freePlan || null);
+      setSubscription(null);
+      return;
+    }
+
     try {
       // Timeout para evitar travamento na inicialização
       const timeoutPromise = new Promise((_, reject) => 
@@ -210,10 +219,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setStudentSelectionData(null);
       }
 
-      // Load teacher's plan if user is a student
-      if (profile?.role === 'aluno') {
-        await loadTeacherSubscriptions();
-      }
     } catch (error) {
       console.error('Error loading subscription:', error);
       // Fallback to free plan

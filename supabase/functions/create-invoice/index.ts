@@ -181,8 +181,20 @@ serve(async (req) => {
       studentId: billingStudentId 
     });
 
-    // Calculate due date if not provided
-    const dueDate = body.due_date || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 15 days from now
+    // Calculate due date: use provided due_date, or teacher's payment_due_days setting, fallback to 15 days
+    let paymentDueDays = 15;
+    if (!body.due_date) {
+      const { data: teacherProfile } = await supabaseClient
+        .from('profiles')
+        .select('payment_due_days')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (teacherProfile?.payment_due_days) {
+        paymentDueDays = teacherProfile.payment_due_days;
+      }
+      logStep("Using payment_due_days", { paymentDueDays });
+    }
+    const dueDate = body.due_date || new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     // Criar descrição com nome do dependente se aplicável
     let invoiceDescription = body.description || 'Fatura manual';

@@ -82,7 +82,7 @@ export function AppSidebar({
     hasTeacherFeature,
     teacherPlanLoading
   } = useSubscription();
-  const teacherContext = isAluno ? useTeacherContext() : null;
+  const teacherContext = useTeacherContext();
   const { toggle: toggleSidebar } = useSidebarState();
   const currentPath = location.pathname;
   const {

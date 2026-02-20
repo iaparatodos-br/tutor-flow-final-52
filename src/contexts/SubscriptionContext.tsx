@@ -84,15 +84,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
   const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
 
-  // Get teacher context conditionally
-  let teacherContext = null;
-  if (profile?.role === 'aluno') {
-    try {
-      teacherContext = useTeacherContext();
-    } catch (error) {
-      console.warn('TeacherContext not available, this is expected during initial loading');
-    }
-  }
+  // Always call hooks unconditionally (Rules of Hooks)
+  const teacherContext = useTeacherContext();
 
   const loadPlans = async () => {
     try {

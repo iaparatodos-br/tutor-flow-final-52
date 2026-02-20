@@ -1,55 +1,97 @@
 
-# Corrigir Aba de Faturas Inconsistente para Alunos
 
-## Problema
+# Corrigir Race Condition da Aba "Faturas" para Alunos
 
-A aba "Faturas" aparece e desaparece de forma inconsistente no menu lateral quando logado como aluno. Isso acontece por uma **condicao de corrida (race condition)** entre dois carregamentos assincronos:
+## Problema Real (mais profundo que o diagnostico anterior)
 
-1. O `AppSidebar` verifica `loading` do `useAuth()` (linha 93) para decidir quando renderizar o menu
-2. A funcao `hasTeacherFeature('financial_module')` depende de `teacherPlan`, que e carregado pelo `SubscriptionContext` **depois** que o auth termina de carregar
-3. Quando o sidebar renderiza, `teacherPlan` ainda pode ser `null`, fazendo `hasTeacherFeature` retornar `false` e escondendo a aba
+O `SubscriptionContext.loading` fica `false` **antes** do `teacherPlan` ser carregado corretamente. Isso acontece porque:
 
 ```text
-Timeline do problema:
-
-Auth loading = true  -->  Auth loading = false  -->  teacherPlan carrega
-     [skeleton]             [menu renderiza]          [tarde demais!]
-                            teacherPlan = null
-                            hasTeacherFeature = false
-                            aba "Faturas" = OCULTA
+1. loadSubscription() inicia
+2.   -> chama loadTeacherSubscriptions()
+3.      -> teacherContext.selectedTeacherId = null (TeacherContext ainda carregando)
+4.      -> teacherPlan = free plan (incorreto)
+5. loading = false  <-- sidebar renderiza, aba "Faturas" OCULTA
+6. TeacherContext termina de carregar, selectedTeacherId = "guilherme..."
+7. useEffect reativo dispara loadTeacherSubscriptions() novamente
+8.   -> teacherPlan = Premium (correto, mas tarde demais -- sidebar ja renderizou)
+9. Sidebar re-renderiza COM a aba (mas usuario ja viu sem)
 ```
+
+O problema e que entre os passos 5 e 9, o sidebar mostra o menu sem a aba "Faturas". Se o re-render do passo 9 acontecer rapido, o usuario ve um "flash". Se demorar, a aba simplesmente nao aparece ate um reload.
 
 ## Solucao
 
-### Arquivo: `src/components/AppSidebar.tsx`
+Duas mudancas coordenadas:
 
-1. **Importar `loading` do `useSubscription()`** junto com `hasFeature` e `hasTeacherFeature`
-2. **Adicionar a verificacao de loading da subscription** na condicao de loading do sidebar (linha 93)
+### 1. Arquivo: `src/contexts/SubscriptionContext.tsx`
 
-Mudanca na linha 79-83:
+Adicionar um estado `teacherPlanLoading` que fica `true` enquanto o plano do professor esta sendo carregado, e expor esse estado no contexto.
+
+**Adicionar estado (apos linha 77):**
+```typescript
+const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
+```
+
+**Modificar `loadTeacherSubscriptions` (linhas 231-278):**
+- Adicionar `setTeacherPlanLoading(true)` no inicio
+- Adicionar `setTeacherPlanLoading(false)` no finally
+
+**Modificar o useEffect reativo (linhas 670-674):**
+```typescript
+useEffect(() => {
+  if (profile?.role === 'aluno' && teacherContext && plans.length > 0) {
+    setTeacherPlanLoading(true);
+    loadTeacherSubscriptions().finally(() => setTeacherPlanLoading(false));
+  }
+}, [teacherContext?.selectedTeacherId, plans, profile]);
+```
+
+**Expor no contexto (interface e provider value):**
+- Adicionar `teacherPlanLoading: boolean` na interface `SubscriptionContextType`
+- Adicionar `teacherPlanLoading` no value do Provider
+
+### 2. Arquivo: `src/components/AppSidebar.tsx`
+
+**Extrair `teacherPlanLoading` do `useSubscription()` (linhas 79-83):**
 ```typescript
 const {
   currentPlan,
   hasFeature,
   hasTeacherFeature,
-  loading: subscriptionLoading  // <-- adicionar
+  teacherPlanLoading
 } = useSubscription();
 ```
 
-Mudanca na linha 93:
+**Modificar a condicao de loading do sidebar (linha 93):**
 ```typescript
 // Antes:
 if (loading || !profile || !isProfessor && !isAluno) {
 
 // Depois:
-if (loading || subscriptionLoading || !profile || !isProfessor && !isAluno) {
+const isSubscriptionLoading = isAluno && teacherPlanLoading;
+if (loading || isSubscriptionLoading || !profile || (!isProfessor && !isAluno)) {
 ```
 
-Isso garante que o sidebar so renderiza os itens de menu **depois** que o `teacherPlan` ja foi carregado, eliminando a race condition.
+Isso garante que:
+- Para **alunos**, o sidebar mostra skeleton ate que o `teacherPlan` esteja carregado
+- Para **professores**, nenhum atraso adicional (teacherPlanLoading nao se aplica)
+
+## Por Que Essa Solucao e Melhor
+
+A solucao anterior (usar `loading` do subscription) nao funcionaria porque `loading` ja e `false` quando o segundo `useEffect` dispara o carregamento do plano do professor. Precisamos de um estado dedicado (`teacherPlanLoading`) que rastreie especificamente esse carregamento assincrono.
 
 ## Impacto
 
-- Enquanto a subscription do professor carrega, o aluno vera o skeleton do sidebar (por mais ~200-500ms)
-- Quando renderizar, a aba "Faturas" aparecera de forma consistente se o professor tiver o modulo financeiro
-- Nenhum outro arquivo precisa ser alterado
+- Alunos verao o skeleton do sidebar por ~200-500ms extras enquanto o plano do professor carrega
+- Quando o menu renderizar, a aba "Faturas" aparecera de forma consistente
+- Professores nao sao afetados (sem atraso adicional)
 - Nenhuma migration SQL necessaria
+
+## Arquivos Afetados
+
+| Arquivo | Mudanca |
+|---|---|
+| `src/contexts/SubscriptionContext.tsx` | Adicionar estado `teacherPlanLoading`, expor no contexto |
+| `src/components/AppSidebar.tsx` | Usar `teacherPlanLoading` na condicao de loading |
+

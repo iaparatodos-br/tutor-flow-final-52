@@ -271,7 +271,7 @@ export default function Financeiro() {
       const {
         data,
         error
-      } = await query.order('due_date', {
+} = await query.order('created_at', {
         ascending: false
       });
       if (error) throw error;

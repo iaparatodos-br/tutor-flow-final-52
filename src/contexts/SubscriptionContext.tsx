@@ -64,6 +64,7 @@ interface SubscriptionContextType {
   completeStudentSelection: () => Promise<void>;
   handlePaymentFailure: (action: 'renew' | 'downgrade') => Promise<void>;
   dismissPendingBoleto: () => void;
+  teacherPlanLoading: boolean;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -81,6 +82,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [paymentFailureData, setPaymentFailureData] = useState<any>(null);
   const [pendingBoletoDetected, setPendingBoletoDetected] = useState(false);
   const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
+  const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
 
   // Get teacher context conditionally
   let teacherContext = null;
@@ -230,6 +232,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const loadTeacherSubscriptions = async () => {
     if (!user || profile?.role !== 'aluno') return;
+    setTeacherPlanLoading(true);
     
     // Use selected teacher ID from context, fallback to first teacher if none selected
     const selectedTeacherId = teacherContext?.selectedTeacherId;
@@ -274,6 +277,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.error('Error loading teacher subscription:', error);
       const freePlan = plans.find(p => p.slug === 'free');
       setTeacherPlan(freePlan || null);
+    } finally {
+      setTeacherPlanLoading(false);
     }
   };
 
@@ -784,6 +789,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         completeStudentSelection,
         handlePaymentFailure,
         dismissPendingBoleto,
+        teacherPlanLoading,
       }}
     >
       {children}

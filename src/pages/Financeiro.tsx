@@ -39,6 +39,8 @@ const getInvoiceTypeBadge = (invoiceType: string | undefined, t: (key: string) =
       return <Badge variant="destructive">{t('financial:invoiceTypes.cancellation')}</Badge>;
     case 'orphan_charges':
       return <Badge className="bg-warning text-warning-foreground">{t('financial:invoiceTypes.orphanCharges')}</Badge>;
+    case 'prepaid_class':
+      return <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700">{t('financial:invoiceTypes.prepaidClass')}</Badge>;
     default:
       return <Badge variant="outline">{t('financial:invoiceTypes.regular')}</Badge>;
   }

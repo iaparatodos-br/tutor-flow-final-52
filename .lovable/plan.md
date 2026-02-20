@@ -1,108 +1,102 @@
 
-# Corrigir Aba "Faturas" Desaparecendo para Alunos — Refatoracao Robusta
 
-## Diagnostico
+# Corrigir Trigger que Sobrescreve Status "Aguardando Pagamento" em Aulas Pre-Pagas
 
-Existem **3 problemas fundamentais** causando a inconsistencia:
+## Causa Raiz
 
-### Problema 1: Alunos chamam `check-subscription-status` desnecessariamente
-A funcao `loadSubscription` (linha 104) chama a Edge Function `check-subscription-status` para TODOS os usuarios, incluindo alunos. Essa funcao retorna **401** para alunos (eles nao tem subscription propria), causando o erro `"Timeout no carregamento inicial"` apos 5 segundos.
+A funcao PostgreSQL `sync_class_status_from_participants` e disparada automaticamente (trigger) toda vez que um participante e inserido/atualizado na tabela `class_participants`. Essa funcao recalcula o status da aula baseado nos participantes, mas **nao reconhece o status `aguardando_pagamento`**.
 
-### Problema 2: Stale closure na chamada de `loadTeacherSubscriptions`
-Dentro de `loadSubscription` (linha 214-216), apos o timeout de 5 segundos, o codigo chama `loadTeacherSubscriptions()`. Porem, essa funcao usa `teacherContext?.selectedTeacherId` capturado no inicio da funcao — que ainda era `null` quando `loadSubscription` comecou. Resultado: mesmo 5 segundos depois (quando o TeacherContext ja selecionou um professor), a funcao le o valor antigo e faz early return com plano gratuito.
+Fluxo do bug:
 
-Evidencia nos logs:
 ```text
-TeacherContext: Using persisted teacher selection: 51a6b44b...  (professor selecionado!)
-...
-No teacher selected    (stale closure! le valor antigo)
-...
-Error loading subscription: Error: Timeout no carregamento inicial
+1. Professor cria aula prepaid para dependente
+2. Codigo insere classe com status = 'aguardando_pagamento'     -- OK
+3. Codigo insere participante com status = 'aguardando_pagamento' -- OK
+4. TRIGGER dispara sync_class_status_from_participants()
+5. Trigger verifica: all_cancelled? NAO, any_concluida? NAO, any_confirmada? NAO
+6. ELSE -> v_class_status = 'pendente'                           -- BUG!
+7. Classe atualizada para 'pendente', sobrescrevendo 'aguardando_pagamento'
 ```
 
-### Problema 3: `hasTeacherFeature` retorna `false` com `teacherPlan = freePlan`
-Quando `loadTeacherSubscriptions` faz early return com `freePlan`, o `teacherPlan` fica com `financial_module: false`. O AppSidebar filtra a aba "Faturas" com `hasTeacherFeature('financial_module')`, que retorna `false`.
+O participante mantem o status correto (`aguardando_pagamento`), mas a classe e revertida para `pendente`.
 
 ## Solucao
 
-Refatorar `loadSubscription` para **nao chamar a Edge Function para alunos** e **remover a chamada de `loadTeacherSubscriptions` de dentro de `loadSubscription`**.
+Adicionar reconhecimento do status `aguardando_pagamento` na funcao do trigger, tanto na verificacao quanto na logica de decisao.
 
-### Arquivo: `src/contexts/SubscriptionContext.tsx`
+### Migration SQL
 
-#### Mudanca 1: Skip edge function para alunos (linhas 104-224)
+Atualizar a funcao `sync_class_status_from_participants` para incluir uma verificacao de `aguardando_pagamento`:
 
-No inicio de `loadSubscription`, adicionar um early return para alunos que apenas define o plano gratuito como currentPlan e sai. A subscricao do professor sera carregada pelo useEffect reativo na linha 669.
+```sql
+CREATE OR REPLACE FUNCTION public.sync_class_status_from_participants()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = 'public'
+AS $$
+DECLARE
+  v_all_cancelled boolean;
+  v_any_active boolean;
+  v_any_concluida boolean;
+  v_any_confirmada boolean;
+  v_any_aguardando_pagamento boolean;   -- NOVO
+  v_class_status text;
+  v_is_group_class boolean;
+BEGIN
+  SELECT is_group_class INTO v_is_group_class
+  FROM public.classes
+  WHERE id = COALESCE(NEW.class_id, OLD.class_id);
 
-```typescript
-const loadSubscription = async () => {
-  if (!user) return;
+  SELECT
+    COALESCE(BOOL_AND(status IN ('cancelada', 'removida')), false),
+    COALESCE(BOOL_OR(status NOT IN ('cancelada', 'removida')), false),
+    COALESCE(BOOL_OR(status = 'concluida'), false),
+    COALESCE(BOOL_OR(status = 'confirmada'), false),
+    COALESCE(BOOL_OR(status = 'aguardando_pagamento'), false)   -- NOVO
+  INTO v_all_cancelled, v_any_active, v_any_concluida, v_any_confirmada, v_any_aguardando_pagamento
+  FROM public.class_participants
+  WHERE class_id = COALESCE(NEW.class_id, OLD.class_id);
 
-  // Students don't have their own subscription - skip edge function call
-  // Teacher subscription is loaded reactively via useEffect + loadTeacherSubscriptions
-  if (profile?.role === 'aluno') {
-    const freePlan = plans.find(p => p.slug === 'free');
-    setCurrentPlan(freePlan || null);
-    setSubscription(null);
-    return;
-  }
+  IF v_all_cancelled THEN
+    v_class_status := 'cancelada';
+  ELSIF v_is_group_class AND v_any_active THEN
+    RETURN COALESCE(NEW, OLD);
+  ELSIF v_any_concluida THEN
+    v_class_status := 'concluida';
+  ELSIF v_any_confirmada THEN
+    v_class_status := 'confirmada';
+  ELSIF v_any_aguardando_pagamento THEN       -- NOVO: antes do ELSE
+    v_class_status := 'aguardando_pagamento';
+  ELSE
+    v_class_status := 'pendente';
+  END IF;
 
-  // ... rest of the function (only for professors) ...
+  UPDATE public.classes
+  SET status = v_class_status, updated_at = NOW()
+  WHERE id = COALESCE(NEW.class_id, OLD.class_id);
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
 ```
 
-#### Mudanca 2: Remover chamada redundante (linhas 213-216)
-
-Remover o bloco que chama `loadTeacherSubscriptions()` de dentro de `loadSubscription`:
-
-```typescript
-// REMOVER estas linhas:
-// Load teacher's plan if user is a student
-if (profile?.role === 'aluno') {
-  await loadTeacherSubscriptions();
-}
-```
-
-Isso elimina completamente o problema de stale closure.
-
-#### Mudanca 3: Garantir que o useEffect reativo seja robusto (linhas 668-673)
-
-O useEffect existente ja cuida do carregamento reativo:
-
-```typescript
-useEffect(() => {
-  if (profile?.role === 'aluno' && teacherContext && plans.length > 0) {
-    loadTeacherSubscriptions();
-  }
-}, [teacherContext?.selectedTeacherId, plans, profile]);
-```
-
-Este useEffect continuara funcionando. Quando `selectedTeacherId` mudar de `null` para um ID valido, ele sera disparado novamente e carregara o plano correto do professor (Premium com `financial_module: true`).
-
-## Fluxo Corrigido
-
-```text
-1. Pagina carrega
-2. loadPlans() carrega os planos
-3. useEffect [user, plans, profile] dispara loadSubscription()
-4. loadSubscription() detecta role='aluno', define currentPlan=free, retorna imediatamente
-5. loading = false (via .finally)
-6. Sidebar renderiza com menu (sem skeleton infinito)
-7. TeacherContext carrega professores, seleciona o primeiro
-8. useEffect [selectedTeacherId] dispara loadTeacherSubscriptions()
-9. Carrega subscription do professor → teacherPlan = Premium (financial_module: true)
-10. hasTeacherFeature('financial_module') = true → aba "Faturas" aparece
-```
+A hierarquia de prioridade fica:
+1. `cancelada` (todos cancelados)
+2. Grupo com ativos (manter status original)
+3. `concluida` (qualquer concluido)
+4. `confirmada` (qualquer confirmado)
+5. **`aguardando_pagamento`** (qualquer aguardando - NOVO)
+6. `pendente` (fallback)
 
 ## Impacto
 
-- Elimina o erro "Timeout no carregamento inicial" para alunos
-- Elimina a chamada 401 desnecessaria a `check-subscription-status`
-- Elimina o stale closure na leitura de `selectedTeacherId`
-- Menu carrega instantaneamente para alunos (sem esperar 5s de timeout)
-- Aba "Faturas" aparece consistentemente apos o professor ser selecionado
-- Nenhuma migration SQL necessaria
+- Corrige aulas pre-pagas criadas pelo professor ficando com status errado
+- Nao afeta nenhum fluxo existente (o novo branch so ativa quando nenhum participante tem status mais alto)
+- O trigger `trg_sync_class_status_from_participants` ja existe e continuara usando a funcao atualizada sem necessidade de recria-lo
 
 ## Arquivos Afetados
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/contexts/SubscriptionContext.tsx` | Early return para alunos em `loadSubscription` + remover chamada redundante de `loadTeacherSubscriptions` |
+| Nova migration SQL | Atualizar `sync_class_status_from_participants` para reconhecer `aguardando_pagamento` |

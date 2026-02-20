@@ -23,21 +23,29 @@ serve(async (req) => {
   try {
     console.log('🔍 [get-teacher-availability] Function started');
     
+    const authHeader = req.headers.get("Authorization");
+    console.log('🔍 Auth header present:', !!authHeader);
+    if (!authHeader) throw new Error("No authorization header provided");
+
+    // Auth client with ANON_KEY + user's auth header for proper session validation
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await authClient.auth.getUser(token);
+    console.log('🔍 User data:', { userId: userData?.user?.id, error: userError?.message });
+    if (userError) throw new Error(`Authentication error: ${userError.message}`);
+    const user = userData.user;
+
+    // Service role client for data queries (bypasses RLS)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );
-
-    const authHeader = req.headers.get("Authorization");
-    console.log('🔍 Auth header present:', !!authHeader);
-    if (!authHeader) throw new Error("No authorization header provided");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    console.log('🔍 User data:', { userId: userData?.user?.id, error: userError?.message });
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
 
     const body = await req.json();
     console.log('🔍 Request body:', body);

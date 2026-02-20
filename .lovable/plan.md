@@ -1,83 +1,57 @@
 
-# Corrigir Skeleton Infinito no Menu — Violacao das Regras de Hooks
 
-## Problema
+# Corrigir teacherPlanLoading preso em true (skeleton infinito)
 
-O console mostra o erro critico:
-```
-React has detected a change in the order of Hooks called by SubscriptionProvider
-```
+## Causa Raiz
 
-A causa raiz esta em `src/contexts/SubscriptionContext.tsx` (linhas 88-94), onde `useTeacherContext()` e chamado **condicionalmente**:
+Na funcao `loadTeacherSubscriptions` em `src/contexts/SubscriptionContext.tsx`, o early return na linha 237 (quando nenhum professor esta selecionado) nao reseta `teacherPlanLoading` para `false`. Como esse return acontece **antes** do bloco `try/finally`, o `finally` na linha 274 nunca executa.
 
-```typescript
-let teacherContext = null;
-if (profile?.role === 'aluno') {   // <-- CONDICIONAL!
-  try {
-    teacherContext = useTeacherContext();  // <-- Hook chamado dentro de if
-  } catch (error) { ... }
-}
+Fluxo do bug:
+```text
+1. Pagina carrega, loadTeacherSubscriptions() e chamado
+2. setTeacherPlanLoading(true)           -- linha 228
+3. selectedTeacherId = null              -- TeacherContext ainda carregando
+4. Early return sem resetar loading      -- linha 237  BUG
+5. teacherPlanLoading = true para sempre
+6. Sidebar fica em skeleton infinito     -- linha 95 do AppSidebar
 ```
 
-Isso viola as Regras de Hooks do React. Quando `profile` muda de `null` para `{role: 'professor'}` (ou `'aluno'`), a ordem dos hooks muda entre renders, quebrando o React e fazendo com que os estados nunca se resolvam — resultando no skeleton infinito.
-
-## Solucao
+## Correcao
 
 ### Arquivo: `src/contexts/SubscriptionContext.tsx`
 
-Chamar `useTeacherContext()` **incondicionalmente** (o provider ja envolve o SubscriptionProvider no App.tsx). Depois, usar o valor apenas quando necessario.
+Adicionar `setTeacherPlanLoading(false)` antes do early return na linha 237.
 
-**Substituir linhas 87-95:**
-
-De:
+**Linhas 233-238 — de:**
 ```typescript
-// Get teacher context conditionally
-let teacherContext = null;
-if (profile?.role === 'aluno') {
-  try {
-    teacherContext = useTeacherContext();
-  } catch (error) {
-    console.warn('TeacherContext not available...');
-  }
+if (!selectedTeacherId) {
+  console.log('No teacher selected');
+  const freePlan = plans.find(p => p.slug === 'free');
+  setTeacherPlan(freePlan || null);
+  return;
 }
 ```
 
-Para:
+**Para:**
 ```typescript
-// Always call hooks unconditionally (Rules of Hooks)
-const teacherContext = useTeacherContext();
+if (!selectedTeacherId) {
+  console.log('No teacher selected');
+  const freePlan = plans.find(p => p.slug === 'free');
+  setTeacherPlan(freePlan || null);
+  setTeacherPlanLoading(false);
+  return;
+}
 ```
-
-O restante do codigo que usa `teacherContext` ja verifica `profile?.role === 'aluno'` antes de acessar os dados, entao nao precisa de nenhuma outra mudanca.
-
-### Tambem corrigir: `src/components/AppSidebar.tsx` (linha 85)
-
-O mesmo padrao de hook condicional existe aqui:
-```typescript
-const teacherContext = isAluno ? useTeacherContext() : null;
-```
-
-Substituir por:
-```typescript
-const teacherContext = useTeacherContext();
-```
-
-## Por Que Funciona
-
-- `TeacherProvider` ja envolve `SubscriptionProvider` e `AppSidebar` na arvore de componentes (confirmado em `App.tsx` linhas 128-129)
-- Chamar `useTeacherContext()` incondicionalmente garante que a ordem dos hooks nunca muda entre renders
-- O contexto simplesmente retorna dados vazios (`teachers: []`, `selectedTeacherId: null`) quando o usuario nao e aluno — sem efeitos colaterais
 
 ## Impacto
 
-- Corrige o skeleton infinito no menu
-- Corrige o erro de "change in the order of Hooks" no console
-- Mantem o comportamento de mostrar a aba "Faturas" consistentemente para alunos
+- Corrige o skeleton infinito no F5
+- Mudanca de 1 linha
+- Sem efeitos colaterais — o useEffect reativo (linha 668) vai disparar novamente quando `selectedTeacherId` mudar, carregando o plano correto
 - Nenhuma migration SQL necessaria
 
-## Arquivos Afetados
+## Arquivo Afetado
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/contexts/SubscriptionContext.tsx` | Chamar `useTeacherContext()` incondicionalmente |
-| `src/components/AppSidebar.tsx` | Chamar `useTeacherContext()` incondicionalmente |
+| `src/contexts/SubscriptionContext.tsx` | Adicionar `setTeacherPlanLoading(false)` no early return |

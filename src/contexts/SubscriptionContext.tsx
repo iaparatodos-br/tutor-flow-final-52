@@ -234,6 +234,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.log('No teacher selected');
       const freePlan = plans.find(p => p.slug === 'free');
       setTeacherPlan(freePlan || null);
+      setTeacherPlanLoading(false);
       return;
     }
     

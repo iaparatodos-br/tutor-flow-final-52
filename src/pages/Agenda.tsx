@@ -1743,7 +1743,9 @@ export default function Agenda() {
       class_date: fullClassData.class_date,
       service_id: fullClassData.service_id || null,
       is_group_class: fullClassData.is_group_class || false,
-      service_price: null, // Will be fetched from service if needed
+      service_price: fullClassData.service_id
+        ? services.find(s => s.id === fullClassData.service_id)?.price || 0
+        : 0,
       class_template_id: fullClassData.class_template_id || '',
       duration_minutes: fullClassData.duration_minutes || 60
       // student_id REMOVED - no longer needed

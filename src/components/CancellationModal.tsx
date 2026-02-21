@@ -226,7 +226,7 @@ export function CancellationModal({
       if (!isProfessor && teacherHasFinancialModule && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
         setWillBeCharged(true);
         // Use actual service price or default to 100
-        const baseAmount = fetchedClassData.class_services?.price || 100;
+        const baseAmount = fetchedClassData.class_services?.price || 0;
         setChargeAmount((Number(baseAmount) * currentPolicy.charge_percentage) / 100);
       } else {
         setWillBeCharged(false);

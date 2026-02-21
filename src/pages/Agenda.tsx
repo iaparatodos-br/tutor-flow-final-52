@@ -1419,6 +1419,7 @@ export default function Agenda() {
       const classEndTime = new Date(classDateTime.getTime() + formData.duration_minutes * 60000);
       const hasConflict = classes?.some(existingClass => {
         if (existingClass.isVirtual || existingClass.is_template) return false;
+        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') return false;
         
         const existingStart = new Date(existingClass.class_date);
         const existingEnd = new Date(existingStart.getTime() + existingClass.duration_minutes * 60000);

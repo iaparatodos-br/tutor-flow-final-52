@@ -45,7 +45,6 @@ export function BillingSettings() {
 
   const loadSettings = async () => {
     try {
-      // Load profile settings
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('payment_due_days, default_billing_day')
@@ -59,7 +58,6 @@ export function BillingSettings() {
         default_billing_day: (profileData as any)?.default_billing_day || null,
       });
 
-      // Load business profile charge_timing
       const { data: bpData, error: bpError } = await supabase
         .from('business_profiles')
         .select('id, charge_timing')
@@ -89,7 +87,6 @@ export function BillingSettings() {
 
     setSaving(true);
     try {
-      // Update profile settings
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -100,7 +97,6 @@ export function BillingSettings() {
 
       if (error) throw error;
 
-      // Update charge_timing in business_profiles if exists
       if (businessProfileId) {
         const { error: bpError } = await supabase
           .from('business_profiles')
@@ -145,168 +141,142 @@ export function BillingSettings() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Charge Timing Card - only show if business profile exists */}
-      {businessProfileId && (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Charge Timing Card */}
+        {businessProfileId && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                {t('chargeTiming.title')}
+              </CardTitle>
+              <CardDescription>
+                {t('chargeTiming.description')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setChargeTiming('prepaid')}
+                  className={cn(
+                    "flex flex-col items-start gap-2 rounded-lg border-2 p-4 text-left transition-all hover:bg-accent/50",
+                    chargeTiming === 'prepaid'
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <CreditCard className={cn("h-5 w-5", chargeTiming === 'prepaid' ? "text-primary" : "text-muted-foreground")} />
+                    <span className={cn("font-semibold", chargeTiming === 'prepaid' ? "text-primary" : "text-foreground")}>
+                      {t('chargeTiming.prepaid')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t('chargeTiming.prepaidDescription')}</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setChargeTiming('postpaid')}
+                  className={cn(
+                    "flex flex-col items-start gap-2 rounded-lg border-2 p-4 text-left transition-all hover:bg-accent/50",
+                    chargeTiming === 'postpaid'
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Clock className={cn("h-5 w-5", chargeTiming === 'postpaid' ? "text-primary" : "text-muted-foreground")} />
+                    <span className={cn("font-semibold", chargeTiming === 'postpaid' ? "text-primary" : "text-foreground")}>
+                      {t('chargeTiming.postpaid')}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t('chargeTiming.postpaidDescription')}</p>
+                </button>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 p-4">
+                <Info className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">{t('chargeTiming.infoTitle')}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{t('chargeTiming.infoContent')}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Billing Form Card */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5" />
-              {t('chargeTiming.title')}
+              <DollarSign className="h-5 w-5" />
+              {t('title')}
             </CardTitle>
-            <CardDescription>
-              {t('chargeTiming.description')}
-            </CardDescription>
+            <CardDescription>{t('subtitle')}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Prepaid Card */}
-              <button
-                type="button"
-                onClick={() => setChargeTiming('prepaid')}
-                className={cn(
-                  "flex flex-col items-start gap-2 rounded-lg border-2 p-4 text-left transition-all hover:bg-accent/50",
-                  chargeTiming === 'prepaid'
-                    ? "border-primary bg-primary/5"
-                    : "border-border"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <CreditCard className={cn(
-                    "h-5 w-5",
-                    chargeTiming === 'prepaid' ? "text-primary" : "text-muted-foreground"
-                  )} />
-                  <span className={cn(
-                    "font-semibold",
-                    chargeTiming === 'prepaid' ? "text-primary" : "text-foreground"
-                  )}>
-                    {t('chargeTiming.prepaid')}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {t('chargeTiming.prepaidDescription')}
-                </p>
-              </button>
+          <CardContent className="space-y-6">
+            <FormField
+              control={form.control}
+              name="payment_due_days"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('fields.paymentDueDays.label')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="90"
+                      {...field}
+                      onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
+                    />
+                  </FormControl>
+                  <FormDescription>{t('fields.paymentDueDays.description')}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-              {/* Postpaid Card */}
-              <button
-                type="button"
-                onClick={() => setChargeTiming('postpaid')}
-                className={cn(
-                  "flex flex-col items-start gap-2 rounded-lg border-2 p-4 text-left transition-all hover:bg-accent/50",
-                  chargeTiming === 'postpaid'
-                    ? "border-primary bg-primary/5"
-                    : "border-border"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <Clock className={cn(
-                    "h-5 w-5",
-                    chargeTiming === 'postpaid' ? "text-primary" : "text-muted-foreground"
-                  )} />
-                  <span className={cn(
-                    "font-semibold",
-                    chargeTiming === 'postpaid' ? "text-primary" : "text-foreground"
-                  )}>
-                    {t('chargeTiming.postpaid')}
-                  </span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {t('chargeTiming.postpaidDescription')}
-                </p>
-              </button>
-            </div>
-
-            {/* Info Card */}
-            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/50 p-4">
-              <Info className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-foreground">{t('chargeTiming.infoTitle')}</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t('chargeTiming.infoContent')}
-                </p>
-              </div>
-            </div>
+            <FormField
+              control={form.control}
+              name="default_billing_day"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {t('fields.defaultBillingDay.label')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="28"
+                      placeholder={t('fields.defaultBillingDay.placeholder')}
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value ? parseInt(value) : null);
+                      }}
+                    />
+                  </FormControl>
+                  <FormDescription>{t('fields.defaultBillingDay.description')}</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </CardContent>
         </Card>
-      )}
 
-      {/* Billing Form Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            {t('title')}
-          </CardTitle>
-          <CardDescription>
-            {t('subtitle')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <FormField
-                control={form.control}
-                name="payment_due_days"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('fields.paymentDueDays.label')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="90"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('fields.paymentDueDays.description')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="default_billing_day"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      {t('fields.defaultBillingDay.label')}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="28"
-                        placeholder={t('fields.defaultBillingDay.placeholder')}
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          field.onChange(value ? parseInt(value) : null);
-                        }}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t('fields.defaultBillingDay.description')}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <Button type="submit" disabled={saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {saving ? t('actions.saving') : t('actions.save')}
-              </Button>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
-    </div>
+        {/* Global Save Button - outside both cards */}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {saving ? t('actions.saving') : t('actions.save')}
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }

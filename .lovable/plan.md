@@ -1,39 +1,54 @@
 
+## Correcao: Valor de Cobranca de Cancelamento Mostrando R$ 100,00 em Vez do Valor Real
 
-## Reposicionar Botao de Salvar na Aba de Cobranca
+### Problema Identificado
+Ao cancelar uma aula recorrente (virtual), o aviso de cancelamento exibe "Valor da cobranca: R$ 100,00" em vez do valor real do servico (R$ 46,84). Isso acontece porque o preco do servico nao esta sendo passado para o modal de cancelamento.
 
-### Problema
-O botao "Salvar Configuracoes" esta posicionado dentro do segundo card ("Configuracoes de Cobranca"), dando a impressao de que salva apenas os campos daquele card. Na verdade, ele tambem salva o "Modelo de Cobranca" (prepaid/postpaid) do primeiro card.
+### Causa Raiz
+O bug ocorre em **dois pontos** que se conectam:
+
+1. **`src/pages/Agenda.tsx` (linha 1746)**: Ao preparar os dados de uma aula virtual para cancelamento, o campo `service_price` e explicitamente definido como `null`, mesmo tendo o `service_id` disponivel e a lista de servicos (`services`) ja carregada em memoria.
+
+2. **`src/components/CancellationModal.tsx` (linha 229)**: Quando `class_services?.price` e `null` ou `undefined`, o codigo usa um fallback de R$ 100,00:
+   ```
+   const baseAmount = fetchedClassData.class_services?.price || 100;
+   ```
 
 ### Solucao
-Mover o botao de submit para fora de ambos os cards, posicionando-o no final da pagina como uma acao global. Isso deixa claro que ele salva todas as configuracoes da tela.
 
-### Mudancas Tecnicas
+**Arquivo 1: `src/pages/Agenda.tsx`**
+- Na funcao `handleRecurringClassCancel`, buscar o preco do servico a partir da lista `services` ja disponivel em memoria, usando o `service_id` da aula.
+- Mudar de `service_price: null` para buscar o preco real.
 
-**Arquivo: `src/components/Settings/BillingSettings.tsx`**
+**Arquivo 2: `src/components/CancellationModal.tsx`**
+- Remover o fallback perigoso de `|| 100` na linha 229. Se nao houver preco definido, o valor deve ser `0`, nao `100`.
+- Isso garante que, mesmo em cenarios inesperados, o sistema nunca exiba um valor falso de R$ 100,00.
 
-1. Remover o `<form>` de dentro do segundo card e envolver os dois cards em um unico `<form>` no nivel raiz do componente
-2. Mover o `<Button type="submit">` para fora dos cards, posicionado abaixo de ambos com um separador visual
-3. Adicionar `sticky bottom-0` ou padding adequado para destaque
+### Detalhes Tecnicos
 
-Estrutura resultante:
-```text
-+------------------------------------------+
-| [Card 1] Modelo de Cobranca              |
-|   Prepaid / Postpaid                     |
-+------------------------------------------+
+**Mudanca em Agenda.tsx (linha ~1746):**
+```
+// ANTES:
+service_price: null, // Will be fetched from service if needed
 
-+------------------------------------------+
-| [Card 2] Configuracoes de Cobranca       |
-|   Prazo de Vencimento                    |
-|   Dia de Cobranca Padrao                 |
-+------------------------------------------+
-
-        [ Salvar Todas as Configuracoes ]
+// DEPOIS:
+service_price: fullClassData.service_id
+  ? services.find(s => s.id === fullClassData.service_id)?.price || 0
+  : 0,
 ```
 
-A logica de `onSubmit` permanece identica -- ja salva tanto o `chargeTiming` no `business_profiles` quanto os campos do formulario no `profiles`. Apenas a posicao visual do botao muda.
+**Mudanca em CancellationModal.tsx (linha ~229):**
+```
+// ANTES:
+const baseAmount = fetchedClassData.class_services?.price || 100;
 
-### Arquivos Modificados
-- `src/components/Settings/BillingSettings.tsx` -- reestruturar form wrapper e reposicionar botao
+// DEPOIS:
+const baseAmount = fetchedClassData.class_services?.price || 0;
+```
 
+Com o fallback em `0`, se por algum motivo o preco nao for encontrado, o alerta de cobranca simplesmente mostrara R$ 0,00 (sem cobranca), o que e muito mais seguro do que inventar um valor de R$ 100,00.
+
+### Impacto
+- Corrige o valor exibido no aviso de cancelamento para aulas recorrentes/virtuais
+- Elimina o risco de cobrar valores incorretos baseados em fallback arbitrario
+- Nenhuma mudanca em logica de backend ou banco de dados necessaria

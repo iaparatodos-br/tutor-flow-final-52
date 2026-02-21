@@ -39,7 +39,7 @@
   "currentPlan": "Plano Atual",
   "upgrade": "Fazer Upgrade",
   "downgrade": "Fazer Downgrade",
-  "cancel": "Cancelar Assinatura",
+  "cancelLabel": "Cancelar Assinatura",
   "renew": "Renovar",
   "billing": "Faturamento",
   "features": "Recursos",
@@ -100,28 +100,11 @@
     "lifetime": "Vitalício"
   },
   "status": {
+    "label": "Status",
     "active": "Ativo",
     "cancelled": "Cancelado",
     "expired": "Expirado",
     "trial": "Teste"
-  },
-  "features": {
-    "unlimitedStudents": "Alunos ilimitados",
-    "onlineClasses": "Aulas online",
-    "materials": "Materiais",
-    "reports": "Relatórios",
-    "support": "Suporte",
-    "customization": "Personalização",
-    "integrations": "Integrações",
-    "financialModule": "Módulo Financeiro Completo"
-  },
-  "messages": {
-    "planChanged": "Plano alterado com sucesso!",
-    "subscriptionCancelled": "Assinatura cancelada com sucesso!",
-    "paymentProcessed": "Pagamento processado com sucesso!",
-    "trialStarted": "Período de teste iniciado!",
-    "trialExpiring": "Seu período de teste expira em breve",
-    "subscriptionExpired": "Sua assinatura expirou"
   },
   "paymentFailure": {
     "title": "Não foi possível renovar sua assinatura",

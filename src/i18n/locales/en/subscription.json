@@ -39,7 +39,7 @@
   "currentPlan": "Current Plan",
   "upgrade": "Upgrade",
   "downgrade": "Downgrade",
-  "cancel": "Cancel Subscription",
+  "cancelLabel": "Cancel Subscription",
   "renew": "Renew",
   "billing": "Billing",
   "features": "Features",
@@ -100,28 +100,11 @@
     "lifetime": "Lifetime"
   },
   "status": {
+    "label": "Status",
     "active": "Active",
     "cancelled": "Cancelled",
     "expired": "Expired",
     "trial": "Trial"
-  },
-  "features": {
-    "unlimitedStudents": "Unlimited students",
-    "onlineClasses": "Online classes",
-    "materials": "Materials",
-    "reports": "Reports",
-    "support": "Support",
-    "customization": "Customization",
-    "integrations": "Integrations",
-    "financialModule": "Complete Financial Module"
-  },
-  "messages": {
-    "planChanged": "Plan changed successfully!",
-    "subscriptionCancelled": "Subscription cancelled successfully!",
-    "paymentProcessed": "Payment processed successfully!",
-    "trialStarted": "Trial period started!",
-    "trialExpiring": "Your trial period expires soon",
-    "subscriptionExpired": "Your subscription has expired"
   },
   "paymentFailure": {
     "title": "Unable to renew your subscription",

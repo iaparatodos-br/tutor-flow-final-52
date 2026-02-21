@@ -236,6 +236,10 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
     
     // Check against existing classes
     for (const existingClass of existingClasses) {
+      // Skip cancelled/completed classes - they don't occupy the time slot
+      if ((existingClass as any).status === 'cancelada' || (existingClass as any).status === 'concluida') {
+        continue;
+      }
       const classStart = new Date(existingClass.class_date);
       const classEnd = new Date(classStart.getTime() + existingClass.duration_minutes * 60000);
       

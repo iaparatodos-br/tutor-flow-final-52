@@ -388,7 +388,7 @@ export default function Subscription() {
 
                       <Button className="w-full" variant="destructive" onClick={handleCancel} disabled={isCanceling}>
                         {isCanceling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        {t('cancel')}
+                        {t('cancelLabel')}
                       </Button>
                     </>}
                 </> : (

@@ -1,102 +1,37 @@
 
+## Fix: Add Missing "Create Invoice" Button to CreateInvoiceModal
 
-# Corrigir Trigger que Sobrescreve Status "Aguardando Pagamento" em Aulas Pre-Pagas
+### Problem
+The `CreateInvoiceModal` component has an empty `<DialogTrigger asChild>` with no button child. This means the modal cannot be opened from either the Financeiro or Alunos pages, completely blocking manual invoice creation for teachers.
 
-## Causa Raiz
+### Root Cause
+The button was either accidentally removed or never added inside the `<DialogTrigger>` component (line ~147 of `CreateInvoiceModal.tsx`).
 
-A funcao PostgreSQL `sync_class_status_from_participants` e disparada automaticamente (trigger) toda vez que um participante e inserido/atualizado na tabela `class_participants`. Essa funcao recalcula o status da aula baseado nos participantes, mas **nao reconhece o status `aguardando_pagamento`**.
+### Solution
 
-Fluxo do bug:
+**File: `src/components/CreateInvoiceModal.tsx`**
 
-```text
-1. Professor cria aula prepaid para dependente
-2. Codigo insere classe com status = 'aguardando_pagamento'     -- OK
-3. Codigo insere participante com status = 'aguardando_pagamento' -- OK
-4. TRIGGER dispara sync_class_status_from_participants()
-5. Trigger verifica: all_cancelled? NAO, any_concluida? NAO, any_confirmada? NAO
-6. ELSE -> v_class_status = 'pendente'                           -- BUG!
-7. Classe atualizada para 'pendente', sobrescrevendo 'aguardando_pagamento'
+Add a button inside the `<DialogTrigger>` that matches the existing design system:
+
+```tsx
+<DialogTrigger asChild>
+  <Button className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
+    <DollarSign className="h-4 w-4 mr-2" />
+    {t('actions.newInvoice') || 'Nova Fatura'}
+  </Button>
+</DialogTrigger>
 ```
 
-O participante mantem o status correto (`aguardando_pagamento`), mas a classe e revertida para `pendente`.
+The `DollarSign` icon is already imported. The translation key `actions.newInvoice` already exists in the `financial` namespace (EN: "New Invoice").
 
-## Solucao
+### Changes Required
+1. **`src/components/CreateInvoiceModal.tsx`** - Add the `<Button>` inside `<DialogTrigger>` (1 line change)
 
-Adicionar reconhecimento do status `aguardando_pagamento` na funcao do trigger, tanto na verificacao quanto na logica de decisao.
+### No other files need modification
+- The translation keys already exist in both `en/financial.json` ("New Invoice") and `pt/financial.json` (needs adding "Nova Fatura")
+- The component is already imported and rendered correctly in both `Financeiro.tsx` and `Alunos.tsx`
 
-### Migration SQL
-
-Atualizar a funcao `sync_class_status_from_participants` para incluir uma verificacao de `aguardando_pagamento`:
-
-```sql
-CREATE OR REPLACE FUNCTION public.sync_class_status_from_participants()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = 'public'
-AS $$
-DECLARE
-  v_all_cancelled boolean;
-  v_any_active boolean;
-  v_any_concluida boolean;
-  v_any_confirmada boolean;
-  v_any_aguardando_pagamento boolean;   -- NOVO
-  v_class_status text;
-  v_is_group_class boolean;
-BEGIN
-  SELECT is_group_class INTO v_is_group_class
-  FROM public.classes
-  WHERE id = COALESCE(NEW.class_id, OLD.class_id);
-
-  SELECT
-    COALESCE(BOOL_AND(status IN ('cancelada', 'removida')), false),
-    COALESCE(BOOL_OR(status NOT IN ('cancelada', 'removida')), false),
-    COALESCE(BOOL_OR(status = 'concluida'), false),
-    COALESCE(BOOL_OR(status = 'confirmada'), false),
-    COALESCE(BOOL_OR(status = 'aguardando_pagamento'), false)   -- NOVO
-  INTO v_all_cancelled, v_any_active, v_any_concluida, v_any_confirmada, v_any_aguardando_pagamento
-  FROM public.class_participants
-  WHERE class_id = COALESCE(NEW.class_id, OLD.class_id);
-
-  IF v_all_cancelled THEN
-    v_class_status := 'cancelada';
-  ELSIF v_is_group_class AND v_any_active THEN
-    RETURN COALESCE(NEW, OLD);
-  ELSIF v_any_concluida THEN
-    v_class_status := 'concluida';
-  ELSIF v_any_confirmada THEN
-    v_class_status := 'confirmada';
-  ELSIF v_any_aguardando_pagamento THEN       -- NOVO: antes do ELSE
-    v_class_status := 'aguardando_pagamento';
-  ELSE
-    v_class_status := 'pendente';
-  END IF;
-
-  UPDATE public.classes
-  SET status = v_class_status, updated_at = NOW()
-  WHERE id = COALESCE(NEW.class_id, OLD.class_id);
-
-  RETURN COALESCE(NEW, OLD);
-END;
-$$;
-```
-
-A hierarquia de prioridade fica:
-1. `cancelada` (todos cancelados)
-2. Grupo com ativos (manter status original)
-3. `concluida` (qualquer concluido)
-4. `confirmada` (qualquer confirmado)
-5. **`aguardando_pagamento`** (qualquer aguardando - NOVO)
-6. `pendente` (fallback)
-
-## Impacto
-
-- Corrige aulas pre-pagas criadas pelo professor ficando com status errado
-- Nao afeta nenhum fluxo existente (o novo branch so ativa quando nenhum participante tem status mais alto)
-- O trigger `trg_sync_class_status_from_participants` ja existe e continuara usando a funcao atualizada sem necessidade de recria-lo
-
-## Arquivos Afetados
-
-| Arquivo | Mudanca |
-|---|---|
-| Nova migration SQL | Atualizar `sync_class_status_from_participants` para reconhecer `aguardando_pagamento` |
+### After the fix
+- The "Nova Fatura" button will appear on the Financeiro page next to the "Faturas Emitidas" header
+- The button will also appear on the Alunos page in the action buttons area
+- Teachers can create manual invoices, which will auto-generate boleto/PIX and send notifications

@@ -146,7 +146,10 @@ export function CreateInvoiceModal({
   return <StripeAccountGuard requireChargesEnabled={true}>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        
+        <Button>
+          <DollarSign className="h-4 w-4 mr-2" />
+          {t('actions.newInvoice') || 'Nova Fatura'}
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>

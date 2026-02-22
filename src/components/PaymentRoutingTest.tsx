@@ -177,99 +177,43 @@ export function PaymentRoutingTest() {
     return entityType === 'dependent' ? `dep_${selectedEntity}` : selectedEntity;
   };
 
-  return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Teste de Roteamento de Pagamento</CardTitle>
+        <CardDescription>Verifique se o roteamento de pagamento está configurado corretamente</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <select
+            className="flex-1 border rounded px-3 py-2 text-sm"
+            value={getCurrentValue()}
+            onChange={(e) => handleSelectChange(e.target.value)}
+          >
+            <option value="">Selecione um aluno ou dependente</option>
+            {students?.map((s) => (
+              <option key={s.student_id} value={s.student_id}>{s.student_name}</option>
+            ))}
+            {dependents?.map((d) => (
+              <option key={d.id} value={`dep_${d.id}`}>{d.name} (dependente)</option>
+            ))}
+          </select>
+          <Button onClick={handleRunTests} disabled={isRunning || !selectedEntity}>
+            {isRunning ? "Executando..." : "Executar Testes"}
+          </Button>
+        </div>
+        {testResults.length > 0 && (
+          <div className="space-y-2">
+            {testResults.map((result, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 border rounded">
+                {getStatusIcon(result.status)}
+                <span className="flex-1 text-sm">{result.message}</span>
+                {getStatusBadge(result.status)}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

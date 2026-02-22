@@ -1,57 +1,97 @@
 
 
-## Correcao: Permitir Agendamento em Horarios de Aulas Canceladas
+# Unificacao dos Modais de Falha de Pagamento e Selecao de Alunos
 
-### Problema
-Ao tentar agendar uma nova aula em um horario que tinha uma aula cancelada, o sistema bloqueia o agendamento como se houvesse conflito. Aulas canceladas nao deveriam ocupar espaco na agenda.
+## Problema Atual
 
-### Causa Raiz
-Existem **3 pontos** no codigo que verificam conflitos de horario, mas **2 deles** nao excluem aulas canceladas:
+Existem 3 modais separados para cenarios muito semelhantes:
 
-| Local | Filtra canceladas? | Status |
+1. **PaymentFailureModal** - Mostra quando ha falha de pagamento, com botoes "Renovar" e "Downgrade". Se o usuario clica em "Downgrade", ele precisa de um SEGUNDO modal.
+2. **PaymentFailureStudentSelectionModal** - Modal de selecao de alunos especifico para falha de pagamento.
+3. **PlanDowngradeSelectionModal** - Modal de selecao de alunos para downgrade normal, JA possui abas "Selecionar Alunos" e "Fazer Upgrade".
+
+O fluxo atual para falha de pagamento requer 2 cliques em 2 modais diferentes, quando poderia ser resolvido em 1 so.
+
+## Solucao Proposta
+
+Unificar tudo no `PlanDowngradeSelectionModal`, que ja tem a melhor estrutura (abas com opcao de upgrade e selecao de alunos). A parte de selecao de alunos so aparece se houver alunos excedentes.
+
+```text
++-------------------------------------------+
+| Modal Unificado                           |
+|-------------------------------------------|
+| [Alerta contextual]                       |
+|   - Falha de pagamento? Alerta vermelho   |
+|   - Downgrade normal? Alerta amarelo      |
+|-------------------------------------------|
+| [Selecionar Alunos] | [Renovar/Upgrade]   |  <-- Abas
+|                                           |
+| Aba "Selecionar Alunos":                  |
+|   - So aparece se currentCount > limit    |
+|   - Lista de alunos com checkbox          |
+|   - Mesma logica atual                    |
+|                                           |
+| Aba "Renovar/Upgrade":                    |
+|   - Lista de planos disponiveis           |
+|   - Botao de checkout do Stripe           |
+|   - Sempre visivel                        |
++-------------------------------------------+
+```
+
+## Detalhes Tecnicos
+
+### 1. Modificar `PlanDowngradeSelectionModal`
+
+- Adicionar prop `isPaymentFailure?: boolean` para adaptar textos e alertas
+- Quando `isPaymentFailure = true`:
+  - Titulo: "Falha de Pagamento - Acao Necessaria"
+  - Alerta vermelho explicando a falha
+  - Mencao a cancelamento de faturas pendentes
+- Quando `isPaymentFailure = false`:
+  - Manter comportamento atual (downgrade normal)
+- Quando **nao ha alunos excedentes** (`needToRemove <= 0`):
+  - Esconder aba "Selecionar Alunos"
+  - Mostrar apenas aba "Renovar/Upgrade" com opcao de downgrade direto (botao simples)
+- A edge function chamada no submit depende do contexto:
+  - `isPaymentFailure = true` -> chama `process-payment-failure-downgrade`
+  - `isPaymentFailure = false` -> chama `handle-plan-downgrade-selection`
+
+### 2. Simplificar `SubscriptionContext.tsx`
+
+- Remover os estados `paymentFailureDetected` e `paymentFailureData` separados
+- Quando ha falha de pagamento, alimentar diretamente o `studentSelectionData` com `isPaymentFailure: true` (ja acontece parcialmente)
+- A funcao `handlePaymentFailure` deixa de existir; o modal unificado trata tudo
+- Manter a deteccao de `paymentFailure` na resposta do `check-subscription-status`, mas converter para o formato de `studentSelectionData`
+
+### 3. Remover arquivos obsoletos
+
+- Deletar `src/components/PaymentFailureModal.tsx`
+- Deletar `src/components/PaymentFailureGuard.tsx`
+- Deletar `src/components/PaymentFailureStudentSelectionModal.tsx`
+
+### 4. Atualizar `StudentSelectionBlocker.tsx`
+
+- Remover a bifurcacao `isPaymentFailure ? PaymentFailureStudentSelectionModal : PlanDowngradeSelectionModal`
+- Sempre renderizar `PlanDowngradeSelectionModal`, passando `isPaymentFailure` como prop
+
+### 5. Atualizar `Layout.tsx` ou onde `PaymentFailureGuard` e usado
+
+- Remover a renderizacao do `PaymentFailureGuard`
+
+### 6. Atualizar traducoes (i18n)
+
+- Adicionar chaves no namespace `subscription` para os textos contextuais de falha de pagamento dentro do modal unificado
+
+## Cenarios Cobertos
+
+| Cenario | Alunos Excedentes? | Resultado |
 |---|---|---|
-| `ClassForm.tsx` (linha 264-267) | Sim (skip `cancelada` e `concluida`) | OK |
-| `Agenda.tsx` (linha 1420-1431) | Nao | BUG |
-| `StudentScheduleRequest.tsx` (linha 238-248) | Nao | BUG |
+| Falha de pagamento, 18 alunos, limite 3 | Sim | Modal com 2 abas: selecionar alunos + upgrade |
+| Falha de pagamento, 2 alunos, limite 3 | Nao | Modal com 1 aba: upgrade/downgrade direto |
+| Downgrade normal (basico->free), 18 alunos | Sim | Modal com 2 abas: selecionar alunos + upgrade |
+| Downgrade normal, 2 alunos | Nao | Nao mostra modal (downgrade direto) |
 
-### Solucao
+## Riscos
 
-**Arquivo 1: `src/pages/Agenda.tsx` (~linha 1420)**
+Nenhum risco funcional. A logica de selecao de alunos, as edge functions e o fluxo de upgrade permanecem identicos. Apenas a apresentacao e unificada.
 
-Adicionar filtro para pular aulas canceladas e concluidas na validacao de conflito dentro de `handleClassSubmit`:
-
-```typescript
-// ANTES:
-const hasConflict = classes?.some(existingClass => {
-  if (existingClass.isVirtual || existingClass.is_template) return false;
-
-// DEPOIS:
-const hasConflict = classes?.some(existingClass => {
-  if (existingClass.isVirtual || existingClass.is_template) return false;
-  if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') return false;
-```
-
-**Arquivo 2: `src/components/StudentScheduleRequest.tsx` (~linha 238)**
-
-Adicionar filtro para pular aulas canceladas na verificacao de disponibilidade do aluno:
-
-```typescript
-// ANTES:
-for (const existingClass of existingClasses) {
-
-// DEPOIS:
-for (const existingClass of existingClasses) {
-  // Skip cancelled classes - they don't occupy the time slot
-  if ((existingClass as any).status === 'cancelada' || (existingClass as any).status === 'concluida') {
-    continue;
-  }
-```
-
-### Arquivos Modificados
-- `src/pages/Agenda.tsx` - adicionar 1 linha de filtro na validacao de conflito
-- `src/components/StudentScheduleRequest.tsx` - adicionar 3 linhas de filtro no loop de verificacao
-
-### Impacto
-- Professores poderao agendar novas aulas em horarios de aulas canceladas
-- Alunos poderao solicitar aulas em horarios previamente cancelados
-- Nenhuma mudanca no backend ou banco de dados

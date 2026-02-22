@@ -762,31 +762,31 @@ export default function PerfilAluno() {
                         >
                           <div className="border border-border rounded-lg">
                             <CollapsibleTrigger asChild>
-                              <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 transition-colors">
-                                <div className="flex items-center gap-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 cursor-pointer hover:bg-muted/50 transition-colors overflow-hidden">
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
                                   {isExpanded ? (
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                                   )}
-                                  <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
+                                  <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
                                     <User className="h-4 w-4 text-primary" />
                                   </div>
-                                  <div>
-                                    <p className="font-medium">{dep.dependent_name}</p>
+                                  <div className="min-w-0">
+                                    <p className="font-medium truncate">{dep.dependent_name}</p>
                                     {dep.birth_date && (
                                       <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                        <Cake className="h-3 w-3" />
+                                        <Cake className="h-3 w-3 flex-shrink-0" />
                                         {formatBirthDate(dep.birth_date)}
                                       </p>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted-foreground flex-shrink-0 pl-11 sm:pl-0">
                                   {stats && (
                                     <>
-                                      <span>{stats.total_classes} {t('dependents.classes', 'aulas')}</span>
-                                      <span>{stats.total_hours}h</span>
+                                      <span className="whitespace-nowrap">{stats.total_classes} {t('dependents.classes', 'aulas')}</span>
+                                      <span className="whitespace-nowrap">{stats.total_hours}h</span>
                                     </>
                                   )}
                                   <div className="flex items-center gap-1">

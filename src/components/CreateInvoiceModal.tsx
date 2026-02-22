@@ -51,15 +51,15 @@ export function CreateInvoiceModal({
   const handleRecipientChange = (value: string) => {
     const [type, id] = value.split(':');
     if (type === 'student') {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         student_id: id,
         dependent_id: ""
       }));
     } else if (type === 'dependent') {
-      const dependent = dependents.find(d => d.id === id);
+      const dependent = dependents.find((d) => d.id === id);
       if (dependent) {
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           student_id: dependent.responsible_id,
           dependent_id: id
@@ -133,9 +133,9 @@ export function CreateInvoiceModal({
             errorMessage = body.error;
           }
         } catch {
+
           // Se não conseguir parsear, usar mensagem padrão
-        }
-      } else if (error?.message) {
+        }} else if (error?.message) {
         errorMessage = error.message;
       }
       setError(errorMessage);
@@ -146,10 +146,10 @@ export function CreateInvoiceModal({
   return <StripeAccountGuard requireChargesEnabled={true}>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <DollarSign className="h-4 w-4 mr-2" />
-          {t('actions.newInvoice') || 'Nova Fatura'}
-        </Button>
+        
+
+
+
       </DialogTrigger>
       <DialogContent>
         <form onSubmit={handleSubmit}>
@@ -180,7 +180,7 @@ export function CreateInvoiceModal({
                       <SelectLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                         {t('groups.students') || 'Alunos'}
                       </SelectLabel>
-                      {students.map(student => <SelectItem key={`student-${student.id}`} value={`student:${student.id}`}>
+                      {students.map((student) => <SelectItem key={`student-${student.id}`} value={`student:${student.id}`}>
                           {student.name} ({student.email})
                         </SelectItem>)}
                     </SelectGroup>}
@@ -190,7 +190,7 @@ export function CreateInvoiceModal({
                       <SelectLabel className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                         {t('groups.dependents') || 'Dependentes'}
                       </SelectLabel>
-                      {dependents.map(dependent => <SelectItem key={`dependent-${dependent.id}`} value={`dependent:${dependent.id}`}>
+                      {dependents.map((dependent) => <SelectItem key={`dependent-${dependent.id}`} value={`dependent:${dependent.id}`}>
                           <span className="flex items-center gap-1.5">
                             <Baby className="h-3.5 w-3.5 text-purple-600" />
                             {dependent.name}
@@ -206,7 +206,7 @@ export function CreateInvoiceModal({
 
             <div className="space-y-2">
               <Label htmlFor="amount">Valor (R$) *</Label>
-              <Input id="amount" type="number" step="0.01" min={MINIMUM_BOLETO_AMOUNT} placeholder="5,00" value={formData.amount} onChange={e => setFormData(prev => ({
+              <Input id="amount" type="number" step="0.01" min={MINIMUM_BOLETO_AMOUNT} placeholder="5,00" value={formData.amount} onChange={(e) => setFormData((prev) => ({
                 ...prev,
                 amount: e.target.value
               }))} required />
@@ -237,7 +237,7 @@ export function CreateInvoiceModal({
 
             <div className="space-y-2">
               <Label htmlFor="description">Descrição</Label>
-              <Textarea id="description" placeholder="Descrição da fatura (opcional)" value={formData.description} onChange={e => setFormData(prev => ({
+              <Textarea id="description" placeholder="Descrição da fatura (opcional)" value={formData.description} onChange={(e) => setFormData((prev) => ({
                 ...prev,
                 description: e.target.value
               }))} />
@@ -245,7 +245,7 @@ export function CreateInvoiceModal({
 
             <div className="space-y-2">
               <Label htmlFor="due_date">Data de Vencimento</Label>
-              <Input id="due_date" type="date" value={formData.due_date} onChange={e => setFormData(prev => ({
+              <Input id="due_date" type="date" value={formData.due_date} onChange={(e) => setFormData((prev) => ({
                 ...prev,
                 due_date: e.target.value
               }))} />

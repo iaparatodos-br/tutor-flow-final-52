@@ -663,11 +663,12 @@ serve(async (req) => {
           }
         }
 
-        logStep("Subscription marked as expired and profile updated");
+        logStep("Subscription marked as expired and profile updated", { hasPaymentFailure: !!paymentFailure });
 
         return new Response(JSON.stringify({
           subscription: null,
-          plan: freePlan
+          plan: freePlan,
+          ...(paymentFailure ? { paymentFailure, payment_failed: true, payment_failure_data: paymentFailure } : {})
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,

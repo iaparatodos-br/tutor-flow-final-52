@@ -38,7 +38,9 @@ import {
   UserPlus,
   Cake,
   Package,
-  Infinity
+  Infinity,
+  Edit2,
+  Trash2
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
@@ -762,56 +764,48 @@ export default function PerfilAluno() {
                         >
                           <div className="border border-border rounded-lg">
                             <CollapsibleTrigger asChild>
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 cursor-pointer hover:bg-muted/50 transition-colors overflow-hidden">
-                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                                <div className="flex-shrink-0">
                                   {isExpanded ? (
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
                                   ) : (
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                                   )}
-                                  <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
-                                    <User className="h-4 w-4 text-primary" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <p className="font-medium truncate">{dep.dependent_name}</p>
-                                    {dep.birth_date && (
-                                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                        <Cake className="h-3 w-3 flex-shrink-0" />
-                                        {formatBirthDate(dep.birth_date)}
-                                      </p>
-                                    )}
-                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted-foreground flex-shrink-0 pl-11 sm:pl-0">
-                                  {stats && (
-                                    <>
-                                      <span className="whitespace-nowrap">{stats.total_classes} {t('dependents.classes', 'aulas')}</span>
-                                      <span className="whitespace-nowrap">{stats.total_hours}h</span>
-                                    </>
-                                  )}
-                                  <div className="flex items-center gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleEditDependent(dep);
-                                      }}
-                                    >
-                                      {t('actions.edit', 'Editar')}
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="text-destructive hover:text-destructive"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteDependent(dep.dependent_id);
-                                      }}
-                                    >
-                                      {t('actions.delete', 'Excluir')}
-                                    </Button>
-                                  </div>
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <User className="h-4 w-4 text-primary" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-sm truncate">{dep.dependent_name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {dep.birth_date && formatBirthDate(dep.birth_date)}
+                                    {dep.birth_date && stats && ' · '}
+                                    {stats && `${stats.total_classes} ${t('dependents.classes', 'aulas')}`}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditDependent(dep);
+                                    }}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteDependent(dep.dependent_id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
                               </div>
                             </CollapsibleTrigger>

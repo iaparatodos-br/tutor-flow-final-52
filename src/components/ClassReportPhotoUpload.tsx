@@ -137,7 +137,7 @@ export function ClassReportPhotoUpload({
           {photos.map((photo) => (
             <div 
               key={photo.id} 
-              className="relative aspect-square rounded-lg overflow-hidden border bg-muted group"
+              className="relative aspect-square rounded-lg overflow-hidden border bg-muted group w-24 h-24"
             >
               <img
                 src={photo.preview}

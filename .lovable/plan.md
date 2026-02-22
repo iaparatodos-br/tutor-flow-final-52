@@ -1,44 +1,77 @@
 
 
-## Diferenciar cores dos status "Pendente" e "Aguardando Pagamento"
+## Redesign do sistema de cores de status das aulas
 
-### Problema
-Os status "pendente" e "aguardando_pagamento" compartilham a mesma cor amarela/laranja (warning/amber) em varios pontos da interface, tornando impossivel distingui-los visualmente.
+### Novo sistema de cores
 
-### Solucao
-Manter "pendente" com a cor amarela/warning atual e mudar "aguardando_pagamento" para uma cor distinta. A cor escolhida sera **amber-600/orange** mais escuro e saturado, criando uma diferenciacao clara enquanto mantem a semantica de "item financeiro pendente".
-
-- **Pendente**: amarelo/warning (cor atual, inalterada)
-- **Aguardando Pagamento**: laranja mais forte (`bg-orange-500 text-white`)
+| Status | Cor | Justificativa |
+|---|---|---|
+| Pendente | Amber | Atencao/espera, sem agressividade |
+| Aguardando Pagamento | Indigo | Remete a processos financeiros/Stripe |
+| Confirmada | Blue | Neutro-positivo, "agendado/ativo" |
+| Concluida | Emerald | Sucesso sofisticado |
+| Cancelada | Slate | Inativa, sem chamar atencao |
 
 ### Arquivos a alterar
 
-1. **`src/components/Calendar/CalendarView.tsx`** (~linha 144)
-   - Mudar `aguardando_pagamento` de `'hsl(30 80% 55%)'` para `'hsl(25 95% 53%)'` (laranja mais forte/distinto)
+**1. `src/components/Calendar/CalendarView.tsx`**
 
-2. **`src/components/Calendar/MobileCalendarList.tsx`** (~linha 111)
-   - Mudar `aguardando_pagamento` de `'bg-amber-500 text-white'` para `'bg-orange-500 text-white'`
+- **Linha 139-144** — Cores HSL do calendario (blocos coloridos no grid):
+  - `pendente`: `'hsl(var(--warning))'` -> `'hsl(38 92% 50%)'` (amber-500)
+  - `confirmada`: `'hsl(var(--primary))'` -> `'hsl(217 91% 60%)'` (blue-500)
+  - `cancelada`: `'hsl(var(--destructive))'` -> `'hsl(215 16% 47%)'` (slate-500)
+  - `concluida`: `'hsl(var(--success))'` -> `'hsl(160 84% 39%)'` (emerald-500)
+  - `aguardando_pagamento`: `'hsl(25 95% 53%)'` -> `'hsl(239 84% 67%)'` (indigo-500)
 
-3. **`src/pages/PerfilAluno.tsx`** (~linha 497-498)
-   - `pendente`: manter `bg-warning text-warning-foreground`
-   - `aguardando_pagamento`: mudar de `variant="warning"` para `className="bg-orange-500 text-white"`
+- **Linha 185-190** — Badge no popup de detalhes:
+  - `pendente`: className `bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400`
+  - `confirmada`: className `bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400`
+  - `cancelada`: className `bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400`
+  - `concluida`: className `bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400`
+  - `aguardando_pagamento`: className `bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400`
 
-4. **`src/pages/Historico.tsx`** (~linha 184-185)
-   - `pendente`: manter `variant: "secondary"`
-   - `aguardando_pagamento`: mudar de `variant: "warning"` para usar className com `bg-orange-500 text-white` (precisara retornar JSX customizado em vez de usar variant)
+**2. `src/components/Calendar/MobileCalendarList.tsx`**
 
-5. **`src/components/Calendar/CalendarView.tsx`** (~linha 190)
-   - Badge do popup: mudar `aguardando_pagamento` de `variant: "warning"` para usar className `bg-orange-500 text-white`
+- **Linha 105-113** — `getStatusColor()`:
+  - `pendente`: `'bg-amber-500 text-white'`
+  - `confirmada`: `'bg-blue-500 text-white'`
+  - `cancelada`: `'bg-slate-400 text-white'`
+  - `concluida`: `'bg-emerald-500 text-white'`
+  - `aguardando_pagamento`: `'bg-indigo-500 text-white'`
 
-6. **`src/components/ArchivedDataViewer.tsx`** (~linha 114-120)
-   - Adicionar entrada para `aguardando_pagamento` com estilo diferenciado, caso esteja ausente
+**3. `src/pages/PerfilAluno.tsx`**
 
-### Resultado visual
-| Status | Cor |
-|---|---|
-| Pendente | Amarelo (warning - atual) |
-| Aguardando Pagamento | Laranja forte (orange-500) |
-| Confirmada | Azul (primary) |
-| Concluida | Verde (success) |
-| Cancelada | Vermelho (destructive) |
+- **Linha 493-501** — `getStatusBadge()`:
+  - Aplicar as mesmas classes Tailwind com fundo suave e texto escuro para cada status
+  - `pendente`: `bg-amber-100 text-amber-800`
+  - `cancelada`: `bg-slate-100 text-slate-700`
+  - `concluida`: `bg-emerald-100 text-emerald-800`
+  - `aguardando_pagamento`: `bg-indigo-100 text-indigo-800`
 
+**4. `src/pages/Historico.tsx`**
+
+- **Linha 181-186** — `statusMap`:
+  - `pendente`: className `bg-amber-100 text-amber-800`
+  - `cancelada`: className `bg-slate-100 text-slate-700`
+  - `realizada` (equivale a concluida): className `bg-emerald-100 text-emerald-800`
+  - `aguardando_pagamento`: className `bg-indigo-100 text-indigo-800`
+
+**5. `src/components/ArchivedDataViewer.tsx`**
+
+- **Linha 114-120** — `statusMap`:
+  - Mesma logica: amber para pendente, slate para cancelada, emerald para concluida, indigo para aguardando_pagamento, blue para confirmada
+
+**6. `src/pages/PerfilAluno.tsx`** (icones, linha 485-489)
+
+- Atualizar as cores dos icones de status para combinar:
+  - `concluida`: `text-emerald-500`
+  - `cancelada`: `text-slate-400`
+  - `confirmada`: `text-blue-500`
+  - `pendente`: `text-amber-500`
+
+### Notas de implementacao
+
+- Os badges usarao `variant="secondary"` (ou nenhum variant) como base, com as classes Tailwind customizadas controlando as cores via `className`
+- As cores HSL no `CalendarView` (blocos do calendario) precisam ser mais saturadas/escuras porque o texto e branco sobre fundo colorido
+- Os badges nos popups/modais usam o estilo "suave" (fundo claro + texto escuro) conforme a proposta
+- Suporte a dark mode incluido com as classes `dark:` nos badges

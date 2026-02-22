@@ -1,19 +1,37 @@
 
-## Ocultar badge de status na lista de aulas do dependente em telas pequenas
+
+## Corrigir overflow do badge "Aguardando Pagamento" no card de faturas
 
 ### Problema
-Na lista de aulas dentro do card do dependente (linha 850), o badge de status (ex: "Aguardando Pagamento") ocupa muito espaco horizontal e estoura para fora do card em telas estreitas.
+O container da fatura (linha 959) usa `flex items-center justify-between` sem controle de overflow. Em telas estreitas, o badge e o botao "Ver Fatura" nao cabem e vazam para fora do card.
 
 ### Solucao
-Adicionar a classe `hidden sm:block` no badge de status **apenas** na lista de aulas do dependente. Isso oculta o badge em telas pequenas (< 640px) e o exibe quando ha espaco suficiente. O icone de status (linha 836) ja indica visualmente o estado da aula, entao nenhuma informacao critica e perdida.
+
+**Arquivo**: `src/pages/PerfilAluno.tsx`
+
+1. **Tornar o layout responsivo** - Alterar o container de cada fatura (linha 959) de `flex items-center justify-between` para `flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`, permitindo empilhamento vertical em telas pequenas.
+
+2. **Adicionar `min-w-0`** ao `<div>` de texto (linha 960) para permitir truncamento correto.
+
+3. **Adicionar `flex-shrink-0`** ao `<div>` de acoes (linha 971) para evitar que os botoes sejam comprimidos.
+
+4. **Adicionar `flex-wrap`** ao container de badge + botao (linha 971) para que o badge e o botao "Ver Fatura" quebrem linha se necessario.
 
 ### Detalhes tecnicos
 
-**Arquivo**: `src/pages/PerfilAluno.tsx`, linha 850
-
 ```
-- {getStatusBadge(cls.status)}
-+ <span className="hidden sm:inline-flex">{getStatusBadge(cls.status)}</span>
+// Linha 959 - Container da fatura
+- <div className="flex items-center justify-between p-3 border border-border rounded-lg">
++ <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 border border-border rounded-lg">
+
+// Linha 960 - Texto
+- <div>
++ <div className="min-w-0">
+
+// Linha 971 - Acoes
+- <div className="flex items-center gap-2">
++ <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
 ```
 
-Apenas essa linha e alterada. As demais chamadas a `getStatusBadge` (aulas do aluno na linha 917, faturas na linha 972) permanecem inalteradas.
+Essas mudancas garantem que em telas pequenas os elementos empilhem verticalmente, e em telas maiores mantenham o layout horizontal original.
+

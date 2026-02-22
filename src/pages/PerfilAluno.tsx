@@ -847,7 +847,7 @@ export default function PerfilAluno() {
                                             ({cls.duration_minutes} min)
                                           </span>
                                         </div>
-                                        <span className="hidden sm:inline-flex">{getStatusBadge(cls.status)}</span>
+                                        {getStatusBadge(cls.status)}
                                       </div>
                                     ))}
                                   </div>

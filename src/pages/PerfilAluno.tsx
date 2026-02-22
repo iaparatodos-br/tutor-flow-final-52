@@ -495,7 +495,7 @@ export default function PerfilAluno() {
       case 'concluida': return <Badge className="bg-success text-success-foreground">Concluída</Badge>;
       case 'cancelada': return <Badge variant="destructive">Cancelada</Badge>;
       case 'pendente': return <Badge className="bg-warning text-warning-foreground">Pendente</Badge>;
-      case 'aguardando_pagamento': return <Badge variant="warning">Aguardando Pagamento</Badge>;
+      case 'aguardando_pagamento': return <Badge variant="warning" className="truncate max-w-[140px]" title="Aguardando Pagamento">Aguardando Pagamento</Badge>;
       case 'paga': return <Badge className="bg-success text-success-foreground">Paga</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }

@@ -54,24 +54,24 @@ export function PaymentRoutingTest() {
     queryKey: ["dependents-test", profile?.id],
     queryFn: async () => {
       if (!profile?.id) return [];
-      
-      const { data: deps } = await supabase
-        .from('dependents')
-        .select('id, name, responsible_id')
-        .eq('teacher_id', profile.id);
+
+      const { data: deps } = await supabase.
+      from('dependents').
+      select('id, name, responsible_id').
+      eq('teacher_id', profile.id);
 
       if (!deps || deps.length === 0) return [];
 
       // Buscar nomes dos responsáveis
-      const responsibleIds = [...new Set(deps.map(d => d.responsible_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name')
-        .in('id', responsibleIds);
+      const responsibleIds = [...new Set(deps.map((d) => d.responsible_id))];
+      const { data: profiles } = await supabase.
+      from('profiles').
+      select('id, name').
+      in('id', responsibleIds);
 
-      const responsibleMap = new Map(profiles?.map(p => [p.id, p.name]) || []);
+      const responsibleMap = new Map(profiles?.map((p) => [p.id, p.name]) || []);
 
-      return deps.map(d => ({
+      return deps.map((d) => ({
         ...d,
         responsible_name: responsibleMap.get(d.responsible_id) || 'Desconhecido'
       })) as Dependent[];
@@ -81,7 +81,7 @@ export function PaymentRoutingTest() {
 
   // Executar testes de roteamento usando a edge function
   const runTestsMutation = useMutation({
-    mutationFn: async ({ studentId, dependentId }: { studentId: string; dependentId?: string }) => {
+    mutationFn: async ({ studentId, dependentId }: {studentId: string;dependentId?: string;}) => {
       const { data, error } = await supabase.functions.invoke('validate-payment-routing', {
         body: {
           student_id: studentId,
@@ -93,10 +93,10 @@ export function PaymentRoutingTest() {
       }
       return data.results as TestResult[];
     },
-    onSuccess: results => {
+    onSuccess: (results) => {
       setTestResults(results);
-      const hasErrors = results.some(r => r.status === 'error');
-      const hasWarnings = results.some(r => r.status === 'warning');
+      const hasErrors = results.some((r) => r.status === 'error');
+      const hasWarnings = results.some((r) => r.status === 'warning');
       if (hasErrors) {
         toast.error("Testes concluídos com erros");
       } else if (hasWarnings) {
@@ -123,11 +123,11 @@ export function PaymentRoutingTest() {
 
     if (entityType === 'dependent') {
       // Para dependentes, encontrar o responsável e passar ambos IDs
-      const dependent = dependents?.find(d => d.id === selectedEntity);
+      const dependent = dependents?.find((d) => d.id === selectedEntity);
       if (dependent) {
-        runTestsMutation.mutate({ 
-          studentId: dependent.responsible_id, 
-          dependentId: dependent.id 
+        runTestsMutation.mutate({
+          studentId: dependent.responsible_id,
+          dependentId: dependent.id
         });
       }
     } else {
@@ -177,99 +177,99 @@ export function PaymentRoutingTest() {
     return entityType === 'dependent' ? `dep_${selectedEntity}` : selectedEntity;
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <PlayCircle className="h-5 w-5" />
-          Testes de Integridade de Pagamentos
-        </CardTitle>
-        <CardDescription>
-          Valida o roteamento correto de pagamentos para contas Stripe Connect (alunos e dependentes)
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <Select value={getCurrentValue()} onValueChange={handleSelectChange}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um aluno ou dependente" />
-              </SelectTrigger>
-              <SelectContent>
-                {students && students.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel className="flex items-center gap-2">
-                      <Users className="h-3 w-3" />
-                      Alunos
-                    </SelectLabel>
-                    {students.map((student) => (
-                      <SelectItem key={student.student_id} value={student.student_id}>
-                        {student.student_name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-                {dependents && dependents.length > 0 && (
-                  <SelectGroup>
-                    <SelectLabel className="flex items-center gap-2">
-                      <Users className="h-3 w-3" />
-                      Dependentes
-                    </SelectLabel>
-                    {dependents.map((dependent) => (
-                      <SelectItem key={`dep_${dependent.id}`} value={`dep_${dependent.id}`}>
-                        <span className="flex items-center gap-1.5">
-                          <Baby className="h-3.5 w-3.5 text-purple-600" />
-                          {dependent.name}
-                          <span className="text-muted-foreground">(resp: {dependent.responsible_name})</span>
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button 
-            onClick={handleRunTests}
-            disabled={!selectedEntity || isRunning}
-          >
-            {isRunning && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Executar Testes
-          </Button>
-        </div>
+  return;
 
-        {entityType === 'dependent' && selectedEntity && (
-          <div className="text-sm text-muted-foreground bg-muted/50 p-2 rounded">
-            💡 Testando dependente: a cobrança será roteada para o responsável
-          </div>
-        )}
 
-        {testResults.length > 0 && (
-          <div className="space-y-2 mt-4">
-            <h4 className="font-semibold text-sm">Resultados:</h4>
-            {testResults.map((result, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-3 p-3 border rounded-lg"
-              >
-                <div className="mt-0.5">{getStatusIcon(result.status)}</div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{result.test_name}</span>
-                    {getStatusBadge(result.status)}
-                  </div>
-                  <p className="text-sm text-muted-foreground">{result.message}</p>
-                  {result.details && (
-                    <pre className="text-xs bg-muted p-2 rounded mt-2 overflow-x-auto">
-                      {JSON.stringify(result.details, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }

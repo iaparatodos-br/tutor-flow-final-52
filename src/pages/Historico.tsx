@@ -182,11 +182,11 @@ export default function Historico() {
       realizada: { label: "Realizada", variant: "default" as const },
       cancelada: { label: "Cancelada", variant: "destructive" as const },
       pendente: { label: "Pendente", variant: "secondary" as const },
-      aguardando_pagamento: { label: "Aguardando Pagamento", variant: "warning" as const },
+      aguardando_pagamento: { label: "Aguardando Pagamento", variant: "warning" as const, className: "bg-orange-500 text-white border-transparent" },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: "outline" as const };
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+    return <Badge variant={statusInfo.variant} className={(statusInfo as any).className}>{statusInfo.label}</Badge>;
   };
 
   const formatDateTime = (dateString: string) => {

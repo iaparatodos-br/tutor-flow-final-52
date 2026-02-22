@@ -116,11 +116,11 @@ export function ArchivedDataViewer() {
       'pendente': { label: t('status.pending'), variant: 'secondary' as const },
       'cancelada': { label: t('status.cancelled'), variant: 'destructive' as const },
       'concluida': { label: t('status.completed'), variant: 'outline' as const },
-      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), variant: 'warning' as const },
+      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), variant: 'default' as const, className: 'bg-orange-500 text-white border-transparent' },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'secondary' as const };
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+    return <Badge variant={statusInfo.variant} className={(statusInfo as any).className}>{statusInfo.label}</Badge>;
   };
 
   return (

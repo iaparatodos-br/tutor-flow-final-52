@@ -141,7 +141,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       confirmada: 'hsl(var(--primary))',
       cancelada: 'hsl(var(--destructive))',
       concluida: 'hsl(var(--success))',
-      aguardando_pagamento: 'hsl(30 80% 55%)'
+      aguardando_pagamento: 'hsl(25 95% 53%)'
     };
 
     let backgroundColor = statusColors[classEvent.status];
@@ -187,12 +187,12 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       confirmada: { label: t('status.confirmed'), variant: "default" as const },
       cancelada: { label: t('status.cancelled'), variant: "destructive" as const },
       concluida: { label: t('status.completed'), variant: "outline" as const },
-      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "warning" as const }
+      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "warning" as const, className: "bg-orange-500 text-white border-transparent" }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
     return (
-      <Badge variant={config.variant}>
+      <Badge variant={config.variant} className={(config as any).className}>
         {config.label}
       </Badge>
     );

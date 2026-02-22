@@ -1,91 +1,44 @@
 
-## Corrigir preview de imagens no relatorio de aula
+
+## Diferenciar cores dos status "Pendente" e "Aguardando Pagamento"
 
 ### Problema
-Ao selecionar uma imagem para upload no relatorio de aula, aparece um quadrado cinza com o nome do arquivo em vez do preview da imagem. Isso ocorre porque `URL.createObjectURL()` gera URLs do tipo `blob:` que podem falhar em ambientes com iframe sandboxado ou em certas configuracoes de seguranca do navegador.
+Os status "pendente" e "aguardando_pagamento" compartilham a mesma cor amarela/laranja (warning/amber) em varios pontos da interface, tornando impossivel distingui-los visualmente.
 
 ### Solucao
-Substituir `URL.createObjectURL()` por `FileReader.readAsDataURL()`, que converte o arquivo para uma string base64 embutida diretamente no `src` da tag `img`. Data URLs sao universalmente suportadas e nao dependem do contexto de origem.
+Manter "pendente" com a cor amarela/warning atual e mudar "aguardando_pagamento" para uma cor distinta. A cor escolhida sera **amber-600/orange** mais escuro e saturado, criando uma diferenciacao clara enquanto mantem a semantica de "item financeiro pendente".
 
-### Detalhes tecnicos
+- **Pendente**: amarelo/warning (cor atual, inalterada)
+- **Aguardando Pagamento**: laranja mais forte (`bg-orange-500 text-white`)
 
-**Arquivo**: `src/components/ClassReportPhotoUpload.tsx`
+### Arquivos a alterar
 
-1. **Alterar `handleFileSelect`** (linhas 61-90): Substituir a logica sincrona de `URL.createObjectURL` por uma leitura assincrona com `FileReader`:
+1. **`src/components/Calendar/CalendarView.tsx`** (~linha 144)
+   - Mudar `aguardando_pagamento` de `'hsl(30 80% 55%)'` para `'hsl(25 95% 53%)'` (laranja mais forte/distinto)
 
-```typescript
-// Antes (linha 81):
-const preview = URL.createObjectURL(file);
+2. **`src/components/Calendar/MobileCalendarList.tsx`** (~linha 111)
+   - Mudar `aguardando_pagamento` de `'bg-amber-500 text-white'` para `'bg-orange-500 text-white'`
 
-// Depois:
-// Usar FileReader para gerar data URL base64
-const reader = new FileReader();
-reader.onload = (e) => {
-  const preview = e.target?.result as string;
-  const photoFile: PhotoFile = {
-    id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    file,
-    preview,
-    isExisting: false,
-    fileName: file.name
-  };
-  onPhotosChange(prev => [...prev, photoFile]);
-};
-reader.readAsDataURL(file);
-```
+3. **`src/pages/PerfilAluno.tsx`** (~linha 497-498)
+   - `pendente`: manter `bg-warning text-warning-foreground`
+   - `aguardando_pagamento`: mudar de `variant="warning"` para `className="bg-orange-500 text-white"`
 
-2. **Ajustar a interface de `onPhotosChange`**: Como a leitura agora e assincrona e cada arquivo resolve independentemente, a funcao `onPhotosChange` precisara suportar atualizacao funcional. Alternativa mais simples: acumular todos os resultados com `Promise.all` e chamar `onPhotosChange` uma unica vez:
+4. **`src/pages/Historico.tsx`** (~linha 184-185)
+   - `pendente`: manter `variant: "secondary"`
+   - `aguardando_pagamento`: mudar de `variant: "warning"` para usar className com `bg-orange-500 text-white` (precisara retornar JSX customizado em vez de usar variant)
 
-```typescript
-const handleFileSelect = async (event) => {
-  const files = event.target.files;
-  if (!files) return;
+5. **`src/components/Calendar/CalendarView.tsx`** (~linha 190)
+   - Badge do popup: mudar `aguardando_pagamento` de `variant: "warning"` para usar className `bg-orange-500 text-white`
 
-  // ... validacoes existentes ...
+6. **`src/components/ArchivedDataViewer.tsx`** (~linha 114-120)
+   - Adicionar entrada para `aguardando_pagamento` com estilo diferenciado, caso esteja ausente
 
-  const readFile = (file: File): Promise<PhotoFile> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        resolve({
-          id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          file,
-          preview: e.target?.result as string,
-          isExisting: false,
-          fileName: file.name
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
+### Resultado visual
+| Status | Cor |
+|---|---|
+| Pendente | Amarelo (warning - atual) |
+| Aguardando Pagamento | Laranja forte (orange-500) |
+| Confirmada | Azul (primary) |
+| Concluida | Verde (success) |
+| Cancelada | Vermelho (destructive) |
 
-  const validFiles = []; // arquivos que passaram validacao
-  // ... loop de validacao existente, mas push em validFiles ...
-
-  const newPhotos = await Promise.all(validFiles.map(readFile));
-  if (newPhotos.length > 0) {
-    onPhotosChange([...photos, ...newPhotos]);
-  }
-};
-```
-
-3. **Remover `URL.revokeObjectURL`** da funcao `removePhoto` (linha 105): Data URLs nao precisam ser revogadas manualmente, pois sao strings em memoria gerenciadas pelo garbage collector.
-
-4. **Adicionar `onError` no `img`** (linha 137): Como fallback visual caso alguma imagem falhe:
-
-```tsx
-<img
-  src={photo.preview}
-  alt={photo.fileName || 'Foto'}
-  className="w-full h-full object-cover"
-  onError={(e) => {
-    e.currentTarget.style.display = 'none';
-  }}
-/>
-```
-
-### Impacto
-- Apenas o arquivo `ClassReportPhotoUpload.tsx` sera alterado
-- Nenhuma mudanca na interface ou no fluxo de upload para o Supabase Storage
-- Fotos existentes (carregadas do banco) continuam usando URLs publicas normalmente

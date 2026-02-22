@@ -137,11 +137,11 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
     // Handle class events
     const classEvent = event as CalendarClass;
     const statusColors = {
-      pendente: 'hsl(var(--warning))',
-      confirmada: 'hsl(var(--primary))',
-      cancelada: 'hsl(var(--destructive))',
-      concluida: 'hsl(var(--success))',
-      aguardando_pagamento: 'hsl(25 95% 53%)'
+      pendente: 'hsl(38 92% 50%)',
+      confirmada: 'hsl(217 91% 60%)',
+      cancelada: 'hsl(215 16% 47%)',
+      concluida: 'hsl(160 84% 39%)',
+      aguardando_pagamento: 'hsl(239 84% 67%)'
     };
 
     let backgroundColor = statusColors[classEvent.status];
@@ -183,16 +183,16 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pendente: { label: t('status.pending'), variant: "secondary" as const },
-      confirmada: { label: t('status.confirmed'), variant: "default" as const },
-      cancelada: { label: t('status.cancelled'), variant: "destructive" as const },
-      concluida: { label: t('status.completed'), variant: "outline" as const },
-      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "warning" as const, className: "bg-orange-500 text-white border-transparent" }
+      pendente: { label: t('status.pending'), variant: "secondary" as const, className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent" },
+      confirmada: { label: t('status.confirmed'), variant: "secondary" as const, className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-transparent" },
+      cancelada: { label: t('status.cancelled'), variant: "secondary" as const, className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent" },
+      concluida: { label: t('status.completed'), variant: "secondary" as const, className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent" },
+      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "secondary" as const, className: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-transparent" }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
     return (
-      <Badge variant={config.variant} className={(config as any).className}>
+      <Badge variant={config.variant} className={config.className}>
         {config.label}
       </Badge>
     );

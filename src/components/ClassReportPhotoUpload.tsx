@@ -42,7 +42,7 @@ export function ClassReportPhotoUpload({
   // Check if user has access (professional or premium plan)
   const hasPhotoAccess = currentPlan?.slug === 'professional' || currentPlan?.slug === 'premium';
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
@@ -55,11 +55,10 @@ export function ClassReportPhotoUpload({
       return;
     }
 
-    const newPhotos: PhotoFile[] = [];
     const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    const validFiles: File[] = [];
 
     filesToProcess.forEach(file => {
-      // Validate type
       if (!ACCEPTED_TYPES.includes(file.type)) {
         toast({
           title: t('modal.fields.photos.invalidType'),
@@ -67,8 +66,6 @@ export function ClassReportPhotoUpload({
         });
         return;
       }
-
-      // Validate size
       if (file.size > maxSizeMB * 1024 * 1024) {
         toast({
           title: t('modal.fields.photos.tooLarge'),
@@ -76,34 +73,42 @@ export function ClassReportPhotoUpload({
         });
         return;
       }
-
-      const id = `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      const preview = URL.createObjectURL(file);
-
-      newPhotos.push({
-        id,
-        file,
-        preview,
-        isExisting: false,
-        fileName: file.name
-      });
+      validFiles.push(file);
     });
 
+    if (validFiles.length === 0) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const readFile = (file: File): Promise<PhotoFile> => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          resolve({
+            id: `new-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            file,
+            preview: e.target?.result as string,
+            isExisting: false,
+            fileName: file.name
+          });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    };
+
+    const newPhotos = await Promise.all(validFiles.map(readFile));
     if (newPhotos.length > 0) {
       onPhotosChange([...photos, ...newPhotos]);
     }
 
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   const removePhoto = (photoId: string) => {
-    const photo = photos.find(p => p.id === photoId);
-    if (photo && !photo.isExisting && photo.preview) {
-      URL.revokeObjectURL(photo.preview);
-    }
     onPhotosChange(photos.filter(p => p.id !== photoId));
   };
 
@@ -138,6 +143,9 @@ export function ClassReportPhotoUpload({
                 src={photo.preview}
                 alt={photo.fileName || 'Foto'}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
               />
               <button
                 type="button"

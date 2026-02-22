@@ -483,20 +483,21 @@ export default function PerfilAluno() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'concluida': return <CheckCircle className="h-4 w-4 text-success" />;
-      case 'cancelada': return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'pendente': return <Clock className="h-4 w-4 text-warning" />;
+      case 'concluida': return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+      case 'cancelada': return <XCircle className="h-4 w-4 text-slate-400" />;
+      case 'confirmada': return <CheckCircle className="h-4 w-4 text-blue-500" />;
+      case 'pendente': return <Clock className="h-4 w-4 text-amber-500" />;
       default: return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'concluida': return <Badge className="bg-success text-success-foreground">Concluída</Badge>;
-      case 'cancelada': return <Badge variant="destructive">Cancelada</Badge>;
-      case 'pendente': return <Badge className="bg-warning text-warning-foreground">Pendente</Badge>;
-      case 'aguardando_pagamento': return <Badge className="bg-orange-500 text-white border-transparent">Aguardando Pagamento</Badge>;
-      case 'paga': return <Badge className="bg-success text-success-foreground">Paga</Badge>;
+      case 'concluida': return <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent">Concluída</Badge>;
+      case 'cancelada': return <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent">Cancelada</Badge>;
+      case 'pendente': return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent">Pendente</Badge>;
+      case 'aguardando_pagamento': return <Badge className="bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-transparent">Aguardando Pagamento</Badge>;
+      case 'paga': return <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent">Paga</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };

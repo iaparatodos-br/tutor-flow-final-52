@@ -8,8 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter
-} from "@/components/ui/dialog";
+  DialogFooter } from
+"@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,13 +23,13 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage
-} from "@/components/ui/form";
+  FormMessage } from
+"@/components/ui/form";
 import { Loader2, Info } from "lucide-react";
-import { 
-  monthlySubscriptionSchema, 
-  type MonthlySubscriptionFormSchema 
-} from "@/schemas/monthly-subscription.schema";
+import {
+  monthlySubscriptionSchema,
+  type MonthlySubscriptionFormSchema } from
+"@/schemas/monthly-subscription.schema";
 import type { MonthlySubscriptionWithCount } from "@/types/monthly-subscriptions";
 
 interface MonthlySubscriptionModalProps {
@@ -104,9 +104,9 @@ export function MonthlySubscriptionModal({
             {isEditing ? t('edit') : t('new')}
           </DialogTitle>
           <DialogDescription>
-            {isEditing 
-              ? t('info.softDelete')
-              : t('info.familyBilling')}
+            {isEditing ?
+            t('info.softDelete') :
+            t('info.familyBilling')}
           </DialogDescription>
         </DialogHeader>
 
@@ -116,67 +116,67 @@ export function MonthlySubscriptionModal({
             <FormField
               control={form.control}
               name="name"
-              render={({ field }) => (
-                <FormItem>
+              render={({ field }) =>
+              <FormItem>
                   <FormLabel>{t('fields.name')}</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder={t('fields.namePlaceholder')} 
-                      {...field} 
-                    />
+                    <Input
+                    placeholder={t('fields.namePlaceholder')}
+                    {...field} />
+
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
+              } />
+
 
             {/* Description */}
             <FormField
               control={form.control}
               name="description"
-              render={({ field }) => (
-                <FormItem>
+              render={({ field }) =>
+              <FormItem>
                   <FormLabel>{t('fields.description')}</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder={t('fields.descriptionPlaceholder')} 
-                      {...field} 
-                      rows={2}
-                    />
+                    <Textarea
+                    placeholder={t('fields.descriptionPlaceholder')}
+                    {...field}
+                    rows={2} />
+
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
+              } />
+
 
             {/* Price */}
             <FormField
               control={form.control}
               name="price"
-              render={({ field }) => (
-                <FormItem>
+              render={({ field }) =>
+              <FormItem>
                   <FormLabel>{t('fields.price')}</FormLabel>
                   <FormControl>
-                    <Input 
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder={t('fields.pricePlaceholder')} 
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                    />
+                    <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder={t('fields.pricePlaceholder')}
+                    {...field}
+                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+
                   </FormControl>
                   <FormMessage />
                 </FormItem>
-              )}
-            />
+              } />
+
 
             {/* Has Limit Toggle */}
             <FormField
               control={form.control}
               name="hasLimit"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+              render={({ field }) =>
+              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5">
                     <FormLabel>{t('fields.hasLimit')}</FormLabel>
                     <FormDescription className="text-xs">
@@ -185,98 +185,98 @@ export function MonthlySubscriptionModal({
                   </div>
                   <FormControl>
                     <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    checked={field.value}
+                    onCheckedChange={field.onChange} />
+
                   </FormControl>
                 </FormItem>
-              )}
-            />
+              } />
+
 
             {/* Conditional fields when hasLimit is true */}
-            {hasLimit && (
-              <div className="space-y-4 pl-4 border-l-2 border-primary/20">
+            {hasLimit &&
+            <div className="space-y-4 pl-4 border-l-2 border-primary/20">
                 {/* Max Classes */}
                 <FormField
-                  control={form.control}
-                  name="maxClasses"
-                  render={({ field }) => (
-                    <FormItem>
+                control={form.control}
+                name="maxClasses"
+                render={({ field }) =>
+                <FormItem>
                       <FormLabel>{t('fields.maxClasses')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number"
-                          min="1"
-                          placeholder={t('fields.maxClassesPlaceholder')} 
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
-                        />
+                        <Input
+                      type="number"
+                      min="1"
+                      placeholder={t('fields.maxClassesPlaceholder')}
+                      {...field}
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)} />
+
                       </FormControl>
                       <FormMessage />
                     </FormItem>
-                  )}
-                />
+                } />
+
 
                 {/* Overage Price */}
                 <FormField
-                  control={form.control}
-                  name="overagePrice"
-                  render={({ field }) => (
-                    <FormItem>
+                control={form.control}
+                name="overagePrice"
+                render={({ field }) =>
+                <FormItem>
                       <FormLabel>{t('fields.overagePrice')}</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder={t('fields.overagePricePlaceholder')} 
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                        />
+                        <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder={t('fields.overagePricePlaceholder')}
+                      {...field}
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)} />
+
                       </FormControl>
                       <FormDescription className="text-xs">
                         {t('info.overageExplanation')}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
-                  )}
-                />
+                } />
+
               </div>
-            )}
+            }
 
             {/* Info Alert */}
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription className="text-xs">
-                {t('info.experimentalNotCounted')}
-              </AlertDescription>
-            </Alert>
+            
+
+
+
+
+
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
-                disabled={isSubmitting}
-              >
+                disabled={isSubmitting}>
+
                 {t('actions.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
+                {isSubmitting ?
+                <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {t('actions.saving')}
-                  </>
-                ) : (
-                  isEditing ? t('actions.update') : t('actions.create')
-                )}
+                  </> :
+
+                isEditing ? t('actions.update') : t('actions.create')
+                }
               </Button>
             </DialogFooter>
           </form>
         </Form>
       </DialogContent>
-    </Dialog>
-  );
+    </Dialog>);
+
 }

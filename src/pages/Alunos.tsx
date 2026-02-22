@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { StudentFormModal } from "@/components/StudentFormModal";
-import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
+
 import { BusinessProfileWarningModal } from "@/components/BusinessProfileWarningModal";
 import { UpdatePaymentMethodModal } from "@/components/UpdatePaymentMethodModal";
 import { StudentImportDialog } from "@/components/students/StudentImportDialog";
@@ -708,11 +708,6 @@ export default function Alunos() {
       <div className="flex justify-end gap-2">
         <StudentImportDialog onSuccess={loadStudents} currentStudentCount={totalCount} />
 
-        {hasFeature('financial_module') && students.filter(s => s.business_profile_id).length > 0 && <CreateInvoiceModal students={students.filter(s => s.business_profile_id).map(s => ({
-          id: s.id,
-          name: s.name,
-          email: s.email
-        }))} />}
         <FeatureGate studentCount={totalCount} showUpgrade={true}>
           <Button onClick={() => setIsAddDialogOpen(true)} className="bg-gradient-primary shadow-primary hover:bg-primary-hover">
             <Plus className="h-4 w-4 mr-2" />

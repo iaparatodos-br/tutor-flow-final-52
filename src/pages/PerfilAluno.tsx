@@ -956,8 +956,8 @@ export default function PerfilAluno() {
                   ) : (
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {invoices.slice(0, 10).map((invoice) => (
-                        <div key={invoice.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                          <div>
+                        <div key={invoice.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 border border-border rounded-lg">
+                          <div className="min-w-0">
                             <p className="font-medium">R$ {Number(invoice.amount).toFixed(2)}</p>
                             <p className="text-sm text-muted-foreground">
                               Vencimento: {new Date(invoice.due_date).toLocaleDateString('pt-BR')}
@@ -968,7 +968,7 @@ export default function PerfilAluno() {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                             {getStatusBadge(invoice.status)}
                             {invoice.stripe_invoice_url && (
                               <Button variant="ghost" size="sm" asChild>

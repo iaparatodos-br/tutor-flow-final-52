@@ -255,11 +255,11 @@ export function SimpleCalendar({
 
   const getStatusColor = (status: string) => {
     const colors = {
-      pendente: 'bg-warning text-warning-foreground',
-      confirmada: 'bg-primary text-primary-foreground',
-      cancelada: 'bg-destructive text-destructive-foreground',
-      concluida: 'bg-success text-success-foreground',
-      aguardando_pagamento: 'bg-amber-500 text-white'
+      pendente: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400',
+      confirmada: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+      cancelada: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
+      concluida: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
+      aguardando_pagamento: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400'
     };
     return colors[status as keyof typeof colors] || colors.pendente;
   };

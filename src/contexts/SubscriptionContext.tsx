@@ -151,9 +151,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO
       if (data?.subscription && data.subscription.status === 'active') {
-        console.log('Active subscription found - clearing any payment failure state');
         setSubscription(data.subscription);
         
         // Use plan directly from check-subscription-status response if available
@@ -172,18 +171,25 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           }
         }
         
-        // CRITICAL: Clear payment failure and boleto state when active subscription exists
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
+        // Check if active subscription has payment failure (past_due in Stripe)
+        if (data.paymentFailure?.detected) {
+          console.log('Payment failure detected for active subscription:', data.paymentFailure);
+          setPaymentFailureDetected(true);
+          setPaymentFailureData(data.paymentFailure);
+        } else {
+          setPaymentFailureDetected(false);
+          setPaymentFailureData(null);
+        }
         setPendingBoletoDetected(false);
         setPendingBoletoData(null);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
-      } else if (data?.payment_failed) {
-        // Só mostrar payment failure se NÃO houver subscription ativa
-        console.log('Payment failure detected (no active subscription):', data.payment_failure_data);
+      } else if (data?.paymentFailure?.detected || data?.payment_failed) {
+        // Payment failure sem subscription ativa
+        const failureData = data.paymentFailure || data.payment_failure_data || {};
+        console.log('Payment failure detected (no active subscription):', failureData);
         setPaymentFailureDetected(true);
-        setPaymentFailureData(data.payment_failure_data || {});
+        setPaymentFailureData(failureData);
         
         // Set current plan to plan from response or free plan
         if (data.plan) {
@@ -325,24 +331,31 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // PRIORIDADE 2: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      // PRIORIDADE 2: Verificar se há subscription ativa PRIMEIRO
       if (data?.subscription && data.subscription.status === 'active') {
-        console.log('Active subscription found on refresh - clearing any payment failure state');
+        console.log('Active subscription found on refresh');
         setSubscription(data.subscription);
         setCurrentPlan(data.plan);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
         
-        // CRITICAL: Clear payment failure and boleto states when active subscription exists
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
+        // Check if active subscription has payment failure (past_due in Stripe)
+        if (data.paymentFailure?.detected) {
+          console.log('Payment failure detected for active subscription on refresh:', data.paymentFailure);
+          setPaymentFailureDetected(true);
+          setPaymentFailureData(data.paymentFailure);
+        } else {
+          setPaymentFailureDetected(false);
+          setPaymentFailureData(null);
+        }
         setPendingBoletoDetected(false);
         setPendingBoletoData(null);
-      } else if (data?.payment_failed) {
-        // Só mostrar payment failure se NÃO houver subscription ativa
-        console.log('Payment failure detected on refresh (no active subscription):', data.payment_failure_data);
+      } else if (data?.paymentFailure?.detected || data?.payment_failed) {
+        // Payment failure sem subscription ativa
+        const failureData = data.paymentFailure || data.payment_failure_data || {};
+        console.log('Payment failure detected on refresh (no active subscription):', failureData);
         setPaymentFailureDetected(true);
-        setPaymentFailureData(data.payment_failure_data || {});
+        setPaymentFailureData(failureData);
         
         // Set current plan to plan from response or free plan
         if (data.plan) {

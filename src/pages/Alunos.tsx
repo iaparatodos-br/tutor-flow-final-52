@@ -29,8 +29,8 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+  AlertDialogTitle } from
+"@/components/ui/alert-dialog";
 
 interface Student {
   id: string;
@@ -78,25 +78,25 @@ export default function Alunos() {
   const [paymentErrorModalOpen, setPaymentErrorModalOpen] = useState(false);
   const [paymentErrorMessage, setPaymentErrorMessage] = useState("");
   const [pendingStudentData, setPendingStudentData] = useState<any>(null);
-  
+
   // Dependent management state
   const [expandedResponsibles, setExpandedResponsibles] = useState<Set<string>>(new Set());
   const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
   const [editingDependent, setEditingDependent] = useState<Dependent | null>(null);
   const [selectedResponsibleId, setSelectedResponsibleId] = useState<string | null>(null);
-  
+
   // Delete confirmation state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [deleting, setDeleting] = useState(false);
-  
+
   // Use the dependents hook
-  const { 
-    dependents, 
-    isLoading: dependentsLoading, 
-    fetchDependents, 
-    createDependent, 
-    updateDependent, 
+  const {
+    dependents,
+    isLoading: dependentsLoading,
+    fetchDependents,
+    createDependent,
+    updateDependent,
     deleteDependent,
     getStudentAndDependentCount
   } = useDependents({ teacherId: profile?.id });
@@ -174,7 +174,7 @@ export default function Alunos() {
       // Don't send localhost URLs - let the function handle the redirect URL
       const redirectUrl = window.location.hostname === 'localhost' ? undefined : `${window.location.origin}/auth/callback`;
       console.log('Calling create-student function...');
-      
+
       // For all registrations, guardian info = student info (simplified flow)
       const {
         data,
@@ -246,7 +246,7 @@ export default function Alunos() {
       if (isFamily && formData.dependents && formData.dependents.length > 0 && data?.user_id) {
         console.log('Creating dependents for family registration...');
         const dependentErrors: string[] = [];
-        
+
         for (const dep of formData.dependents) {
           try {
             const { data: depData, error: depError } = await supabase.functions.invoke('create-dependent', {
@@ -255,11 +255,11 @@ export default function Alunos() {
                 teacher_id: profile.id,
                 name: dep.name,
                 birth_date: dep.birth_date || null,
-                notes: null,
-              },
+                notes: null
+              }
             });
-            
-            if (depError || (depData && depData.error)) {
+
+            if (depError || depData && depData.error) {
               console.error('Error creating dependent:', dep.name, depError || depData?.error);
               dependentErrors.push(dep.name);
             }
@@ -268,20 +268,20 @@ export default function Alunos() {
             dependentErrors.push(dep.name);
           }
         }
-        
+
         if (dependentErrors.length > 0) {
           toast({
             title: t('dependents.errors.partialCreation', 'Alguns dependentes não foram criados'),
             description: t('dependents.errors.partialCreationDescription', 'Não foi possível criar: {{names}}', { names: dependentErrors.join(', ') }),
-            variant: 'destructive',
+            variant: 'destructive'
           });
         }
       }
 
       // Success case - check if there's billing info or warning in the response
-      let successMessage = data?.is_new_student
-        ? `${formData.name} receberá um e-mail para concluir o cadastro.`
-        : `${formData.name} foi vinculado à sua conta.`;
+      let successMessage = data?.is_new_student ?
+      `${formData.name} receberá um e-mail para concluir o cadastro.` :
+      `${formData.name} foi vinculado à sua conta.`;
 
       if (isFamily && formData.dependents?.length > 0) {
         successMessage += ` ${formData.dependents.length} dependente(s) adicionado(s).`;
@@ -296,7 +296,7 @@ export default function Alunos() {
       toast({
         title: isFamily ? 'Família cadastrada com sucesso!' : 'Aluno convidado com sucesso!',
         description: successMessage,
-        duration: data?.billing_warning || data?.billing ? 5000 : 3000,
+        duration: data?.billing_warning || data?.billing ? 5000 : 3000
       });
       setIsAddDialogOpen(false);
       loadStudents();
@@ -395,10 +395,10 @@ export default function Alunos() {
       // Handle HTTP errors (status 400, 500, etc.)
       if (error) {
         console.error('Smart delete error:', error);
-        
+
         // Try to extract error details from the response
         let errorMessage = "Erro ao processar a remoção do aluno";
-        
+
         try {
           // For FunctionsHttpError, the context contains the response
           if (error.context && typeof error.context.json === 'function') {
@@ -410,7 +410,7 @@ export default function Alunos() {
         } catch (parseError) {
           console.error('Error parsing error response:', parseError);
         }
-        
+
         toast({
           title: "Não foi possível remover",
           description: errorMessage,
@@ -431,15 +431,15 @@ export default function Alunos() {
 
       // Success - show appropriate message based on action
       const dependentsDeleted = data?.dependents_deleted || 0;
-      const successMessage = dependentsDeleted > 0
-        ? `${student.name} e ${dependentsDeleted} dependente(s) foram removidos.`
-        : `${student.name} perdeu acesso à sua área da plataforma.`;
+      const successMessage = dependentsDeleted > 0 ?
+      `${student.name} e ${dependentsDeleted} dependente(s) foram removidos.` :
+      `${student.name} perdeu acesso à sua área da plataforma.`;
 
       toast({
         title: data?.action === 'deleted' ? "Aluno excluído" : "Aluno desvinculado",
         description: successMessage
       });
-      
+
       loadStudents();
     } catch (error: any) {
       console.error('Erro ao remover aluno:', error);
@@ -457,7 +457,7 @@ export default function Alunos() {
 
   const handleExecuteDelete = async () => {
     if (!studentToDelete) return;
-    
+
     setDeleting(true);
     try {
       await handleSmartDelete(studentToDelete);
@@ -482,7 +482,7 @@ export default function Alunos() {
     callback();
     return true;
   };
-  const studentsWithoutBusinessProfile = students.filter(s => !s.business_profile_id);
+  const studentsWithoutBusinessProfile = students.filter((s) => !s.business_profile_id);
 
   const handleResendInvitation = async (student: Student) => {
     if (!student.relationship_id) {
@@ -502,7 +502,7 @@ export default function Alunos() {
         }
       });
 
-      if (error || (data && !data.success)) {
+      if (error || data && !data.success) {
         console.error('Resend invitation error:', error || data);
         toast({
           title: "Erro",
@@ -531,12 +531,12 @@ export default function Alunos() {
 
   // Helper to get dependents for a specific responsible
   const getDependentsForStudent = (studentId: string) => {
-    return dependents.filter(d => d.responsible_id === studentId);
+    return dependents.filter((d) => d.responsible_id === studentId);
   };
 
   // Toggle expansion of a responsible row
   const toggleExpanded = (studentId: string) => {
-    setExpandedResponsibles(prev => {
+    setExpandedResponsibles((prev) => {
       const next = new Set(prev);
       if (next.has(studentId)) {
         next.delete(studentId);
@@ -556,12 +556,12 @@ export default function Alunos() {
         toast({
           title: t('dependents.errors.limitReached', 'Limite atingido'),
           description: t('dependents.errors.limitReachedDescription', 'Você atingiu o limite de alunos/dependentes do plano gratuito. Faça upgrade para adicionar mais.'),
-          variant: 'destructive',
+          variant: 'destructive'
         });
         return;
       }
     }
-    
+
     setSelectedResponsibleId(responsibleId);
     setEditingDependent(null);
     setIsDependentModalOpen(true);
@@ -575,21 +575,21 @@ export default function Alunos() {
   };
 
   // Handle dependent form submission
-  const handleDependentSubmit = async (formData: { name: string; birth_date?: string; notes?: string }) => {
+  const handleDependentSubmit = async (formData: {name: string;birth_date?: string;notes?: string;}) => {
     if (!selectedResponsibleId || !profile?.id) return;
-    
+
     try {
       if (editingDependent) {
         await updateDependent(editingDependent.dependent_id, formData);
         toast({
           title: t('dependents.success.updated', 'Dependente atualizado'),
-          description: t('dependents.success.updatedDescription', 'As informações foram salvas com sucesso.'),
+          description: t('dependents.success.updatedDescription', 'As informações foram salvas com sucesso.')
         });
       } else {
         await createDependent(formData, selectedResponsibleId, profile.id);
         toast({
           title: t('dependents.success.created', 'Dependente adicionado'),
-          description: t('dependents.success.createdDescription', '{{name}} foi adicionado com sucesso.', { name: formData.name }),
+          description: t('dependents.success.createdDescription', '{{name}} foi adicionado com sucesso.', { name: formData.name })
         });
       }
       setIsDependentModalOpen(false);
@@ -599,7 +599,7 @@ export default function Alunos() {
       toast({
         title: t('common:messages.error'),
         description: error.message || t('dependents.errors.saveFailed', 'Erro ao salvar dependente'),
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
@@ -613,14 +613,14 @@ export default function Alunos() {
       await deleteDependent(dependent.dependent_id);
       toast({
         title: t('dependents.success.deleted', 'Dependente removido'),
-        description: t('dependents.success.deletedDescription', '{{name}} foi removido com sucesso.', { name: dependent.dependent_name }),
+        description: t('dependents.success.deletedDescription', '{{name}} foi removido com sucesso.', { name: dependent.dependent_name })
       });
       fetchDependents();
     } catch (error: any) {
       toast({
         title: t('common:messages.error'),
         description: error.message || t('dependents.errors.deleteFailed', 'Erro ao remover dependente'),
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
@@ -722,11 +722,11 @@ export default function Alunos() {
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             Lista de Alunos ({totalCount})
-            {dependents.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">
+            {dependents.length > 0 &&
+            <Badge variant="secondary" className="ml-2 text-xs">
                 {students.length} alunos + {dependents.length} dependentes
               </Badge>
-            )}
+            }
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -752,18 +752,18 @@ export default function Alunos() {
                 <TableHead>{t('table.name', 'Nome')}</TableHead>
                 <TableHead>{t('table.type', 'Tipo')}</TableHead>
                 <TableHead>{t('table.email', 'E-mail')}</TableHead>
-                {hasFeature('financial_module') && (
-                  <>
+                {hasFeature('financial_module') &&
+                <>
                     <TableHead>{t('table.businessProfile', 'Negócio Recebimento')}</TableHead>
                     <TableHead>{t('table.billingDay', 'Dia Cobrança')}</TableHead>
                   </>
-                )}
+                }
                 <TableHead>{t('table.createdAt', 'Data de Cadastro')}</TableHead>
                 <TableHead className="w-[140px]">{t('table.actions', 'Ações')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {students.map(student => {
+              {students.map((student) => {
                 const studentDependents = getDependentsForStudent(student.id);
                 const hasDependents = studentDependents.length > 0;
                 const isExpanded = expandedResponsibles.has(student.id);
@@ -773,29 +773,29 @@ export default function Alunos() {
                     {/* Student/Responsible Row */}
                     <TableRow key={student.id} className={hasDependents ? 'cursor-pointer hover:bg-muted/50' : ''}>
                       <TableCell className="w-[40px] px-2">
-                        {hasDependents ? (
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-6 w-6 p-0"
-                            onClick={() => toggleExpanded(student.id)}
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </Button>
-                        ) : null}
+                        {hasDependents ?
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => toggleExpanded(student.id)}>
+
+                            {isExpanded ?
+                          <ChevronDown className="h-4 w-4" /> :
+
+                          <ChevronRight className="h-4 w-4" />
+                          }
+                          </Button> :
+                        null}
                       </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           <div className="h-8 w-8 rounded-full bg-primary-light flex items-center justify-center">
-                            {hasDependents ? (
-                              <Users className="h-4 w-4 text-primary" />
-                            ) : (
-                              <User className="h-4 w-4 text-primary" />
-                            )}
+                            {hasDependents ?
+                            <Users className="h-4 w-4 text-primary" /> :
+
+                            <User className="h-4 w-4 text-primary" />
+                            }
                           </div>
                           <span>{student.name}</span>
                         </div>
@@ -804,23 +804,23 @@ export default function Alunos() {
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              {hasDependents ? (
-                                <Badge variant="family" className="text-xs cursor-help">
+                              {hasDependents ?
+                              <Badge variant="family" className="text-xs cursor-help">
                                   <Users className="h-3 w-3 mr-1" />
                                   {t('badges.family', 'Família')} ({studentDependents.length})
-                                </Badge>
-                              ) : (
-                                <Badge variant="student" className="text-xs cursor-help">
+                                </Badge> :
+
+                              <Badge variant="student" className="text-xs cursor-help">
                                   <User className="h-3 w-3 mr-1" />
                                   {t('badges.student', 'Aluno')}
                                 </Badge>
-                              )}
+                              }
                             </TooltipTrigger>
                             <TooltipContent>
                               <p className="text-xs">
-                                {hasDependents 
-                                  ? t('dependents.description', 'Menores sob responsabilidade de {{name}}', { name: student.name })
-                                  : t('registrationType.individual.description', 'Aluno adulto ou com email próprio para acesso ao sistema')
+                                {hasDependents ?
+                                t('dependents.description', 'Menores sob responsabilidade de {{name}}', { name: student.name }) :
+                                t('registrationType.individual.description', 'Aluno adulto ou com email próprio para acesso ao sistema')
                                 }
                               </p>
                             </TooltipContent>
@@ -833,20 +833,20 @@ export default function Alunos() {
                           {student.email}
                         </div>
                       </TableCell>
-                      {hasFeature('financial_module') && (
-                        <>
+                      {hasFeature('financial_module') &&
+                      <>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              {student.business_profile_id ? (
-                                <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                              {student.business_profile_id ?
+                            <Badge variant="default" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                                   {t('status.configured', 'Configurado')}
-                                </Badge>
-                              ) : (
-                                <Badge variant="destructive" className="text-xs">
+                                </Badge> :
+
+                            <Badge variant="destructive" className="text-xs">
                                   <AlertTriangle className="h-3 w-3 mr-1" />
                                   {t('status.notConfigured', 'Não configurado')}
                                 </Badge>
-                              )}
+                            }
                             </div>
                           </TableCell>
                           <TableCell>
@@ -856,7 +856,7 @@ export default function Alunos() {
                             </div>
                           </TableCell>
                         </>
-                      )}
+                      }
                       <TableCell>
                         {new Date(student.created_at).toLocaleDateString('pt-BR')}
                       </TableCell>
@@ -868,33 +868,33 @@ export default function Alunos() {
                           <Button variant="ghost" size="sm" onClick={() => handleEditStudent(student)} title={t('actions.edit', 'Editar')}>
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            onClick={() => handleAddDependent(student.id)} 
-                            title={t('actions.addDependent', 'Adicionar Dependente')}
-                            className="hover:bg-blue-50 dark:hover:bg-blue-950"
-                          >
-                            <UserPlus className="h-4 w-4" />
-                          </Button>
-                          {!student.email_confirmed && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleResendInvitation(student)}
-                              title={t('actions.resendInvitation', 'Reenviar convite')}
-                              className="hover:bg-blue-50 dark:hover:bg-blue-950"
-                            >
+                          
+
+
+
+
+
+
+
+
+                          {!student.email_confirmed &&
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleResendInvitation(student)}
+                            title={t('actions.resendInvitation', 'Reenviar convite')}
+                            className="hover:bg-blue-50 dark:hover:bg-blue-950">
+
                               <RefreshCcw className="h-4 w-4" />
                             </Button>
-                          )}
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            className="hover:bg-destructive hover:text-destructive-foreground" 
-                            onClick={() => handleConfirmSmartDelete(student)} 
-                            title={t('actions.remove', 'Remover')}
-                          >
+                          }
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => handleConfirmSmartDelete(student)}
+                            title={t('actions.remove', 'Remover')}>
+
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
@@ -902,8 +902,8 @@ export default function Alunos() {
                     </TableRow>
 
                     {/* Dependent Sub-Rows */}
-                    {isExpanded && studentDependents.map(dep => (
-                      <TableRow key={dep.dependent_id} className="bg-muted/30">
+                    {isExpanded && studentDependents.map((dep) =>
+                    <TableRow key={dep.dependent_id} className="bg-muted/30">
                         <TableCell className="w-[40px] px-2"></TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2 pl-6">
@@ -933,8 +933,8 @@ export default function Alunos() {
                         <TableCell>
                           <span className="text-muted-foreground text-sm">—</span>
                         </TableCell>
-                        {hasFeature('financial_module') && (
-                          <>
+                        {hasFeature('financial_module') &&
+                      <>
                             <TableCell>
                               <span className="text-muted-foreground text-xs italic">
                                 {t('dependents.billedToResponsible', 'Cobra via responsável')}
@@ -942,49 +942,49 @@ export default function Alunos() {
                             </TableCell>
                             <TableCell>—</TableCell>
                           </>
-                        )}
+                      }
                         <TableCell>
                           {dep.created_at ? new Date(dep.created_at).toLocaleDateString('pt-BR') : '—'}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleEditDependent(dep)} 
-                              title={t('actions.edit', 'Editar')}
-                            >
+                            <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditDependent(dep)}
+                            title={t('actions.edit', 'Editar')}>
+
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="hover:bg-destructive hover:text-destructive-foreground" 
-                              onClick={() => handleDeleteDependent(dep)} 
-                              title={t('actions.remove', 'Remover')}
-                            >
+                            <Button
+                            variant="ghost"
+                            size="sm"
+                            className="hover:bg-destructive hover:text-destructive-foreground"
+                            onClick={() => handleDeleteDependent(dep)}
+                            title={t('actions.remove', 'Remover')}>
+
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )}
 
                     {/* Add Dependent Row (when expanded and has dependents) */}
-                    {isExpanded && hasDependents && (
-                      <TableRow key={`${student.id}-add`} className="bg-muted/20">
+                    {isExpanded && hasDependents &&
+                    <TableRow key={`${student.id}-add`} className="bg-muted/20">
                         <TableCell colSpan={hasFeature('financial_module') ? 8 : 6}>
                           <div className="flex items-center pl-8">
-                            {currentPlan?.slug === 'free' && getStudentOverageInfo(totalCount).isOverLimit ? (
-                              <TooltipProvider>
+                            {currentPlan?.slug === 'free' && getStudentOverageInfo(totalCount).isOverLimit ?
+                          <TooltipProvider>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm" 
-                                      disabled
-                                      className="text-muted-foreground cursor-not-allowed"
-                                    >
+                                    <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled
+                                  className="text-muted-foreground cursor-not-allowed">
+
                                       <Plus className="h-4 w-4 mr-2" />
                                       {t('dependents.addAnother', 'Adicionar mais um dependente')}
                                     </Button>
@@ -993,24 +993,24 @@ export default function Alunos() {
                                     <p>{t('dependents.errors.upgradeToPlan', 'Limite atingido. Faça upgrade para adicionar mais.')}</p>
                                   </TooltipContent>
                                 </Tooltip>
-                              </TooltipProvider>
-                            ) : (
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleAddDependent(student.id)}
-                                className="text-primary hover:text-primary-foreground hover:bg-primary"
-                              >
+                              </TooltipProvider> :
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleAddDependent(student.id)}
+                            className="text-primary hover:text-primary-foreground hover:bg-primary">
+
                                 <Plus className="h-4 w-4 mr-2" />
                                 {t('dependents.addAnother', 'Adicionar mais um dependente')}
                               </Button>
-                            )}
+                          }
                           </div>
                         </TableCell>
                       </TableRow>
-                    )}
-                  </>
-                );
+                    }
+                  </>);
+
               })}
             </TableBody>
           </Table>}
@@ -1029,15 +1029,15 @@ export default function Alunos() {
         onSubmit={handleDependentSubmit}
         dependent={editingDependent}
         responsibleName={
-          editingDependent 
-            ? editingDependent.responsible_name 
-            : students.find(s => s.id === selectedResponsibleId)?.name
-        }
-      />
+        editingDependent ?
+        editingDependent.responsible_name :
+        students.find((s) => s.id === selectedResponsibleId)?.name
+        } />
+
 
       {/* Business Profile Warning Modal */}
-      {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={student => {
-        const full = students.find(st => st.id === student.id);
+      {warningStudent && <BusinessProfileWarningModal student={warningStudent} isOpen={warningModalOpen} onClose={() => setWarningModalOpen(false)} onEditStudent={(student) => {
+        const full = students.find((st) => st.id === student.id);
         if (full) {
           setEditingStudent(full);
         } else {
@@ -1060,8 +1060,8 @@ export default function Alunos() {
           if (pendingStudentData) {
             setIsAddDialogOpen(true);
           }
-        }}
-      />
+        }} />
+
 
       {/* Delete Student Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -1075,14 +1075,14 @@ export default function Alunos() {
               <p>
                 Tem certeza que deseja remover <strong>{studentToDelete?.name}</strong>?
               </p>
-              {getDependentsCountForDelete() > 0 && (
-                <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              {getDependentsCountForDelete() > 0 &&
+              <div className="mt-3 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
                   <p className="text-destructive font-medium flex items-center gap-2">
                     <Users className="h-4 w-4" />
                     {getDependentsCountForDelete()} dependente(s) também será(ão) removido(s)
                   </p>
                 </div>
-              )}
+              }
               <p className="text-muted-foreground mt-2">
                 O aluno perderá acesso à sua área da plataforma. Esta ação não pode ser desfeita.
               </p>
@@ -1093,8 +1093,8 @@ export default function Alunos() {
             <AlertDialogAction
               onClick={handleExecuteDelete}
               disabled={deleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+
               {deleting ? "Removendo..." : "Remover"}
             </AlertDialogAction>
           </AlertDialogFooter>

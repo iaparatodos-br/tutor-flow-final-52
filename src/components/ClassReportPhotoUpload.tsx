@@ -133,7 +133,7 @@ export function ClassReportPhotoUpload({
 
       {/* Photo Grid */}
       {photos.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="flex flex-wrap gap-2">
           {photos.map((photo) => (
             <div 
               key={photo.id} 

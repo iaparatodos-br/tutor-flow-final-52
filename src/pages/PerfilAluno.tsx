@@ -723,12 +723,11 @@ export default function PerfilAluno() {
                   </CardTitle>
                   <Button 
                     variant="outline" 
-                    size="sm" 
+                    size="icon" 
                     onClick={handleAddDependent}
-                    className="gap-2"
+                    title={t('dependents.add', 'Adicionar')}
                   >
                     <UserPlus className="h-4 w-4" />
-                    {t('dependents.add', 'Adicionar')}
                   </Button>
                 </div>
               </CardHeader>

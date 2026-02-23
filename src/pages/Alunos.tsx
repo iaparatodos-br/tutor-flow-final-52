@@ -757,7 +757,6 @@ export default function Alunos() {
                     <TableHead>{t('table.billingDay', 'Dia Cobrança')}</TableHead>
                   </>
                 }
-                <TableHead>{t('table.createdAt', 'Data de Cadastro')}</TableHead>
                 <TableHead className="w-[140px]">{t('table.actions', 'Ações')}</TableHead>
               </TableRow>
             </TableHeader>
@@ -829,9 +828,6 @@ export default function Alunos() {
                           </TableCell>
                         </>
                       }
-                      <TableCell>
-                        {new Date(student.created_at).toLocaleDateString('pt-BR')}
-                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="sm" onClick={() => navigate(`/alunos/${student.id}`)} title={t('actions.viewProfile', 'Ver perfil')}>

@@ -1,43 +1,61 @@
 
 
-## Diferenciar "Aguardando Pagamento" de "Confirmada"
+## Atualizar status da aula ao confirmar pagamento manual
 
 ### Problema
-As cores `indigo` (aguardando pagamento) e `blue` (confirmada) sao muito semelhantes, dificultando a distincao visual.
+Quando o professor marca manualmente uma fatura como paga (via "Marcar como Paga" no Financeiro), a edge function `cancel-payment-intent` atualiza apenas o status da fatura para `paga`, mas **nao atualiza o status da aula** associada de `aguardando_pagamento` para `confirmada`.
+
+O webhook do Stripe (`webhook-stripe-connect`) ja faz essa transicao automaticamente quando o pagamento e confirmado via Stripe. Porem, o fluxo manual nao replica essa logica.
 
 ### Solucao
-Trocar "aguardando_pagamento" de **indigo** para **violet** (roxo), que e visivelmente diferente do azul:
+Adicionar logica na edge function `cancel-payment-intent` para, apos marcar a fatura como paga, verificar se existe uma aula vinculada (`class_id`) com status `aguardando_pagamento` e atualiza-la para `confirmada`, incluindo os participantes.
 
-| Status | Antes | Depois |
-|---|---|---|
-| Confirmada | `bg-blue-100 text-blue-800` | Sem alteracao |
-| Aguardando Pagamento | `bg-indigo-100 text-indigo-800` | `bg-violet-100 text-violet-800` |
+### Arquivo a alterar
 
-### Arquivos a alterar (5 arquivos, mesma troca em todos)
+**`supabase/functions/cancel-payment-intent/index.ts`**
 
-Substituir todas as ocorrencias de `indigo` por `violet` no contexto de "aguardando_pagamento":
+Apos cada bloco de UPDATE da fatura (existem dois: um sem payment intent na linha ~108 e outro com na linha ~169), adicionar a seguinte logica:
 
-1. **`src/components/Calendar/SimpleCalendar.tsx`** (linha 262)
-   - `bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400`
-   - -> `bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400`
+```typescript
+// Auto-confirm class if prepaid and awaiting payment
+const { data: invoiceWithClass } = await supabase
+  .from('invoices')
+  .select('class_id')
+  .eq('id', invoice_id)
+  .maybeSingle();
 
-2. **`src/components/Calendar/CalendarView.tsx`** (linha 190)
-   - Mesma troca no badge do popup
-   - Tambem atualizar a cor HSL do bloco do calendario (linha ~144): `'hsl(239 84% 67%)'` -> `'hsl(263 70% 50%)'` (violet-600)
+if (invoiceWithClass?.class_id) {
+  const { data: classData } = await supabase
+    .from('classes')
+    .select('id, status')
+    .eq('id', invoiceWithClass.class_id)
+    .eq('status', 'aguardando_pagamento')
+    .maybeSingle();
 
-3. **`src/components/Calendar/MobileCalendarList.tsx`** (linha ~111)
-   - `bg-indigo-500 text-white` -> `bg-violet-500 text-white`
+  if (classData) {
+    await supabase
+      .from('classes')
+      .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+      .eq('id', classData.id)
+      .eq('status', 'aguardando_pagamento');
 
-4. **`src/pages/PerfilAluno.tsx`** (linha 499)
-   - Mesma troca indigo -> violet
+    await supabase
+      .from('class_participants')
+      .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+      .eq('class_id', classData.id)
+      .eq('status', 'aguardando_pagamento');
 
-5. **`src/pages/Historico.tsx`** (linha 185)
-   - Mesma troca indigo -> violet
+    logStep('Class auto-confirmed after manual payment', { classId: classData.id });
+  }
+}
+```
 
-6. **`src/components/ArchivedDataViewer.tsx`** (linha 119)
-   - Mesma troca indigo -> violet
+A logica segue exatamente o mesmo padrao ja usado no `webhook-stripe-connect` (linhas 375-395 e 646-664), garantindo consistencia:
+- Busca sequencial (sem JOINs, conforme constraint do projeto)
+- Guard clause com `.eq('status', 'aguardando_pagamento')` para evitar sobrescrever status terminais
+- Atualiza tanto `classes` quanto `class_participants`
 
-### Resultado
-- **Confirmada**: Azul (blue) -- neutro-positivo
-- **Aguardando Pagamento**: Roxo (violet) -- claramente distinto, ainda remetendo a processo financeiro
-
+### Impacto
+- Nenhuma alteracao no frontend
+- Nenhuma alteracao no banco de dados
+- A logica sera executada de forma nao-destrutiva (so atualiza se o status for `aguardando_pagamento`)

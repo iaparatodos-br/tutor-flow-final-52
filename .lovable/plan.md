@@ -1,61 +1,126 @@
 
 
-## Atualizar status da aula ao confirmar pagamento manual
+## Remover Limite de Aulas e Excedentes das Mensalidades
 
-### Problema
-Quando o professor marca manualmente uma fatura como paga (via "Marcar como Paga" no Financeiro), a edge function `cancel-payment-intent` atualiza apenas o status da fatura para `paga`, mas **nao atualiza o status da aula** associada de `aguardando_pagamento` para `confirmada`.
+### Contexto
+Com o novo modelo de negocios, as mensalidades passam a ter valor fixo mensal sem controle de franquia de aulas. Os campos `max_classes`, `overage_price` e toda a logica de excedentes (overage) se tornam obsoletos.
 
-O webhook do Stripe (`webhook-stripe-connect`) ja faz essa transicao automaticamente quando o pagamento e confirmado via Stripe. Porem, o fluxo manual nao replica essa logica.
+### Escopo da Remocao
 
-### Solucao
-Adicionar logica na edge function `cancel-payment-intent` para, apos marcar a fatura como paga, verificar se existe uma aula vinculada (`class_id`) com status `aguardando_pagamento` e atualiza-la para `confirmada`, incluindo os participantes.
+A remocao abrange **13+ arquivos** em 4 camadas: banco de dados, edge functions, tipos/schemas e frontend.
 
-### Arquivo a alterar
+---
 
-**`supabase/functions/cancel-payment-intent/index.ts`**
+### 1. Banco de Dados (Migration SQL)
 
-Apos cada bloco de UPDATE da fatura (existem dois: um sem payment intent na linha ~108 e outro com na linha ~169), adicionar a seguinte logica:
+Remover colunas da tabela `monthly_subscriptions`:
+- `max_classes` (INTEGER, nullable)
+- `overage_price` (NUMERIC, nullable)
 
-```typescript
-// Auto-confirm class if prepaid and awaiting payment
-const { data: invoiceWithClass } = await supabase
-  .from('invoices')
-  .select('class_id')
-  .eq('id', invoice_id)
-  .maybeSingle();
+Atualizar as 3 RPCs que retornam esses campos:
+- `get_student_active_subscription` -- remover `max_classes` e `overage_price` do RETURNS TABLE e do SELECT
+- `get_student_subscription_details` -- idem
+- `get_subscriptions_with_students` -- idem
 
-if (invoiceWithClass?.class_id) {
-  const { data: classData } = await supabase
-    .from('classes')
-    .select('id, status')
-    .eq('id', invoiceWithClass.class_id)
-    .eq('status', 'aguardando_pagamento')
-    .maybeSingle();
+**IMPORTANTE**: Verificar dados em Live antes de dropar colunas. Se houver mensalidades ativas com `max_classes` preenchido, o professor deve ser avisado que a logica de limite sera removida.
 
-  if (classData) {
-    await supabase
-      .from('classes')
-      .update({ status: 'confirmada', updated_at: new Date().toISOString() })
-      .eq('id', classData.id)
-      .eq('status', 'aguardando_pagamento');
+---
 
-    await supabase
-      .from('class_participants')
-      .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
-      .eq('class_id', classData.id)
-      .eq('status', 'aguardando_pagamento');
+### 2. Edge Functions (4 arquivos)
 
-    logStep('Class auto-confirmed after manual payment', { classId: classData.id });
-  }
-}
-```
+**`supabase/functions/automated-billing/index.ts`**:
+- Remover interface `ActiveSubscription.max_classes` e `overage_price`
+- Remover todo o bloco de calculo de excedentes (linhas 798-829): "Item 2: Calcular excedentes"
+- Remover logs de overage e referencias a `maxClasses`/`overagePrice`
+- Simplificar descricao da fatura (remover `(X/Y aulas)` e `+ N excedentes`)
 
-A logica segue exatamente o mesmo padrao ja usado no `webhook-stripe-connect` (linhas 375-395 e 646-664), garantindo consistencia:
-- Busca sequencial (sem JOINs, conforme constraint do projeto)
-- Guard clause com `.eq('status', 'aguardando_pagamento')` para evitar sobrescrever status terminais
-- Atualiza tanto `classes` quanto `class_participants`
+**`supabase/functions/send-invoice-notification/index.ts`**:
+- Remover interface `MonthlySubscriptionDetails.max_classes` e `overage_price`
+- Remover select de `max_classes, overage_price` na query
+- Remover `monthlySubscriptionInfo.maxClasses`, `overageCount`, `overageTotal`
+- Remover secao condicional do HTML de email que exibe limite e excedentes (linhas 343-356)
+- Simplificar para exibir apenas "Aulas: Ilimitadas"
 
-### Impacto
-- Nenhuma alteracao no frontend
-- Nenhuma alteracao no banco de dados
-- A logica sera executada de forma nao-destrutiva (so atualiza se o status for `aguardando_pagamento`)
+**`supabase/functions/validate-monthly-subscriptions/index.ts`**:
+- Remover validacao V02 (Regra Limite/Excedente) inteira -- nao faz mais sentido
+- Ajustar contadores de validacao
+
+**`supabase/functions/dev-seed-test-data/index.ts`** (se referencia max_classes):
+- Remover campos dos dados de seed
+
+---
+
+### 3. Tipos e Schemas (3 arquivos)
+
+**`src/types/monthly-subscriptions.ts`**:
+- Remover `max_classes` e `overage_price` de `MonthlySubscription`, `MonthlySubscriptionWithCount`, `StudentSubscriptionDetails`, `ActiveSubscription`
+- Remover `hasLimit`, `maxClasses`, `overagePrice` de `MonthlySubscriptionFormData`
+
+**`src/schemas/monthly-subscription.schema.ts`**:
+- Remover campos `hasLimit`, `maxClasses`, `overagePrice` do schema Zod
+- Remover os dois `.refine()` que validam limite/excedente
+- Remover o `.transform()` que limpa maxClasses/overagePrice quando hasLimit=false
+
+---
+
+### 4. Frontend (5 arquivos)
+
+**`src/components/MonthlySubscriptionModal.tsx`**:
+- Remover campos do formulario: toggle "hasLimit", input "maxClasses", input "overagePrice"
+- Remover `const hasLimit = form.watch("hasLimit")`
+- Remover imports de `Switch`
+- Remover defaultValues de hasLimit/maxClasses/overagePrice
+
+**`src/components/MonthlySubscriptionCard.tsx`**:
+- Remover secao "Class Limit" (linhas 71-85) -- sempre sera ilimitado, nao precisa exibir
+- Remover secao "Overage Price" (linhas 87-96)
+- Remover import de `Infinity`
+
+**`src/hooks/useMonthlySubscriptions.ts`**:
+- Em `useCreateMonthlySubscription`: remover `max_classes` e `overage_price` do insert
+- Em `useUpdateMonthlySubscription`: remover logica `hasLimit` e mapeamento de max_classes/overage_price
+
+**`src/pages/StudentDashboard.tsx`**:
+- Remover `max_classes` do tipo do estado e da query
+- Remover bloco condicional de progresso de aulas (linhas 945-958) -- sempre mostrar "Aulas ilimitadas"
+- Remover calculo de `progressValue`
+- Remover import de `Progress`
+
+**`src/pages/DevValidation.tsx`**:
+- Remover ou simplificar a validacao que busca `max_classes`/`overage_price`
+
+---
+
+### 5. Internacionalizacao (2 arquivos x 2 idiomas = 4 arquivos)
+
+Remover chaves de i18n que nao serao mais usadas em `monthlySubscriptions.json` (pt e en):
+- `fields.hasLimit`, `fields.maxClasses`, `fields.maxClassesPlaceholder`, `fields.overagePrice`, `fields.overagePricePlaceholder`
+- `list.unlimited`, `list.classesLimit`, `list.overage`, `list.noOverage`, `list.classesUsed`, `list.classesUsedUnlimited`
+- `validation.validMaxClasses`, `validation.validOveragePrice`
+- `info.ignoreCancellations`, `info.overageExplanation`
+- `studentView.classesRemaining`, `studentView.unlimitedClasses`
+
+---
+
+### 6. Documentacao
+
+Atualizar `docs/validation-queries.sql`:
+- Remover queries V02, V05, V06 que referenciam max_classes/overage_price
+
+---
+
+### Ordem de Execucao
+
+1. Migration SQL (dropar colunas + atualizar RPCs)
+2. Edge Functions (remover logica de overage)
+3. Tipos e Schemas
+4. Frontend (formulario, card, dashboard)
+5. i18n (limpar chaves)
+6. Deploy edge functions
+
+### Riscos e Mitigacoes
+
+- **Dados existentes**: Antes da migration, verificar se ha mensalidades com `max_classes IS NOT NULL` em producao. Se houver, os valores serao perdidos -- o professor precisa estar ciente.
+- **Faturas historicas**: Faturas ja geradas com itens `item_type = 'overage'` permanecerao intactas no historico (nao sao afetadas).
+- **RPCs**: As RPCs serao recriadas sem os campos, mas o `types.ts` sera regenerado automaticamente apos a migration.
+

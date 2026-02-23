@@ -146,7 +146,7 @@ serve(async (req) => {
         // Validar se o business_profile está ativo
         const { data: businessProfile, error: businessError } = await supabaseAdmin
           .from('business_profiles')
-          .select('id, business_name')
+          .select('id, business_name, auto_generate_boleto')
           .eq('id', relationship.business_profile_id)
           .eq('user_id', relationship.teacher_id)
           .maybeSingle();
@@ -531,8 +531,16 @@ serve(async (req) => {
         });
 
         // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
-        // PULAR se valor abaixo do mínimo para boleto
-        if (skipBoletoGeneration) {
+        // PULAR se valor abaixo do mínimo para boleto OU se professor desativou geração automática
+        const teacherDisabledBoleto = businessProfile?.auto_generate_boleto === false;
+        
+        if (teacherDisabledBoleto) {
+          logStep(`Skipping boleto generation for invoice ${invoiceId} - teacher disabled auto_generate_boleto`, {
+            invoiceId,
+            amount: totalAmount,
+            student: studentInfo.student_name
+          });
+        } else if (skipBoletoGeneration) {
           logStep(`Skipping boleto generation for invoice ${invoiceId} - amount ${totalAmount} below minimum ${MINIMUM_BOLETO_AMOUNT}`, {
             invoiceId,
             amount: totalAmount,
@@ -849,8 +857,19 @@ async function processMonthlySubscriptionBilling(
       totalAmount
     });
 
-    // Gerar boleto se valor >= mínimo
-    if (!skipBoletoGeneration) {
+    // Gerar boleto se valor >= mínimo E professor não desativou geração automática
+    // Buscar configuração do professor
+    const { data: bpConfig } = await supabaseAdmin
+      .from('business_profiles')
+      .select('auto_generate_boleto')
+      .eq('id', studentInfo.business_profile_id)
+      .maybeSingle();
+    
+    const teacherDisabledBoleto = bpConfig?.auto_generate_boleto === false;
+    
+    if (teacherDisabledBoleto) {
+      logStep(`Skipping boleto generation for monthly subscription invoice ${invoiceId} - teacher disabled auto_generate_boleto`);
+    } else if (!skipBoletoGeneration) {
       try {
         const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
           'create-payment-intent-connect',
@@ -964,8 +983,8 @@ async function processMonthlySubscriptionBilling(
             totalAmount: traditionalTotal
           });
           
-          // Gerar boleto para fatura tradicional se valor >= mínimo
-          if (!skipTraditionalBoleto) {
+          // Gerar boleto para fatura tradicional se valor >= mínimo e professor não desativou
+          if (!skipTraditionalBoleto && !teacherDisabledBoleto) {
             try {
               const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
                 'create-payment-intent-connect',

@@ -750,7 +750,6 @@ export default function Alunos() {
               <TableRow>
                 <TableHead className="w-[40px]"></TableHead>
                 <TableHead>{t('table.name', 'Nome')}</TableHead>
-                <TableHead>{t('table.type', 'Tipo')}</TableHead>
                 <TableHead>{t('table.email', 'E-mail')}</TableHead>
                 {hasFeature('financial_module') &&
                 <>
@@ -799,33 +798,6 @@ export default function Alunos() {
                           </div>
                           <span>{student.name}</span>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              {hasDependents ?
-                              <Badge variant="family" className="text-xs cursor-help">
-                                  <Users className="h-3 w-3 mr-1" />
-                                  {t('badges.family', 'Família')} ({studentDependents.length})
-                                </Badge> :
-
-                              <Badge variant="student" className="text-xs cursor-help">
-                                  <User className="h-3 w-3 mr-1" />
-                                  {t('badges.student', 'Aluno')}
-                                </Badge>
-                              }
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p className="text-xs">
-                                {hasDependents ?
-                                t('dependents.description', 'Menores sob responsabilidade de {{name}}', { name: student.name }) :
-                                t('registrationType.individual.description', 'Aluno adulto ou com email próprio para acesso ao sistema')
-                                }
-                              </p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-muted-foreground">

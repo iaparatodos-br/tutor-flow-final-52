@@ -19,10 +19,10 @@ import { PaymentOptionsCard } from "@/components/PaymentOptionsCard";
 import { ArchivedDataViewer } from "@/components/ArchivedDataViewer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
-import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, MoreHorizontal, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
+import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTranslation } from "react-i18next";
 
@@ -608,20 +608,21 @@ export default function Financeiro() {
                                 {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} onAmnestyGranted={loadInvoices} />}
                                 
                                 {/* Mark as Paid button for unpaid invoices */}
-                                {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-8 w-8 p-0">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                          <DropdownMenuItem onSelect={e => e.preventDefault()}>
-                                            <CheckCircle className="mr-2 h-4 w-4" />
-                                            Marcar como Paga
-                                          </DropdownMenuItem>
-                                        </AlertDialogTrigger>
+                                {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && <AlertDialog>
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <AlertDialogTrigger asChild>
+                                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                                <CheckCircle className="h-4 w-4" />
+                                              </Button>
+                                            </AlertDialogTrigger>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Marcar como Paga</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
                                         <AlertDialogContent>
                                           <AlertDialogHeader>
                                             <AlertDialogTitle>Confirmar Pagamento</AlertDialogTitle>
@@ -649,9 +650,7 @@ export default function Financeiro() {
                                             </AlertDialogAction>
                                           </AlertDialogFooter>
                                         </AlertDialogContent>
-                                      </AlertDialog>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>}
+                                  </AlertDialog>}
                               </div>
                             </TableCell>
                           </TableRow>)}

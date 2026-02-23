@@ -1,18 +1,25 @@
 
 
-## Remover Card "Responsavel" do Perfil do Aluno
+## Limpar resquicios de guardian no PerfilAluno.tsx
 
 ### Contexto
-Com a implementacao do sistema de dependentes, a logica de "responsavel pela cobranca" foi substituida pela hierarquia responsavel/dependente. O card "Responsavel" na pagina `PerfilAluno.tsx` exibe informacoes obsoletas (guardian_name, guardian_email, guardian_phone, billing_day) que nao fazem mais sentido no modelo atual.
+O card "Responsavel" foi removido da pagina, mas o codigo ainda busca e armazena dados de guardian que nao sao mais exibidos. E codigo morto que pode ser limpo.
 
 ### Alteracao
 
-**`src/pages/PerfilAluno.tsx`** (linhas 645-702):
-- Remover o bloco completo do card "Responsible Info", que inclui:
-  - Exibicao de guardian_name/guardian_email/guardian_phone
-  - Badge "O proprio aluno e responsavel"
-  - Dia de cobranca
-  - Estado vazio "Dados do responsavel nao configurados"
+**`src/pages/PerfilAluno.tsx`**:
 
-Nenhum outro arquivo e afetado, pois esse card e exclusivo desta pagina.
+1. **Interface `StudentProfile`** (linhas 52-55): Remover os campos `guardian_name`, `guardian_email`, `guardian_phone` e `billing_day` da interface, pois nao sao mais utilizados na pagina.
 
+2. **Query de relacionamento** (linha 193): Simplificar o select para buscar apenas `student_id` (necessario para validar acesso), removendo `student_guardian_name`, `student_guardian_email`, `student_guardian_phone` e `billing_day`.
+
+3. **Objeto combinado** (linhas 211-218): Remover o mapeamento de `guardian_name`, `guardian_email`, `guardian_phone` e `billing_day` do `combinedStudent`.
+
+### O que NAO sera removido
+
+Os campos `guardian_*` e `billing_day` em outros arquivos (BillingSettings, StudentFormModal, edge functions de boleto/notificacoes) continuam necessarios para:
+- Gerar boletos com dados do responsavel pela cobranca
+- Enviar notificacoes de aula e fatura por email
+- Editar dados do aluno no formulario
+
+Esses campos sao funcionais e nao sao resquicios do card removido.

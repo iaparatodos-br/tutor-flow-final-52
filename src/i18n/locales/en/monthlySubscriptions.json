@@ -13,11 +13,6 @@
     "descriptionPlaceholder": "Describe the plan benefits",
     "price": "Monthly Price",
     "pricePlaceholder": "0.00",
-    "hasLimit": "Limit class quantity",
-    "maxClasses": "Maximum Classes",
-    "maxClassesPlaceholder": "Maximum classes per month",
-    "overagePrice": "Overage Price per Class",
-    "overagePricePlaceholder": "Amount charged per class beyond the limit",
     "students": "Assigned Students",
     "startsAt": "Start Date",
     "isActive": "Active"
@@ -27,21 +22,13 @@
     "noSubscriptionsDescription": "Create your first subscription to start offering fixed plans to your students.",
     "studentsCount": "{{count}} student(s) assigned",
     "noStudents": "No students assigned",
-    "unlimited": "Unlimited classes",
-    "classesLimit": "Up to {{count}} classes/month",
-    "overage": "+$ {{price}} per extra class",
-    "noOverage": "No overage charge",
     "perMonth": "/month",
     "active": "Active",
-    "inactive": "Inactive",
-    "classesUsed": "{{used}}/{{limit}} classes used",
-    "classesUsedUnlimited": "{{used}} classes used"
+    "inactive": "Inactive"
   },
   "validation": {
     "nameRequired": "Plan name is required",
-    "validPrice": "Enter a valid price",
-    "validMaxClasses": "Enter a valid number of classes",
-    "validOveragePrice": "Enter a valid overage price"
+    "validPrice": "Enter a valid price"
   },
   "actions": {
     "cancel": "Cancel",
@@ -72,9 +59,7 @@
   },
   "info": {
     "familyBilling": "The subscription covers the guardian and all their dependents automatically.",
-    "ignoreCancellations": "Cancelled classes are not deducted from the monthly limit.",
     "billingDay": "Billing is generated on the billing day configured for each student.",
-    "overageExplanation": "Classes beyond the limit will be charged at the configured overage rate.",
     "experimentalNotCounted": "Trial classes are not counted towards the monthly limit.",
     "softDelete": "Subscriptions cannot be deleted, only deactivated."
   },
@@ -89,8 +74,6 @@
     "noSubscription": "You don't have an active subscription at the moment",
     "currentPlan": "Current Plan",
     "teacher": "Teacher",
-    "classesRemaining": "{{remaining}} classes remaining this month",
-    "unlimitedClasses": "Unlimited classes",
     "nextBilling": "Next billing",
     "since": "Since"
   },

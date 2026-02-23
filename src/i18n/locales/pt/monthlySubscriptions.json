@@ -13,11 +13,6 @@
     "descriptionPlaceholder": "Descreva os benefícios do plano",
     "price": "Valor Mensal",
     "pricePlaceholder": "0,00",
-    "hasLimit": "Limitar quantidade de aulas",
-    "maxClasses": "Máximo de Aulas",
-    "maxClassesPlaceholder": "Número máximo de aulas por mês",
-    "overagePrice": "Valor por Aula Excedente",
-    "overagePricePlaceholder": "Valor cobrado por aula além do limite",
     "students": "Alunos Vinculados",
     "startsAt": "Data de Início",
     "isActive": "Ativo"
@@ -27,21 +22,13 @@
     "noSubscriptionsDescription": "Crie sua primeira mensalidade para começar a oferecer planos fixos aos seus alunos.",
     "studentsCount": "{{count}} aluno(s) vinculado(s)",
     "noStudents": "Nenhum aluno vinculado",
-    "unlimited": "Aulas ilimitadas",
-    "classesLimit": "Até {{count}} aulas/mês",
-    "overage": "+R$ {{price}} por aula excedente",
-    "noOverage": "Sem cobrança de excedente",
     "perMonth": "/mês",
     "active": "Ativo",
-    "inactive": "Inativo",
-    "classesUsed": "{{used}}/{{limit}} aulas utilizadas",
-    "classesUsedUnlimited": "{{used}} aulas utilizadas"
+    "inactive": "Inativo"
   },
   "validation": {
     "nameRequired": "Nome do plano é obrigatório",
-    "validPrice": "Informe um valor válido",
-    "validMaxClasses": "Informe um número válido de aulas",
-    "validOveragePrice": "Informe um valor válido para aula excedente"
+    "validPrice": "Informe um valor válido"
   },
   "actions": {
     "cancel": "Cancelar",
@@ -72,9 +59,7 @@
   },
   "info": {
     "familyBilling": "A mensalidade cobre o responsável e todos os seus dependentes automaticamente.",
-    "ignoreCancellations": "Aulas canceladas não são descontadas do limite mensal.",
     "billingDay": "A cobrança é gerada no dia de faturamento configurado para cada aluno.",
-    "overageExplanation": "Aulas além do limite serão cobradas pelo valor excedente configurado.",
     "experimentalNotCounted": "Aulas experimentais não são contabilizadas no limite mensal.",
     "softDelete": "Mensalidades não podem ser excluídas, apenas desativadas."
   },
@@ -89,8 +74,6 @@
     "noSubscription": "Você não possui mensalidade ativa no momento",
     "currentPlan": "Plano Atual",
     "teacher": "Professor",
-    "classesRemaining": "{{remaining}} aulas restantes este mês",
-    "unlimitedClasses": "Aulas ilimitadas",
     "nextBilling": "Próxima cobrança",
     "since": "Desde"
   },

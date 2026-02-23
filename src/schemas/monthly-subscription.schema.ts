@@ -11,9 +11,6 @@ import { z } from 'zod';
  * - name: obrigatório, 1-100 caracteres
  * - description: opcional, max 500 caracteres
  * - price: obrigatório, >= 0
- * - hasLimit: boolean para toggle de limite
- * - maxClasses: obrigatório SE hasLimit = true, > 0
- * - overagePrice: obrigatório SE hasLimit = true, >= 0
  * - selectedStudents: array de relationship_ids (pode ser vazio)
  */
 export const monthlySubscriptionSchema = z.object({
@@ -33,57 +30,9 @@ export const monthlySubscriptionSchema = z.object({
     .number({ invalid_type_error: 'Informe um valor válido.' })
     .min(0, { message: 'O valor deve ser maior ou igual a zero.' }),
   
-  hasLimit: z.boolean().default(false),
-  
-  maxClasses: z
-    .number({ invalid_type_error: 'Informe um número válido.' })
-    .int({ message: 'O limite deve ser um número inteiro.' })
-    .positive({ message: 'O limite de aulas deve ser maior que zero.' })
-    .nullable()
-    .optional(),
-  
-  overagePrice: z
-    .number({ invalid_type_error: 'Informe um valor válido.' })
-    .min(0, { message: 'O valor por aula excedente deve ser maior ou igual a zero.' })
-    .nullable()
-    .optional(),
-  
   selectedStudents: z
     .array(z.string().uuid())
     .default([]),
-    
-}).refine(
-  (data) => {
-    if (data.hasLimit && (data.maxClasses === null || data.maxClasses === undefined)) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: 'Informe o limite de aulas quando a opção estiver ativada.',
-    path: ['maxClasses'],
-  }
-).refine(
-  (data) => {
-    if (data.hasLimit && (data.overagePrice === null || data.overagePrice === undefined)) {
-      return false;
-    }
-    return true;
-  },
-  {
-    message: 'Informe o valor por aula excedente quando o limite estiver ativado.',
-    path: ['overagePrice'],
-  }
-).transform((data) => {
-  // Se hasLimit = false, garantir que maxClasses e overagePrice são null
-  if (!data.hasLimit) {
-    return {
-      ...data,
-      maxClasses: null,
-      overagePrice: null,
-    };
-  }
-  return data;
 });
 
 // Tipo inferido do schema para uso com react-hook-form

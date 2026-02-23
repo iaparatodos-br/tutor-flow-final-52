@@ -16,8 +16,6 @@ interface InvoiceNotificationPayload {
 interface MonthlySubscriptionDetails {
   name: string;
   price: number;
-  max_classes: number | null;
-  overage_price: number | null;
 }
 
 serve(async (req) => {
@@ -165,48 +163,21 @@ serve(async (req) => {
     let subscriptionDetails: MonthlySubscriptionDetails | null = null;
     let monthlySubscriptionInfo = {
       name: '',
-      classesUsed: 0,
-      maxClasses: null as number | null,
-      overageCount: 0,
-      overageTotal: 0
     };
 
     if (isMonthlySubscription && invoice.monthly_subscription_id) {
       // Buscar detalhes da mensalidade (Tarefa 6.7)
       const { data: subscription, error: subError } = await supabase
         .from("monthly_subscriptions")
-        .select("name, price, max_classes, overage_price")
+        .select("name, price")
         .eq("id", invoice.monthly_subscription_id)
         .maybeSingle();
 
       if (!subError && subscription) {
         subscriptionDetails = subscription;
         monthlySubscriptionInfo.name = subscription.name;
-        monthlySubscriptionInfo.maxClasses = subscription.max_classes;
 
         console.log("📦 Monthly subscription details:", subscriptionDetails);
-
-        // Extrair informações de excedentes dos itens (Tarefa 6.8)
-        if (invoiceItems) {
-          const overageItem = invoiceItems.find(item => item.item_type === 'overage');
-          if (overageItem) {
-            // Parse overage count from description (ex: "Excedente: 2 aulas além do limite (4)")
-            const overageMatch = overageItem.description?.match(/Excedente:\s*(\d+)\s*aula/);
-            if (overageMatch) {
-              monthlySubscriptionInfo.overageCount = parseInt(overageMatch[1], 10);
-              monthlySubscriptionInfo.overageTotal = overageItem.amount;
-            }
-          }
-
-          // Count classes from description if available
-          const baseItem = invoiceItems.find(item => item.item_type === 'monthly_base');
-          if (baseItem) {
-            const classesMatch = invoice.description?.match(/\((\d+)\/(\d+)\s*aulas\)/);
-            if (classesMatch) {
-              monthlySubscriptionInfo.classesUsed = parseInt(classesMatch[1], 10);
-            }
-          }
-        }
       }
     }
 
@@ -340,20 +311,6 @@ serve(async (req) => {
           <h3 style="margin-top: 0; color: #7c3aed;">📦 Detalhes do Plano</h3>
           <p><strong>Plano:</strong> ${subscriptionDetails.name}</p>
           <p><strong>Valor mensal:</strong> ${formattedBasePrice}</p>
-          ${subscriptionDetails.max_classes !== null ? `
-            <p><strong>Limite de aulas:</strong> ${subscriptionDetails.max_classes} aulas/mês</p>
-            ${monthlySubscriptionInfo.classesUsed > 0 ? `
-              <p><strong>Aulas utilizadas:</strong> ${monthlySubscriptionInfo.classesUsed} aulas</p>
-            ` : ''}
-          ` : `
-            <p><strong>Aulas:</strong> Ilimitadas</p>
-          `}
-          ${monthlySubscriptionInfo.overageCount > 0 ? `
-            <div class="overage-alert">
-              <p style="margin: 0;"><strong>⚠️ Excedente:</strong> ${monthlySubscriptionInfo.overageCount} aula${monthlySubscriptionInfo.overageCount > 1 ? 's' : ''} além do limite</p>
-              <p style="margin: 5px 0 0 0;"><strong>Valor adicional:</strong> ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(monthlySubscriptionInfo.overageTotal)}</p>
-            </div>
-          ` : ''}
         </div>
       `;
     }

@@ -51,8 +51,6 @@ interface ActiveSubscription {
   subscription_id: string;
   subscription_name: string;
   price: number;
-  max_classes: number | null;
-  overage_price: number | null;
   starts_at: string;
   student_subscription_id: string;
 }
@@ -192,8 +190,6 @@ serve(async (req) => {
           logStep(`📦 Active monthly subscription found for ${studentInfo.student_name}`, {
             subscriptionName: activeSubscription.subscription_name,
             price: activeSubscription.price,
-            maxClasses: activeSubscription.max_classes,
-            overagePrice: activeSubscription.overage_price,
             startsAt: activeSubscription.starts_at
           });
 
@@ -795,50 +791,13 @@ async function processMonthlySubscriptionBilling(
     });
     totalAmount += subscription.price;
 
-    // Item 2: Calcular excedentes baseado em aulas NO CICLO (Tarefa 6.4)
     const classesUsed = classesInBillingCycle.length;
-    const maxClasses = subscription.max_classes;
-    const overagePrice = subscription.overage_price;
-    let overageCount = 0;
-    let overageTotal = 0;
-
-    if (maxClasses !== null && classesUsed > maxClasses && overagePrice !== null && overagePrice > 0) {
-      overageCount = classesUsed - maxClasses;
-      overageTotal = overageCount * overagePrice;
-      
-      invoiceItems.push({
-        class_id: null,
-        participant_id: null,
-        item_type: 'overage',
-        amount: overageTotal,
-        description: `Excedente: ${overageCount} aula${overageCount > 1 ? 's' : ''} além do limite (${maxClasses}) - R$ ${overagePrice.toFixed(2).replace('.', ',')} cada`,
-        cancellation_policy_id: null,
-        charge_percentage: null,
-        dependent_id: null
-      });
-      totalAmount += overageTotal;
-      
-      logStep(`📈 Overage calculated for billing cycle`, {
-        maxClasses,
-        classesUsed,
-        overageCount,
-        overagePrice,
-        overageTotal,
-        cycle: `${cycleStartStr} - ${cycleEndStr}`
-      });
-    }
 
     // Verificar mínimo para boleto
     const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
 
     // Criar descrição da fatura com período do ciclo
     let description = `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartStr} a ${cycleEndStr}`;
-    if (maxClasses !== null) {
-      description += ` (${classesUsed}/${maxClasses} aulas)`;
-    }
-    if (overageCount > 0) {
-      description += ` + ${overageCount} excedente${overageCount > 1 ? 's' : ''}`;
-    }
     if (skipBoletoGeneration) {
       description += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
     }
@@ -887,9 +846,6 @@ async function processMonthlySubscriptionBilling(
       subscriptionName: subscription.subscription_name,
       basePrice: subscription.price,
       classesUsed,
-      maxClasses,
-      overageCount,
-      overageTotal,
       totalAmount
     });
 

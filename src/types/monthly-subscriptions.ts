@@ -14,8 +14,6 @@ export interface MonthlySubscription {
   name: string;
   description: string | null;
   price: number;
-  max_classes: number | null;
-  overage_price: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -32,9 +30,6 @@ export interface MonthlySubscriptionFormData {
   name: string;
   description: string;
   price: number;
-  hasLimit: boolean;
-  maxClasses: number | null;
-  overagePrice: number | null;
   selectedStudents: string[]; // relationship_ids
 }
 
@@ -69,8 +64,6 @@ export interface StudentSubscriptionDetails {
   teacher_name: string;
   subscription_name: string;
   price: number;
-  max_classes: number | null;
-  overage_price: number | null;
   starts_at: string;
   classes_used: number;
   relationship_id: string;
@@ -81,8 +74,6 @@ export interface ActiveSubscription {
   subscription_id: string;
   subscription_name: string;
   price: number;
-  max_classes: number | null;
-  overage_price: number | null;
   starts_at: string;
   student_subscription_id: string;
 }

@@ -49,10 +49,6 @@ interface StudentProfile {
   name: string;
   email: string;
   created_at: string;
-  guardian_name?: string;
-  guardian_email?: string;
-  guardian_phone?: string;
-  billing_day?: number;
 }
 
 interface ClassRecord {
@@ -190,7 +186,7 @@ export default function PerfilAluno() {
       // Load student profile - first verify teacher-student relationship
       const { data: relationshipData, error: relationshipError } = await supabase
         .from('teacher_student_relationships')
-        .select('student_id, student_guardian_name, student_guardian_email, student_guardian_phone, billing_day')
+        .select('student_id')
         .eq('teacher_id', profile.id)
         .eq('student_id', id)
         .single();
@@ -208,16 +204,7 @@ export default function PerfilAluno() {
 
       if (studentError) throw studentError;
       
-      // Combine student data with guardian data from relationship
-      const combinedStudent = {
-        ...studentData,
-        guardian_name: relationshipData.student_guardian_name,
-        guardian_email: relationshipData.student_guardian_email,
-        guardian_phone: relationshipData.student_guardian_phone,
-        billing_day: relationshipData.billing_day
-      };
-      
-      setStudent(combinedStudent);
+      setStudent(studentData);
 
       // Load student's class participations (both individual and group)
       const { data: participationsData, error: participationsError } = await supabase

@@ -1,25 +1,25 @@
 
 
-## Limpar resquicios de guardian no PerfilAluno.tsx
+## Bloquear edicao de email do aluno no formulario de edicao
 
 ### Contexto
-O card "Responsavel" foi removido da pagina, mas o codigo ainda busca e armazena dados de guardian que nao sao mais exibidos. E codigo morto que pode ser limpo.
+
+O email do aluno e usado como credencial de login no `auth.users` do Supabase. Ao editar um aluno existente, o formulario atualmente permite alterar o email, mas isso so atualizaria dados superficiais sem alterar o `auth.users`, causando:
+- Divergencia entre o email de login e o email no `profiles`
+- Quebra no fluxo de convite e verificacao
+- Problemas em notificacoes e relacionamentos que dependem do email
 
 ### Alteracao
 
-**`src/pages/PerfilAluno.tsx`**:
+**`src/components/StudentFormModal.tsx`** (linha ~412-421):
 
-1. **Interface `StudentProfile`** (linhas 52-55): Remover os campos `guardian_name`, `guardian_email`, `guardian_phone` e `billing_day` da interface, pois nao sao mais utilizados na pagina.
+1. No campo de email, adicionar `disabled={isEditing}` e a classe `bg-muted` quando em modo de edicao, seguindo o mesmo padrao ja usado no `ProfileSettings.tsx`.
 
-2. **Query de relacionamento** (linha 193): Simplificar o select para buscar apenas `student_id` (necessario para validar acesso), removendo `student_guardian_name`, `student_guardian_email`, `student_guardian_phone` e `billing_day`.
+2. Adicionar uma mensagem explicativa abaixo do campo quando em edicao, informando que o email nao pode ser alterado pois e a credencial de acesso do aluno.
 
-3. **Objeto combinado** (linhas 211-218): Remover o mapeamento de `guardian_name`, `guardian_email`, `guardian_phone` e `billing_day` do `combinedStudent`.
+### Detalhes tecnicos
 
-### O que NAO sera removido
+- `isEditing` ja existe no componente (linha ~82: `const isEditing = !!student`)
+- O padrao visual de campo desabilitado (`disabled` + `bg-muted`) ja e usado no `ProfileSettings.tsx` para o email do professor
+- Nenhuma outra alteracao e necessaria, pois a validacao do formulario ja ignora o email quando desabilitado
 
-Os campos `guardian_*` e `billing_day` em outros arquivos (BillingSettings, StudentFormModal, edge functions de boleto/notificacoes) continuam necessarios para:
-- Gerar boletos com dados do responsavel pela cobranca
-- Enviar notificacoes de aula e fatura por email
-- Editar dados do aluno no formulario
-
-Esses campos sao funcionais e nao sao resquicios do card removido.

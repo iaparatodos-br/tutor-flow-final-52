@@ -16,6 +16,39 @@ const logStep = (step: string, details?: any) => {
   console.log(`[cancel-payment-intent] ${step}`, details ? JSON.stringify(details) : '');
 };
 
+const autoConfirmClassIfAwaiting = async (supabase: any, invoiceId: string) => {
+  const { data: invoiceWithClass } = await supabase
+    .from('invoices')
+    .select('class_id')
+    .eq('id', invoiceId)
+    .maybeSingle();
+
+  if (!invoiceWithClass?.class_id) return;
+
+  const { data: classData } = await supabase
+    .from('classes')
+    .select('id, status')
+    .eq('id', invoiceWithClass.class_id)
+    .eq('status', 'aguardando_pagamento')
+    .maybeSingle();
+
+  if (!classData) return;
+
+  await supabase
+    .from('classes')
+    .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+    .eq('id', classData.id)
+    .eq('status', 'aguardando_pagamento');
+
+  await supabase
+    .from('class_participants')
+    .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+    .eq('class_id', classData.id)
+    .eq('status', 'aguardando_pagamento');
+
+  logStep('Class auto-confirmed after manual payment', { classId: classData.id });
+};
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -119,6 +152,9 @@ serve(async (req) => {
 
       if (updateError) throw updateError;
 
+      // Auto-confirm class if prepaid and awaiting payment
+      await autoConfirmClassIfAwaiting(supabase, invoice_id);
+
       return new Response(
         JSON.stringify({ 
           success: true,
@@ -182,6 +218,9 @@ serve(async (req) => {
       logStep('Database update failed', { error: updateError });
       throw updateError;
     }
+
+    // Auto-confirm class if prepaid and awaiting payment
+    await autoConfirmClassIfAwaiting(supabase, invoice_id);
 
     // Register audit log
     const { error: auditError } = await supabase.from('audit_logs').insert({

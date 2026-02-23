@@ -642,65 +642,6 @@ export default function PerfilAluno() {
               </CardContent>
             </Card>
 
-            {/* Responsible Info */}
-            <Card className="shadow-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Responsável
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {student.guardian_name ? (
-                  <>
-                    {student.guardian_name === student.name ? (
-                      <div className="text-center py-4">
-                        <Badge variant="outline" className="mb-2">
-                          O próprio aluno é responsável
-                        </Badge>
-                        <p className="text-sm text-muted-foreground">
-                          Cobrança direta para o aluno
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <p className="font-medium">{student.guardian_name}</p>
-                        </div>
-                        {student.guardian_email && (
-                          <div className="flex items-center gap-3">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{student.guardian_email}</span>
-                          </div>
-                        )}
-                        {student.guardian_phone && (
-                          <div className="flex items-center gap-3">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{student.guardian_phone}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Dia de cobrança:</span>
-                      <div className="flex items-center gap-1">
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{student.billing_day || 15}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Dados do responsável não configurados
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
             {/* Dependents Section */}
             <Card className="shadow-card">
               <CardHeader>

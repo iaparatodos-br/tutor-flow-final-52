@@ -116,7 +116,7 @@ export function ArchivedDataViewer() {
       'pendente': { label: t('status.pending'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent' },
       'cancelada': { label: t('status.cancelled'), className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent' },
       'concluida': { label: t('status.completed'), className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent' },
-      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), className: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-transparent' },
+      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), className: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400 border-transparent' },
     };
     
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, className: '' };

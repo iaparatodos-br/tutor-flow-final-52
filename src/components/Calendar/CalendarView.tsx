@@ -141,7 +141,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       confirmada: 'hsl(217 91% 60%)',
       cancelada: 'hsl(215 16% 47%)',
       concluida: 'hsl(160 84% 39%)',
-      aguardando_pagamento: 'hsl(239 84% 67%)'
+      aguardando_pagamento: 'hsl(263 70% 50%)'
     };
 
     let backgroundColor = statusColors[classEvent.status];
@@ -187,7 +187,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
       confirmada: { label: t('status.confirmed'), variant: "secondary" as const, className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-transparent" },
       cancelada: { label: t('status.cancelled'), variant: "secondary" as const, className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent" },
       concluida: { label: t('status.completed'), variant: "secondary" as const, className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent" },
-      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "secondary" as const, className: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400 border-transparent" }
+      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "secondary" as const, className: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400 border-transparent" }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;

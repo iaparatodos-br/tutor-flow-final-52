@@ -13,8 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { AlertCircle, FileText, RefreshCw, Loader2, Users } from 'lucide-react';
+import { AlertCircle, FileText, Users } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
@@ -38,8 +37,6 @@ interface Invoice {
   student_id: string;
   payment_method: string | null;
   boleto_url: string | null;
-  pix_qr_code: string | null;
-  pix_copy_paste: string | null;
   student?: {
     id: string;
     name: string;
@@ -55,10 +52,6 @@ export default function Faturas() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
-  const [changeMethodDialogOpen, setChangeMethodDialogOpen] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-  const [changingMethod, setChangingMethod] = useState(false);
-  
   // Deep-linking support from Inbox
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
@@ -70,7 +63,6 @@ export default function Faturas() {
     queryFn: async () => {
       if (!user?.id || !selectedTeacherId) return [];
       
-      // Buscar dependentes onde o usuário é o responsável
       const { data, error } = await supabase
         .from('dependents')
         .select('id')
@@ -93,19 +85,17 @@ export default function Faturas() {
     queryFn: async () => {
       if (!selectedTeacherId || !user?.id) return [];
 
-      // Buscar faturas do próprio usuário
       let query = supabase
         .from('invoices')
         .select(`
           id, created_at, due_date, amount, status, stripe_hosted_invoice_url, 
           description, teacher_id, payment_origin, manual_payment_notes, 
           payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type,
-          student_id, payment_method, boleto_url, pix_qr_code, pix_copy_paste,
+          student_id, payment_method, boleto_url,
           student:profiles!invoices_student_id_fkey(id, name, email)
         `)
         .eq('teacher_id', selectedTeacherId);
 
-      // Combinar IDs: usuário + dependentes
       const allStudentIds = [user.id, ...dependentIds];
       query = query.in('student_id', allStudentIds);
 
@@ -118,77 +108,20 @@ export default function Faturas() {
   });
 
   const handlePayNow = async (invoice: Invoice) => {
-    // Configurar callback para quando browser fechar (atualizar dados)
     await onBrowserClosed(() => {
       refetch();
       queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
     });
 
-    // Se tem método de pagamento definido, abrir URL correspondente
-    if (invoice.payment_method === 'boleto' && invoice.boleto_url) {
+    if (invoice.boleto_url) {
       await openExternalUrl(invoice.boleto_url);
     } else if (invoice.stripe_hosted_invoice_url) {
       await openExternalUrl(invoice.stripe_hosted_invoice_url);
     }
   };
 
-  const handleChoosePaymentMethod = async (invoice: Invoice) => {
-    // Configurar callback para quando browser fechar
-    await onBrowserClosed(() => {
-      refetch();
-      queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
-    });
-
-    // Abrir modal ou página de escolha de método
-    if (invoice.stripe_hosted_invoice_url) {
-      await openExternalUrl(invoice.stripe_hosted_invoice_url);
-    }
-  };
-
   const handleViewReceipt = (invoiceId: string) => {
     navigate(`/recibo/${invoiceId}`);
-  };
-
-  const openChangeMethodDialog = (invoice: Invoice) => {
-    setSelectedInvoice(invoice);
-    setChangeMethodDialogOpen(true);
-  };
-
-  const handleChangePaymentMethod = async () => {
-    if (!selectedInvoice) return;
-
-    setChangingMethod(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('change-payment-method', {
-        body: { invoice_id: selectedInvoice.id }
-      });
-
-      if (error) throw error;
-
-      if (data?.error) {
-        throw new Error(data.error);
-      }
-
-      toast({
-        title: t('studentInvoices.changePaymentMethod.success'),
-      });
-
-      setChangeMethodDialogOpen(false);
-      setSelectedInvoice(null);
-      
-      // Refetch invoices
-      queryClient.invalidateQueries({ queryKey: ['studentInvoices'] });
-      refetch();
-    } catch (error: any) {
-      console.error('Error changing payment method:', error);
-      toast({
-        title: t('studentInvoices.changePaymentMethod.error'),
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setChangingMethod(false);
-    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -198,13 +131,8 @@ export default function Faturas() {
     }).format(amount);
   };
 
-  const canChangePaymentMethod = (invoice: Invoice) => {
-    const changeableStatuses = ['open', 'pendente', 'overdue', 'vencida', 'falha_pagamento'];
-    return changeableStatuses.includes(invoice.status) && invoice.payment_method;
-  };
-
   const hasPaymentReady = (invoice: Invoice) => {
-    return invoice.boleto_url || invoice.pix_qr_code || invoice.stripe_hosted_invoice_url;
+    return invoice.boleto_url || invoice.stripe_hosted_invoice_url;
   };
 
   const isDependent = (invoice: Invoice) => {
@@ -217,23 +145,17 @@ export default function Faturas() {
     
     if (highlightParam && invoices) {
       setHighlightedInvoiceId(highlightParam);
-      
-      // Clear URL params after processing
       setSearchParams({}, { replace: true });
-      
-      // Clear highlight after 5 seconds
       setTimeout(() => setHighlightedInvoiceId(null), 5000);
     }
   }, [searchParams, setSearchParams, invoices]);
 
-  // Scroll to highlighted invoice when it's set and data is loaded
   useEffect(() => {
     if (highlightedInvoiceId && highlightedRowRef.current) {
       highlightedRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [highlightedInvoiceId, invoices]);
 
-  // Loading state while teacher context is loading
   if (teacherLoading) {
     return (
       <Layout>
@@ -255,7 +177,6 @@ export default function Faturas() {
     );
   }
 
-  // No teacher selected
   if (!selectedTeacherId) {
     return (
       <Layout>
@@ -361,35 +282,16 @@ export default function Faturas() {
                             invoice.status === 'falha_pagamento') && (
                             <>
                               {hasPaymentReady(invoice) ? (
-                                <>
-                                  <Button 
-                                    onClick={() => handlePayNow(invoice)}
-                                    size="sm"
-                                  >
-                                    {t('studentInvoices.payNow')}
-                                  </Button>
-                                  {canChangePaymentMethod(invoice) && (
-                                    <Button 
-                                      onClick={() => openChangeMethodDialog(invoice)}
-                                      size="sm"
-                                      variant="outline"
-                                    >
-                                      <RefreshCw className="h-4 w-4" />
-                                    </Button>
-                                  )}
-                                </>
-                              ) : (
                                 <Button 
-                                  onClick={() => handleChoosePaymentMethod(invoice)}
+                                  onClick={() => handlePayNow(invoice)}
                                   size="sm"
-                                  variant="outline"
-                                  disabled={!invoice.stripe_hosted_invoice_url}
                                 >
-                                  {invoice.stripe_hosted_invoice_url 
-                                    ? t('studentInvoices.choosePaymentMethod')
-                                    : t('studentInvoices.noPaymentMethod')
-                                  }
+                                  {t('studentInvoices.payNow')}
                                 </Button>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">
+                                  Aguardando boleto
+                                </span>
                               )}
                             </>
                           )}
@@ -415,42 +317,6 @@ export default function Faturas() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Change Payment Method Dialog */}
-      <Dialog open={changeMethodDialogOpen} onOpenChange={setChangeMethodDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('studentInvoices.changePaymentMethod.title')}</DialogTitle>
-            <DialogDescription>
-              {t('studentInvoices.changePaymentMethod.description')}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              {t('studentInvoices.changePaymentMethod.warning')}
-            </AlertDescription>
-          </Alert>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setChangeMethodDialogOpen(false)}
-              disabled={changingMethod}
-            >
-              {t('studentInvoices.changePaymentMethod.cancel')}
-            </Button>
-            <Button
-              onClick={handleChangePaymentMethod}
-              disabled={changingMethod}
-            >
-              {changingMethod && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t('studentInvoices.changePaymentMethod.confirm')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 }

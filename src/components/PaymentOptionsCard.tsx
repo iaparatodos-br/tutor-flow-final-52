@@ -5,12 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Receipt, 
-  QrCode, 
-  CreditCard, 
   Download, 
   Copy, 
   ExternalLink,
@@ -33,8 +30,6 @@ interface Invoice {
   boleto_url?: string;
   barcode?: string;
   linha_digitavel?: string;
-  pix_qr_code?: string;
-  pix_copy_paste?: string;
   stripe_payment_intent_id?: string;
 }
 
@@ -46,14 +41,6 @@ interface PaymentOptionsCardProps {
 export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptionsCardProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [activePaymentMethod, setActivePaymentMethod] = useState<string | null>(null);
-  const [payerTaxId, setPayerTaxId] = useState("");
-  const [payerAddress, setPayerAddress] = useState({
-    street: "",
-    city: "",
-    state: "",
-    postal_code: ""
-  });
   const [generatedBoleto, setGeneratedBoleto] = useState<{
     url: string;
     linha_digitavel?: string;
@@ -83,33 +70,28 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
   };
 
-  const createPaymentIntent = async (paymentMethod: string) => {
+  const createBoletoPayment = async () => {
     setLoading(true);
-    setActivePaymentMethod(paymentMethod);
     
     try {
-      // Removed payer validation - now using profile data from backend
       const { data, error } = await supabase.functions.invoke('create-payment-intent-connect', {
         body: {
           invoice_id: invoice.id,
-          payment_method: paymentMethod
+          payment_method: 'boleto'
         }
       });
 
       if (error) throw error;
 
-      if (paymentMethod === 'boleto' && data.boleto_url) {
-        // Store boleto data
+      if (data.boleto_url) {
         setGeneratedBoleto({
           url: data.boleto_url,
           linha_digitavel: data.linha_digitavel
         });
         
-        // Try to open in new tab
         const newWindow = window.open(data.boleto_url, '_blank');
         
         if (!newWindow || newWindow.closed || typeof newWindow.closed == 'undefined') {
-          // Popup was blocked
           setPopupBlocked(true);
           toast({
             title: "Boleto gerado",
@@ -124,36 +106,20 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           setPopupBlocked(false);
         }
         
-        // Update local invoice data if linha_digitavel is returned
         if (data.linha_digitavel && onPaymentSuccess) {
           setTimeout(() => onPaymentSuccess(), 1000);
         }
-      } else if (paymentMethod === 'card' && data.checkout_url) {
-        window.open(data.checkout_url, '_blank');
-        toast({
-          title: "Redirecionando",
-          description: "Você será redirecionado para o pagamento com cartão",
-        });
-      } else if (paymentMethod === 'pix' && data.pix_qr_code) {
-        toast({
-          title: "PIX gerado",
-          description: "Use o QR code ou código PIX para pagar",
-        });
-        if (onPaymentSuccess) {
-          setTimeout(() => onPaymentSuccess(), 1000);
-        }
       }
-
-    } catch (error: any) {
-      console.error('Error creating payment intent:', error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Tente novamente mais tarde";
+      console.error('Error creating boleto:', error);
       toast({
-        title: "Erro ao processar pagamento",
-        description: error.message || "Tente novamente mais tarde",
+        title: "Erro ao gerar boleto",
+        description: message,
         variant: "destructive",
       });
     } finally {
       setLoading(false);
-      setActivePaymentMethod(null);
     }
   };
 
@@ -181,12 +147,12 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           description: `Status atual: ${data.status === 'paga' ? 'Paga' : 'Pendente'}`,
         });
       }
-
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Tente novamente mais tarde";
       console.error('Error verifying payment status:', error);
       toast({
         title: "Erro ao verificar status",
-        description: error.message || "Tente novamente mais tarde",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -233,7 +199,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           </div>
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground" />
-            <span className={isOverdue && !isPaid ? "text-red-600 font-medium" : ""}>
+            <span className={isOverdue && !isPaid ? "text-destructive font-medium" : ""}>
               Venc: {formatDate(invoice.due_date)}
             </span>
           </div>
@@ -256,11 +222,6 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
           )}
           
           <div>
-            <h4 className="font-medium mb-3 flex items-center gap-2">
-              <CreditCard className="h-4 w-4" />
-              Opções de Pagamento
-            </h4>
-            
             <div className="space-y-3">
               {/* Boleto Bancário */}
               <div className="p-3 border rounded-lg">
@@ -269,11 +230,10 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                   <span className="font-medium">Boleto Bancário</span>
                 </div>
                 
-                {/* Show existing boleto prominently */}
                 {invoice.boleto_url ? (
                   <div className="space-y-2">
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm text-green-800 font-medium mb-2">✓ Boleto disponível</p>
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg dark:bg-green-950/20 dark:border-green-800">
+                      <p className="text-sm text-green-800 dark:text-green-400 font-medium mb-2">✓ Boleto disponível</p>
                       <Button
                         variant="default"
                         size="sm"
@@ -302,83 +262,17 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                     )}
                   </div>
                 ) : (
-                  <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                    <p className="text-sm text-gray-600">
+                  <div className="p-3 bg-muted/50 border rounded-lg">
+                    <p className="text-sm text-muted-foreground">
                       Boleto não disponível. Entre em contato com o professor se necessário.
                     </p>
                   </div>
                 )}
               </div>
-
-              {/* PIX */}
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="h-4 w-4" />
-                    <span className="font-medium">PIX</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => createPaymentIntent('pix')}
-                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'pix')}
-                  >
-                    {loading && activePaymentMethod === 'pix' ? (
-                      "Gerando..."
-                    ) : (
-                      <>
-                        <QrCode className="h-4 w-4 mr-2" />
-                        Gerar PIX
-                      </>
-                    )}
-                  </Button>
-                </div>
-                
-                {invoice.pix_qr_code && (
-                  <div className="mt-2 p-2 bg-muted rounded text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-muted-foreground">Código PIX:</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyToClipboard(invoice.pix_copy_paste || invoice.pix_qr_code!, "Código PIX")}
-                      >
-                        <Copy className="h-3 w-3" />
-                      </Button>
-                    </div>
-                    <code className="text-xs break-all">{invoice.pix_copy_paste || invoice.pix_qr_code}</code>
-                  </div>
-                )}
-              </div>
-
-              {/* Cartão de Crédito */}
-              <div className="p-3 border rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CreditCard className="h-4 w-4" />
-                    <span className="font-medium">Cartão de Crédito</span>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => createPaymentIntent('card')}
-                    disabled={isBelowMinimum || (loading && activePaymentMethod === 'card')}
-                  >
-                    {loading && activePaymentMethod === 'card' ? (
-                      "Processando..."
-                    ) : (
-                      <>
-                        <ExternalLink className="h-4 w-4 mr-2" />
-                        Pagar
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
             </div>
             
             {/* Verification Button */}
-            <div className="pt-3 border-t">
+            <div className="pt-3 border-t mt-3">
               <Button
                 variant="ghost"
                 size="sm"
@@ -386,14 +280,15 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
                 disabled={loading}
                 className="w-full"
               >
+                <RefreshCw className="h-4 w-4 mr-2" />
                 {loading ? "Verificando..." : "Verificar Status do Pagamento"}
               </Button>
             </div>
           </div>
 
           {isOverdue && (
-            <div className="p-3 border border-red-200 bg-red-50 rounded-lg">
-              <p className="text-sm text-red-800">
+            <div className="p-3 border border-destructive/30 bg-destructive/5 rounded-lg">
+              <p className="text-sm text-destructive">
                 <Calendar className="h-4 w-4 inline mr-2" />
                 Esta fatura está vencida. Entre em contato com seu professor se houver dúvidas.
               </p>

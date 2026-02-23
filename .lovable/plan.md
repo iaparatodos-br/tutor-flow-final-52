@@ -1,25 +1,71 @@
 
 
-## Bloquear edicao de email do aluno no formulario de edicao
+## Adicionar flag de geracao automatica de boleto
 
-### Contexto
+### O que sera feito
 
-O email do aluno e usado como credencial de login no `auth.users` do Supabase. Ao editar um aluno existente, o formulario atualmente permite alterar o email, mas isso so atualizaria dados superficiais sem alterar o `auth.users`, causando:
-- Divergencia entre o email de login e o email no `profiles`
-- Quebra no fluxo de convite e verificacao
-- Problemas em notificacoes e relacionamentos que dependem do email
+Adicionar uma opcao nas configuracoes de cobranca que permite o professor desativar a geracao automatica de boletos pelo Stripe. As faturas continuarao sendo criadas normalmente, mas o sistema nao gerara boleto no Stripe quando a flag estiver desativada.
 
-### Alteracao
+### Alteracoes
 
-**`src/components/StudentFormModal.tsx`** (linha ~412-421):
+**1. Banco de dados (migracao)**
 
-1. No campo de email, adicionar `disabled={isEditing}` e a classe `bg-muted` quando em modo de edicao, seguindo o mesmo padrao ja usado no `ProfileSettings.tsx`.
+Adicionar coluna `auto_generate_boleto` na tabela `business_profiles`:
+- Tipo: `boolean`
+- Default: `true` (comportamento atual mantido)
+- Not null
 
-2. Adicionar uma mensagem explicativa abaixo do campo quando em edicao, informando que o email nao pode ser alterado pois e a credencial de acesso do aluno.
+**2. Frontend - `src/components/Settings/BillingSettings.tsx`**
+
+- Adicionar estado local `autoGenerateBoleto` (booleano)
+- Carregar o valor da coluna `auto_generate_boleto` junto com `charge_timing` na query existente do `business_profiles`
+- Renderizar um novo card (ou secao dentro do card existente de cobranca) com um `Switch` do shadcn/ui
+- Titulo: "Geracao automatica de boletos"
+- Descricao: "Quando desativado, as faturas serao criadas normalmente mas sem gerar boleto no Stripe. Util para professores que geram boletos diretamente no banco."
+- Salvar o valor junto com os demais campos no `onSubmit`
+- Exibir apenas quando `businessProfileId` existir (mesmo padrao do card de charge timing)
+
+**3. Backend - `supabase/functions/automated-billing/index.ts`**
+
+Nos 3 pontos onde o boleto e gerado (aulas avulsas ~linha 543, mensalidades ~linha 854, e faturamento misto ~linha 970):
+- Antes de invocar `create-payment-intent-connect`, consultar `business_profiles.auto_generate_boleto` para o professor
+- Se `auto_generate_boleto === false`, pular a geracao do boleto com um log descritivo, da mesma forma que ja e feito para o `skipBoletoGeneration` por valor minimo
+- A query do business_profile ja existe na funcao (~linha 147); basta incluir `auto_generate_boleto` no select e propagar o valor
+
+**4. Internacionalizacao**
+
+Adicionar chaves nos arquivos de traducao `src/i18n/locales/pt/billing.json` e `src/i18n/locales/en/billing.json`:
+- `autoGenerateBoleto.title`
+- `autoGenerateBoleto.description`
+- `autoGenerateBoleto.enabled` / `autoGenerateBoleto.disabled`
+
+### Fluxo
+
+```text
+Professor desativa "Geracao automatica de boletos"
+           |
+           v
+  business_profiles.auto_generate_boleto = false
+           |
+           v
+  automated-billing roda no cron
+           |
+           v
+  Fatura criada normalmente (status 'pendente')
+           |
+           v
+  Verifica auto_generate_boleto => false
+           |
+           v
+  Pula chamada a create-payment-intent-connect
+  (log: "Boleto generation disabled by teacher")
+           |
+           v
+  Professor gera boleto no banco e marca fatura como paga manualmente
+```
 
 ### Detalhes tecnicos
 
-- `isEditing` ja existe no componente (linha ~82: `const isEditing = !!student`)
-- O padrao visual de campo desabilitado (`disabled` + `bg-muted`) ja e usado no `ProfileSettings.tsx` para o email do professor
-- Nenhuma outra alteracao e necessaria, pois a validacao do formulario ja ignora o email quando desabilitado
-
+- A coluna tera default `true` para nao alterar o comportamento de professores existentes
+- O componente `Switch` segue o padrao ja usado em `CancellationPolicySettings` para o toggle de anistia
+- A verificacao no backend sera feita apos o `skipBoletoGeneration` por valor minimo, adicionando uma condicao `OR` ou verificacao sequencial

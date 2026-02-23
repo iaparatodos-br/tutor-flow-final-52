@@ -259,7 +259,7 @@ export function SimpleCalendar({
       confirmada: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
       cancelada: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
       concluida: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400',
-      aguardando_pagamento: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400'
+      aguardando_pagamento: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400'
     };
     return colors[status as keyof typeof colors] || colors.pendente;
   };

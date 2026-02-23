@@ -108,7 +108,7 @@ export function MobileCalendarList({
       confirmada: 'bg-blue-500 text-white',
       cancelada: 'bg-slate-400 text-white',
       concluida: 'bg-emerald-500 text-white',
-      aguardando_pagamento: 'bg-indigo-500 text-white'
+      aguardando_pagamento: 'bg-violet-500 text-white'
     };
     return colors[status as keyof typeof colors] || colors.pendente;
   };

@@ -898,9 +898,6 @@ export default function Alunos() {
                             </Tooltip>
                           </TooltipProvider>
                         </TableCell>
-                        <TableCell>
-                          <span className="text-muted-foreground text-sm">—</span>
-                        </TableCell>
                         {hasFeature('financial_module') &&
                       <>
                             <TableCell>
@@ -911,9 +908,6 @@ export default function Alunos() {
                             <TableCell>—</TableCell>
                           </>
                       }
-                        <TableCell>
-                          {dep.created_at ? new Date(dep.created_at).toLocaleDateString('pt-BR') : '—'}
-                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <Button

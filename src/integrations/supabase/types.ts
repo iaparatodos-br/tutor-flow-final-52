@@ -127,6 +127,7 @@ export type Database = {
       }
       business_profiles: {
         Row: {
+          auto_generate_boleto: boolean
           business_name: string
           charge_timing: string
           cnpj: string | null
@@ -138,6 +139,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_generate_boleto?: boolean
           business_name: string
           charge_timing?: string
           cnpj?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_generate_boleto?: boolean
           business_name?: string
           charge_timing?: string
           cnpj?: string | null

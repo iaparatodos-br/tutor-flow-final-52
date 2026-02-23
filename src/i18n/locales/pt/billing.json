@@ -47,6 +47,12 @@
     "save": "Salvar Configurações",
     "saving": "Salvando..."
   },
+  "autoGenerateBoleto": {
+    "title": "Geração automática de boletos",
+    "description": "Quando desativado, as faturas serão criadas normalmente mas sem gerar boleto no Stripe. Útil para professores que geram boletos diretamente no banco.",
+    "enabled": "Boletos serão gerados automaticamente",
+    "disabled": "Boletos não serão gerados automaticamente"
+  },
   "messages": {
     "updateSuccess": "Configurações atualizadas",
     "updateSuccessDescription": "Suas configurações de cobrança foram salvas com sucesso.",

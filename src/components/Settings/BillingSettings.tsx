@@ -9,9 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { DollarSign, Calendar, Loader2, Info, CreditCard, Clock } from "lucide-react";
+import { DollarSign, Calendar, Loader2, Info, CreditCard, Clock, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 export function BillingSettings() {
   const { profile } = useProfile();
@@ -20,6 +21,7 @@ export function BillingSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [chargeTiming, setChargeTiming] = useState<'prepaid' | 'postpaid'>('postpaid');
+  const [autoGenerateBoleto, setAutoGenerateBoleto] = useState(true);
   const [businessProfileId, setBusinessProfileId] = useState<string | null>(null);
 
   const billingSchema = z.object({
@@ -60,7 +62,7 @@ export function BillingSettings() {
 
       const { data: bpData, error: bpError } = await supabase
         .from('business_profiles')
-        .select('id, charge_timing')
+        .select('id, charge_timing, auto_generate_boleto')
         .eq('user_id', profile!.id)
         .maybeSingle();
 
@@ -69,6 +71,7 @@ export function BillingSettings() {
       } else if (bpData) {
         setBusinessProfileId(bpData.id);
         setChargeTiming((bpData.charge_timing as 'prepaid' | 'postpaid') || 'postpaid');
+        setAutoGenerateBoleto((bpData as any).auto_generate_boleto ?? true);
       }
     } catch (error) {
       console.error('Erro ao carregar configurações de cobrança:', error);
@@ -100,7 +103,7 @@ export function BillingSettings() {
       if (businessProfileId) {
         const { error: bpError } = await supabase
           .from('business_profiles')
-          .update({ charge_timing: chargeTiming })
+          .update({ charge_timing: chargeTiming, auto_generate_boleto: autoGenerateBoleto } as any)
           .eq('id', businessProfileId);
 
         if (bpError) throw bpError;
@@ -202,6 +205,34 @@ export function BillingSettings() {
                   <p className="text-sm font-medium text-foreground">{t('chargeTiming.infoTitle')}</p>
                   <p className="text-sm text-muted-foreground mt-1">{t('chargeTiming.infoContent')}</p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Auto Generate Boleto Card */}
+        {businessProfileId && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                {t('autoGenerateBoleto.title')}
+              </CardTitle>
+              <CardDescription>
+                {t('autoGenerateBoleto.description')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-foreground">
+                    {autoGenerateBoleto ? t('autoGenerateBoleto.enabled') : t('autoGenerateBoleto.disabled')}
+                  </p>
+                </div>
+                <Switch
+                  checked={autoGenerateBoleto}
+                  onCheckedChange={setAutoGenerateBoleto}
+                />
               </div>
             </CardContent>
           </Card>

@@ -47,6 +47,12 @@
     "save": "Save Settings",
     "saving": "Saving..."
   },
+  "autoGenerateBoleto": {
+    "title": "Automatic boleto generation",
+    "description": "When disabled, invoices will be created normally but without generating a boleto on Stripe. Useful for teachers who generate boletos directly at their bank.",
+    "enabled": "Boletos will be generated automatically",
+    "disabled": "Boletos will not be generated automatically"
+  },
   "messages": {
     "updateSuccess": "Settings updated",
     "updateSuccessDescription": "Your billing settings have been saved successfully.",

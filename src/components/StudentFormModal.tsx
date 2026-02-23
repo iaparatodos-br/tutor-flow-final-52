@@ -415,9 +415,15 @@ export function StudentFormModal({
                       placeholder={t('placeholders.emailExample')}
                       value={formData.email}
                       onChange={(e) => handleEmailChange(e.target.value)}
-                      className={validationErrors.email ? "border-destructive" : ""}
+                      className={`${validationErrors.email ? "border-destructive" : ""} ${isEditing ? "bg-muted" : ""}`}
                       required
+                      disabled={isEditing}
                     />
+                    {isEditing && (
+                      <p className="text-xs text-muted-foreground">
+                        {t('form.emailCannotBeChanged', 'O e-mail não pode ser alterado pois é a credencial de acesso do aluno.')}
+                      </p>
+                    )}
                   </div>
 
                   <Separator />

@@ -74,3 +74,9 @@ verify_jwt = false
 
 [functions.generate-teacher-notifications]
 verify_jwt = false
+
+[functions.list-business-profiles]
+verify_jwt = false
+
+[functions.check-email-confirmation]
+verify_jwt = false

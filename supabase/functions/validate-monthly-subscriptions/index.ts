@@ -61,38 +61,6 @@ serve(async (req) => {
       });
     }
 
-    // ========== V02: Regra Limite/Excedente ==========
-    console.log("V02: Checking limit/overage rule...");
-    const { data: noOverage, error: v02Error } = await supabaseClient
-      .from('monthly_subscriptions')
-      .select('id, name, max_classes, overage_price')
-      .not('max_classes', 'is', null)
-      .is('overage_price', null);
-
-    if (v02Error) {
-      validations.push({
-        code: 'V02',
-        name: 'Regra Limite/Excedente',
-        status: 'error',
-        message: `Erro na query: ${v02Error.message}`
-      });
-    } else if (noOverage && noOverage.length > 0) {
-      validations.push({
-        code: 'V02',
-        name: 'Regra Limite/Excedente',
-        status: 'warning',
-        message: `${noOverage.length} mensalidades com limite mas sem preço de excedente`,
-        details: noOverage
-      });
-    } else {
-      validations.push({
-        code: 'V02',
-        name: 'Regra Limite/Excedente',
-        status: 'success',
-        message: 'Todas mensalidades com limite têm preço de excedente definido'
-      });
-    }
-
     // ========== V03: Duplicatas de Atribuição ==========
     console.log("V03: Checking assignment duplicates...");
     const { data: activeAssignments, error: v03Error } = await supabaseClient

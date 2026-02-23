@@ -89,9 +89,6 @@ export function MonthlySubscriptionsManager() {
           name: data.name,
           description: data.description || "",
           price: data.price,
-          hasLimit: data.hasLimit,
-          maxClasses: data.maxClasses,
-          overagePrice: data.overagePrice,
           selectedStudents: []
         }
       });
@@ -100,9 +97,6 @@ export function MonthlySubscriptionsManager() {
         name: data.name,
         description: data.description || "",
         price: data.price,
-        hasLimit: data.hasLimit,
-        maxClasses: data.maxClasses,
-        overagePrice: data.overagePrice,
         selectedStudents: []
       });
     }
@@ -259,9 +253,7 @@ export function MonthlySubscriptionsManager() {
               </Badge>
             </DialogTitle>
             <DialogDescription>
-              {viewingSubscription?.max_classes 
-                ? t('list.classesLimit', { count: viewingSubscription.max_classes })
-                : t('list.unlimited')}
+              {t('list.studentsCount', { count: assignedStudents?.length || 0 })}
             </DialogDescription>
           </DialogHeader>
 
@@ -301,16 +293,13 @@ export function MonthlySubscriptionsManager() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {viewingSubscription?.max_classes ? (
+                        {student.classes_used > 0 ? (
                           <span className="text-sm">
-                            {t('list.classesUsed', { 
-                              used: student.classes_used, 
-                              limit: viewingSubscription.max_classes 
-                            })}
+                            {student.classes_used} aulas
                           </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">
-                            {t('list.classesUsedUnlimited', { used: student.classes_used })}
+                            0 aulas
                           </span>
                         )}
                       </TableCell>

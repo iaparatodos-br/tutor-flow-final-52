@@ -1,12 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { 
   Edit, 
   Users, 
   UserPlus,
-  Infinity, 
   DollarSign,
   ToggleLeft,
   ToggleRight
@@ -57,9 +55,8 @@ export function MonthlySubscriptionCard({
               </p>
             )}
 
-            {/* Price and Limits */}
+            {/* Price */}
             <div className="flex items-center gap-6 text-sm flex-wrap">
-              {/* Price */}
               <div className="flex items-center gap-1.5">
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
                 <span className="font-semibold text-lg">
@@ -67,33 +64,6 @@ export function MonthlySubscriptionCard({
                 </span>
                 <span className="text-muted-foreground">{t('list.perMonth')}</span>
               </div>
-
-              {/* Class Limit */}
-              <div className="flex items-center gap-1.5">
-                {subscription.max_classes ? (
-                  <>
-                    <span className="text-muted-foreground">
-                      {t('list.classesLimit', { count: subscription.max_classes })}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Infinity className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{t('list.unlimited')}</span>
-                  </>
-                )}
-              </div>
-
-              {/* Overage Price */}
-              {subscription.max_classes && (
-                <div className="text-muted-foreground">
-                  {subscription.overage_price ? (
-                    t('list.overage', { price: formatPrice(subscription.overage_price).replace('R$', '').trim() })
-                  ) : (
-                    t('list.noOverage')
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Students Count */}

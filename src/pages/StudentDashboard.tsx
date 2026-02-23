@@ -7,10 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Progress } from "@/components/ui/progress";
+
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Download, FileText, Clock, AlertCircle, Calendar, BookOpen, User, Mail, GraduationCap, Baby, Package, Infinity } from "lucide-react";
+import { Download, FileText, Clock, AlertCircle, Calendar, BookOpen, User, Mail, GraduationCap, Baby, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -68,7 +68,6 @@ interface ActiveSubscription {
   subscription_name: string;
   teacher_name: string;
   price: number;
-  max_classes: number | null;
   classes_used: number;
   starts_at: string;
 }
@@ -267,7 +266,6 @@ export default function StudentDashboard() {
             id,
             name,
             price,
-            max_classes,
             teacher_id
           )
         `)
@@ -313,7 +311,6 @@ export default function StudentDashboard() {
           subscription_name: sub.name,
           teacher_name: teacher?.name || 'Professor',
           price: sub.price,
-          max_classes: sub.max_classes,
           classes_used: classesUsed || 0,
           starts_at: subscription.starts_at
         });
@@ -913,10 +910,6 @@ export default function StudentDashboard() {
       }).format(value);
     };
 
-    const progressValue = activeSubscription.max_classes 
-      ? Math.min((activeSubscription.classes_used / activeSubscription.max_classes) * 100, 100)
-      : 0;
-
     return (
       <Card className="shadow-card border-primary/20">
         <CardHeader className="pb-3">
@@ -941,27 +934,6 @@ export default function StudentDashboard() {
               <span className="text-xs font-normal ml-1">/mês</span>
             </Badge>
           </div>
-
-          {activeSubscription.max_classes ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {t('monthlySubscriptions:studentView.classesRemaining', { 
-                    remaining: Math.max(0, activeSubscription.max_classes - activeSubscription.classes_used)
-                  })}
-                </span>
-                <span className="font-medium">
-                  {activeSubscription.classes_used}/{activeSubscription.max_classes}
-                </span>
-              </div>
-              <Progress value={progressValue} className="h-2" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Infinity className="h-4 w-4" />
-              {t('monthlySubscriptions:studentView.unlimitedClasses')}
-            </div>
-          )}
 
           <div className="pt-2 border-t text-xs text-muted-foreground">
             {t('monthlySubscriptions:studentView.since')} {format(new Date(activeSubscription.starts_at), "dd/MM/yyyy")}

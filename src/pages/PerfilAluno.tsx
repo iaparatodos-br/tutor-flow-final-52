@@ -126,8 +126,6 @@ export default function PerfilAluno() {
   const [activeSubscription, setActiveSubscription] = useState<{
     id: string;
     name: string;
-    max_classes: number | null;
-    classes_used: number;
   } | null>(null);
   
   // Dependent states
@@ -168,27 +166,16 @@ export default function PerfilAluno() {
 
       const { data: sub } = await supabase
         .from('student_monthly_subscriptions')
-        .select('id, starts_at, monthly_subscriptions(name, max_classes)')
+        .select('id, starts_at, monthly_subscriptions(name)')
         .eq('relationship_id', rel.id)
         .eq('is_active', true)
         .is('ends_at', null)
         .maybeSingle();
 
       if (sub?.monthly_subscriptions) {
-        const { count } = await supabase
-          .from('class_participants')
-          .select('id, classes!inner(teacher_id, is_experimental)', { count: 'exact', head: true })
-          .eq('student_id', id)
-          .eq('classes.teacher_id', profile.id)
-          .eq('classes.is_experimental', false)
-          .gte('classes.class_date', sub.starts_at)
-          .in('status', ['concluida', 'confirmada', 'pendente']);
-
         setActiveSubscription({
           id: sub.id,
           name: sub.monthly_subscriptions.name,
-          max_classes: sub.monthly_subscriptions.max_classes,
-          classes_used: count || 0
         });
       }
     } catch (e) {

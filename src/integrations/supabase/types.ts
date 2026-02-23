@@ -1217,9 +1217,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
-          max_classes: number | null
           name: string
-          overage_price: number | null
           price: number
           teacher_id: string
           updated_at: string
@@ -1229,9 +1227,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
-          max_classes?: number | null
           name: string
-          overage_price?: number | null
           price?: number
           teacher_id: string
           updated_at?: string
@@ -1241,9 +1237,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
-          max_classes?: number | null
           name?: string
-          overage_price?: number | null
           price?: number
           teacher_id?: string
           updated_at?: string
@@ -2297,8 +2291,6 @@ export type Database = {
       get_student_active_subscription: {
         Args: { p_relationship_id: string }
         Returns: {
-          max_classes: number
-          overage_price: number
           price: number
           starts_at: string
           student_subscription_id: string
@@ -2306,20 +2298,33 @@ export type Database = {
           subscription_name: string
         }[]
       }
-      get_student_subscription_details: {
-        Args: { p_student_id: string }
-        Returns: {
-          classes_used: number
-          max_classes: number
-          overage_price: number
-          price: number
-          relationship_id: string
-          starts_at: string
-          subscription_name: string
-          teacher_id: string
-          teacher_name: string
-        }[]
-      }
+      get_student_subscription_details:
+        | {
+            Args: { p_student_id: string }
+            Returns: {
+              classes_used: number
+              max_classes: number
+              overage_price: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
+        | {
+            Args: { p_student_id: string; p_teacher_id: string }
+            Returns: {
+              classes_used: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {
@@ -2356,11 +2361,11 @@ export type Database = {
           description: string
           id: string
           is_active: boolean
-          max_classes: number
           name: string
-          overage_price: number
           price: number
           students_count: number
+          teacher_id: string
+          updated_at: string
         }[]
       }
       get_teacher_dependents: {

@@ -126,8 +126,6 @@ export function useCreateMonthlySubscription() {
           name: formData.name,
           description: formData.description || null,
           price: formData.price,
-          max_classes: formData.maxClasses,
-          overage_price: formData.overagePrice,
           is_active: true,
         })
         .select()
@@ -185,10 +183,6 @@ export function useUpdateMonthlySubscription() {
       if (formData.name !== undefined) updateData.name = formData.name;
       if (formData.description !== undefined) updateData.description = formData.description || null;
       if (formData.price !== undefined) updateData.price = formData.price;
-      if (formData.hasLimit !== undefined) {
-        updateData.max_classes = formData.hasLimit ? formData.maxClasses : null;
-        updateData.overage_price = formData.hasLimit ? formData.overagePrice : null;
-      }
 
       const { data, error } = await supabase
         .from('monthly_subscriptions')

@@ -13,19 +13,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage } from
 "@/components/ui/form";
-import { Loader2, Info } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   monthlySubscriptionSchema,
   type MonthlySubscriptionFormSchema } from
@@ -56,9 +53,6 @@ export function MonthlySubscriptionModal({
       name: "",
       description: "",
       price: 0,
-      hasLimit: false,
-      maxClasses: null,
-      overagePrice: null,
       selectedStudents: []
     }
   });
@@ -71,9 +65,6 @@ export function MonthlySubscriptionModal({
           name: subscription.name,
           description: subscription.description || "",
           price: subscription.price,
-          hasLimit: subscription.max_classes !== null,
-          maxClasses: subscription.max_classes,
-          overagePrice: subscription.overage_price,
           selectedStudents: []
         });
       } else {
@@ -81,16 +72,11 @@ export function MonthlySubscriptionModal({
           name: "",
           description: "",
           price: 0,
-          hasLimit: false,
-          maxClasses: null,
-          overagePrice: null,
           selectedStudents: []
         });
       }
     }
   }, [open, subscription, form]);
-
-  const hasLimit = form.watch("hasLimit");
 
   const handleSubmit = async (data: MonthlySubscriptionFormSchema) => {
     await onSubmit(data);
@@ -123,12 +109,10 @@ export function MonthlySubscriptionModal({
                     <Input
                     placeholder={t('fields.namePlaceholder')}
                     {...field} />
-
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               } />
-
 
             {/* Description */}
             <FormField
@@ -142,12 +126,10 @@ export function MonthlySubscriptionModal({
                     placeholder={t('fields.descriptionPlaceholder')}
                     {...field}
                     rows={2} />
-
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               } />
-
 
             {/* Price */}
             <FormField
@@ -164,95 +146,10 @@ export function MonthlySubscriptionModal({
                     placeholder={t('fields.pricePlaceholder')}
                     {...field}
                     onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
-
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               } />
-
-
-            {/* Has Limit Toggle */}
-            <FormField
-              control={form.control}
-              name="hasLimit"
-              render={({ field }) =>
-              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>{t('fields.hasLimit')}</FormLabel>
-                    <FormDescription className="text-xs">
-                      {t('info.ignoreCancellations')}
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                    checked={field.value}
-                    onCheckedChange={field.onChange} />
-
-                  </FormControl>
-                </FormItem>
-              } />
-
-
-            {/* Conditional fields when hasLimit is true */}
-            {hasLimit &&
-            <div className="space-y-4 pl-4 border-l-2 border-primary/20">
-                {/* Max Classes */}
-                <FormField
-                control={form.control}
-                name="maxClasses"
-                render={({ field }) =>
-                <FormItem>
-                      <FormLabel>{t('fields.maxClasses')}</FormLabel>
-                      <FormControl>
-                        <Input
-                      type="number"
-                      min="1"
-                      placeholder={t('fields.maxClassesPlaceholder')}
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)} />
-
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                } />
-
-
-                {/* Overage Price */}
-                <FormField
-                control={form.control}
-                name="overagePrice"
-                render={({ field }) =>
-                <FormItem>
-                      <FormLabel>{t('fields.overagePrice')}</FormLabel>
-                      <FormControl>
-                        <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder={t('fields.overagePricePlaceholder')}
-                      {...field}
-                      value={field.value ?? ""}
-                      onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)} />
-
-                      </FormControl>
-                      <FormDescription className="text-xs">
-                        {t('info.overageExplanation')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                } />
-
-              </div>
-            }
-
-            {/* Info Alert */}
-            
-
-
-
-
-
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button
@@ -260,7 +157,6 @@ export function MonthlySubscriptionModal({
                 variant="outline"
                 onClick={onClose}
                 disabled={isSubmitting}>
-
                 {t('actions.cancel')}
               </Button>
               <Button type="submit" disabled={isSubmitting}>
@@ -269,7 +165,6 @@ export function MonthlySubscriptionModal({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {t('actions.saving')}
                   </> :
-
                 isEditing ? t('actions.update') : t('actions.create')
                 }
               </Button>
@@ -278,5 +173,4 @@ export function MonthlySubscriptionModal({
         </Form>
       </DialogContent>
     </Dialog>);
-
 }

@@ -53,6 +53,24 @@ serve(async (req) => {
       });
     }
 
+    // Verificar se o professor desativou a geração automática de boleto
+    const { data: businessProfile } = await supabaseClient
+      .from('business_profiles')
+      .select('auto_generate_boleto')
+      .eq('user_id', invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    if (businessProfile?.auto_generate_boleto === false) {
+      logStep("Boleto generation disabled by teacher settings", { teacherId: invoiceRaw.teacher_id });
+      return new Response(JSON.stringify({
+        success: false,
+        error: "A geração automática de boletos está desativada pelo professor. Entre em contato com seu professor para obter os dados de pagamento."
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     const { data: studentProfile } = await supabaseClient
       .from("profiles")
       .select("id, name, email, cpf, address_street, address_city, address_state, address_postal_code, address_complete")

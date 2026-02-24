@@ -259,6 +259,7 @@ export function BillingSettings() {
                       type="number"
                       min="1"
                       max="90"
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       {...field}
                       onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
                     />
@@ -283,6 +284,7 @@ export function BillingSettings() {
                       type="number"
                       min="1"
                       max="28"
+                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       placeholder={t('fields.defaultBillingDay.placeholder')}
                       {...field}
                       value={field.value || ""}

@@ -147,15 +147,17 @@ serve(async (req) => {
       .eq('teacher_id', user.id)
       .single();
 
-    // Fetch enabled_payment_methods separately (Etapa 0.6)
+    // Fetch enabled_payment_methods and auto_generate_boleto separately (Etapa 0.6)
     let enabledPaymentMethods: string[] | null = null;
+    let autoGenerateBoleto = true;
     if (relationship?.business_profile_id) {
       const { data: bp } = await supabaseClient
         .from('business_profiles')
-        .select('enabled_payment_methods')
+        .select('enabled_payment_methods, auto_generate_boleto')
         .eq('id', relationship.business_profile_id)
         .maybeSingle();
       enabledPaymentMethods = bp?.enabled_payment_methods || null;
+      autoGenerateBoleto = bp?.auto_generate_boleto ?? true;
     }
 
     if (relationshipError || !relationship) {
@@ -423,7 +425,11 @@ serve(async (req) => {
       let selectedPaymentMethod: string | null = null;
       const MINIMUM_BOLETO_AMOUNT = 5.00;
       
-      if (enabledMethods.includes('boleto') && body.amount >= MINIMUM_BOLETO_AMOUNT) {
+      // Se professor desativou geração automática de boleto, não gerar pagamento
+      if (!autoGenerateBoleto) {
+        selectedPaymentMethod = null;
+        logStep("Boleto generation disabled by teacher settings (auto_generate_boleto = false)");
+      } else if (enabledMethods.includes('boleto') && body.amount >= MINIMUM_BOLETO_AMOUNT) {
         selectedPaymentMethod = 'boleto';
       } else if (enabledMethods.includes('pix')) {
         selectedPaymentMethod = 'pix';

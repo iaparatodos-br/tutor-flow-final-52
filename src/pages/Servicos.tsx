@@ -1,6 +1,7 @@
 import { Layout } from "@/components/Layout";
 import { ClassServicesManager } from "@/components/ClassServicesManager";
 import { MonthlySubscriptionsManager } from "@/components/MonthlySubscriptionsManager";
+import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslation } from "react-i18next";
 
@@ -14,12 +15,16 @@ export default function Servicos() {
           <TabsList className="mb-4">
             <TabsTrigger value="services">{t('tabs.services')}</TabsTrigger>
             <TabsTrigger value="subscriptions">{t('tabs.subscriptions')}</TabsTrigger>
+            <TabsTrigger value="settings">{t('tabs.settings')}</TabsTrigger>
           </TabsList>
           <TabsContent value="services">
             <ClassServicesManager />
           </TabsContent>
           <TabsContent value="subscriptions">
             <MonthlySubscriptionsManager />
+          </TabsContent>
+          <TabsContent value="settings">
+            <BillingSettings />
           </TabsContent>
         </Tabs>
       </div>

@@ -22,6 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FeatureGate } from "@/components/FeatureGate";
 import { CreateInvoiceModal } from "@/components/CreateInvoiceModal";
+import { BusinessProfilesManager } from "@/components/BusinessProfilesManager";
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTranslation } from "react-i18next";
@@ -505,9 +506,10 @@ export default function Financeiro() {
 
         {/* Tabs for professors, single view for students */}
         {isProfessor ? <Tabs defaultValue="receitas" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="receitas">Receitas</TabsTrigger>
               <TabsTrigger value="despesas">Despesas</TabsTrigger>
+              <TabsTrigger value="contas">{t('paymentAccounts')}</TabsTrigger>
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
@@ -658,6 +660,10 @@ export default function Financeiro() {
             
             <TabsContent value="despesas" className="space-y-4">
               <ExpenseList />
+            </TabsContent>
+
+            <TabsContent value="contas" className="space-y-4">
+              <BusinessProfilesManager />
             </TabsContent>
           </Tabs> : <Card className="shadow-card">
             <CardHeader>

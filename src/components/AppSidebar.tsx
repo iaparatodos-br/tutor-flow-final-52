@@ -31,6 +31,10 @@ const getProfessorItems = (t: any) => [{
   url: "/financeiro",
   icon: DollarSign
 }, {
+  title: t('navigation:sidebar.services'),
+  url: "/servicos",
+  icon: Package
+}, {
   title: t('navigation:sidebar.history'),
   url: "/historico",
   icon: Archive

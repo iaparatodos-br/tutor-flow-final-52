@@ -4,7 +4,8 @@
   "edit": "Edit Subscription",
   "tabs": {
     "services": "Services",
-    "subscriptions": "Subscriptions"
+    "subscriptions": "Subscriptions",
+    "settings": "Settings"
   },
   "fields": {
     "name": "Plan Name",

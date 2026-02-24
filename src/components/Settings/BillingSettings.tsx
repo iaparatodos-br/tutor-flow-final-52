@@ -289,8 +289,15 @@ export function BillingSettings() {
                       {...field}
                       value={field.value || ""}
                       onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value ? parseInt(value) : null);
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          field.onChange(null);
+                          return;
+                        }
+                        const num = parseInt(raw);
+                        if (!isNaN(num)) {
+                          field.onChange(Math.min(28, Math.max(1, num)));
+                        }
                       }}
                     />
                   </FormControl>

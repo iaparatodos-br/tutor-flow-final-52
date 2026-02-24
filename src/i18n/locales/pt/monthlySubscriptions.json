@@ -4,7 +4,8 @@
   "edit": "Editar Mensalidade",
   "tabs": {
     "services": "Serviços",
-    "subscriptions": "Mensalidades"
+    "subscriptions": "Mensalidades",
+    "settings": "Configurações"
   },
   "fields": {
     "name": "Nome do Plano",

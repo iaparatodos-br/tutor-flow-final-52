@@ -114,8 +114,8 @@ serve(async (req) => {
     // Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({
       account: stripeAccount.id,
-      refresh_url: `${origin}/painel/configuracoes/negocios?refresh=true`,
-      return_url: `${origin}/painel/configuracoes/negocios?success=true`,
+      refresh_url: `${origin}/financeiro?refresh=true`,
+      return_url: `${origin}/financeiro?success=true`,
       type: "account_onboarding",
     });
 

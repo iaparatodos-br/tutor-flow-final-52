@@ -296,7 +296,13 @@ export function BillingSettings() {
                         }
                         const num = parseInt(raw);
                         if (!isNaN(num)) {
-                          field.onChange(Math.min(28, Math.max(1, num)));
+                          field.onChange(num);
+                        }
+                      }}
+                      onBlur={() => {
+                        field.onBlur();
+                        if (field.value != null) {
+                          field.onChange(Math.min(28, Math.max(1, field.value)));
                         }
                       }}
                     />

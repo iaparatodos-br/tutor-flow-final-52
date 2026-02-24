@@ -1,39 +1,58 @@
 
-
-## Remover opcoes de PIX e Cartao de Credito da interface do aluno
+## Bloquear geração de boleto nos fluxos de fatura manual e pagamento pelo aluno
 
 ### Problema
 
-O sistema foi simplificado para oferecer apenas boleto como metodo de pagamento, mas a interface do aluno ainda mostra opcoes de PIX e Cartao de Credito, alem de ter um botao de "Trocar Metodo de Pagamento" que nao faz mais sentido.
+A flag `auto_generate_boleto` foi implementada apenas no `automated-billing`. Os dois outros pontos de entrada para geração de boleto continuam ignorando essa configuração:
 
-### Alteracoes
+1. **Fatura manual** (`create-invoice`): Quando o professor cria uma fatura manual, a função gera boleto automaticamente no Stripe sem verificar a flag.
+2. **Pagamento pelo aluno** (`generate-boleto-for-invoice`): Quando o aluno clica em "Pagar", a função gera boleto sem verificar a flag.
 
-**1. `src/components/PaymentOptionsCard.tsx`**
+### Alterações
 
-- Remover toda a secao de PIX (linhas 313-352) com botao "Gerar PIX" e exibicao de QR code
-- Remover toda a secao de Cartao de Credito (linhas 354-377) com botao "Pagar"
-- Remover o titulo "Opcoes de Pagamento" com icone de CreditCard, ja que so tera boleto
-- Remover os branches de `card` e `pix` dentro da funcao `createPaymentIntent` (linhas 131-145)
-- Remover imports nao utilizados: `QrCode`, `CreditCard`, `Input`
-- Remover estados desnecessarios: `payerTaxId`, `payerAddress`, `activePaymentMethod`
-- Manter apenas a secao de Boleto Bancario (exibicao do boleto existente ou mensagem de indisponivel)
-- Manter o botao "Verificar Status do Pagamento"
+**1. `supabase/functions/create-invoice/index.ts`**
 
-**2. `src/pages/Faturas.tsx`**
+Na linha ~152, onde o `business_profiles` já é consultado, adicionar `auto_generate_boleto` ao `select`:
 
-- Remover o botao de "Trocar Metodo de Pagamento" (icone RefreshCw, linhas 371-379)
-- Remover o Dialog de "Change Payment Method" (linhas 420-456)
-- Remover a funcao `handleChangePaymentMethod` (linhas 157-192)
-- Remover a funcao `openChangeMethodDialog` (linhas 152-155)
-- Remover a funcao `canChangePaymentMethod` (linhas 201-204)
-- Remover a funcao `handleChoosePaymentMethod` (linhas 135-146)
-- Remover estados: `changeMethodDialogOpen`, `selectedInvoice`, `changingMethod`
-- Remover imports nao utilizados: `Dialog`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `RefreshCw`, `Loader2`
-- Simplificar a coluna de acoes: faturas pendentes com boleto mostram apenas "Pagar" (abre boleto_url), sem boleto mostram "Aguardando boleto" ou similar
+```
+.select('enabled_payment_methods, auto_generate_boleto')
+```
+
+Na linha ~423, antes de determinar o `selectedPaymentMethod`, verificar a flag:
+
+```typescript
+// Se professor desativou geração automática de boleto, não gerar pagamento
+if (bp?.auto_generate_boleto === false) {
+  selectedPaymentMethod = null;
+  logStep("Boleto generation disabled by teacher settings");
+}
+```
+
+Isso fará com que a fatura seja criada normalmente (status "pendente") mas sem boleto vinculado. O aluno verá "Aguardando boleto" na listagem.
+
+**2. `supabase/functions/generate-boleto-for-invoice/index.ts`**
+
+Após buscar a fatura (linha ~54), adicionar consulta ao `business_profiles` do professor para verificar a flag:
+
+```typescript
+const { data: businessProfile } = await supabaseClient
+  .from('business_profiles')
+  .select('auto_generate_boleto')
+  .eq('user_id', invoice.teacher_id)
+  .maybeSingle();
+
+if (businessProfile?.auto_generate_boleto === false) {
+  return Response com erro:
+  "A geração automática de boletos está desativada pelo professor. 
+   Entre em contato com seu professor para obter os dados de pagamento."
+}
+```
+
+Isso impede que o aluno force a geração de boleto pelo Stripe quando o professor optou por emiti-los externamente.
 
 ### Resultado esperado
 
-- Aluno ve apenas a opcao de boleto na interface
-- Se o boleto esta disponivel, ve o botao para abrir/baixar
-- Se o boleto nao esta disponivel (professor desativou geracao automatica), ve uma mensagem orientando a entrar em contato com o professor
-- Sem botoes de PIX, Cartao ou troca de metodo de pagamento
+- Professor com `auto_generate_boleto = false` cria fatura manual: fatura criada sem boleto
+- Aluno vê fatura com mensagem "Aguardando boleto" (sem botão de pagar)
+- Caso o aluno tente chamar `generate-boleto-for-invoice` diretamente, recebe erro explicativo
+- Professores com a flag ativada (default) continuam com comportamento normal

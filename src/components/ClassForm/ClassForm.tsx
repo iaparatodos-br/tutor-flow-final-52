@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { TimePicker } from '@/components/ui/time-picker';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -641,12 +642,11 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
             <div>
               <Label htmlFor="time">{t('fields.time')} * <span className="text-xs text-muted-foreground">{t('brasilia_timezone')}</span></Label>
-              <Input
+              <TimePicker
                 id="time"
-                type="time"
                 value={formData.time}
-                onChange={(e) => {
-                  setFormData(prev => ({ ...prev, time: e.target.value }));
+                onChange={(val) => {
+                  setFormData(prev => ({ ...prev, time: val }));
                   setValidationErrors(prev => ({ ...prev, time: false, timeConflict: false }));
                 }}
                 className={validationErrors.time || validationErrors.timeConflict ? "border-destructive" : ""}

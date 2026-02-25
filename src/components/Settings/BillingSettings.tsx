@@ -259,6 +259,7 @@ export function BillingSettings() {
                       type="number"
                       min="1"
                       max="90"
+                      placeholder="15"
                       className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       {...field}
                       value={field.value ?? ""}
@@ -275,10 +276,8 @@ export function BillingSettings() {
                       }}
                       onBlur={() => {
                         field.onBlur();
-                        if (!field.value || field.value < 1) {
-                          field.onChange(1);
-                        } else if (field.value > 90) {
-                          field.onChange(90);
+                        if (field.value != null) {
+                          field.onChange(Math.min(90, Math.max(1, field.value)));
                         }
                       }}
                     />

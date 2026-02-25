@@ -1,6 +1,6 @@
 # Plano de Testes E2E Definitivo — Tutor Flow (Go-Live MVP)
 
-> **Objetivo:** Homologação E2E manual cobrindo 84 fluxos de alto risco, integrações financeiras, segurança (RLS) e usabilidade antes do lançamento em produção.
+> **Objetivo:** Homologação E2E manual cobrindo **100 fluxos** de alto risco, integrações financeiras, segurança (RLS) e usabilidade antes do lançamento em produção.
 > **Estratégia:** Abordagem orientada a risco. Regras lógicas exaustivas estão cobertas por testes de unidade. Este plano foca em Caminhos Críticos (Golden Paths) e Edge Cases.
 > **Última atualização:** 2026-02-25
 
@@ -179,9 +179,32 @@
 
 ---
 
-## 🧪 Roteiros de Teste Otimizados (16 Sessões)
+## 💰 Categoria 7: Módulo Financeiro Detalhado
 
-> **Estratégia:** Os 84 cenários foram agrupados em **16 roteiros sequenciais**. Cada roteiro reutiliza o estado criado nos passos anteriores, eliminando setup redundante. O marcador `[#XX ✅]` indica qual cenário foi validado em cada passo.
+| #   | Código              | Descrição do Teste E2E                                                                          | Status | Notas |
+| --- | ------------------- | ----------------------------------------------------------------------------------------------- | ------ | ----- |
+| 85  | Fin+Dashboard       | Cards de resumo no painel Financeiro: Receitas Pendentes, Recebidas, Despesas e Lucro Líquido corretos. | [ ]    |       |
+| 86  | Fin+TaxaStripe      | Alerta de transparência de taxa fixa R$ 3,49 por boleto. Cálculo de exemplo visível no painel.  | [ ]    |       |
+| 87  | Fin+MarkPaid        | Marcar fatura pendente como paga manualmente (`cancel-payment-intent`). Status muda para "Paga", PI cancelado no Stripe. | [ ]    |       |
+| 88  | Fin+MarkPaid+Sync   | Aula pré-paga marcada como paga manualmente sincroniza status da aula para "Confirmada" e participantes atualizados. | [ ]    |       |
+| 89  | Fin+BoletoMin       | Criar fatura manual com valor < R$ 5,00. Sistema bloqueia com erro de validação (`MINIMUM_BOLETO_AMOUNT`). | [ ]    |       |
+| 90  | Fin+BoletoMax       | Criar fatura manual com valor > R$ 49.999,99. Sistema bloqueia com erro de validação (`MAXIMUM_BOLETO_AMOUNT`). | [ ]    |       |
+| 91  | Fin+AutoBoletoOff   | Desativar `auto_generate_boleto` nas configurações. Fatura criada normalmente mas sem boleto gerado no Stripe. Aluno vê "Aguardando boleto". | [ ]    |       |
+| 92  | Fin+Despesa         | Adicionar despesa no mês atual via `ExpenseModal`. Card "Total Despesas" atualiza. Lucro Líquido recalcula corretamente. | [ ]    |       |
+| 93  | Fin+Mensalidade     | Faturamento automático de mensalidade: valor integral do plano cobrado no `billing_day` do aluno, independente do nº de aulas. | [ ]    |       |
+| 94  | Fin+MensalidadeDep  | Mensalidade com dependentes: fatura consolidada emitida no responsável com descrição "[Nome do Filho] - Aula". | [ ]    |       |
+| 95  | Fin+AlunoFaturas    | Aluno visualiza faturas na tela `Faturas.tsx`. Fatura com boleto exibe botão "Pagar Agora" que abre `boleto_url`. | [ ]    |       |
+| 96  | Fin+AlunoRecibo     | Aluno clica "Ver Recibo" em fatura paga. Página `/recibo` exibe dados corretos (valor, data, descrição, perfil de negócio). | [ ]    |       |
+| 97  | Fin+AlunoDepFaturas | Responsável vê faturas dos dependentes na tela do aluno com badge "Dependente" diferenciando faturas próprias das dos filhos. | [ ]    |       |
+| 98  | Fin+Vencida         | Fatura pendente passa da data de vencimento. Badge muda para "Vencida" (destructive) na UI do professor e do aluno. | [ ]    |       |
+| 99  | Fin+DeepLink        | Notificação no Inbox com link para fatura. Clique navega para a tela de faturas e destaca a fatura correta. | [ ]    |       |
+| 100 | Fin+ContaRestrita   | `StripeAccountGuard`: conta Stripe restrita (charges_enabled = false) bloqueia criação de faturas com alerta visível. | [ ]    |       |
+
+---
+
+## 🧪 Roteiros de Teste Otimizados (19 Sessões)
+
+> **Estratégia:** Os 100 cenários foram agrupados em **19 roteiros sequenciais**. Cada roteiro reutiliza o estado criado nos passos anteriores, eliminando setup redundante. O marcador `[#XX ✅]` indica qual cenário foi validado em cada passo.
 
 ### Referência Cruzada: Roteiro → Cenários
 
@@ -203,7 +226,10 @@
 | 14      | #70, #71, #72                                  | 3     |
 | 15      | #78, #79, #81, #82, #83                        | 5     |
 | 16      | #73                                            | 1     |
-| **Total** |                                              | **84**|
+| 17      | #85, #86, #87, #88, #89, #90, #91, #92         | 8     |
+| 18      | #93, #94                                        | 2     |
+| 19      | #95, #96, #97, #98, #99, #100                   | 6     |
+| **Total** |                                              | **100**|
 
 ---
 
@@ -238,6 +264,7 @@
 | 4     | Verificar se **notificação** de cancelamento apareceu no sininho do professor **e** e-mail.        | Sininho com badge. E-mail recebido (verificar logs SES).               | `[#80 ✅]`  |
 | 5     | Logar como **professor** → Clicar botão **Anistia** na Aula 3.                                    | Taxa perdoada. `amnesty_granted = true`. Toast de sucesso.             | `[#07 ✅]`  |
 | 6     | Gerar **fatura manual** (S13) para a Aula 3 (agora com anistia).                                  | Fatura criada com valor correto (sem taxa de cancelamento).            | `[#11 ✅]`  |
+| 6.1   | 📊 **Checkpoint Financeiro:** Abrir painel Financeiro.                                             | Fatura aparece com tipo "Manual" e valor correto nos cards de resumo.  | —           |
 | 7     | Voltar à Aula 3 → Verificar botão **Anistia**.                                                     | Botão **disabled** (anistia já concedida e faturada).                  | `[#12 ✅]`  |
 
 ---
@@ -298,6 +325,7 @@
 | 2     | Logar como **professor** → Aprovar solicitação → Concluir a aula.                                  | Aula agendada e concluída. Pronta para faturamento.                    | —           |
 | 3     | Executar **faturamento automático** (cron `automated-billing` ou aguardar ciclo).                   | Fatura gerada automaticamente para a aula concluída.                   | `[#09 ✅]`  |
 | 4     | Gerar **fatura manual / boleto** avulsa para outra aula.                                           | Fatura criada. Link do boleto/PDF gerado e acessível.                  | `[#30 ✅]`  |
+| 4.1   | 📊 **Checkpoint Financeiro:** Logar como **aluno** → Abrir tela Faturas.                           | Fatura visível com botão "Pagar Agora" funcional.                      | —           |
 
 ---
 
@@ -309,6 +337,7 @@
 | Passo | Ação                                                                                               | Validação                                                              | Cenário     |
 | ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
 | 1     | Executar cron `automated-billing` (ou invocar Edge Function manualmente).                          | Fatura individual gerada agrupando aulas do mês.                       | `[#28 ✅]`  |
+| 1.1   | 📊 **Checkpoint Financeiro:** Abrir painel Financeiro do professor.                                | Fatura aparece com tipo "Automática". Card "Receitas Pendentes" atualizado. | —           |
 | 2     | Verificar fatura do **grupo**: valor **proporcional** por participante.                            | Cada participante com valor correto (total ÷ nº de alunos).            | `[#29 ✅]`  |
 | 3     | Simular webhook `invoice.payment_failed` (cartão recusado no Stripe Test Mode).                    | `PaymentFailureModal` exibido na UI do professor/aluno.                | `[#31 ✅]`  |
 | 4     | Com aluno marcado como **inadimplente** → Tentar agendar nova aula para ele.                       | `StudentSelectionBlocker` impede seleção. Toast de bloqueio.           | `[#32 ✅]`  |
@@ -348,6 +377,7 @@
 | 5     | Responsável **cancela** aula do Filho B **fora do prazo**.                                          | Taxa de cancelamento registrada no responsável (não no dependente).    | `[#41 ✅]`  |
 | 6     | Professor concede **Anistia** na aula do Filho B.                                                  | Taxa perdoada. `amnesty_granted = true`.                               | `[#44 ✅]`  |
 | 7     | Executar **faturamento automático** (aula do Filho A concluída).                                   | Fatura emitida no **nome/CPF do responsável** (não do dependente).     | `[#45 ✅]`  |
+| 7.1   | 📊 **Checkpoint Financeiro:** Logar como **responsável** → Abrir tela Faturas.                     | Fatura visível com badge "Dependente" diferenciando do responsável.    | —           |
 | 8     | Gerar **fatura manual** consolidando aulas dos **2 filhos** na mesma fatura.                       | Fatura única com itens de Filho A e Filho B. Emitida ao responsável.   | `[#46 ✅]`  |
 
 ---
@@ -456,6 +486,56 @@
 
 ---
 
+### Roteiro 17 — Painel Financeiro do Professor
+
+**Cobre:** #85, #86, #87, #88, #89, #90, #91, #92
+**Pré-condições:** Professor logado com plano Pro, Stripe Connect ativo, pelo menos 1 fatura pendente existente, 1 aula pré-paga em status "Aguardando Pagamento".
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Abrir **Financeiro** → Verificar cards de resumo.                                                  | Cards "Receitas Pendentes", "Receitas Recebidas", "Despesas" e "Lucro Líquido" exibem valores corretos e consistentes. | `[#85 ✅]`  |
+| 2     | Verificar alerta/info de **taxa Stripe** (R$ 3,49 por boleto).                                    | Informação de taxa visível. Cálculo de exemplo (ex: R$ 100 → líquido R$ 96,51) correto. | `[#86 ✅]`  |
+| 3     | Tentar criar **fatura manual** com valor **R$ 4,00** (abaixo de R$ 5,00).                         | Sistema **bloqueia** com erro: "Valor mínimo para boleto é R$ 5,00".   | `[#89 ✅]`  |
+| 4     | Tentar criar fatura manual com valor **R$ 50.000,00** (acima de R$ 49.999,99).                    | Sistema **bloqueia** com erro: "Valor máximo para boleto".             | `[#90 ✅]`  |
+| 5     | Criar fatura manual com valor válido (ex: R$ 150,00).                                              | Fatura criada com boleto. Aparece na lista com status "Pendente".      | —           |
+| 6     | Clicar **"Marcar como Paga"** na fatura pendente.                                                  | Status muda para "Paga". `payment_origin = 'manual'`. Toast de sucesso. | `[#87 ✅]`  |
+| 7     | Verificar no Stripe Dashboard que o **PaymentIntent** foi cancelado (se existia).                  | PI status = `canceled` ou ausente. Sem cobrança duplicada.             | —           |
+| 8     | Localizar fatura de **aula pré-paga** (status "Aguardando Pagamento") → **Marcar como Paga**.     | Fatura marcada como "Paga". Aula vinculada muda de "aguardando_pagamento" para **"confirmada"**. Participantes atualizados. | `[#88 ✅]`  |
+| 9     | Ir em **Configurações de Cobrança** → **Desativar** `auto_generate_boleto`.                       | Toggle salvo. Confirmação visual.                                      | —           |
+| 10    | Criar nova **fatura manual** (ex: R$ 200,00) com auto-boleto **desativado**.                      | Fatura criada no banco com status "Pendente". **Sem boleto** gerado no Stripe. Aluno vê "Aguardando boleto". | `[#91 ✅]`  |
+| 11    | Reativar `auto_generate_boleto` → Ir em **Despesas** → Adicionar despesa (ex: R$ 50,00 "Material didático"). | Despesa salva. Card "Total Despesas" atualiza. "Lucro Líquido" recalcula (receitas - despesas - taxas). | `[#92 ✅]`  |
+
+---
+
+### Roteiro 18 — Mensalidades e Faturamento Cíclico
+
+**Cobre:** #93, #94
+**Pré-condições:** Professor com mensalidade configurada (`monthly_subscription`), 1 aluno adulto e 1 responsável com dependente vinculados à mensalidade, `billing_day` configurado no perfil do aluno.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Aguardar/executar ciclo de faturamento automático (invocar `automated-billing` ou simular `billing_day`). | Fatura gerada para o aluno adulto com **valor integral** da mensalidade (independente do nº de aulas realizadas). | `[#93 ✅]`  |
+| 2     | Verificar fatura do **dependente** gerada no mesmo ciclo.                                          | Fatura consolidada no **responsável**. Descrição inclui "[Nome do Filho] - Aula" nos itens. `monthly_subscription_id` preenchido. | `[#94 ✅]`  |
+
+---
+
+### Roteiro 19 — Experiência Financeira do Aluno / Responsável
+
+**Cobre:** #95, #96, #97, #98, #99, #100
+**Pré-condições:** Aluno logado com faturas existentes (pendente com boleto, paga, vencida). Responsável com faturas de dependentes. Professor com conta Stripe restrita (para teste #100).
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Logar como **aluno** → Abrir tela **Faturas** (`Faturas.tsx`).                                     | Lista de faturas exibida. Faturas próprias visíveis com status correto. | `[#95 ✅]`  |
+| 2     | Localizar fatura **pendente** com boleto → Clicar **"Pagar Agora"**.                               | `boleto_url` aberta em nova aba. Boleto PDF acessível.                 | —           |
+| 3     | Localizar fatura **paga** → Clicar **"Ver Recibo"**.                                               | Página `/recibo` exibe valor, data, descrição e dados do perfil de negócio do professor. | `[#96 ✅]`  |
+| 4     | Logar como **responsável** → Abrir tela Faturas.                                                   | Faturas dos **dependentes** visíveis com badge "Dependente" diferenciando das faturas próprias. | `[#97 ✅]`  |
+| 5     | Verificar fatura com data de vencimento **passada** (status deveria ser "Vencida").                 | Badge exibe **"Vencida"** (variant destructive/vermelho) na UI do aluno e do professor. | `[#98 ✅]`  |
+| 6     | Logar como **professor** → Abrir **Inbox** → Localizar notificação de fatura → Clicar no link.    | Navegação para tela de faturas. Fatura correta destacada/focada.       | `[#99 ✅]`  |
+| 7     | Logar como professor com conta Stripe **restrita** (`charges_enabled = false`) → Tentar criar fatura. | `StripeAccountGuard` exibe **alerta de conta restrita**. Ação de criação bloqueada. | `[#100 ✅]` |
+
+---
+
 ## Arquivos Principais Envolvidos
 
 | Arquivo                                                       | Responsabilidade            |
@@ -473,16 +553,27 @@
 | `src/components/FinancialRouteGuard.tsx`                      | Restrição por assinatura    |
 | `src/components/FeatureGate.tsx`                              | Feature gates por plano     |
 | `src/components/SystemHealthAlert.tsx`                        | Alertas de saúde            |
+| `src/components/PaymentOptionsCard.tsx`                       | Opções de pagamento (aluno) |
+| `src/components/InvoiceStatusBadge.tsx`                       | Badge de status da fatura   |
+| `src/components/InvoiceTypeBadge.tsx`                         | Badge de tipo da fatura     |
+| `src/components/ExpenseList.tsx`                              | Listagem de despesas        |
+| `src/components/ExpenseModal.tsx`                             | CRUD de despesas            |
+| `src/components/StripeAccountGuard.tsx`                       | Guard de conta restrita     |
 | `src/contexts/SubscriptionContext.tsx`                        | Detecção de payment failure |
+| `src/pages/Financeiro.tsx`                                    | Painel financeiro professor |
+| `src/pages/Faturas.tsx`                                       | Tela de faturas do aluno    |
+| `src/pages/Recibo.tsx` / `src/pages/recibo.css`              | Impressão de recibo         |
+| `src/pages/ResetPassword.tsx`                                | Recuperação de senha        |
+| `src/utils/stripe-fees.ts`                                   | Validação boleto e taxas    |
+| `src/components/BusinessProfilesManager.tsx`                 | Perfil de negócio           |
 | `supabase/functions/process-cancellation/index.ts`            | Backend cancelamento        |
 | `supabase/functions/automated-billing/index.ts`               | Faturamento automático      |
 | `supabase/functions/process-orphan-cancellation-charges/index.ts` | Taxas órfãs             |
 | `supabase/functions/handle-student-overage/index.ts`          | Overage de alunos           |
 | `supabase/functions/smart-delete-student/index.ts`            | Exclusão segura             |
 | `supabase/functions/materialize-virtual-class/index.ts`       | Materialização recorrente   |
-| `src/pages/ResetPassword.tsx`                                | Recuperação de senha        |
-| `src/pages/Recibo.tsx` / `src/pages/recibo.css`              | Impressão de recibo         |
-| `src/components/BusinessProfilesManager.tsx`                 | Perfil de negócio           |
+| `supabase/functions/cancel-payment-intent/index.ts`           | Marcação manual como paga   |
+| `supabase/functions/validate-monthly-subscriptions/index.ts`  | Validação de mensalidades   |
 | `supabase/functions/refresh-stripe-connect-account/index.ts` | Refresh payout Connect      |
 
 ---

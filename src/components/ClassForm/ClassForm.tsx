@@ -240,6 +240,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       date: !formData.class_date,
       time: !formData.time,
       timeConflict: false,
+      duration: !formData.is_paid_class && !formData.service_id && (formData.duration_minutes < 15 || formData.duration_minutes > 480),
     };
 
     // Check for time conflicts (past date validation removed - teachers can schedule past classes)
@@ -497,22 +498,31 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                   <div className="flex items-center gap-2">
                     <Input
                       id="unpaid-duration"
-                      type="number"
-                      min="15"
-                      max="480"
-                      step="15"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={3}
                       value={formData.duration_minutes}
                       onChange={(e) => {
-                        const value = Math.max(15, Math.min(480, parseInt(e.target.value) || 60));
-                        setFormData(prev => ({ ...prev, duration_minutes: value }));
+                        const raw = e.target.value.replace(/\D/g, "");
+                        if (raw === "") {
+                          setFormData(prev => ({ ...prev, duration_minutes: 0 }));
+                          return;
+                        }
+                        setFormData(prev => ({ ...prev, duration_minutes: parseInt(raw) }));
                       }}
-                      className="w-32"
+                      className={`w-32 ${formData.duration_minutes < 15 || formData.duration_minutes > 480 ? 'border-destructive' : ''}`}
                     />
                     <span className="text-sm text-muted-foreground">minutos</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Duração entre 15 e 480 minutos
-                  </p>
+                  {formData.duration_minutes < 15 || formData.duration_minutes > 480 ? (
+                    <p className="text-xs text-destructive">
+                      Duração deve ser entre 15 e 480 minutos
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Duração entre 15 e 480 minutos
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

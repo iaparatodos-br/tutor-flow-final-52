@@ -261,7 +261,26 @@ export function BillingSettings() {
                       max="90"
                       className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 15)}
+                      value={field.value ?? ""}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          field.onChange(null);
+                          return;
+                        }
+                        const num = parseInt(raw);
+                        if (!isNaN(num)) {
+                          field.onChange(num);
+                        }
+                      }}
+                      onBlur={() => {
+                        field.onBlur();
+                        if (!field.value || field.value < 1) {
+                          field.onChange(1);
+                        } else if (field.value > 90) {
+                          field.onChange(90);
+                        }
+                      }}
                     />
                   </FormControl>
                   <FormDescription>{t('fields.paymentDueDays.description')}</FormDescription>

@@ -1,94 +1,109 @@
 
 
-# Revisao do Plano de Testes E2E -- Lacunas Encontradas
+# Expansao do Plano de Testes E2E com Cenarios do Gemini
 
-## Resumo da Analise
+## Resumo
 
-Apos cruzar o documento `docs/e2e-test-plan-classes.md` com o codigo real dos componentes (`ClassForm`, `CancellationModal`, `ClassReportModal`, `StudentScheduleRequest`, `AmnestyButton`, `RecurringClassActionModal`), identifiquei **10 cenarios ausentes** que precisam ser adicionados.
+Apos cruzar os 80 cenarios do Gemini com os 52 cenarios atuais do documento `docs/e2e-test-plan-classes.md`, identifiquei **28 cenarios novos** que fazem sentido adicionar. Alguns cenarios do Gemini nao se aplicam (como "professor substituto", que nao existe no sistema) ou ja estao cobertos com nomes diferentes.
 
----
-
-## Lacunas Encontradas
-
-### 1. Confirmacao de Aula (S6) -- Nenhum caso de teste
-O eixo S6 (Confirmacao de aula) esta definido na matriz mas **nao aparece em nenhum cenario da checklist**. Faltam pelo menos:
-- Confirmar aula individual
-- Confirmar aula em grupo (confirmar participacao de cada aluno)
-
-### 2. Conclusao de aula em grupo e com dependente
-Existe teste para concluir aula individual (#2), mas faltam:
-- T3+R0+C1+S7: Concluir aula em grupo
-- T2+R0+C1+S7: Concluir aula com dependente
-
-### 3. Relatorio de aula com dependente
-Existe teste para relatorio individual (#7) e grupo (#19), mas falta:
-- T2+R0+C1+S8: Relatorio de aula com dependente (verificar feedback vinculado ao dependente)
-
-### 4. Professor cancela aula em grupo
-Existe teste para aluno cancelar parcialmente (#18), mas falta:
-- T3+R0+C1+S3: Professor cancela aula em grupo inteira
-
-### 5. Cancelamento de aula gratuita
-Existe teste para agendar aula gratuita (#20), mas falta testar que cancelamento nao gera cobranca:
-- T1+R0+C0+S3: Professor cancela aula gratuita (sem cobranca)
-- T1+R0+C0+S4: Aluno cancela aula gratuita (sem cobranca)
-
-### 6. Recorrencia com grupo
-Existe T3+R1+C1+S1 (#27), mas falta:
-- T3+R2+C1+S1: Grupo com recorrencia infinita
-
-### 7. Frequencias de recorrencia
-O formulario suporta 3 frequencias (semanal, quinzenal, mensal) mas nenhum teste valida especificamente quinzenal ou mensal.
-
-### 8. Anistia para dependente
-Falta cenario especifico:
-- T2+R0+C1+S9: Anistia em aula com dependente
+O documento sera expandido de 52 para 80 cenarios, organizados em 6 categorias tematicas (ao inves de apenas 3 niveis de prioridade), seguindo a estrutura sugerida pelo Gemini que e mais clara para navegacao.
 
 ---
 
-## Alteracoes Propostas no Documento
+## Cenarios Novos a Adicionar
 
-### Adicionar na Prioridade Alta
+### Categoria: Stripe e Financeiro (nova secao)
+Cenarios que envolvem integracao real com Stripe e fluxo de dinheiro, atualmente ausentes:
 
-```text
-| #  | Cenario                                           | Status | Notas |
-| -- | ------------------------------------------------- | ------ | ----- |
-| X  | T1+R0+C1+S6: Confirmar aula individual            | [ ]    |       |
-| X  | T3+R0+C1+S7: Concluir aula em grupo               | [ ]    |       |
-| X  | T2+R0+C1+S7: Concluir aula com dependente         | [ ]    |       |
-| X  | T3+R0+C1+S3: Professor cancela grupo inteiro       | [ ]    |       |
-```
+- Checkout pre-pago via Stripe redirect (cartao de teste)
+- Cancelamento de aula pre-paga com refund no Stripe
+- Anistia de pre-paga acionando refund via Edge Function
+- Faturamento automatico de grupo (fatura proporcional por participante)
+- Fatura manual com geracao de boleto/link
+- Cartao recusado (webhook `payment_failed`) exibindo modal de falha
+- Aluno inadimplente bloqueado de agendar (`StudentSelectionBlocker`)
+- Processar taxas orfas (`process-orphan-cancellation-charges`)
+- Onboarding Stripe Connect (fluxo KYC do tutor)
+- Upgrade/Downgrade de plano do professor
+- Expiracao de assinatura e restricao via `FinancialRouteGuard`
+- Overage de alunos (`handle-student-overage`)
 
-### Adicionar na Prioridade Media
+### Categoria: Dependentes e Grupos Mistos (expandir)
+Cenarios de grupo misto que faltavam:
 
-```text
-| #  | Cenario                                           | Status | Notas |
-| -- | ------------------------------------------------- | ------ | ----- |
-| X  | T2+R0+C1+S8: Relatorio aula com dependente        | [ ]    |       |
-| X  | T1+R0+C0+S3: Cancelar aula gratuita (sem cobranca)| [ ]    |       |
-| X  | T1+R0+C0+S4: Aluno cancela gratuita (sem cobranca)| [ ]    |       |
-| X  | T3+R2+C1+S1: Grupo com recorrencia infinita        | [ ]    |       |
-| X  | T2+R0+C1+S9: Anistia em aula com dependente        | [ ]    |       |
-```
+- Fatura manual consolidando multiplos dependentes (2 filhos na mesma fatura)
+- Feedback em grupo misto: adulto recebe o dele, responsavel recebe o do filho
+- Professor cancela grupo misto inteiro (notificacao para todos os pagantes corretos)
 
-### Adicionar na Prioridade Baixa
+### Categoria: Recorrencia (expandir)
+- Grupo recorrente finito: verificar se ocorrencias aparecem no calendario de todos
+- Materializacao de aula virtual (cron/Edge Function `materialize-virtual-class`)
+- Conflito entre recorrencias (tentar agendar recorrencia que sobrepoe outra existente)
 
-```text
-| #  | Cenario                                           | Status | Notas |
-| -- | ------------------------------------------------- | ------ | ----- |
-| X  | T1+R1+C1+S1: Recorrencia quinzenal (frequencia)    | [ ]    |       |
-| X  | T1+R1+C1+S1: Recorrencia mensal (frequencia)       | [ ]    |       |
-```
+### Categoria: Seguranca e RLS (nova secao)
+- Professor A tenta acessar faturas do Professor B via URL direta
+- Aluno A tenta abrir fatura do Aluno B por ID
+- Responsavel tenta ver relatorio de aluno nao vinculado
+- Aluno tenta alterar preco via console/API (RLS bloqueia)
+- Validacao de API: enviar duracao negativa ou texto (Zod/backend barra)
+- Deletar aluno com faturas pagas (`smart-delete-student` -- dados fiscais persistem)
 
-### Remover da Matriz de Acoes
-
-Remover **S6 (Confirmacao de aula)** se o sistema nao possui essa acao como funcionalidade distinta, OU manter e adicionar os testes acima. Isso depende de como funciona no sistema -- se a confirmacao e automatica ou manual.
+### Categoria: UX e Usabilidade (nova secao)
+- Timezone: professor BR agenda 10h, aluno em fuso diferente ve horario correto
+- Upload de PDF (4MB) no relatorio de aula
+- Tentativa de upload > 10MB (erro amigavel)
+- Aluno baixa material compartilhado sem erros
+- Reenvio de convite ao aluno (`resend-student-invitation`)
+- Mobile: calendario colapsa para lista em viewport < 768px
+- Mobile: sidebar fecha ao clicar em menu
+- Tema claro/escuro sem componentes ilegiveis
+- Impressao de recibo (Ctrl+P omite menus laterais)
 
 ---
 
-## Resumo das Alteracoes
+## Cenarios do Gemini DESCARTADOS
 
-- **Adicionar 11 novos cenarios** distribuidos entre as 3 prioridades
-- **Renumerar** todos os cenarios sequencialmente (#1 a #52)
-- Manter a estrutura e formato existentes do documento
-- Nenhuma alteracao na matriz de eixos (ja esta correta)
+- **#49 Professor substituto:** Funcionalidade nao existe no sistema
+- **#61 MFA/bloqueio login:** Configuracao do Supabase Auth, nao do app
+- **#62 Token expirado:** Comportamento padrao do Supabase, nao customizado
+- **#75 Cookie consent:** Periferico ao fluxo de aulas
+- **#80 Derrubar banco:** Teste de infraestrutura, nao E2E de aplicacao
+- **#71 Dashboard MRR:** Calculo financeiro, nao fluxo de aula
+- **#72 Multi-idioma:** Teste de traducao, nao fluxo critico
+
+---
+
+## Estrutura Final do Documento
+
+O documento sera reorganizado em 6 categorias:
+
+1. **Fluxos Core** -- Individuais, grupos simples, gratuitas (24 cenarios existentes)
+2. **Stripe e Financeiro** -- Checkout, faturas, refunds, inadimplencia (12 novos)
+3. **Dependentes e Grupos Mistos** -- T2/T4 com roteamento de faturas (existentes + 3 novos)
+4. **Recorrencia e Excecoes** -- R1/R2, cancelar ocorrencia, encerrar (existentes + 3 novos)
+5. **Seguranca e RLS** -- Isolamento, validacao, feature gates (6 novos)
+6. **UX e Usabilidade** -- Mobile, uploads, timezone, tema (9 novos)
+
+Total: **80 cenarios** (52 existentes + 28 novos), renumerados sequencialmente.
+
+---
+
+## Detalhes Tecnicos
+
+### Arquivos adicionados a tabela de referencia
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/contexts/SubscriptionContext.tsx` | Deteccao de payment failure |
+| `src/components/StudentSelectionBlocker.tsx` | Bloqueio de inadimplente |
+| `src/components/StripeConnectOnboarding.tsx` | Onboarding KYC |
+| `src/components/FinancialRouteGuard.tsx` | Restricao por assinatura |
+| `src/components/SystemHealthAlert.tsx` | Alertas de saude |
+| `src/components/CreateInvoiceModal.tsx` | Fatura manual com boleto |
+| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Taxas orfas |
+| `supabase/functions/handle-student-overage/index.ts` | Overage de alunos |
+| `supabase/functions/smart-delete-student/index.ts` | Exclusao segura |
+| `supabase/functions/materialize-virtual-class/index.ts` | Materializacao recorrente |
+
+### Alteracao no arquivo
+- `docs/e2e-test-plan-classes.md`: Reescrita completa mantendo todos os 52 cenarios existentes e adicionando 28 novos, reorganizados em 6 categorias tematicas.
+

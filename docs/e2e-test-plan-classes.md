@@ -179,13 +179,280 @@
 
 ---
 
-## Como Testar Cada Cenário
+## 🧪 Roteiros de Teste Otimizados (16 Sessões)
 
-1. **Agendar** a aula (ou solicitar, dependendo do caso)
-2. **Verificar** no calendário que aparece corretamente
-3. **Executar a ação** (cancelar, concluir, criar relatório, etc.)
-4. **Verificar o resultado** (status atualizado, fatura criada, notificação enviada)
-5. **Verificar integridade** (dados no banco, nenhum erro no console)
+> **Estratégia:** Os 84 cenários foram agrupados em **16 roteiros sequenciais**. Cada roteiro reutiliza o estado criado nos passos anteriores, eliminando setup redundante. O marcador `[#XX ✅]` indica qual cenário foi validado em cada passo.
+
+### Referência Cruzada: Roteiro → Cenários
+
+| Roteiro | Cenários Cobertos                              | Total |
+| ------- | ---------------------------------------------- | ----- |
+| 01      | #01, #02, #03, #08, #74, #75, #76, #77        | 8     |
+| 02      | #04, #05, #06, #07, #11, #12, #80             | 7     |
+| 03      | #13, #14, #15                                  | 3     |
+| 04      | #16, #17, #18, #19, #20, #21, #22             | 7     |
+| 05      | #23, #24, #25, #26, #27                        | 5     |
+| 06      | #10, #09, #30                                  | 3     |
+| 07      | #28, #29, #31, #32, #33, #38                   | 6     |
+| 08      | #34, #35, #36, #37, #69, #84                   | 6     |
+| 09      | #39, #40, #41, #42, #43, #44, #45, #46         | 8     |
+| 10      | #47, #48, #49, #50, #51                        | 5     |
+| 11      | #52, #53, #63, #64                             | 4     |
+| 12      | #54, #55, #56, #57, #58, #59, #60, #61, #62   | 9     |
+| 13      | #65, #66, #67, #68                             | 4     |
+| 14      | #70, #71, #72                                  | 3     |
+| 15      | #78, #79, #81, #82, #83                        | 5     |
+| 16      | #73                                            | 1     |
+| **Total** |                                              | **84**|
+
+---
+
+### Roteiro 01 — Ciclo de Vida Individual Pós-paga + Uploads
+
+**Cobre:** #01, #02, #03, #08, #74, #75, #76, #77
+**Pré-condições:** Professor logado com plano ativo, pelo menos 1 aluno cadastrado, política de cancelamento configurada.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Na Agenda, agendar aula individual no **mesmo horário** de uma aula já existente.                  | Toast de erro "Conflito de horário" exibido. Aula **não** é criada.    | `[#74 ✅]`  |
+| 2     | Agendar aula individual com **data de ontem** (pós-paga, C1).                                      | Sistema exibe alerta mas permite salvar (registro retroativo).         | `[#75 ✅]`  |
+| 3     | Agendar aula individual pós-paga para **amanhã** (data futura válida).                             | Aula aparece no calendário. Aluno visualiza na sua agenda.             | `[#01 ✅]`  |
+| 4     | Logar como **aluno** → Confirmar presença na aula agendada.                                        | Status muda para "Confirmada". Professor vê a confirmação.             | `[#02 ✅]`  |
+| 5     | Logar como **professor** → Concluir a aula.                                                        | Status muda para "Concluída" na UI.                                    | `[#03 ✅]`  |
+| 6     | Criar relatório de aula → Anexar **arquivo PDF de ~4MB**.                                          | Upload concluído com sucesso. Arquivo aparece na galeria do relatório. | `[#76 ✅]`  |
+| 7     | No mesmo relatório, tentar anexar **arquivo > 10MB**.                                              | Erro amigável exibido ("Arquivo muito grande"). Upload bloqueado.      | `[#77 ✅]`  |
+| 8     | Preencher resumo da aula, adicionar notas, **enviar relatório**.                                   | Relatório salvo. E-mail enviado ao aluno (verificar inbox ou logs).    | `[#08 ✅]`  |
+
+---
+
+### Roteiro 02 — Cancelamentos e Anistia Individual
+
+**Cobre:** #04, #05, #06, #07, #11, #12, #80
+**Pré-condições:** Professor logado, 3 aulas individuais pós-pagas agendadas para datas futuras.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | **Professor** cancela a **Aula 1**.                                                                | Status "Cancelada". Nenhuma cobrança pendente gerada.                  | `[#04 ✅]`  |
+| 2     | Logar como **aluno** → Cancelar **Aula 2** **dentro** do prazo de carência.                        | Status "Cancelada". Nenhuma taxa de cancelamento registrada.           | `[#05 ✅]`  |
+| 3     | Aluno cancela **Aula 3** **fora** do prazo de carência.                                            | Status "Cancelada". Taxa de cancelamento registrada (charge_applied).  | `[#06 ✅]`  |
+| 4     | Verificar se **notificação** de cancelamento apareceu no sininho do professor **e** e-mail.        | Sininho com badge. E-mail recebido (verificar logs SES).               | `[#80 ✅]`  |
+| 5     | Logar como **professor** → Clicar botão **Anistia** na Aula 3.                                    | Taxa perdoada. `amnesty_granted = true`. Toast de sucesso.             | `[#07 ✅]`  |
+| 6     | Gerar **fatura manual** (S13) para a Aula 3 (agora com anistia).                                  | Fatura criada com valor correto (sem taxa de cancelamento).            | `[#11 ✅]`  |
+| 7     | Voltar à Aula 3 → Verificar botão **Anistia**.                                                     | Botão **disabled** (anistia já concedida e faturada).                  | `[#12 ✅]`  |
+
+---
+
+### Roteiro 03 — Aula Gratuita (C0)
+
+**Cobre:** #13, #14, #15
+**Pré-condições:** Professor logado, 1 aluno cadastrado.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar aula individual **gratuita** (C0) → Concluir → Criar relatório.                           | Aula concluída. Relatório salvo. **Nenhuma fatura** gerada.            | `[#13 ✅]`  |
+| 2     | Agendar outra aula gratuita → **Professor** cancela.                                               | Status "Cancelada". Nenhuma cobrança. Nenhum registro financeiro.      | `[#14 ✅]`  |
+| 3     | Agendar outra gratuita → **Aluno** cancela **fora** do prazo.                                      | Status "Cancelada". Botão de **Anistia NÃO aparece** (C0, sem taxa).  | `[#15 ✅]`  |
+
+---
+
+### Roteiro 04 — Grupo Simples Completo (T3)
+
+**Cobre:** #16, #17, #18, #19, #20, #21, #22
+**Pré-condições:** Professor logado com plano Pro, 3 alunos adultos cadastrados (Aluno A, B, C).
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar **aula em grupo** pós-paga com Aluno A, B e C.                                            | Aula aparece no calendário. 3 participantes listados.                  | `[#16 ✅]`  |
+| 2     | Logar como cada aluno → **Confirmar participação**.                                                | Status individual muda para "Confirmado" para cada aluno.              | `[#17 ✅]`  |
+| 3     | Logar como **Aluno C** → **Cancelar** participação (dentro ou fora do prazo).                      | Aluno C removido. Aula continua ativa para A e B.                      | `[#19 ✅]`  |
+| 4     | Logar como professor → **Concluir** aula (Alunos A e B presentes).                                | Status "Concluída" para A e B. C permanece "Cancelado".                | `[#18 ✅]`  |
+| 5     | Criar **relatório**: feedback **privado** para Aluno A + feedback **geral** para todos.            | Relatório salvo. Aluno A recebe feedback privado. Todos recebem geral. | `[#21 ✅]`  |
+| 6     | Se Aluno C cancelou fora do prazo: professor concede **Anistia** apenas para Aluno C.              | Anistia afeta **somente** Aluno C. A e B inalterados.                  | `[#22 ✅]`  |
+| 7     | Agendar **outro grupo** com A, B, C → Professor **cancela inteiro**.                               | Todos os 3 alunos recebem notificação de cancelamento.                 | `[#20 ✅]`  |
+
+---
+
+### Roteiro 05 — Pré-pago e Stripe Checkout (C2)
+
+**Cobre:** #23, #24, #25, #26, #27
+**Pré-condições:** Professor com Stripe Connect ativo, aluno com cartão de teste cadastrado.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar aula individual **pré-paga** (C2).                                                         | Aula criada com status "Aguardando Pagamento".                         | `[#23 ✅]`  |
+| 2     | Aluno é redirecionado ao **Stripe Checkout** → Pagar com cartão teste `4242...`.                   | Pagamento confirmado. Status muda para "Paga/Agendada".                | `[#25 ✅]`  |
+| 3     | Agendar outra pré-paga → Pagar → Aluno cancela **dentro** do prazo.                               | Refund processado no Stripe. Valor devolvido/creditado.                | `[#26 ✅]`  |
+| 4     | Agendar outra pré-paga → Pagar → Aluno cancela **fora** do prazo.                                 | Taxa de cancelamento retida. Valor parcial como crédito.               | `[#24 ✅]`  |
+| 5     | Professor concede **Anistia** na aula cancelada fora do prazo.                                     | Refund total via Edge Function. `amnesty_granted = true`.              | `[#27 ✅]`  |
+
+---
+
+### Roteiro 06 — Solicitação pelo Aluno + Faturamento
+
+**Cobre:** #10, #09, #30
+**Pré-condições:** Aluno logado com acesso à solicitação de aula, professor com perfil de cobrança ativo.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Logar como **aluno** → Solicitar aula via `StudentScheduleRequest`.                                | Solicitação criada. Professor recebe notificação.                      | `[#10 ✅]`  |
+| 2     | Logar como **professor** → Aprovar solicitação → Concluir a aula.                                  | Aula agendada e concluída. Pronta para faturamento.                    | —           |
+| 3     | Executar **faturamento automático** (cron `automated-billing` ou aguardar ciclo).                   | Fatura gerada automaticamente para a aula concluída.                   | `[#09 ✅]`  |
+| 4     | Gerar **fatura manual / boleto** avulsa para outra aula.                                           | Fatura criada. Link do boleto/PDF gerado e acessível.                  | `[#30 ✅]`  |
+
+---
+
+### Roteiro 07 — Faturamento Automatizado e Inadimplência
+
+**Cobre:** #28, #29, #31, #32, #33, #38
+**Pré-condições:** Várias aulas concluídas no mês (individuais + grupo). Acesso ao painel de Edge Functions.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Executar cron `automated-billing` (ou invocar Edge Function manualmente).                          | Fatura individual gerada agrupando aulas do mês.                       | `[#28 ✅]`  |
+| 2     | Verificar fatura do **grupo**: valor **proporcional** por participante.                            | Cada participante com valor correto (total ÷ nº de alunos).            | `[#29 ✅]`  |
+| 3     | Simular webhook `invoice.payment_failed` (cartão recusado no Stripe Test Mode).                    | `PaymentFailureModal` exibido na UI do professor/aluno.                | `[#31 ✅]`  |
+| 4     | Com aluno marcado como **inadimplente** → Tentar agendar nova aula para ele.                       | `StudentSelectionBlocker` impede seleção. Toast de bloqueio.           | `[#32 ✅]`  |
+| 5     | Executar `process-orphan-cancellation-charges`.                                                    | Taxas de cancelamento órfãs processadas e faturadas.                   | `[#33 ✅]`  |
+| 6     | Adicionar aluno **além do limite** do plano (ex: 11º aluno no plano de 10).                        | `handle-student-overage` dispara cobrança extra.                       | `[#38 ✅]`  |
+
+---
+
+### Roteiro 08 — Stripe Connect, Assinaturas e Feature Gates
+
+**Cobre:** #34, #35, #36, #37, #69, #84
+**Pré-condições:** Conta de professor **sem** Stripe Connect configurado inicialmente.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Iniciar **onboarding KYC** Stripe Connect via `StripeConnectOnboarding`.                           | Redirect para Stripe Express. Formulário KYC exibido.                  | `[#34 ✅]`  |
+| 2     | Completar onboarding → Retornar ao app.                                                           | Conta Connect ativa. Status "charges_enabled: true".                   | —           |
+| 3     | Fazer **upgrade** Basic → Pro (cartão teste no Stripe Test Mode).                                  | Plano atualizado. Features Premium desbloqueadas na UI.                | `[#35 ✅]`  |
+| 4     | Com plano Basic: tentar criar **Turma T3/T4** (feature Premium).                                   | `FeatureGate` exibe modal de Upgrade. Ação bloqueada.                  | `[#69 ✅]`  |
+| 5     | Solicitar **downgrade** Pro → Basic.                                                               | Downgrade agendado. Features Premium travadas na virada do ciclo.      | `[#36 ✅]`  |
+| 6     | Simular **expiração** de assinatura (via Stripe ou alteração manual de data).                       | `FinancialRouteGuard` ativo. Acesso ao módulo financeiro bloqueado.    | `[#37 ✅]`  |
+| 7     | Verificar **payout** roteado para conta Connect (via `refresh-stripe-connect-account`).            | Saldo do payout aparece na conta conectada do tutor.                   | `[#84 ✅]`  |
+
+---
+
+### Roteiro 09 — Dependentes: Ciclo Completo (T2)
+
+**Cobre:** #39, #40, #41, #42, #43, #44, #45, #46
+**Pré-condições:** Professor logado, 1 responsável cadastrado com 2 dependentes (Filho A e Filho B).
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar aula individual para **Filho A** (dependente).                                             | Aula criada vinculada ao dependente. Responsável vê na agenda.         | `[#39 ✅]`  |
+| 2     | Logar como **responsável** → Solicitar aula para **Filho B**.                                      | Solicitação criada em nome do dependente. Professor notificado.        | `[#40 ✅]`  |
+| 3     | Professor aprova e agenda aula do Filho B → **Concluir** aula do Filho A.                          | Aula do Filho A concluída com sucesso.                                 | `[#42 ✅]`  |
+| 4     | Criar **relatório** da aula do Filho A.                                                            | Feedback vinculado ao dependente. E-mail enviado ao **responsável**.   | `[#43 ✅]`  |
+| 5     | Responsável **cancela** aula do Filho B **fora do prazo**.                                          | Taxa de cancelamento registrada no responsável (não no dependente).    | `[#41 ✅]`  |
+| 6     | Professor concede **Anistia** na aula do Filho B.                                                  | Taxa perdoada. `amnesty_granted = true`.                               | `[#44 ✅]`  |
+| 7     | Executar **faturamento automático** (aula do Filho A concluída).                                   | Fatura emitida no **nome/CPF do responsável** (não do dependente).     | `[#45 ✅]`  |
+| 8     | Gerar **fatura manual** consolidando aulas dos **2 filhos** na mesma fatura.                       | Fatura única com itens de Filho A e Filho B. Emitida ao responsável.   | `[#46 ✅]`  |
+
+---
+
+### Roteiro 10 — Grupo Misto T4 (Adultos + Dependentes)
+
+**Cobre:** #47, #48, #49, #50, #51
+**Pré-condições:** 1 aluno adulto + 1 responsável com 1 dependente cadastrados.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar **turma mista** (T4): 1 adulto + 1 dependente (pai paga pelo filho).                      | Aula criada com 2 participantes. Calendário exibe corretamente.        | `[#47 ✅]`  |
+| 2     | Responsável **retira o filho** (cancelamento parcial).                                             | Dependente removido. Adulto continua na aula.                          | `[#48 ✅]`  |
+| 3     | Agendar **outra turma mista** → Professor **cancela inteira**.                                     | Adulto e responsável (pagante do filho) recebem notificação.           | `[#49 ✅]`  |
+| 4     | Agendar **outra turma mista** → Concluir → Executar **faturamento automático**.                    | Adulto recebe sua fatura. Responsável recebe fatura do filho.          | `[#50 ✅]`  |
+| 5     | Criar **relatório** da turma mista.                                                                | Adulto recebe seu feedback. Responsável recebe feedback do filho.      | `[#51 ✅]`  |
+
+---
+
+### Roteiro 11 — Recorrência Finita e Frequências (R1)
+
+**Cobre:** #52, #53, #63, #64
+**Pré-condições:** Professor logado, alunos disponíveis, calendário limpo para as datas.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar recorrência **finita semanal** (10 aulas) para aluno individual.                           | 10 ocorrências aparecem no calendário nas datas corretas.              | `[#52 ✅]`  |
+| 2     | Agendar recorrência finita semanal para **grupo** (3 alunos, 10 aulas).                            | 10 ocorrências no calendário de todos os participantes.                | `[#53 ✅]`  |
+| 3     | Agendar recorrência **quinzenal** (frequência a cada 2 semanas).                                   | Ocorrências em semanas alternadas. Datas corretas no calendário.       | `[#63 ✅]`  |
+| 4     | Agendar recorrência **mensal** (1 aula por mês).                                                   | 1 ocorrência por mês. Dia da semana ou dia do mês correto.            | `[#64 ✅]`  |
+
+---
+
+### Roteiro 12 — Recorrência Infinita e Exceções (R2)
+
+**Cobre:** #54, #55, #56, #57, #58, #59, #60, #61, #62
+**Pré-condições:** Professor logado, alunos e dependentes cadastrados, calendário limpo.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Agendar **recorrência infinita** individual (mensalidade).                                         | Aulas futuras virtuais geradas. Próximas semanas visíveis.             | `[#54 ✅]`  |
+| 2     | Avançar data (ou invocar `materialize-virtual-class`) para materializar próxima aula.              | Aula materializada como registro real no banco. Status "Agendada".     | `[#57 ✅]`  |
+| 3     | **Cancelar 1 ocorrência** (ex: feriado) via `RecurringClassActionModal` → "Somente esta".          | Ocorrência cancelada. Próxima semana **intacta**.                      | `[#58 ✅]`  |
+| 4     | **Alterar horário** de UMA ocorrência (remarcar de 14h para 15h).                                  | Exceção de horário salva. Demais ocorrências inalteradas.              | `[#60 ✅]`  |
+| 5     | **Cancelar "esta e futuras"** em uma ocorrência intermediária.                                     | Passadas permanecem. Futuras removidas/canceladas.                     | `[#59 ✅]`  |
+| 6     | Agendar recorrência infinita para **grupo** (T3+R2).                                               | Grupo recorrente criado. Todos os alunos veem no calendário.           | `[#55 ✅]`  |
+| 7     | Agendar recorrência infinita para **dependente** (T2+R2).                                          | Recorrência vinculada ao dependente. Responsável visualiza.            | `[#56 ✅]`  |
+| 8     | Tentar agendar **recorrência conflitante** (mesmo horário de outra R2 existente).                  | Sistema **bloqueia** com mensagem de conflito.                         | `[#62 ✅]`  |
+| 9     | **Encerrar recorrência** (`end-recurrence`) no meio do mês.                                        | Aulas passadas intactas. Futuras canceladas. Recorrência encerrada.    | `[#61 ✅]`  |
+
+---
+
+### Roteiro 13 — Segurança RLS: Isolamento entre Usuários
+
+**Cobre:** #65, #66, #67, #68
+**Pré-condições:** 2 professores (A e B), 2 alunos (A e B), 1 responsável com dependente. Todos com dados existentes.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Logar como **Professor A** → Copiar URL da página de faturas → Logar como **Professor B** → Colar URL. | Página vazia ou 404. Professor B **não** vê dados do Professor A.      | `[#65 ✅]`  |
+| 2     | Logar como **Aluno A** → Copiar ID de uma fatura → Logar como **Aluno B** → Tentar abrir `/recibo/:id`. | Página vazia ou erro. Aluno B **não** acessa fatura do Aluno A.        | `[#66 ✅]`  |
+| 3     | Logar como **responsável** → Tentar acessar relatório de aluno **não vinculado** a ele.            | Acesso negado. Relatório não carregado.                                | `[#67 ✅]`  |
+| 4     | Abrir **console do navegador** → Executar `PATCH` na tabela `classes` para alterar `price`.        | RLS **bloqueia** a operação. Erro 403 ou resultado vazio.              | `[#68 ✅]`  |
+
+---
+
+### Roteiro 14 — Validação de API e Regras de Negócio
+
+**Cobre:** #70, #71, #72
+**Pré-condições:** Professor logado, aluno com faturas pagas existentes.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Via API/console, enviar **duração de aula negativa** (-30 min) ou texto ("abc").                    | Backend retorna **400**. Zod/validação rejeita o input.                | `[#70 ✅]`  |
+| 2     | Tentar criar aula com combinação **Pré-Pago (C2) + Recorrência Infinita (R2)**.                    | UI **desabilita** a combinação ou exibe erro. Não permite salvar.      | `[#71 ✅]`  |
+| 3     | Executar `smart-delete-student` para aluno com **faturas pagas**.                                  | Aluno removido da UI ativa. **Dados fiscais persistem** no banco.      | `[#72 ✅]`  |
+
+---
+
+### Roteiro 15 — UX: Materiais, Convites, Senha e Recibo
+
+**Cobre:** #78, #79, #81, #82, #83
+**Pré-condições:** Professor com materiais enviados, aluno cadastrado, perfil de negócio configurado.
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Professor **compartilha material PDF** com aluno via `ShareMaterialModal`.                         | Acesso concedido. Material aparece na lista do aluno.                  | —           |
+| 2     | Logar como **aluno** → **Baixar** o material PDF compartilhado.                                    | Download concluído sem erros. Arquivo íntegro.                         | `[#78 ✅]`  |
+| 3     | Logar como professor → **Reenviar convite** a outro aluno (`resend-student-invitation`).           | E-mail enviado. Aluno recebe link mágico de acesso.                    | `[#79 ✅]`  |
+| 4     | Na tela de login, clicar **"Esqueci minha senha"** → Inserir e-mail → Receber token.               | E-mail de reset recebido. Link de redefinição funcional.               | —           |
+| 5     | Clicar no link → **Alterar senha** → Logar com a nova senha.                                       | Senha alterada com sucesso. Login funciona com nova credencial.        | `[#81 ✅]`  |
+| 6     | Editar **perfil de negócio** (nome e/ou logo) via `BusinessProfilesManager`.                       | Alteração salva. Novo nome/logo refletido na UI.                       | `[#83 ✅]`  |
+| 7     | Abrir página `/recibo` → Verificar que alteração do perfil está refletida → Teclar **Ctrl+P**.     | Menus laterais ocultos. Layout limpo para impressão. Dados corretos.   | `[#82 ✅]`  |
+
+---
+
+### Roteiro 16 — Timezone
+
+**Cobre:** #73
+**Pré-condições:** Professor com timezone GMT-3 (Brasil), aluno com timezone GMT+0 (Portugal).
+
+| Passo | Ação                                                                                               | Validação                                                              | Cenário     |
+| ----- | -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------- |
+| 1     | Professor (GMT-3) agenda aula às **10h**.                                                          | Aula salva com horário 10h no timezone do professor.                   | —           |
+| 2     | Logar como **aluno** (GMT+0) → Verificar horário exibido na agenda.                                | Horário exibido como **13h** (10h + 3h de diferença).                  | `[#73 ✅]`  |
 
 ---
 

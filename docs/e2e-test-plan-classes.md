@@ -1,6 +1,6 @@
 # Plano de Testes E2E Definitivo — Tutor Flow (Go-Live MVP)
 
-> **Objetivo:** Homologação E2E manual cobrindo 80 fluxos de alto risco, integrações financeiras, segurança (RLS) e usabilidade antes do lançamento em produção.
+> **Objetivo:** Homologação E2E manual cobrindo 84 fluxos de alto risco, integrações financeiras, segurança (RLS) e usabilidade antes do lançamento em produção.
 > **Estratégia:** Abordagem orientada a risco. Regras lógicas exaustivas estão cobertas por testes de unidade. Este plano foca em Caminhos Críticos (Golden Paths) e Edge Cases.
 > **Última atualização:** 2026-02-25
 
@@ -61,14 +61,14 @@
 | 02 | T1+R0+C1+S6      | Aluno confirma presença na aula individual agendada pelo professor.                    | [ ]    |       |
 | 03 | T1+R0+C1+S7      | Concluir aula individual pós-paga. Status na UI muda para "Concluída".                 | [ ]    |       |
 | 04 | T1+R0+C1+S3      | Professor cancela aula individual. NÃO gera cobrança pendente.                         | [ ]    |       |
-| 05 | T1+R0+C1+S4      | Aluno cancela aula **dentro** do prazo de carência (sem taxa).                         | [ ]    |       |
-| 06 | T1+R0+C1+S4      | Aluno cancela aula **fora** do prazo de carência (taxa registrada).                    | [ ]    |       |
-| 07 | T1+R0+C1+S9      | Professor concede anistia após cancelamento tardio do aluno (taxa perdoada).           | [ ]    |       |
+| 05 | T1+R0+C1+S4a     | Aluno cancela aula **dentro** do prazo de carência (sem taxa).                         | [ ]    |       |
+| 06 | T1+R0+C1+S4b     | Aluno cancela aula **fora** do prazo de carência (taxa registrada).                    | [ ]    |       |
+| 07 | T1+R0+C1+S9a     | Professor concede anistia após cancelamento tardio do aluno (taxa perdoada).           | [ ]    |       |
 | 08 | T1+R0+C1+S8      | Criar relatório de aula individual, anexar notas, verificar envio de e-mail ao aluno.  | [ ]    |       |
 | 09 | T1+R0+C1+S12     | Faturamento automático pós-pago de aula individual.                                    | [ ]    |       |
 | 10 | T1+R0+C1+S2      | Aluno solicita aula via `StudentScheduleRequest`.                                      | [ ]    |       |
 | 11 | T1+R0+C1+S13     | Fatura manual para aula individual.                                                    | [ ]    |       |
-| 12 | T1+R0+C1+S9      | Anistia já faturada (botão disabled).                                                  | [ ]    |       |
+| 12 | T1+R0+C1+S9b     | Anistia já faturada (botão disabled).                                                  | [ ]    |       |
 | 13 | T1+R0+C0+S1      | Agendar, concluir e gerar relatório de aula **gratuita** (C0). Nenhuma fatura gerada.  | [ ]    |       |
 | 14 | T1+R0+C0+S3      | Professor cancela aula gratuita (sem cobrança).                                        | [ ]    |       |
 | 15 | T1+R0+C0+S4      | Aluno cancela aula gratuita fora do prazo. Botão de anistia NÃO aparece.               | [ ]    |       |
@@ -135,8 +135,8 @@
 | 55 | T3+R2+C1+S1      | Grupo com recorrência infinita.                                                        | [ ]    |       |
 | 56 | T2+R2+C1+S1      | Recorrência infinita para dependente.                                                  | [ ]    |       |
 | 57 | Edge Function    | `materialize-virtual-class`: avançar data, verificar materialização da próxima aula.   | [ ]    |       |
-| 58 | T1+R2+C1+S10     | **Cancelar 1 ocorrência:** feriado. Próxima semana intacta.                            | [ ]    |       |
-| 59 | T1+R2+C1+S10     | **Cancelar esta e futuras:** interromper série. Passadas ficam, futuras somem.          | [ ]    |       |
+| 58 | T1+R2+C1+S10a    | **Cancelar 1 ocorrência:** feriado. Próxima semana intacta.                            | [ ]    |       |
+| 59 | T1+R2+C1+S10b    | **Cancelar esta e futuras:** interromper série. Passadas ficam, futuras somem.          | [ ]    |       |
 | 60 | Exceção Horário  | Alterar horário de UMA ocorrência na recorrência (remarcar de 14h pra 15h).            | [ ]    |       |
 | 61 | T1+R2+C1+S11     | **Encerrar recorrência:** cancelar "assinatura" do aluno no meio do mês.               | [ ]    |       |
 | 62 | Conflito R2      | Tentar agendar recorrência que sobrepõe outra existente. Deve bloquear.                | [ ]    |       |
@@ -172,6 +172,10 @@
 | 78 | Storage Baixar   | Aluno baixa material PDF compartilhado pelo professor sem erros.                       | [ ]    |       |
 | 79 | Emails           | Reenvio de convite ao aluno (`resend-student-invitation`). Aluno recebe link mágico.   | [ ]    |       |
 | 80 | Notificações     | Cancelamento dispara notificação no sininho e e-mail.                                  | [ ]    |       |
+| 81 | Reset Senha      | Fluxo "Esqueci minha senha" (`ResetPassword.tsx`). Token enviado e senha alterada.      | [ ]    |       |
+| 82 | Impressão Recibo | Teclar Ctrl+P em `/recibo`. Menus laterais ocultos, layout limpo (`recibo.css`).       | [ ]    |       |
+| 83 | Perfil Negócio   | Editar nome/logo do negócio (`BusinessProfilesManager`). Alteração reflete no recibo.  | [ ]    |       |
+| 84 | Stripe Payout    | Verificar payout roteado para conta conectada (`refresh-stripe-connect-account`).      | [ ]    |       |
 
 ---
 
@@ -209,6 +213,10 @@
 | `supabase/functions/handle-student-overage/index.ts`          | Overage de alunos           |
 | `supabase/functions/smart-delete-student/index.ts`            | Exclusão segura             |
 | `supabase/functions/materialize-virtual-class/index.ts`       | Materialização recorrente   |
+| `src/pages/ResetPassword.tsx`                                | Recuperação de senha        |
+| `src/pages/Recibo.tsx` / `src/pages/recibo.css`              | Impressão de recibo         |
+| `src/components/BusinessProfilesManager.tsx`                 | Perfil de negócio           |
+| `supabase/functions/refresh-stripe-connect-account/index.ts` | Refresh payout Connect      |
 
 ---
 

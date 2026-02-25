@@ -1,116 +1,98 @@
 
 
-# Roteiros de Teste Otimizados — Agrupamento por Fluxo
+# Expansao Financeira do Plano E2E — Novos Cenarios e Checkpoints
 
-## Objetivo
+## Diagnostico
 
-Reescrever a secao "Como Testar Cada Cenario" do documento `docs/e2e-test-plan-classes.md`, substituindo os 5 passos genericos atuais por **16 Roteiros de Teste** detalhados com passo a passo. Cada roteiro agrupa cenarios relacionados em um unico fluxo continuo, reduzindo setup repetitivo e otimizando tempo.
+O plano atual cobre a **geracao** de faturas (automatica, manual, pre-paga), mas nao valida explicitamente:
 
-Os 84 cenarios serao cobertos em apenas 16 sessoes de teste.
+- Painel Financeiro do professor (cards de resumo, calculo de lucro liquido, taxa Stripe R$ 3,49)
+- Fluxo do aluno para pagar fatura (tela Faturas.tsx, botao "Pagar Agora", "Ver Recibo")
+- Marcacao manual como paga (cancel-payment-intent + sincronizacao de status)
+- Validacoes de boleto (minimo R$ 5,00, maximo R$ 49.999,99)
+- Toggle de geracao automatica de boleto (auto_generate_boleto = false)
+- Faturas de mensalidade (monthly_subscription billing cycle)
+- Gestao de despesas (CRUD no ExpenseList)
+- Deep-linking de faturas via Inbox
+- Visualizacao de faturas de dependentes pelo responsavel (tela do aluno)
+- Deteccao e exibicao de faturas vencidas (overdue)
+- StripeAccountGuard bloqueando acoes quando conta restrita
 
----
+## Plano de Alteracoes
 
-## Estrutura dos Roteiros
+### 1. Nova Categoria 7: Modulo Financeiro Detalhado
 
-Cada roteiro tera:
-- **Titulo e cenarios cobertos** (ex: "Cobre #01, #02, #03, #08")
-- **Pre-condicoes** (estado necessario antes de comecar)
-- **Passos numerados** com acoes claras e checkpoints de validacao
-- **Marcador de cenario** inline (ex: `[#01 OK]`) para saber qual cenario foi validado em cada passo
+Adicionar **16 novos cenarios** (#85 a #100) focados exclusivamente na experiencia financeira:
 
----
+| #   | Codigo                | Descricao                                                                          |
+|-----|----------------------|------------------------------------------------------------------------------------|
+| 85  | Fin+Dashboard        | Cards de resumo: Receitas Pendentes, Recebidas, Despesas, Lucro Liquido corretos   |
+| 86  | Fin+TaxaStripe       | Alerta de transparencia de taxa R$ 3,49. Calculo de exemplo visivel                |
+| 87  | Fin+MarkPaid         | Marcar fatura pendente como paga manualmente. Status muda, PI cancelado no Stripe  |
+| 88  | Fin+MarkPaid+Sync    | Aula pre-paga marcada como paga manualmente sincroniza status para "confirmada"    |
+| 89  | Fin+BoletoMin        | Criar fatura manual com valor < R$ 5,00. Sistema bloqueia com erro                 |
+| 90  | Fin+BoletoMax        | Criar fatura manual com valor > R$ 49.999,99. Sistema bloqueia com erro            |
+| 91  | Fin+AutoBoletoOff    | Desativar auto_generate_boleto. Fatura criada mas sem boleto gerado no Stripe      |
+| 92  | Fin+Despesa          | Adicionar despesa no mes. Card "Total Despesas" atualiza. Lucro liquido recalcula  |
+| 93  | Fin+Mensalidade      | Faturamento automatico de mensalidade: valor integral cobrado no billing_day       |
+| 94  | Fin+MensalidadeDep   | Mensalidade com dependentes: fatura consolidada no responsavel com nome do filho   |
+| 95  | Fin+AlunoFaturas     | Aluno visualiza faturas na tela Faturas.tsx. Botao "Pagar Agora" abre boleto_url   |
+| 96  | Fin+AlunoRecibo      | Aluno clica "Ver Recibo" em fatura paga. Pagina /recibo exibe dados corretos       |
+| 97  | Fin+AlunoDepFaturas  | Responsavel ve faturas dos dependentes com badge "Dependente" na tela do aluno     |
+| 98  | Fin+Vencida          | Fatura pendente passa da data de vencimento. Badge muda para "Vencida" na UI       |
+| 99  | Fin+DeepLink         | Notificacao no Inbox com link para fatura. Clique navega e destaca a fatura        |
+| 100 | Fin+ContaRestrita    | StripeAccountGuard: conta restrita bloqueia criacao de faturas com alerta visivel   |
 
-## Mapeamento dos 16 Roteiros
+### 2. Tres Novos Roteiros (17, 18, 19)
 
-### Roteiro 1 — Ciclo de Vida Individual Pos-paga (8 cenarios)
-**Cobre:** #01, #02, #03, #08, #74, #75, #76, #77
+**Roteiro 17 — Painel Financeiro do Professor (8 cenarios)**
+Cobre: #85, #86, #87, #88, #89, #90, #91, #92
 
-Fluxo: Tentar conflito de horario → agendar no passado → agendar corretamente → aluno confirma → concluir → anexar PDF 4MB no relatorio → tentar anexar >10MB → enviar relatorio.
+Fluxo: Abrir Financeiro -> verificar cards de resumo -> ver alerta de taxa Stripe -> criar fatura < R$5 (bloqueio) -> criar fatura > R$49.999 (bloqueio) -> criar fatura valida -> marcar como paga manualmente -> verificar PI cancelado -> verificar sincronizacao de aula pre-paga -> desativar auto_generate_boleto -> gerar fatura (sem boleto) -> adicionar despesa -> conferir lucro liquido.
 
-Um unico fluxo valida agendamento, confirmacao, conclusao, relatorio, upload e edge cases de UI.
+**Roteiro 18 — Mensalidades e Faturamento Ciclico (2 cenarios)**
+Cobre: #93, #94
 
-### Roteiro 2 — Cancelamentos e Anistia Individual (7 cenarios)
-**Cobre:** #04, #05, #06, #07, #12, #11, #80
+Fluxo: Configurar mensalidade com billing_day -> vincular aluno e dependente -> aguardar/executar ciclo -> verificar fatura integral no valor base -> verificar fatura do dependente consolidada no responsavel com descricao "[Nome] - Aula".
 
-Fluxo: Agendar 3 aulas individuais pos-pagas → professor cancela a 1a (sem cobranca) → aluno cancela a 2a dentro do prazo (sem taxa) → aluno cancela a 3a fora do prazo (taxa) → professor concede anistia → gerar fatura manual → verificar botao anistia disabled → checar notificacao no sininho e email.
+**Roteiro 19 — Experiencia Financeira do Aluno (5 cenarios)**
+Cobre: #95, #96, #97, #98, #99, #100
 
-### Roteiro 3 — Aula Gratuita (3 cenarios)
-**Cobre:** #13, #14, #15
+Fluxo: Logar como aluno -> abrir Faturas -> ver lista com faturas proprias e de dependentes (badge) -> clicar "Pagar Agora" em fatura pendente com boleto -> verificar fatura vencida com badge vermelha -> clicar "Ver Recibo" em fatura paga -> verificar dados do recibo -> testar deep-link vindo do Inbox -> logar como professor com conta restrita -> verificar StripeAccountGuard bloqueia acoes.
 
-Fluxo: Agendar gratuita → concluir → relatorio → verificar zero faturas → agendar outra gratuita → professor cancela → agendar outra → aluno cancela fora do prazo → confirmar que anistia NAO aparece.
+### 3. Checkpoints Financeiros em Roteiros Existentes
 
-### Roteiro 4 — Grupo Simples Completo (7 cenarios)
-**Cobre:** #16, #17, #18, #19, #20, #21, #22
+Adicionar linhas de validacao financeira nos roteiros ja existentes:
 
-Fluxo: Agendar grupo com 3 alunos → confirmar participacao → 1 aluno cancela parcialmente → concluir aula (2 restantes) → relatorio com feedback privado + geral → anistia para 1 aluno → agendar outro grupo → professor cancela inteiro → validar notificacoes.
+- **Roteiro 02** (Cancelamentos): Apos passo 6 (fatura manual), adicionar checkpoint: "Verificar que a fatura aparece no painel Financeiro com tipo 'Manual' e valor correto"
+- **Roteiro 06** (Fatura Manual): Apos passo 4, checkpoint: "Aluno ve a fatura na tela Faturas.tsx com botao 'Pagar Agora'"
+- **Roteiro 07** (Faturamento Auto): Apos passo 1, checkpoint: "Fatura aparece no painel com tipo 'Automatica'. Card Receitas Pendentes atualiza"
+- **Roteiro 09** (Dependentes): Apos passo 7, checkpoint: "Responsavel ve fatura com badge 'Dependente' na tela do aluno"
 
-### Roteiro 5 — Pre-pago e Stripe Checkout (5 cenarios)
-**Cobre:** #23, #24, #25, #26, #27
+### 4. Atualizacao da Tabela de Referencia Cruzada
 
-Fluxo: Agendar pre-paga → redirect Stripe → pagar com cartao teste → verificar status pago → agendar outra pre-paga → aluno cancela dentro do prazo (refund) → agendar outra → aluno cancela fora do prazo → professor concede anistia (refund via Edge Function).
+Adicionar roteiros 17-19 com totais atualizados (84 + 16 = **100 cenarios** em **19 roteiros**).
 
-### Roteiro 6 — Solicitacao pelo Aluno e Fatura Manual (3 cenarios)
-**Cobre:** #10, #09, #30
+### 5. Arquivos Envolvidos (novos)
 
-Fluxo: Logar como aluno → solicitar aula → logar como professor → aprovar → concluir aula → faturamento automatico (verificar) → gerar fatura manual/boleto avulsa → validar PDF/link.
+Adicionar a tabela de arquivos:
+- `src/pages/Financeiro.tsx` — Painel financeiro do professor
+- `src/pages/Faturas.tsx` — Tela de faturas do aluno
+- `src/components/ExpenseList.tsx` / `ExpenseModal.tsx` — Gestao de despesas
+- `src/components/InvoiceStatusBadge.tsx` / `InvoiceTypeBadge.tsx` — Badges de status/tipo
+- `src/components/StripeAccountGuard.tsx` — Guard de conta restrita
+- `src/components/PaymentOptionsCard.tsx` — Opcoes de pagamento
+- `src/utils/stripe-fees.ts` — Validacao de valores boleto e calculo de taxas
+- `supabase/functions/cancel-payment-intent/index.ts` — Marcacao manual como paga
+- `supabase/functions/validate-monthly-subscriptions/index.ts` — Validacao de mensalidades
 
-### Roteiro 7 — Faturamento Automatizado e Inadimplencia (6 cenarios)
-**Cobre:** #28, #29, #31, #32, #33, #38
+### Resumo da Alteracao no Arquivo
 
-Fluxo: Preparar aulas concluidas no mes (individual + grupo) → executar cron `automated-billing` → verificar fatura individual → verificar fatura proporcional do grupo → simular `payment_failed` → verificar modal de falha → tentar agendar com aluno inadimplente (bloqueio) → executar `process-orphan-cancellation-charges` → testar overage adicionando aluno alem do plano.
+O documento `docs/e2e-test-plan-classes.md` sera atualizado com:
 
-### Roteiro 8 — Stripe Connect e Assinaturas do Professor (6 cenarios)
-**Cobre:** #34, #35, #36, #37, #84, #69
-
-Fluxo: Iniciar onboarding KYC Stripe Connect → completar → verificar conta ativa → fazer upgrade Basic→Pro → confirmar features desbloqueadas → solicitar downgrade → verificar features travadas na virada → simular expiracao → confirmar `FinancialRouteGuard` ativo → verificar payout roteado → testar Feature Gate (Basic tenta criar grupo).
-
-### Roteiro 9 — Dependentes: Ciclo Completo (8 cenarios)
-**Cobre:** #39, #40, #41, #42, #43, #44, #45, #46
-
-Fluxo: Cadastrar responsavel com 2 dependentes → agendar aula para dependente 1 → responsavel solicita aula para dependente 2 → concluir aula dep.1 → relatorio enviado ao responsavel → responsavel cancela aula dep.2 fora do prazo → professor concede anistia → executar faturamento automatico (fatura no nome do responsavel) → gerar fatura manual consolidando os 2 dependentes.
-
-### Roteiro 10 — Grupo Misto T4 (5 cenarios)
-**Cobre:** #47, #48, #49, #50, #51
-
-Fluxo: Agendar turma com 1 adulto + 1 dependente → responsavel retira filho (cancelamento parcial) → adulto continua → agendar outra turma mista → professor cancela inteira (notificacao para pagantes corretos) → agendar outra → concluir → faturamento automatico (adulto recebe sua fatura, responsavel recebe a do filho) → relatorio com feedback roteado corretamente.
-
-### Roteiro 11 — Recorrencia Finita e Frequencias (4 cenarios)
-**Cobre:** #52, #53, #63, #64
-
-Fluxo: Agendar recorrencia finita semanal (10 aulas) → verificar calendario → agendar grupo recorrente finito → verificar calendario de todos os alunos → agendar recorrencia quinzenal → verificar datas alternadas → agendar recorrencia mensal → verificar 1 ocorrencia por mes.
-
-### Roteiro 12 — Recorrencia Infinita e Excecoes (8 cenarios)
-**Cobre:** #54, #55, #56, #57, #58, #59, #60, #61, #62
-
-Fluxo: Agendar recorrencia infinita individual → verificar materializacao (`materialize-virtual-class`) → cancelar 1 ocorrencia (feriado) → verificar proxima intacta → alterar horario de 1 ocorrencia → cancelar "esta e futuras" → verificar passadas intactas → agendar recorrencia infinita de grupo → agendar para dependente → tentar agendar recorrencia conflitante (bloqueio) → encerrar recorrencia no meio do mes.
-
-### Roteiro 13 — Seguranca RLS: Isolamento entre Usuarios (4 cenarios)
-**Cobre:** #65, #66, #67, #68
-
-Fluxo: Logar como Professor A → copiar URL de faturas → logar como Professor B → colar URL → confirmar 404/acesso negado → logar como Aluno A → copiar ID de fatura → logar como Aluno B → tentar abrir → confirmar vazio/erro → logar como responsavel → tentar ver relatorio de aluno nao vinculado → abrir console → tentar PATCH no preco da aula → confirmar RLS bloqueia.
-
-### Roteiro 14 — Seguranca: Validacao e Feature Gates (4 cenarios)
-**Cobre:** #69, #70, #71, #72
-
-Fluxo: (Feature Gate ja coberto no Roteiro 8) → enviar duracao negativa via API → confirmar 400 → tentar combinar C2+R2 → confirmar UI desabilita → deletar aluno com faturas pagas → confirmar dados fiscais persistem mas cadastro some da UI ativa.
-
-### Roteiro 15 — UX: Materiais, Convites e Recuperacao (5 cenarios)
-**Cobre:** #78, #79, #81, #82, #83
-
-Fluxo: Professor compartilha material PDF → logar como aluno → baixar material → reenviar convite a outro aluno → verificar email recebido → testar "Esqueci minha senha" → receber token → alterar senha → logar com nova senha → editar perfil de negocio (nome/logo) → abrir recibo → verificar alteracao refletida → Ctrl+P → confirmar layout limpo sem menus.
-
-### Roteiro 16 — UX: Timezone e Validacoes Visuais (2 cenarios)
-**Cobre:** #73, #82 (complemento)
-
-Fluxo: Configurar timezone GMT-3 no professor → agendar aula 10h → logar como aluno em GMT+0 → verificar horario exibido como 13h.
-
----
-
-## Alteracao no Arquivo
-
-O arquivo `docs/e2e-test-plan-classes.md` sera atualizado:
-
-1. **Substituir** a secao "Como Testar Cada Cenario" (linhas 182-188) pelos 16 roteiros detalhados com passo a passo numerado
-2. **Manter intactas** todas as tabelas de cenarios (categorias 1-6), matriz de eixos, arquivos envolvidos e registro de resultados
-3. **Adicionar** uma tabela de referencia cruzada no inicio da nova secao mostrando qual roteiro cobre quais cenarios
-
+1. Nova **Categoria 7: Modulo Financeiro** com 16 cenarios (#85-#100)
+2. Tres novos **Roteiros 17, 18 e 19** com passo a passo detalhado
+3. **Checkpoints financeiros** adicionados como sub-passos nos Roteiros 02, 06, 07 e 09
+4. **Tabela de referencia cruzada** expandida (19 roteiros, 100 cenarios)
+5. **Tabela de arquivos** expandida com 9 novos componentes financeiros
+6. Atualizar o cabecalho do documento de "84 fluxos" para "100 fluxos"

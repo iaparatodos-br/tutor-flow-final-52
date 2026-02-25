@@ -1,109 +1,116 @@
 
 
-# Expansao do Plano de Testes E2E com Cenarios do Gemini
+# Roteiros de Teste Otimizados — Agrupamento por Fluxo
 
-## Resumo
+## Objetivo
 
-Apos cruzar os 80 cenarios do Gemini com os 52 cenarios atuais do documento `docs/e2e-test-plan-classes.md`, identifiquei **28 cenarios novos** que fazem sentido adicionar. Alguns cenarios do Gemini nao se aplicam (como "professor substituto", que nao existe no sistema) ou ja estao cobertos com nomes diferentes.
+Reescrever a secao "Como Testar Cada Cenario" do documento `docs/e2e-test-plan-classes.md`, substituindo os 5 passos genericos atuais por **16 Roteiros de Teste** detalhados com passo a passo. Cada roteiro agrupa cenarios relacionados em um unico fluxo continuo, reduzindo setup repetitivo e otimizando tempo.
 
-O documento sera expandido de 52 para 80 cenarios, organizados em 6 categorias tematicas (ao inves de apenas 3 niveis de prioridade), seguindo a estrutura sugerida pelo Gemini que e mais clara para navegacao.
-
----
-
-## Cenarios Novos a Adicionar
-
-### Categoria: Stripe e Financeiro (nova secao)
-Cenarios que envolvem integracao real com Stripe e fluxo de dinheiro, atualmente ausentes:
-
-- Checkout pre-pago via Stripe redirect (cartao de teste)
-- Cancelamento de aula pre-paga com refund no Stripe
-- Anistia de pre-paga acionando refund via Edge Function
-- Faturamento automatico de grupo (fatura proporcional por participante)
-- Fatura manual com geracao de boleto/link
-- Cartao recusado (webhook `payment_failed`) exibindo modal de falha
-- Aluno inadimplente bloqueado de agendar (`StudentSelectionBlocker`)
-- Processar taxas orfas (`process-orphan-cancellation-charges`)
-- Onboarding Stripe Connect (fluxo KYC do tutor)
-- Upgrade/Downgrade de plano do professor
-- Expiracao de assinatura e restricao via `FinancialRouteGuard`
-- Overage de alunos (`handle-student-overage`)
-
-### Categoria: Dependentes e Grupos Mistos (expandir)
-Cenarios de grupo misto que faltavam:
-
-- Fatura manual consolidando multiplos dependentes (2 filhos na mesma fatura)
-- Feedback em grupo misto: adulto recebe o dele, responsavel recebe o do filho
-- Professor cancela grupo misto inteiro (notificacao para todos os pagantes corretos)
-
-### Categoria: Recorrencia (expandir)
-- Grupo recorrente finito: verificar se ocorrencias aparecem no calendario de todos
-- Materializacao de aula virtual (cron/Edge Function `materialize-virtual-class`)
-- Conflito entre recorrencias (tentar agendar recorrencia que sobrepoe outra existente)
-
-### Categoria: Seguranca e RLS (nova secao)
-- Professor A tenta acessar faturas do Professor B via URL direta
-- Aluno A tenta abrir fatura do Aluno B por ID
-- Responsavel tenta ver relatorio de aluno nao vinculado
-- Aluno tenta alterar preco via console/API (RLS bloqueia)
-- Validacao de API: enviar duracao negativa ou texto (Zod/backend barra)
-- Deletar aluno com faturas pagas (`smart-delete-student` -- dados fiscais persistem)
-
-### Categoria: UX e Usabilidade (nova secao)
-- Timezone: professor BR agenda 10h, aluno em fuso diferente ve horario correto
-- Upload de PDF (4MB) no relatorio de aula
-- Tentativa de upload > 10MB (erro amigavel)
-- Aluno baixa material compartilhado sem erros
-- Reenvio de convite ao aluno (`resend-student-invitation`)
-- Mobile: calendario colapsa para lista em viewport < 768px
-- Mobile: sidebar fecha ao clicar em menu
-- Tema claro/escuro sem componentes ilegiveis
-- Impressao de recibo (Ctrl+P omite menus laterais)
+Os 84 cenarios serao cobertos em apenas 16 sessoes de teste.
 
 ---
 
-## Cenarios do Gemini DESCARTADOS
+## Estrutura dos Roteiros
 
-- **#49 Professor substituto:** Funcionalidade nao existe no sistema
-- **#61 MFA/bloqueio login:** Configuracao do Supabase Auth, nao do app
-- **#62 Token expirado:** Comportamento padrao do Supabase, nao customizado
-- **#75 Cookie consent:** Periferico ao fluxo de aulas
-- **#80 Derrubar banco:** Teste de infraestrutura, nao E2E de aplicacao
-- **#71 Dashboard MRR:** Calculo financeiro, nao fluxo de aula
-- **#72 Multi-idioma:** Teste de traducao, nao fluxo critico
+Cada roteiro tera:
+- **Titulo e cenarios cobertos** (ex: "Cobre #01, #02, #03, #08")
+- **Pre-condicoes** (estado necessario antes de comecar)
+- **Passos numerados** com acoes claras e checkpoints de validacao
+- **Marcador de cenario** inline (ex: `[#01 OK]`) para saber qual cenario foi validado em cada passo
 
 ---
 
-## Estrutura Final do Documento
+## Mapeamento dos 16 Roteiros
 
-O documento sera reorganizado em 6 categorias:
+### Roteiro 1 — Ciclo de Vida Individual Pos-paga (8 cenarios)
+**Cobre:** #01, #02, #03, #08, #74, #75, #76, #77
 
-1. **Fluxos Core** -- Individuais, grupos simples, gratuitas (24 cenarios existentes)
-2. **Stripe e Financeiro** -- Checkout, faturas, refunds, inadimplencia (12 novos)
-3. **Dependentes e Grupos Mistos** -- T2/T4 com roteamento de faturas (existentes + 3 novos)
-4. **Recorrencia e Excecoes** -- R1/R2, cancelar ocorrencia, encerrar (existentes + 3 novos)
-5. **Seguranca e RLS** -- Isolamento, validacao, feature gates (6 novos)
-6. **UX e Usabilidade** -- Mobile, uploads, timezone, tema (9 novos)
+Fluxo: Tentar conflito de horario → agendar no passado → agendar corretamente → aluno confirma → concluir → anexar PDF 4MB no relatorio → tentar anexar >10MB → enviar relatorio.
 
-Total: **80 cenarios** (52 existentes + 28 novos), renumerados sequencialmente.
+Um unico fluxo valida agendamento, confirmacao, conclusao, relatorio, upload e edge cases de UI.
+
+### Roteiro 2 — Cancelamentos e Anistia Individual (7 cenarios)
+**Cobre:** #04, #05, #06, #07, #12, #11, #80
+
+Fluxo: Agendar 3 aulas individuais pos-pagas → professor cancela a 1a (sem cobranca) → aluno cancela a 2a dentro do prazo (sem taxa) → aluno cancela a 3a fora do prazo (taxa) → professor concede anistia → gerar fatura manual → verificar botao anistia disabled → checar notificacao no sininho e email.
+
+### Roteiro 3 — Aula Gratuita (3 cenarios)
+**Cobre:** #13, #14, #15
+
+Fluxo: Agendar gratuita → concluir → relatorio → verificar zero faturas → agendar outra gratuita → professor cancela → agendar outra → aluno cancela fora do prazo → confirmar que anistia NAO aparece.
+
+### Roteiro 4 — Grupo Simples Completo (7 cenarios)
+**Cobre:** #16, #17, #18, #19, #20, #21, #22
+
+Fluxo: Agendar grupo com 3 alunos → confirmar participacao → 1 aluno cancela parcialmente → concluir aula (2 restantes) → relatorio com feedback privado + geral → anistia para 1 aluno → agendar outro grupo → professor cancela inteiro → validar notificacoes.
+
+### Roteiro 5 — Pre-pago e Stripe Checkout (5 cenarios)
+**Cobre:** #23, #24, #25, #26, #27
+
+Fluxo: Agendar pre-paga → redirect Stripe → pagar com cartao teste → verificar status pago → agendar outra pre-paga → aluno cancela dentro do prazo (refund) → agendar outra → aluno cancela fora do prazo → professor concede anistia (refund via Edge Function).
+
+### Roteiro 6 — Solicitacao pelo Aluno e Fatura Manual (3 cenarios)
+**Cobre:** #10, #09, #30
+
+Fluxo: Logar como aluno → solicitar aula → logar como professor → aprovar → concluir aula → faturamento automatico (verificar) → gerar fatura manual/boleto avulsa → validar PDF/link.
+
+### Roteiro 7 — Faturamento Automatizado e Inadimplencia (6 cenarios)
+**Cobre:** #28, #29, #31, #32, #33, #38
+
+Fluxo: Preparar aulas concluidas no mes (individual + grupo) → executar cron `automated-billing` → verificar fatura individual → verificar fatura proporcional do grupo → simular `payment_failed` → verificar modal de falha → tentar agendar com aluno inadimplente (bloqueio) → executar `process-orphan-cancellation-charges` → testar overage adicionando aluno alem do plano.
+
+### Roteiro 8 — Stripe Connect e Assinaturas do Professor (6 cenarios)
+**Cobre:** #34, #35, #36, #37, #84, #69
+
+Fluxo: Iniciar onboarding KYC Stripe Connect → completar → verificar conta ativa → fazer upgrade Basic→Pro → confirmar features desbloqueadas → solicitar downgrade → verificar features travadas na virada → simular expiracao → confirmar `FinancialRouteGuard` ativo → verificar payout roteado → testar Feature Gate (Basic tenta criar grupo).
+
+### Roteiro 9 — Dependentes: Ciclo Completo (8 cenarios)
+**Cobre:** #39, #40, #41, #42, #43, #44, #45, #46
+
+Fluxo: Cadastrar responsavel com 2 dependentes → agendar aula para dependente 1 → responsavel solicita aula para dependente 2 → concluir aula dep.1 → relatorio enviado ao responsavel → responsavel cancela aula dep.2 fora do prazo → professor concede anistia → executar faturamento automatico (fatura no nome do responsavel) → gerar fatura manual consolidando os 2 dependentes.
+
+### Roteiro 10 — Grupo Misto T4 (5 cenarios)
+**Cobre:** #47, #48, #49, #50, #51
+
+Fluxo: Agendar turma com 1 adulto + 1 dependente → responsavel retira filho (cancelamento parcial) → adulto continua → agendar outra turma mista → professor cancela inteira (notificacao para pagantes corretos) → agendar outra → concluir → faturamento automatico (adulto recebe sua fatura, responsavel recebe a do filho) → relatorio com feedback roteado corretamente.
+
+### Roteiro 11 — Recorrencia Finita e Frequencias (4 cenarios)
+**Cobre:** #52, #53, #63, #64
+
+Fluxo: Agendar recorrencia finita semanal (10 aulas) → verificar calendario → agendar grupo recorrente finito → verificar calendario de todos os alunos → agendar recorrencia quinzenal → verificar datas alternadas → agendar recorrencia mensal → verificar 1 ocorrencia por mes.
+
+### Roteiro 12 — Recorrencia Infinita e Excecoes (8 cenarios)
+**Cobre:** #54, #55, #56, #57, #58, #59, #60, #61, #62
+
+Fluxo: Agendar recorrencia infinita individual → verificar materializacao (`materialize-virtual-class`) → cancelar 1 ocorrencia (feriado) → verificar proxima intacta → alterar horario de 1 ocorrencia → cancelar "esta e futuras" → verificar passadas intactas → agendar recorrencia infinita de grupo → agendar para dependente → tentar agendar recorrencia conflitante (bloqueio) → encerrar recorrencia no meio do mes.
+
+### Roteiro 13 — Seguranca RLS: Isolamento entre Usuarios (4 cenarios)
+**Cobre:** #65, #66, #67, #68
+
+Fluxo: Logar como Professor A → copiar URL de faturas → logar como Professor B → colar URL → confirmar 404/acesso negado → logar como Aluno A → copiar ID de fatura → logar como Aluno B → tentar abrir → confirmar vazio/erro → logar como responsavel → tentar ver relatorio de aluno nao vinculado → abrir console → tentar PATCH no preco da aula → confirmar RLS bloqueia.
+
+### Roteiro 14 — Seguranca: Validacao e Feature Gates (4 cenarios)
+**Cobre:** #69, #70, #71, #72
+
+Fluxo: (Feature Gate ja coberto no Roteiro 8) → enviar duracao negativa via API → confirmar 400 → tentar combinar C2+R2 → confirmar UI desabilita → deletar aluno com faturas pagas → confirmar dados fiscais persistem mas cadastro some da UI ativa.
+
+### Roteiro 15 — UX: Materiais, Convites e Recuperacao (5 cenarios)
+**Cobre:** #78, #79, #81, #82, #83
+
+Fluxo: Professor compartilha material PDF → logar como aluno → baixar material → reenviar convite a outro aluno → verificar email recebido → testar "Esqueci minha senha" → receber token → alterar senha → logar com nova senha → editar perfil de negocio (nome/logo) → abrir recibo → verificar alteracao refletida → Ctrl+P → confirmar layout limpo sem menus.
+
+### Roteiro 16 — UX: Timezone e Validacoes Visuais (2 cenarios)
+**Cobre:** #73, #82 (complemento)
+
+Fluxo: Configurar timezone GMT-3 no professor → agendar aula 10h → logar como aluno em GMT+0 → verificar horario exibido como 13h.
 
 ---
 
-## Detalhes Tecnicos
+## Alteracao no Arquivo
 
-### Arquivos adicionados a tabela de referencia
-| Arquivo | Responsabilidade |
-|---------|-----------------|
-| `src/contexts/SubscriptionContext.tsx` | Deteccao de payment failure |
-| `src/components/StudentSelectionBlocker.tsx` | Bloqueio de inadimplente |
-| `src/components/StripeConnectOnboarding.tsx` | Onboarding KYC |
-| `src/components/FinancialRouteGuard.tsx` | Restricao por assinatura |
-| `src/components/SystemHealthAlert.tsx` | Alertas de saude |
-| `src/components/CreateInvoiceModal.tsx` | Fatura manual com boleto |
-| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Taxas orfas |
-| `supabase/functions/handle-student-overage/index.ts` | Overage de alunos |
-| `supabase/functions/smart-delete-student/index.ts` | Exclusao segura |
-| `supabase/functions/materialize-virtual-class/index.ts` | Materializacao recorrente |
+O arquivo `docs/e2e-test-plan-classes.md` sera atualizado:
 
-### Alteracao no arquivo
-- `docs/e2e-test-plan-classes.md`: Reescrita completa mantendo todos os 52 cenarios existentes e adicionando 28 novos, reorganizados em 6 categorias tematicas.
+1. **Substituir** a secao "Como Testar Cada Cenario" (linhas 182-188) pelos 16 roteiros detalhados com passo a passo numerado
+2. **Manter intactas** todas as tabelas de cenarios (categorias 1-6), matriz de eixos, arquivos envolvidos e registro de resultados
+3. **Adicionar** uma tabela de referencia cruzada no inicio da nova secao mostrando qual roteiro cobre quais cenarios
 

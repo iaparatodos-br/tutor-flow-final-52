@@ -78,37 +78,48 @@
 | 18 | T3+R0+C1+S4: Cancel parcial (1 aluno sai)         | [ ]    |       |
 | 19 | T3+R0+C1+S8: Relatório grupo (feedback individual)| [ ]    |       |
 | 20 | T1+R0+C0+S1: Aula gratuita                        | [ ]    |       |
+| 21 | T1+R0+C1+S6: Confirmar aula individual             | [ ]    |       |
+| 22 | T3+R0+C1+S7: Concluir aula em grupo                | [ ]    |       |
+| 23 | T2+R0+C1+S7: Concluir aula com dependente          | [ ]    |       |
+| 24 | T3+R0+C1+S3: Professor cancela grupo inteiro       | [ ]    |       |
 
 ### Prioridade Média
 
 | #  | Cenário                                           | Status | Notas |
 | -- | ------------------------------------------------- | ------ | ----- |
-| 21 | T1+R0+C2+S1: Pré-paga individual                  | [ ]    |       |
-| 22 | T1+R0+C2+S4: Aluno cancela pré-paga               | [ ]    |       |
-| 23 | T4+R0+C1+S1: Grupo misto (alunos + dependentes)   | [ ]    |       |
-| 24 | T4+R0+C1+S4: Cancel parcial grupo misto           | [ ]    |       |
-| 25 | T1+R0+C1+S2: Aluno solicita aula                  | [ ]    |       |
-| 26 | T2+R0+C1+S2: Aluno solicita p/ dependente         | [ ]    |       |
-| 27 | T3+R1+C1+S1: Grupo com recorrência finita         | [ ]    |       |
-| 28 | T1+R0+C1+S13: Fatura manual                       | [ ]    |       |
-| 29 | T2+R0+C1+S13: Fatura manual p/ dependente         | [ ]    |       |
-| 30 | T1+R0+C1+S9: Anistia já faturada (botão disabled) | [ ]    |       |
-| 31 | T3+R0+C1+S9: Anistia grupo (só afeta 1 aluno)     | [ ]    |       |
+| 25 | T1+R0+C2+S1: Pré-paga individual                  | [ ]    |       |
+| 26 | T1+R0+C2+S4: Aluno cancela pré-paga               | [ ]    |       |
+| 27 | T4+R0+C1+S1: Grupo misto (alunos + dependentes)   | [ ]    |       |
+| 28 | T4+R0+C1+S4: Cancel parcial grupo misto           | [ ]    |       |
+| 29 | T1+R0+C1+S2: Aluno solicita aula                  | [ ]    |       |
+| 30 | T2+R0+C1+S2: Aluno solicita p/ dependente         | [ ]    |       |
+| 31 | T3+R1+C1+S1: Grupo com recorrência finita         | [ ]    |       |
+| 32 | T1+R0+C1+S13: Fatura manual                       | [ ]    |       |
+| 33 | T2+R0+C1+S13: Fatura manual p/ dependente         | [ ]    |       |
+| 34 | T1+R0+C1+S9: Anistia já faturada (botão disabled) | [ ]    |       |
+| 35 | T3+R0+C1+S9: Anistia grupo (só afeta 1 aluno)     | [ ]    |       |
+| 36 | T2+R0+C1+S8: Relatório aula com dependente         | [ ]    |       |
+| 37 | T1+R0+C0+S3: Cancelar aula gratuita (sem cobrança) | [ ]    |       |
+| 38 | T1+R0+C0+S4: Aluno cancela gratuita (sem cobrança) | [ ]    |       |
+| 39 | T3+R2+C1+S1: Grupo com recorrência infinita        | [ ]    |       |
+| 40 | T2+R0+C1+S9: Anistia em aula com dependente        | [ ]    |       |
 
 ### Prioridade Baixa — Edge Cases
 
 | #  | Cenário                                           | Status | Notas |
 | -- | ------------------------------------------------- | ------ | ----- |
-| 32 | Agendar no passado (warning exibido)               | [ ]    |       |
-| 33 | Conflito de horário (mensagem de erro)             | [ ]    |       |
-| 34 | Grupo sem plano premium (bloqueio FeatureGate)     | [ ]    |       |
-| 35 | Pré-pago + recorrência (bloqueio)                  | [ ]    |       |
-| 36 | T2+R2+C1+S1: Dependente com recorrência infinita   | [ ]    |       |
-| 37 | Cancelar todos participantes de grupo              | [ ]    |       |
-| 38 | Relatório com fotos (upload/delete)                | [ ]    |       |
-| 39 | Limite de alunos do plano atingido                 | [ ]    |       |
-| 40 | Duração customizada (15-480 min, validação)        | [ ]    |       |
-| 41 | Notificações disparadas em cada cenário            | [ ]    |       |
+| 41 | Agendar no passado (warning exibido)               | [ ]    |       |
+| 42 | Conflito de horário (mensagem de erro)             | [ ]    |       |
+| 43 | Grupo sem plano premium (bloqueio FeatureGate)     | [ ]    |       |
+| 44 | Pré-pago + recorrência (bloqueio)                  | [ ]    |       |
+| 45 | T2+R2+C1+S1: Dependente com recorrência infinita   | [ ]    |       |
+| 46 | Cancelar todos participantes de grupo              | [ ]    |       |
+| 47 | Relatório com fotos (upload/delete)                | [ ]    |       |
+| 48 | Limite de alunos do plano atingido                 | [ ]    |       |
+| 49 | Duração customizada (15-480 min, validação)        | [ ]    |       |
+| 50 | Notificações disparadas em cada cenário            | [ ]    |       |
+| 51 | T1+R1+C1+S1: Recorrência quinzenal (frequência)    | [ ]    |       |
+| 52 | T1+R1+C1+S1: Recorrência mensal (frequência)       | [ ]    |       |
 
 ---
 

@@ -25,7 +25,7 @@ export function BillingSettings() {
   const [businessProfileId, setBusinessProfileId] = useState<string | null>(null);
 
   const billingSchema = z.object({
-    payment_due_days: z.number().min(1, t('validation.minDays')).max(90, t('validation.maxDays')),
+    payment_due_days: z.number().min(1, t('validation.minDays')).max(28, t('validation.dayRange')),
     default_billing_day: z.number().min(1, t('validation.dayRange')).max(28, t('validation.dayRange')).optional().nullable(),
   });
 
@@ -256,28 +256,24 @@ export function BillingSettings() {
                   <FormLabel>{t('fields.paymentDueDays.label')}</FormLabel>
                   <FormControl>
                     <Input
-                      type="number"
-                      min="1"
-                      max="90"
+                      type="text"
+                      inputMode="numeric"
                       placeholder="15"
-                      className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      maxLength={2}
                       {...field}
                       value={field.value ?? ""}
                       onChange={(e) => {
-                        const raw = e.target.value;
+                        const raw = e.target.value.replace(/\D/g, "");
                         if (raw === "") {
                           field.onChange(null);
                           return;
                         }
-                        const num = parseInt(raw);
-                        if (!isNaN(num)) {
-                          field.onChange(num);
-                        }
+                        field.onChange(parseInt(raw));
                       }}
                       onBlur={() => {
                         field.onBlur();
                         if (field.value != null) {
-                          field.onChange(Math.min(90, Math.max(1, field.value)));
+                          field.onChange(Math.min(28, Math.max(1, field.value)));
                         }
                       }}
                     />

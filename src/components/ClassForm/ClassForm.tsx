@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { format, parse } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -10,10 +12,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info, CalendarIcon } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useProfile } from '@/contexts/ProfileContext';
@@ -627,17 +632,39 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="date">{t('fields.date')} *</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.class_date}
-                onChange={(e) => {
-                  setFormData(prev => ({ ...prev, class_date: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, date: false, timeConflict: false }));
-                }}
-                className={validationErrors.date || validationErrors.timeConflict ? "border-destructive" : ""}
-                required
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.class_date && "text-muted-foreground",
+                      (validationErrors.date || validationErrors.timeConflict) && "border-destructive"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.class_date
+                      ? format(parse(formData.class_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.class_date ? parse(formData.class_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        setFormData(prev => ({ ...prev, class_date: format(date, 'yyyy-MM-dd') }));
+                        setValidationErrors(prev => ({ ...prev, date: false, timeConflict: false }));
+                      }
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>

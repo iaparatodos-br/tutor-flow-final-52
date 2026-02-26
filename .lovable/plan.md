@@ -1,39 +1,33 @@
 
 
-# Diagnóstico: Aulas em grupo sendo duplicadas
+# Fix: Email de convite ao aluno nao esta sendo enviado
 
 ## Causa raiz
 
-No componente `Agenda.tsx` (linha 1860), a prop `loading` **não é passada** ao `ClassForm`:
+A Edge Function `send-student-invitation/index.ts` usa `createClient` (linha 31) para validar autenticacao, mas **nao importa a funcao**. O unico import e `sendEmail` do `ses-email.ts`.
 
-```tsx
-<ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} 
-  students={students} dependents={dependents} services={services} existingClasses={classes} />
-// ❌ Falta: loading={submitting}
+Logs confirmam:
+```
+ERROR [send-student-invitation] Exception: ReferenceError: createClient is not defined
 ```
 
-Isso significa que o botão "Agendar Aula" dentro do `ClassForm` **nunca é desabilitado** durante o envio (linha 902 do ClassForm: `disabled={loading}` — mas `loading` é `undefined`).
+A funcao `create-student` captura esse erro silenciosamente (linhas 230-233) e continua — o aluno e criado, mas o email nunca e enviado.
 
-Além disso, a função `handleClassSubmit` (linha 1410) **não tem guard contra reentrada**:
-```tsx
-const handleClassSubmit = async (formData: any) => {
-    if (!profile?.id) return;
-    setSubmitting(true); // ← Seta, mas não verifica se já está submitting
-    ...
+## Correcao
+
+### `supabase/functions/send-student-invitation/index.ts`
+
+Adicionar o import do `createClient` do Supabase:
+
+```typescript
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 ```
 
-Resultado: ao clicar duas vezes rápido no botão, duas inserções são feitas no banco antes do dialog fechar.
+Isso e a unica alteracao necessaria. A logica de autenticacao e envio ja estao corretas — apenas o import estava faltando.
 
-## Correções
+## Arquivo impactado
 
-### 1. `src/pages/Agenda.tsx` — Passar prop `loading`
-- Linha 1860: adicionar `loading={submitting}` ao `<ClassForm>`
-
-### 2. `src/pages/Agenda.tsx` — Guard de reentrada
-- Linha 1410-1411: adicionar `if (submitting) return;` antes do `setSubmitting(true)`
-
-Ambas as correções são complementares: a prop desabilita o botão visualmente, e o guard impede chamadas programáticas duplicadas.
-
-### Arquivos impactados
-- `src/pages/Agenda.tsx` (2 linhas alteradas)
+| Arquivo | Alteracao |
+|---------|-----------|
+| `supabase/functions/send-student-invitation/index.ts` | Adicionar import do `createClient` |
 

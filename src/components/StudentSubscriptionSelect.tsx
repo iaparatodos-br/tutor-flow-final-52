@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -18,8 +17,12 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { Loader2, UserPlus, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Loader2, UserPlus, CalendarIcon } from "lucide-react";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
 interface AvailableStudent {
   relationship_id: string;
@@ -118,14 +121,37 @@ export function StudentSubscriptionSelect({
           {availableStudents.length > 0 && (
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
+                <CalendarIcon className="h-4 w-4" />
                 {t('assign.startsAt')}
               </Label>
-              <Input
-                type="date"
-                value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !startsAt && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {startsAt
+                      ? format(parse(startsAt, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startsAt ? parse(startsAt, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setStartsAt(format(date, 'yyyy-MM-dd'));
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
               <p className="text-xs text-muted-foreground">
                 {t('assign.startsAtHelp')}
               </p>

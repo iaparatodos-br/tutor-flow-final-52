@@ -813,18 +813,38 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
                   {recurrenceType === 'date' && (
                     <div>
-                      <Label htmlFor="end_date">{t('fields.endDate')}</Label>
-                      <Input
-                        id="end_date"
-                        type="date"
-                        value={formData.recurrence?.end_date || ''}
-                        onChange={(e) =>
-                          setFormData(prev => ({
-                            ...prev,
-                            recurrence: { ...prev.recurrence, end_date: e.target.value }
-                          }))
-                        }
-                      />
+                      <Label>{t('fields.endDate')}</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-10",
+                              !formData.recurrence?.end_date && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                            {formData.recurrence?.end_date
+                              ? format(parse(formData.recurrence.end_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                              : "Selecione a data"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={formData.recurrence?.end_date ? parse(formData.recurrence.end_date, 'yyyy-MM-dd', new Date()) : undefined}
+                            onSelect={(date) => {
+                              if (date) setFormData(prev => ({
+                                ...prev,
+                                recurrence: { ...prev.recurrence, end_date: format(date, 'yyyy-MM-dd') }
+                              }));
+                            }}
+                            locale={ptBR}
+                            initialFocus
+                            className="p-3 pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   )}
 

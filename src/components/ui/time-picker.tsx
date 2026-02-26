@@ -146,10 +146,9 @@ export function TimePicker({
                     onClick={() => handleHourChange(i)}
                     className={cn(
                       "w-full px-2 py-1.5 text-sm rounded-md transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
                       hasValue && hours === i
                         ? "bg-primary text-primary-foreground font-semibold"
-                        : "text-foreground"
+                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
                     {i.toString().padStart(2, "0")}
@@ -176,10 +175,9 @@ export function TimePicker({
                     onClick={() => handleMinuteChange(m)}
                     className={cn(
                       "w-full px-2 py-1.5 text-sm rounded-md transition-colors",
-                      "hover:bg-accent hover:text-accent-foreground",
                       hasValue && minutes === m
                         ? "bg-primary text-primary-foreground font-semibold"
-                        : "text-foreground"
+                        : "text-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
                     {m.toString().padStart(2, "0")}

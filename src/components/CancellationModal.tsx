@@ -72,8 +72,9 @@ export function CancellationModal({
     class_date: string;
     class_services: any;
     is_experimental?: boolean;
-    is_paid_class?: boolean; // FASE 6
-    charge_timing?: string; // FASE 6
+    is_paid_class?: boolean;
+    charge_timing?: string;
+    status?: string;
   } | null>(null);
 
   // Check if teacher has financial module
@@ -117,7 +118,8 @@ export function CancellationModal({
           class_services: fetchedClassData.class_services,
           is_experimental: fetchedClassData.is_experimental,
           is_paid_class: fetchedClassData.is_paid_class,
-          charge_timing: bp?.charge_timing
+          charge_timing: bp?.charge_timing,
+          status: 'pendente'
         });
       } else {
         // Normal behavior: fetch from database
@@ -130,6 +132,7 @@ export function CancellationModal({
             is_group_class,
             is_experimental,
             is_paid_class,
+            status,
             class_services(price)
           `)
           .eq('id', classId)
@@ -168,7 +171,8 @@ export function CancellationModal({
           class_services: fetchedClassData.class_services,
           is_experimental: fetchedClassData.is_experimental,
           is_paid_class: fetchedClassData.is_paid_class,
-          charge_timing: bp?.charge_timing
+          charge_timing: bp?.charge_timing,
+          status: fetchedClassData.status
         });
       }
 
@@ -206,6 +210,15 @@ export function CancellationModal({
       // CRITICAL: Experimental classes NEVER generate cancellation charges
       if (fetchedClassData.is_experimental === true) {
         console.log('🔬 Experimental class - charge disabled');
+        setWillBeCharged(false);
+        setChargeAmount(0);
+        return;
+      }
+
+      // Pending classes NEVER generate cancellation charges
+      const classStatus = virtualClassData ? 'pendente' : fetchedClassData.status;
+      if (classStatus === 'pendente') {
+        console.log('⏳ Pending class - charge disabled');
         setWillBeCharged(false);
         setChargeAmount(0);
         return;
@@ -396,7 +409,7 @@ export function CancellationModal({
                   </AlertDescription>
                 </Alert>
               ) : (
-                !classData?.is_experimental && classData?.is_paid_class !== false && classData?.charge_timing !== 'prepaid' && (
+                !classData?.is_experimental && classData?.is_paid_class !== false && classData?.charge_timing !== 'prepaid' && classData?.status !== 'pendente' && (
                   <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
                     <DollarSign className="h-4 w-4 text-green-600" />
                     <AlertDescription className="text-green-800 dark:text-green-200">
@@ -443,6 +456,17 @@ export function CancellationModal({
               <AlertDescription className="text-emerald-800 dark:text-emerald-200">
                 <strong>{t('alert.unpaid.title')}</strong><br />
                 {t('alert.unpaid.noCharge')}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Pending Class Alert */}
+          {classData?.status === 'pendente' && !isProfessor && (
+            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+              <Clock className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800 dark:text-blue-200">
+                <strong>{t('alert.pending.title')}</strong><br />
+                {t('alert.pending.noCharge')}
               </AlertDescription>
             </Alert>
           )}

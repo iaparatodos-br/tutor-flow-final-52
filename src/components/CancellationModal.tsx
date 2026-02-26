@@ -141,6 +141,19 @@ export function CancellationModal({
         }
         
         fetchedClassData = data;
+
+        // Fallback: if class_services is null due to RLS, fetch price directly
+        if (!fetchedClassData.class_services && fetchedClassData.service_id) {
+          const { data: serviceData } = await supabase
+            .from('class_services')
+            .select('price')
+            .eq('id', fetchedClassData.service_id)
+            .maybeSingle();
+          
+          if (serviceData) {
+            fetchedClassData.class_services = serviceData;
+          }
+        }
         
         // FASE 6: Buscar charge_timing do business_profile do professor
         const { data: bp } = await supabase
@@ -225,7 +238,7 @@ export function CancellationModal({
       // Only students get charged for late cancellations AND only if teacher has financial module
       if (!isProfessor && teacherHasFinancialModule && hoursUntil < currentPolicy.hours_before_class && currentPolicy.charge_percentage > 0) {
         setWillBeCharged(true);
-        // Use actual service price or default to 100
+        // Use actual service price, fallback to 0 for financial safety
         const baseAmount = fetchedClassData.class_services?.price || 0;
         setChargeAmount((Number(baseAmount) * currentPolicy.charge_percentage) / 100);
       } else {

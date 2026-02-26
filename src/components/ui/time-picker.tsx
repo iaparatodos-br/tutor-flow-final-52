@@ -1,7 +1,6 @@
 import * as React from "react";
 import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -25,6 +24,16 @@ export function TimePicker({
 }: TimePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [inputValue, setInputValue] = React.useState(value || "");
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const [portalContainer, setPortalContainer] = React.useState<HTMLElement | null>(null);
+
+  // Find closest dialog ancestor to use as portal container
+  React.useEffect(() => {
+    if (open && wrapperRef.current) {
+      const dialog = wrapperRef.current.closest('[role="dialog"]') as HTMLElement | null;
+      setPortalContainer(dialog);
+    }
+  }, [open]);
 
   // Sync input value when external value changes
   React.useEffect(() => {
@@ -84,10 +93,15 @@ export function TimePicker({
     onChange(`${h.toString().padStart(2, "0")}:${newMinute.toString().padStart(2, "0")}`);
   };
 
+  const stopWheelPropagation = (e: React.WheelEvent) => {
+    e.stopPropagation();
+  };
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <div
+          ref={wrapperRef}
           id={id}
           className={cn(
             "flex items-center w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background cursor-pointer md:text-sm",
@@ -111,12 +125,19 @@ export function TimePicker({
           />
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0 pointer-events-auto" align="start">
+      <PopoverContent
+        className="w-[280px] p-0 pointer-events-auto"
+        align="start"
+        container={portalContainer}
+      >
         <div className="flex px-3 py-2 gap-2 items-center">
           {/* Hour selector */}
           <div className="flex flex-col items-center flex-1">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Hora</span>
-            <div className="h-[200px] w-full overflow-y-auto rounded-md">
+            <div
+              className="h-[200px] w-full overflow-y-auto rounded-md overscroll-contain"
+              onWheelCapture={stopWheelPropagation}
+            >
               <div className="flex flex-col items-center py-1">
                 {Array.from({ length: 24 }, (_, i) => (
                   <button
@@ -143,7 +164,10 @@ export function TimePicker({
           {/* Minute selector - 0 to 59 */}
           <div className="flex flex-col items-center flex-1">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Min</span>
-            <div className="h-[200px] w-full overflow-y-auto rounded-md">
+            <div
+              className="h-[200px] w-full overflow-y-auto rounded-md overscroll-contain"
+              onWheelCapture={stopWheelPropagation}
+            >
               <div className="flex flex-col items-center py-1">
                 {Array.from({ length: 60 }, (_, m) => (
                   <button

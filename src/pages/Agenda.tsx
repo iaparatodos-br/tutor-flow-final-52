@@ -1408,7 +1408,7 @@ export default function Agenda() {
   };
 
   const handleClassSubmit = async (formData: any) => {
-    if (!profile?.id) return;
+    if (!profile?.id || submitting) return;
     setSubmitting(true);
     try {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
@@ -1857,7 +1857,7 @@ export default function Agenda() {
         {isProfessor && <AvailabilityManager />}
 
         {/* Class Form Dialog */}
-        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} dependents={dependents} services={services} existingClasses={classes} />
+        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} dependents={dependents} services={services} existingClasses={classes} loading={submitting} />
 
         {/* Cancellation Modal */}
         <CancellationModal 

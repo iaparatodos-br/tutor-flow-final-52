@@ -7,7 +7,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 
 interface TimePickerProps {
   value: string;
@@ -116,7 +116,7 @@ export function TimePicker({
           {/* Hour selector */}
           <div className="flex flex-col items-center flex-1">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Hora</span>
-            <ScrollArea className="h-[200px] w-full rounded-md">
+            <div className="h-[200px] w-full overflow-y-auto rounded-md">
               <div className="flex flex-col items-center py-1">
                 {Array.from({ length: 24 }, (_, i) => (
                   <button
@@ -135,7 +135,7 @@ export function TimePicker({
                   </button>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           <div className="text-2xl font-light text-muted-foreground select-none">:</div>
@@ -143,7 +143,7 @@ export function TimePicker({
           {/* Minute selector - 0 to 59 */}
           <div className="flex flex-col items-center flex-1">
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 font-medium">Min</span>
-            <ScrollArea className="h-[200px] w-full rounded-md">
+            <div className="h-[200px] w-full overflow-y-auto rounded-md">
               <div className="flex flex-col items-center py-1">
                 {Array.from({ length: 60 }, (_, m) => (
                   <button
@@ -162,7 +162,7 @@ export function TimePicker({
                   </button>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
       </PopoverContent>

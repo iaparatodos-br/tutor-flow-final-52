@@ -1,82 +1,48 @@
 
+# Aulas Pendentes: Sem Cobranca no Cancelamento
 
-# Correcao: Valor de Cobranca no Modal de Cancelamento
+## Problema
+Quando uma aula esta com status "pendente" (ainda nao confirmada pelo professor), o modal de cancelamento pode mostrar cobranca ao aluno mesmo que nao devesse. Aulas pendentes nunca devem gerar cobranca de cancelamento.
 
-## Problema Identificado
+## Alteracoes
 
-Quando um **aluno** abre o modal de cancelamento, o valor da cobranca aparece como **R$ 0,00** em vez do valor correto (ex: R$ 10,00). A causa raiz esta na linha 229 de `CancellationModal.tsx`:
+### 1. CancellationModal.tsx
 
+**Receber e buscar o status da aula:**
+- Adicionar `status` ao state `classData` (tipo `string`)
+- Na query de classes (linha ~126), adicionar `status` ao SELECT
+- Para classes virtuais (`virtualClassData`), considerar o status como `'pendente'` (classes virtuais sao templates nao confirmados)
+- Adicionar checagem antes do calculo de cobranca: se `status === 'pendente'`, forcar `willBeCharged = false` e `chargeAmount = 0`
+
+**Exibir alerta especifico:**
+- Adicionar um novo bloco `Alert` (cor azul/indigo) quando `classData?.status === 'pendente'` e o aluno nao e professor, informando que nao havera cobranca porque a aula ainda esta pendente
+
+### 2. Arquivos i18n (pt e en)
+
+**PT - cancellation.json:** Adicionar em `alert`:
 ```text
-const baseAmount = fetchedClassData.class_services?.price || 0;
-```
-
-O `class_services` retorna `null` porque a **politica RLS** na tabela `class_services` nao esta funcionando corretamente para alunos. A politica atual referencia `c.student_id` (coluna deprecada apos a refatoracao para `class_participants`), e o `LEFT JOIN` pode nao resolver corretamente em todos os cenarios.
-
-## Evidencia
-
-Os dados de rede confirmam que todas as consultas do aluno retornam `"class_services": null` nos dados das aulas, mesmo quando as aulas possuem `service_id` valido (ex: `d7908ade-...`, `793976f2-...`).
-
-## Plano de Correcao
-
-### 1. Atualizar a politica RLS de `class_services` (Migration SQL)
-
-Substituir a politica existente por uma versao que dependa exclusivamente de `class_participants` (sem referenciar a coluna deprecada `c.student_id`):
-
-```text
-DROP POLICY IF EXISTS "Students can view services for their classes" ON public.class_services;
-
-CREATE POLICY "Students can view services for their classes"
-ON public.class_services
-FOR SELECT
-USING (
-  id IN (
-    SELECT c.service_id
-    FROM classes c
-    JOIN class_participants cp ON c.id = cp.class_id
-    WHERE cp.student_id = auth.uid()
-      AND c.service_id IS NOT NULL
-  )
-);
-```
-
-Mudancas:
-- Removida referencia a `c.student_id` (coluna deprecada)
-- Trocado `LEFT JOIN` por `JOIN` (mais eficiente, so precisa de participantes reais)
-- Adicionado filtro `c.service_id IS NOT NULL` para performance
-
-### 2. Adicionar fallback no CancellationModal (seguranca)
-
-No arquivo `src/components/CancellationModal.tsx`, adicionar uma segunda tentativa de buscar o preco do servico caso o join retorne null (protecao contra RLS restritiva):
-
-Na funcao `loadPolicyAndCalculateCharge`, apos a query principal (linha ~136), se `class_services` for null e `service_id` existir, fazer uma query direta:
-
-```text
-// Se class_services veio null (possivel RLS), buscar preco diretamente
-if (!fetchedClassData.class_services && fetchedClassData.service_id) {
-  const { data: serviceData } = await supabase
-    .from('class_services')
-    .select('price')
-    .eq('id', fetchedClassData.service_id)
-    .maybeSingle();
-  
-  if (serviceData) {
-    fetchedClassData.class_services = serviceData;
-  }
+"pending": {
+  "title": "Aula Pendente",
+  "noCharge": "Esta aula ainda nao foi confirmada pelo professor. Cancelamentos de aulas pendentes nao geram cobranca."
 }
 ```
 
-### 3. Atualizar o comentario desatualizado
+**EN - cancellation.json:** Adicionar em `alert`:
+```text
+"pending": {
+  "title": "Pending Class",
+  "noCharge": "This class has not yet been confirmed by the teacher. Cancellations of pending classes are not subject to charges."
+}
+```
 
-Linha 228: trocar `// Use actual service price or default to 100` por `// Use actual service price, fallback to 0 for financial safety`.
+### 3. Detalhes Tecnicos
 
-## Arquivos Alterados
+- Na funcao `loadPolicyAndCalculateCharge`, a checagem do status `pendente` sera adicionada logo apos a checagem de `is_experimental`, antes da checagem de `is_paid_class`
+- O alerta verde de "Cancelamento Gratuito" tambem sera suprimido quando o status for pendente (pois o alerta especifico de pendente ja cobre isso)
+- Para `virtualClassData`, o status sera inferido como `'pendente'` pois classes virtuais sao por definicao nao-materializadas
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/migrations/new_migration.sql` | Nova migration corrigindo RLS de `class_services` para alunos |
-| `src/components/CancellationModal.tsx` | Fallback de busca de preco + comentario corrigido |
-
-## Resultado Esperado
-
-Apos a correcao, quando o aluno abrir o modal de cancelamento de uma aula fora do prazo, o sistema exibira corretamente o valor da cobranca (ex: R$ 10,00 = 50% de R$ 20,00) em vez de R$ 0,00.
-
+| `src/components/CancellationModal.tsx` | Adicionar status ao state, fetch e logica de no-charge para pendente + novo Alert |
+| `src/i18n/locales/pt/cancellation.json` | Adicionar `alert.pending` |
+| `src/i18n/locales/en/cancellation.json` | Adicionar `alert.pending` |

@@ -3,7 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Baby, Calendar, Plus, Trash2, X, AlertTriangle } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Baby, CalendarIcon, Plus, Trash2, X, AlertTriangle } from "lucide-react";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
 export interface InlineDependent {
@@ -127,8 +132,8 @@ export function InlineDependentForm({
                   <p className="font-medium text-sm">{dep.name}</p>
                   {dep.birth_date && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {new Date(dep.birth_date).toLocaleDateString('pt-BR')}
+                      <CalendarIcon className="h-3 w-3" />
+                      {format(parse(dep.birth_date, 'yyyy-MM-dd', new Date()), "dd/MM/yyyy")}
                     </p>
                   )}
                 </div>
@@ -170,7 +175,7 @@ export function InlineDependentForm({
             </Button>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
               <Label htmlFor="new-dep-name" className="text-xs">
                 {t('dependents.fields.name', 'Nome')} *
@@ -187,17 +192,42 @@ export function InlineDependentForm({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="new-dep-birth" className="text-xs">
+              <Label className="text-xs">
                 {t('dependents.fields.birthDate', 'Data de Nascimento')}
               </Label>
-              <Input
-                id="new-dep-birth"
-                type="date"
-                value={newBirthDate}
-                onChange={(e) => setNewBirthDate(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={disabled}
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !newBirthDate && "text-muted-foreground"
+                    )}
+                    disabled={disabled}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {newBirthDate
+                      ? format(parse(newBirthDate, 'yyyy-MM-dd', new Date()), "dd/MM/yyyy")
+                      : "Selecione"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={newBirthDate ? parse(newBirthDate, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setNewBirthDate(format(date, 'yyyy-MM-dd'));
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                    captionLayout="dropdown-buttons"
+                    fromYear={1950}
+                    toYear={new Date().getFullYear()}
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 

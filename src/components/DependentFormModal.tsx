@@ -11,7 +11,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Baby, Calendar, FileText, Loader2 } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Baby, CalendarIcon, FileText, Loader2 } from "lucide-react";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { Dependent, DependentFormData } from "@/hooks/useDependents";
 
@@ -142,19 +147,42 @@ export function DependentFormModal({
 
             {/* Birth Date */}
             <div className="space-y-2">
-              <Label htmlFor="dependent-birth-date" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Label className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                 {t('dependents.fields.birthDate', 'Data de Nascimento')}
               </Label>
-              <Input
-                id="dependent-birth-date"
-                type="date"
-                value={formData.birth_date || ""}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, birth_date: e.target.value }))
-                }
-                disabled={isSubmitting}
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.birth_date && "text-muted-foreground"
+                    )}
+                    disabled={isSubmitting}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.birth_date
+                      ? format(parse(formData.birth_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.birth_date ? parse(formData.birth_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setFormData((prev) => ({ ...prev, birth_date: format(date, 'yyyy-MM-dd') }));
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                    captionLayout="dropdown-buttons"
+                    fromYear={1950}
+                    toYear={new Date().getFullYear()}
+                  />
+                </PopoverContent>
+              </Popover>
               <p className="text-xs text-muted-foreground">
                 {t('dependents.fields.birthDateHint', 'Opcional, para controle interno')}
               </p>

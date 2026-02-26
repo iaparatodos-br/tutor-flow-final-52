@@ -14,6 +14,7 @@ interface TimePickerProps {
   className?: string;
   required?: boolean;
   id?: string;
+  onBlur?: () => void;
 }
 
 export function TimePicker({
@@ -21,6 +22,7 @@ export function TimePicker({
   onChange,
   className,
   id,
+  onBlur,
 }: TimePickerProps) {
   const [open, setOpen] = React.useState(false);
   const [inputValue, setInputValue] = React.useState(value || "");
@@ -98,7 +100,7 @@ export function TimePicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) onBlur?.(); }}>
       <PopoverTrigger asChild>
         <div
           ref={wrapperRef}

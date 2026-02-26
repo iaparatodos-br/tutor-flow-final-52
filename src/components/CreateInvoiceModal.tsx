@@ -8,9 +8,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { DollarSign, AlertTriangle, AlertCircle, Baby } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DollarSign, AlertTriangle, AlertCircle, Baby, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { calculateBoletoFees, formatCurrency, validateBoletoAmount, MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 interface Student {
   id: string;
@@ -244,11 +249,35 @@ export function CreateInvoiceModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="due_date">Data de Vencimento</Label>
-              <Input id="due_date" type="date" value={formData.due_date} onChange={e => setFormData(prev => ({
-                ...prev,
-                due_date: e.target.value
-              }))} />
+              <Label>Data de Vencimento</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.due_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.due_date
+                      ? format(parse(formData.due_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.due_date ? parse(formData.due_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setFormData(prev => ({ ...prev, due_date: format(date, 'yyyy-MM-dd') }));
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
               <p className="text-xs text-muted-foreground">
                 Se não informada, será definida para 15 dias a partir de hoje
               </p>

@@ -11,8 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TimePicker } from "@/components/ui/time-picker";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { CalendarIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ClassService {
   id: string;
@@ -175,23 +182,41 @@ export function ClassExceptionForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="new_start_date">Nova Data</Label>
-              <Input
-                id="new_start_date"
-                type="date"
-                value={formData.new_start_date}
-                onChange={(e) => setFormData(prev => ({ ...prev, new_start_date: e.target.value }))}
-                required
-              />
+              <Label>Nova Data</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.new_start_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.new_start_date
+                      ? format(parse(formData.new_start_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.new_start_date ? parse(formData.new_start_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setFormData(prev => ({ ...prev, new_start_date: format(date, 'yyyy-MM-dd') }));
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new_start_time">Novo Horário</Label>
-              <Input
-                id="new_start_time"
-                type="time"
+              <Label>Novo Horário</Label>
+              <TimePicker
                 value={formData.new_start_time}
-                onChange={(e) => setFormData(prev => ({ ...prev, new_start_time: e.target.value }))}
-                required
+                onChange={(val) => setFormData(prev => ({ ...prev, new_start_time: val }))}
               />
             </div>
           </div>

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { cn } from '@/lib/utils';
 
 interface PhotoFile {
   id: string;
@@ -38,14 +39,11 @@ export function ClassReportPhotoUpload({
   const { toast } = useToast();
   const { currentPlan } = useSubscription();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const [isDragging, setIsDragging] = useState(false);
   // Check if user has access (professional or premium plan)
   const hasPhotoAccess = currentPlan?.slug === 'professional' || currentPlan?.slug === 'premium';
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
-
+  const processFiles = async (fileList: FileList) => {
     const remainingSlots = maxPhotos - photos.length;
     if (remainingSlots <= 0) {
       toast({
@@ -55,7 +53,7 @@ export function ClassReportPhotoUpload({
       return;
     }
 
-    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    const filesToProcess = Array.from(fileList).slice(0, remainingSlots);
     const validFiles: File[] = [];
 
     filesToProcess.forEach(file => {
@@ -76,10 +74,7 @@ export function ClassReportPhotoUpload({
       validFiles.push(file);
     });
 
-    if (validFiles.length === 0) {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
+    if (validFiles.length === 0) return;
 
     const readFile = (file: File): Promise<PhotoFile> => {
       return new Promise((resolve, reject) => {
@@ -102,10 +97,41 @@ export function ClassReportPhotoUpload({
     if (newPhotos.length > 0) {
       onPhotosChange([...photos, ...newPhotos]);
     }
+  };
 
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+    await processFiles(files);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      await processFiles(e.dataTransfer.files);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   const removePhoto = (photoId: string) => {
@@ -164,7 +190,16 @@ export function ClassReportPhotoUpload({
       {photos.length < maxPhotos && (
         <div
           onClick={openFilePicker}
-          className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          className={cn(
+            "border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors",
+            isDragging
+              ? "border-primary bg-primary/5"
+              : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+          )}
         >
           <input
             ref={fileInputRef}

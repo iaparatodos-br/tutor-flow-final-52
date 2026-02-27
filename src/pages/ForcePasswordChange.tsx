@@ -77,18 +77,7 @@ export default function ForcePasswordChange() {
     setPasswordSaved(true);
 
     try {
-      // Update password in Supabase Auth
-      const { error: authError } = await supabase.auth.updateUser({
-        password: newPassword
-      });
-
-      if (authError) {
-        console.error('ForcePasswordChange: Auth error', authError);
-        setPasswordSaved(false);
-        throw authError;
-      }
-
-      // Update password_changed flag in profiles
+      // 1. PRIMEIRO: Atualizar flag no banco (enquanto JWT ainda é válido)
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ password_changed: true })
@@ -100,12 +89,35 @@ export default function ForcePasswordChange() {
         throw profileError;
       }
 
-      // Invalidar cache do perfil para que o AuthContext busque dados frescos
+      // 2. DEPOIS: Atualizar senha no Auth (pode invalidar JWT)
+      const { error: authError } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (authError) {
+        // Se erro "same_password", a senha já foi salva anteriormente - sucesso
+        const isSamePassword = authError.message?.includes('same_password') || 
+          authError.message?.includes('should be different');
+        
+        if (!isSamePassword) {
+          // Reverter flag do perfil já que a senha não foi atualizada
+          console.error('ForcePasswordChange: Auth error', authError);
+          await supabase.from("profiles")
+            .update({ password_changed: false })
+            .eq("id", profile?.id);
+          setPasswordSaved(false);
+          throw authError;
+        }
+        // Se same_password, continuar normalmente - senha já existe
+        console.log('ForcePasswordChange: same_password detected, proceeding with redirect');
+      }
+
+      // 3. Invalidar cache do perfil
       if (profile?.id) {
         invalidateProfileCache(profile.id);
       }
 
-      // Registrar aceite de termos se for aluno convidado
+      // 4. Registrar aceite de termos se for aluno convidado
       if (isInvitedUser && termsAccepted && profile?.role === 'aluno') {
         const { error: termsError } = await supabase
           .from('term_acceptances')
@@ -127,10 +139,10 @@ export default function ForcePasswordChange() {
         description: t('messages.successDescription'),
       });
 
-      // Redirect rápido
-      const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
+      // 5. SignOut + redirecionar para login
+      await supabase.auth.signOut();
       setTimeout(() => {
-        window.location.replace(redirectPath);
+        window.location.replace('/auth');
       }, 500);
 
     } catch (error: unknown) {

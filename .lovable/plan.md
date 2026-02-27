@@ -1,65 +1,52 @@
 
 
-# Otimizacao: Agendamento de aulas pre-pagas lento
+# Fix: Aulas nao carregam ao trocar de mes no calendario
 
-## Problema
+## Causa raiz
 
-O agendamento de aulas pre-pagas esta lento porque o fluxo faz operacoes sequenciais desnecessarias:
+O `handleVisibleRangeChange` em `Agenda.tsx` (linha 267) e uma funcao inline sem `useCallback`. Isso cria uma nova referencia a cada render do componente.
 
-1. **Query duplicada**: `business_profiles` e consultado **duas vezes** - uma na linha 1440 para determinar o status inicial, e outra na linha 1547 para gerar faturas. A mesma informacao.
-2. **Faturas sequenciais**: Para aulas em grupo, `create-invoice` e chamado **sequencialmente** em um `for` loop (linha 1563). Cada chamada a uma Edge Function leva ~1-3s (cold start, auth, Stripe). Com 3 alunos, sao 3-9 segundos extras.
-3. **Bloqueio do modal**: O modal so fecha apos **todas** as faturas serem geradas, pois o `await` esta dentro do fluxo principal.
+No `SimpleCalendar.tsx`, o `useEffect` (linha 224) depende de `onVisibleRangeChange`:
+
+```text
+useEffect -> [currentDate, onVisibleRangeChange]
+```
+
+Como `onVisibleRangeChange` muda a cada render do Agenda:
+
+```text
+1. Agenda renderiza -> handleVisibleRangeChange e uma nova funcao
+2. SimpleCalendar recebe nova prop -> useEffect dispara -> chama onVisibleRangeChange(start, end)
+3. setVisibleRange cria novo objeto -> Agenda re-renderiza
+4. Volta ao passo 1 -> loop infinito
+5. O debounce de 300ms e resetado a cada ciclo -> loadClasses NUNCA executa
+```
+
+O resultado: ao navegar entre meses, o debounce e cancelado repetidamente e a requisicao de aulas nunca chega a ser feita. Apenas um F5 (que reseta tudo e usa o carregamento inicial sem debounce) funciona.
 
 ## Correcao
 
-### `src/pages/Agenda.tsx` - funcao `handleClassSubmit`
+### `src/pages/Agenda.tsx` - uma unica mudanca
 
-3 otimizacoes:
-
-**1. Eliminar query duplicada de `business_profiles`**
-
-Reutilizar o resultado da primeira query (linha 1440) na segunda verificacao (linha 1547), evitando uma ida ao banco desnecessaria.
-
-**2. Paralelizar chamadas de `create-invoice`**
-
-Substituir o `for` sequencial por `Promise.allSettled()` para invocar todas as faturas simultaneamente:
+Envolver `handleVisibleRangeChange` em `useCallback` com dependencias vazias (a funcao so usa `setVisibleRange`, que e estavel):
 
 ```typescript
-// ANTES (sequencial):
-for (const participant of participantsToInsert) {
-  const { data, error } = await supabase.functions.invoke('create-invoice', { ... });
-}
+// ANTES (linha 267):
+const handleVisibleRangeChange = (start: Date, end: Date) => {
+  setVisibleRange({ start, end });
+};
 
-// DEPOIS (paralelo):
-const invoicePromises = participantsToInsert.map(participant =>
-  supabase.functions.invoke('create-invoice', { body: { ... } })
-);
-const results = await Promise.allSettled(invoicePromises);
+// DEPOIS:
+const handleVisibleRangeChange = useCallback((start: Date, end: Date) => {
+  setVisibleRange({ start, end });
+}, []);
 ```
 
-**3. Desbloquear o modal (fire-and-forget para faturas)**
-
-Mover a geracao de faturas pre-pagas para depois do fechamento do modal. A aula ja foi criada com status `aguardando_pagamento` - a fatura pode ser gerada em background sem bloquear a UI. Se falhar, o toast de aviso aparece normalmente.
-
-```text
-Fluxo atual:
-  Criar aula -> Inserir participantes -> [Gerar faturas sequenciais] -> Fechar modal
-
-Fluxo otimizado:
-  Criar aula -> Inserir participantes -> Fechar modal -> [Gerar faturas em paralelo, background]
-```
-
-## Impacto estimado
-
-| Cenario | Antes | Depois |
-|---------|-------|--------|
-| 1 aluno, prepaid | ~3-4s | ~1s (modal fecha imediatamente) |
-| 3 alunos, grupo prepaid | ~7-12s | ~1s (modal fecha, faturas em background) |
-| Aula postpaid | sem mudanca | sem mudanca |
+Com a referencia estavel, o useEffect do SimpleCalendar so dispara quando `currentDate` realmente muda (usuario clica nas setas de navegacao), nao em cada re-render do Agenda.
 
 ## Arquivo impactado
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/Agenda.tsx` | Eliminar query duplicada, paralelizar faturas, fire-and-forget |
+| `src/pages/Agenda.tsx` | Adicionar `useCallback` ao `handleVisibleRangeChange` |
 

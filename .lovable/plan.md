@@ -1,102 +1,102 @@
 
 
-# Diagnostico: Senha do aluno nao salva e tela pisca
+# Fix: Aluno fica preso na tela de senha apos salvar
 
-## Causa raiz
+## Causa raiz confirmada
 
-Quando o aluno clica "Salvar senha" no `ForcePasswordChange`, a seguinte sequencia ocorre:
+Os logs de autenticacao mostram a sequencia exata:
+1. `00:39:22` - Aluno clica no magic link → login implicito
+2. `00:39:38` - `user_modified` (PUT /user 200) → **senha salva com sucesso no Supabase Auth**
+3. `00:39:39` - Logout (1 segundo depois)
+4. `00:39:56` - Login com senha nova → **funciona!**
+5. `00:44:57-00:46:02` - Multiplos erros `same_password` (422) → aluno ve ForcePasswordChange de novo e tenta a mesma senha
+6. DB confirma: `password_changed = false`, `updated_at = 2026-02-26` (nunca foi atualizado)
 
-1. `supabase.auth.updateUser({ password })` e chamado (linha 76)
-2. Supabase processa e emite evento `USER_UPDATED` via `onAuthStateChange`
-3. O handler no `AuthContext` faz `setProfileLoading(true)` (linha 237)
-4. `loading` (= `loading || profileLoading`) fica `true`
-5. `App.tsx` linha 55: renderiza spinner de loading → **ForcePasswordChange DESMONTA**
-6. Todos os estados do formulario sao perdidos (reset para vazio)
-7. `loadProfile` retorna perfil do **cache** (ainda com `password_changed: false`)
-8. ForcePasswordChange remonta com formulario vazio → aluno fica preso
-9. O codigo apos o `await updateUser` (update do `password_changed`) pode nao executar de forma confiavel porque o componente foi destruido durante a operacao
+**A senha e salva corretamente no Supabase Auth, mas o update `password_changed = true` na tabela `profiles` falha silenciosamente.** Isso acontece porque `supabase.auth.updateUser()` pode invalidar/renovar o JWT atual, e a chamada subsequente `supabase.from("profiles").update(...)` usa um token potencialmente invalido, falhando pela RLS sem retornar erro explicito.
 
-**Senha incorreta no login**: A funcao `updateUser` pode ter completado no backend, mas como o `password_changed` nunca foi atualizado (codigo interrompido), o aluno fica preso na tela. Ao tentar login novamente, a sessao anterior (magic link) pode estar conflitando, ou o `updateUser` falhou silenciosamente devido a timing da sessao.
+Alem disso, o erro `same_password` (422) nao e tratado - quando o aluno tenta novamente com a mesma senha, recebe um erro generico em vez de o sistema reconhecer que a senha ja foi definida.
 
-## Correcao (2 arquivos)
+## Correcao (1 arquivo)
 
-### 1. `src/contexts/AuthContext.tsx` — onAuthStateChange handler
+### `src/pages/ForcePasswordChange.tsx`
 
-Nao setar `profileLoading(true)` para eventos `USER_UPDATED` e `TOKEN_REFRESHED`. Apenas para eventos que realmente mudam o usuario (login, logout, signup):
+Tres mudancas:
+
+1. **Inverter a ordem**: Atualizar `password_changed = true` no banco ANTES de chamar `updateUser`. Se o `updateUser` falhar, reverter o flag.
+
+2. **Tratar erro `same_password`**: Se Supabase retornar erro 422 "same_password", significa que a senha ja foi salva anteriormente. Nesse caso, apenas garantir que `password_changed = true` e redirecionar.
+
+3. **Apos sucesso, fazer signOut e redirecionar para /auth** (conforme preferencia do usuario).
 
 ```typescript
-// No handler de onAuthStateChange:
-if (session?.user) {
-  // Apenas mostrar loading para eventos de login/signup, nao para USER_UPDATED
-  const showLoading = event === 'SIGNED_IN' || event === 'INITIAL_SESSION';
-  if (showLoading) {
-    setupLoadingTimeout();
-    setProfileLoading(true);
-  }
-  
-  setTimeout(async () => {
-    try {
-      // Para USER_UPDATED, invalidar cache antes de recarregar
-      if (event === 'USER_UPDATED') {
-        profileCache.delete(session.user.id);
-      }
-      const userProfile = await loadProfile(session.user);
-      setProfile(userProfile);
-    } catch (error) { ... }
-    finally {
-      if (showLoading) {
-        setProfileLoading(false);
-        setLoading(false);
+const handlePasswordChange = async (e: React.FormEvent) => {
+  e.preventDefault();
+  // ... validacoes existentes ...
+
+  setIsLoading(true);
+  setPasswordSaved(true);
+
+  try {
+    // 1. PRIMEIRO: Atualizar flag no banco (enquanto JWT ainda e valido)
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ password_changed: true })
+      .eq("id", profile?.id);
+
+    if (profileError) {
+      setPasswordSaved(false);
+      throw profileError;
+    }
+
+    // 2. DEPOIS: Atualizar senha no Auth (pode invalidar JWT)
+    const { error: authError } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (authError) {
+      // Se erro "same_password", a senha ja foi salva - apenas redirecionar
+      if (authError.message?.includes('same_password') || 
+          authError.message?.includes('should be different')) {
+        // Senha ja existe, flag ja atualizado - sucesso
+      } else {
+        // Reverter flag do perfil
+        await supabase.from("profiles")
+          .update({ password_changed: false })
+          .eq("id", profile?.id);
+        setPasswordSaved(false);
+        throw authError;
       }
     }
-  }, 0);
-}
-```
 
-Isso evita que o App mostre o spinner e desmonte o ForcePasswordChange durante a operacao.
+    // 3. Invalidar cache
+    if (profile?.id) invalidateProfileCache(profile.id);
 
-### 2. `src/pages/ForcePasswordChange.tsx` — handlePasswordChange
+    // 4. Registrar termos (se aplicavel) ...
 
-Tornar a operacao mais robusta:
-- Invalidar o cache do perfil manualmente (importar `profileCache` ou exportar funcao de invalidacao)
-- Reduzir o delay de redirect de 2s para 500ms
-- Usar `window.location.replace` em vez de `window.location.href` para evitar loop no historico
-- Adicionar um estado `passwordSaved` para evitar que re-renders resetem o formulario durante o processo
+    // 5. SignOut + redirecionar para login
+    toast({ title: t('messages.success'), description: t('messages.successDescription') });
+    
+    await supabase.auth.signOut();
+    setTimeout(() => {
+      window.location.replace('/auth');
+    }, 500);
 
-```typescript
-// Adicionar ref para proteger contra re-renders
-const [passwordSaved, setPasswordSaved] = useState(false);
-
-// No inicio do componente:
-if (passwordSaved) {
-  return (
-    <div>Senha salva com sucesso! Redirecionando...</div>
-  );
-}
-
-// No handlePasswordChange, ANTES de chamar updateUser:
-setPasswordSaved(true); // Proteger contra unmount/remount
-
-// Apos ambas operacoes:
-setTimeout(() => {
-  window.location.replace(redirectPath);
-}, 500);
-```
-
-### 3. `src/contexts/AuthContext.tsx` — Exportar funcao para invalidar cache
-
-Adicionar funcao `invalidateProfileCache` exportada para que ForcePasswordChange possa limpar o cache apos atualizar o perfil:
-
-```typescript
-export const invalidateProfileCache = (userId: string) => {
-  profileCache.delete(userId);
+  } catch (error) { ... }
 };
+```
+
+### Dados a corrigir
+
+Alem da correcao no codigo, o aluno `690866dd-6960-4c3a-a02c-9c333db9f744` (cdevarzea@gmail.com) precisa ter seu flag corrigido manualmente no banco:
+
+```sql
+UPDATE profiles SET password_changed = true WHERE id = '690866dd-6960-4c3a-a02c-9c333db9f744';
 ```
 
 ## Arquivos impactados
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/contexts/AuthContext.tsx` | Nao mostrar loading em USER_UPDATED + exportar invalidateProfileCache |
-| `src/pages/ForcePasswordChange.tsx` | Estado de protecao contra re-render + invalidar cache + redirect rapido |
+| `src/pages/ForcePasswordChange.tsx` | Inverter ordem (profile antes de auth), tratar same_password, signOut + redirect para /auth |
+| Banco de dados | UPDATE manual para corrigir aluno preso |
 

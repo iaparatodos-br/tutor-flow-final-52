@@ -154,6 +154,35 @@ serve(async (req) => {
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
+
+      // Send invitation email to existing student if email not confirmed
+      const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(studentId);
+      if (!authUserData?.user?.email_confirmed_at) {
+        console.log('Existing student email not confirmed, sending invitation email');
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: body.email,
+          options: { redirectTo }
+        });
+
+        if (!linkError && linkData?.properties?.action_link) {
+          const { error: emailError } = await supabaseAdmin.functions.invoke('send-student-invitation', {
+            body: {
+              email: body.email,
+              name: body.name,
+              teacher_name: body.professor_name || 'seu professor',
+              invitation_link: linkData.properties.action_link,
+            }
+          });
+          if (emailError) {
+            console.warn('Failed to send invitation to existing student:', emailError);
+          } else {
+            console.log('Invitation email sent to existing student via send-student-invitation');
+          }
+        } else {
+          console.warn('Failed to generate magic link for existing student:', linkError);
+        }
+      }
     } else {
       // New student, create the account first
       console.log('Creating new student account');

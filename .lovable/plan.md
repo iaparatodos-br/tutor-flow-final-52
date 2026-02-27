@@ -1,102 +1,65 @@
 
 
-# Fix: Aluno fica preso na tela de senha apos salvar
+# Otimizacao: Agendamento de aulas pre-pagas lento
 
-## Causa raiz confirmada
+## Problema
 
-Os logs de autenticacao mostram a sequencia exata:
-1. `00:39:22` - Aluno clica no magic link → login implicito
-2. `00:39:38` - `user_modified` (PUT /user 200) → **senha salva com sucesso no Supabase Auth**
-3. `00:39:39` - Logout (1 segundo depois)
-4. `00:39:56` - Login com senha nova → **funciona!**
-5. `00:44:57-00:46:02` - Multiplos erros `same_password` (422) → aluno ve ForcePasswordChange de novo e tenta a mesma senha
-6. DB confirma: `password_changed = false`, `updated_at = 2026-02-26` (nunca foi atualizado)
+O agendamento de aulas pre-pagas esta lento porque o fluxo faz operacoes sequenciais desnecessarias:
 
-**A senha e salva corretamente no Supabase Auth, mas o update `password_changed = true` na tabela `profiles` falha silenciosamente.** Isso acontece porque `supabase.auth.updateUser()` pode invalidar/renovar o JWT atual, e a chamada subsequente `supabase.from("profiles").update(...)` usa um token potencialmente invalido, falhando pela RLS sem retornar erro explicito.
+1. **Query duplicada**: `business_profiles` e consultado **duas vezes** - uma na linha 1440 para determinar o status inicial, e outra na linha 1547 para gerar faturas. A mesma informacao.
+2. **Faturas sequenciais**: Para aulas em grupo, `create-invoice` e chamado **sequencialmente** em um `for` loop (linha 1563). Cada chamada a uma Edge Function leva ~1-3s (cold start, auth, Stripe). Com 3 alunos, sao 3-9 segundos extras.
+3. **Bloqueio do modal**: O modal so fecha apos **todas** as faturas serem geradas, pois o `await` esta dentro do fluxo principal.
 
-Alem disso, o erro `same_password` (422) nao e tratado - quando o aluno tenta novamente com a mesma senha, recebe um erro generico em vez de o sistema reconhecer que a senha ja foi definida.
+## Correcao
 
-## Correcao (1 arquivo)
+### `src/pages/Agenda.tsx` - funcao `handleClassSubmit`
 
-### `src/pages/ForcePasswordChange.tsx`
+3 otimizacoes:
 
-Tres mudancas:
+**1. Eliminar query duplicada de `business_profiles`**
 
-1. **Inverter a ordem**: Atualizar `password_changed = true` no banco ANTES de chamar `updateUser`. Se o `updateUser` falhar, reverter o flag.
+Reutilizar o resultado da primeira query (linha 1440) na segunda verificacao (linha 1547), evitando uma ida ao banco desnecessaria.
 
-2. **Tratar erro `same_password`**: Se Supabase retornar erro 422 "same_password", significa que a senha ja foi salva anteriormente. Nesse caso, apenas garantir que `password_changed = true` e redirecionar.
+**2. Paralelizar chamadas de `create-invoice`**
 
-3. **Apos sucesso, fazer signOut e redirecionar para /auth** (conforme preferencia do usuario).
+Substituir o `for` sequencial por `Promise.allSettled()` para invocar todas as faturas simultaneamente:
 
 ```typescript
-const handlePasswordChange = async (e: React.FormEvent) => {
-  e.preventDefault();
-  // ... validacoes existentes ...
+// ANTES (sequencial):
+for (const participant of participantsToInsert) {
+  const { data, error } = await supabase.functions.invoke('create-invoice', { ... });
+}
 
-  setIsLoading(true);
-  setPasswordSaved(true);
-
-  try {
-    // 1. PRIMEIRO: Atualizar flag no banco (enquanto JWT ainda e valido)
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ password_changed: true })
-      .eq("id", profile?.id);
-
-    if (profileError) {
-      setPasswordSaved(false);
-      throw profileError;
-    }
-
-    // 2. DEPOIS: Atualizar senha no Auth (pode invalidar JWT)
-    const { error: authError } = await supabase.auth.updateUser({
-      password: newPassword
-    });
-
-    if (authError) {
-      // Se erro "same_password", a senha ja foi salva - apenas redirecionar
-      if (authError.message?.includes('same_password') || 
-          authError.message?.includes('should be different')) {
-        // Senha ja existe, flag ja atualizado - sucesso
-      } else {
-        // Reverter flag do perfil
-        await supabase.from("profiles")
-          .update({ password_changed: false })
-          .eq("id", profile?.id);
-        setPasswordSaved(false);
-        throw authError;
-      }
-    }
-
-    // 3. Invalidar cache
-    if (profile?.id) invalidateProfileCache(profile.id);
-
-    // 4. Registrar termos (se aplicavel) ...
-
-    // 5. SignOut + redirecionar para login
-    toast({ title: t('messages.success'), description: t('messages.successDescription') });
-    
-    await supabase.auth.signOut();
-    setTimeout(() => {
-      window.location.replace('/auth');
-    }, 500);
-
-  } catch (error) { ... }
-};
+// DEPOIS (paralelo):
+const invoicePromises = participantsToInsert.map(participant =>
+  supabase.functions.invoke('create-invoice', { body: { ... } })
+);
+const results = await Promise.allSettled(invoicePromises);
 ```
 
-### Dados a corrigir
+**3. Desbloquear o modal (fire-and-forget para faturas)**
 
-Alem da correcao no codigo, o aluno `690866dd-6960-4c3a-a02c-9c333db9f744` (cdevarzea@gmail.com) precisa ter seu flag corrigido manualmente no banco:
+Mover a geracao de faturas pre-pagas para depois do fechamento do modal. A aula ja foi criada com status `aguardando_pagamento` - a fatura pode ser gerada em background sem bloquear a UI. Se falhar, o toast de aviso aparece normalmente.
 
-```sql
-UPDATE profiles SET password_changed = true WHERE id = '690866dd-6960-4c3a-a02c-9c333db9f744';
+```text
+Fluxo atual:
+  Criar aula -> Inserir participantes -> [Gerar faturas sequenciais] -> Fechar modal
+
+Fluxo otimizado:
+  Criar aula -> Inserir participantes -> Fechar modal -> [Gerar faturas em paralelo, background]
 ```
 
-## Arquivos impactados
+## Impacto estimado
+
+| Cenario | Antes | Depois |
+|---------|-------|--------|
+| 1 aluno, prepaid | ~3-4s | ~1s (modal fecha imediatamente) |
+| 3 alunos, grupo prepaid | ~7-12s | ~1s (modal fecha, faturas em background) |
+| Aula postpaid | sem mudanca | sem mudanca |
+
+## Arquivo impactado
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/ForcePasswordChange.tsx` | Inverter ordem (profile antes de auth), tratar same_password, signOut + redirect para /auth |
-| Banco de dados | UPDATE manual para corrigir aluno preso |
+| `src/pages/Agenda.tsx` | Eliminar query duplicada, paralelizar faturas, fire-and-forget |
 

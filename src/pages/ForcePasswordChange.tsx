@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, invalidateProfileCache } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { CheckCircle } from "lucide-react";
 
 export default function ForcePasswordChange() {
   const { t } = useTranslation('password');
@@ -16,29 +17,33 @@ export default function ForcePasswordChange() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [passwordSaved, setPasswordSaved] = useState(false);
   const { profile } = useAuth();
   const { toast } = useToast();
 
-  console.log('ForcePasswordChange: Profile loaded', {
-    profileId: profile?.id,
-    passwordChanged: profile?.password_changed,
-    email: profile?.email
-  });
-
   // Check if user was invited (doesn't have a current password)
   const isInvitedUser = profile?.password_changed === false;
-  
-  console.log('ForcePasswordChange: isInvitedUser =', isInvitedUser);
+
+  // Se a senha já foi salva, mostrar tela de sucesso
+  if (passwordSaved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/20 to-secondary/20 p-4">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
+              <h2 className="text-xl font-bold">{t('messages.success')}</h2>
+              <p className="text-muted-foreground">{t('messages.successDescription')}</p>
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent mx-auto"></div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('ForcePasswordChange: handlePasswordChange called', {
-      isInvitedUser,
-      newPasswordLength: newPassword.length,
-      hasConfirmPassword: !!confirmPassword,
-      hasCurrentPassword: !!currentPassword
-    });
     
     if (newPassword.length < 8) {
       toast({
@@ -68,10 +73,10 @@ export default function ForcePasswordChange() {
     }
 
     setIsLoading(true);
+    // Proteger contra unmount/remount imediato
+    setPasswordSaved(true);
 
     try {
-      console.log('ForcePasswordChange: Updating password in Supabase...');
-      
       // Update password in Supabase Auth
       const { error: authError } = await supabase.auth.updateUser({
         password: newPassword
@@ -79,13 +84,11 @@ export default function ForcePasswordChange() {
 
       if (authError) {
         console.error('ForcePasswordChange: Auth error', authError);
+        setPasswordSaved(false);
         throw authError;
       }
-      
-      console.log('ForcePasswordChange: Password updated successfully');
 
       // Update password_changed flag in profiles
-      console.log('ForcePasswordChange: Updating password_changed flag...');
       const { error: profileError } = await supabase
         .from("profiles")
         .update({ password_changed: true })
@@ -93,15 +96,17 @@ export default function ForcePasswordChange() {
 
       if (profileError) {
         console.error('ForcePasswordChange: Profile update error', profileError);
+        setPasswordSaved(false);
         throw profileError;
       }
-      
-      console.log('ForcePasswordChange: Profile updated successfully');
+
+      // Invalidar cache do perfil para que o AuthContext busque dados frescos
+      if (profile?.id) {
+        invalidateProfileCache(profile.id);
+      }
 
       // Registrar aceite de termos se for aluno convidado
       if (isInvitedUser && termsAccepted && profile?.role === 'aluno') {
-        console.log('ForcePasswordChange: Registrando aceite de termos para aluno');
-        
         const { error: termsError } = await supabase
           .from('term_acceptances')
           .insert({
@@ -114,8 +119,6 @@ export default function ForcePasswordChange() {
 
         if (termsError) {
           console.error('ForcePasswordChange: Erro ao registrar aceite de termos:', termsError);
-        } else {
-          console.log('ForcePasswordChange: Aceite de termos registrado com sucesso');
         }
       }
 
@@ -124,26 +127,20 @@ export default function ForcePasswordChange() {
         description: t('messages.successDescription'),
       });
 
-      console.log('ForcePasswordChange: Senha atualizada, redirecionando...', {
-        userId: profile?.id,
-        role: profile?.role
-      });
-
-      // Small delay before redirect to show success message
+      // Redirect rápido
+      const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
       setTimeout(() => {
-        const redirectPath = profile?.role === 'aluno' ? '/portal-do-aluno' : '/dashboard';
-        console.log('ForcePasswordChange: Redirecionando para', redirectPath);
-        window.location.href = redirectPath;
-      }, 2000);
+        window.location.replace(redirectPath);
+      }, 500);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : t('messages.errorDescription');
       console.error("Error changing password:", error);
       toast({
         title: t('messages.error'),
-        description: error.message || t('messages.errorDescription'),
+        description: errorMessage,
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
     }
   };

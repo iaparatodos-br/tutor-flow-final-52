@@ -264,12 +264,9 @@ export default function Agenda() {
       debouncedLoadClasses(visibleRange.start, visibleRange.end);
     }
   }, [visibleRange, profile, debouncedLoadClasses]);
-  const handleVisibleRangeChange = (start: Date, end: Date) => {
-    setVisibleRange({
-      start,
-      end
-    });
-  };
+  const handleVisibleRangeChange = useCallback((start: Date, end: Date) => {
+    setVisibleRange({ start, end });
+  }, []);
 
   // Helper function to generate virtual recurring instances for visible range
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {

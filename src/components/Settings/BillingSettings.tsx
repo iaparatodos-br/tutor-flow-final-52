@@ -146,6 +146,14 @@ export function BillingSettings() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Save Button - top for visibility */}
+        <div className="flex justify-end">
+          <Button type="submit" disabled={saving}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {saving ? t('actions.saving') : t('actions.save')}
+          </Button>
+        </div>
+
         {/* Charge Timing Card */}
         {businessProfileId && (
           <Card>
@@ -329,7 +337,7 @@ export function BillingSettings() {
           </CardContent>
         </Card>
 
-        {/* Global Save Button - outside both cards */}
+        {/* Save Button - bottom duplicate for convenience */}
         <div className="flex justify-end">
           <Button type="submit" disabled={saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

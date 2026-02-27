@@ -1436,6 +1436,7 @@ export default function Agenda() {
 
       // Determinar status inicial baseado no charge_timing para aulas pagas
       let initialStatus = 'confirmada';
+      let cachedChargeTiming: string | null = null;
       if (formData.is_paid_class && !formData.is_experimental && !formData.recurrence) {
         const { data: bp } = await supabase
           .from('business_profiles')
@@ -1443,7 +1444,8 @@ export default function Agenda() {
           .eq('user_id', profile.id)
           .maybeSingle();
         
-        if (bp?.charge_timing === 'prepaid') {
+        cachedChargeTiming = bp?.charge_timing || null;
+        if (cachedChargeTiming === 'prepaid') {
           initialStatus = 'aguardando_pagamento';
         }
       }
@@ -1540,56 +1542,46 @@ export default function Agenda() {
           throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
         }
       }
-      // FASE 5: Gerar faturas pré-pagas para aulas não-recorrentes
+      // FASE 5: Gerar faturas pré-pagas em background (fire-and-forget)
       if (!formData.recurrence && formData.is_paid_class && !formData.is_experimental && participantsToInsert.length > 0) {
-        try {
-          // Buscar charge_timing do business_profile do professor
-          const { data: bp } = await supabase
-            .from('business_profiles')
-            .select('charge_timing')
-            .eq('user_id', profile.id)
-            .maybeSingle();
+        if (cachedChargeTiming === 'prepaid') {
+          const servicePrice = formData.service_id
+            ? services.find(s => s.id === formData.service_id)?.price || 0
+            : 0;
 
-          if (bp?.charge_timing === 'prepaid') {
-            // Determinar preço do serviço
-            const servicePrice = formData.service_id
-              ? services.find(s => s.id === formData.service_id)?.price || 0
-              : 0;
+          if (servicePrice > 0 && insertedClasses?.[0]) {
+            const classId = insertedClasses[0].id;
+            const classDateStr = new Date(classDateTime).toLocaleDateString('pt-BR');
 
-            if (servicePrice > 0 && insertedClasses?.[0]) {
-              const classId = insertedClasses[0].id;
-              let prepaidErrors = 0;
-
-              for (const participant of participantsToInsert) {
-                const { data: invoiceResult, error: invoiceError } = await supabase.functions.invoke('create-invoice', {
-                  body: {
-                    student_id: participant.student_id,
-                    dependent_id: participant.dependent_id || undefined,
-                    amount: servicePrice,
-                    description: `Aula pré-paga - ${new Date(classDateTime).toLocaleDateString('pt-BR')}`,
-                    class_id: classId,
-                    invoice_type: 'prepaid_class',
-                  }
-                });
-
-                if (invoiceError || (invoiceResult && !invoiceResult.success)) {
-                  console.error('[PREPAID] Erro ao gerar fatura pré-paga:', invoiceError || invoiceResult?.error);
-                  prepaidErrors++;
+            // Fire-and-forget: gerar faturas em paralelo sem bloquear o modal
+            const invoicePromises = participantsToInsert.map((participant: any) =>
+              supabase.functions.invoke('create-invoice', {
+                body: {
+                  student_id: participant.student_id,
+                  dependent_id: participant.dependent_id || undefined,
+                  amount: servicePrice,
+                  description: `Aula pré-paga - ${classDateStr}`,
+                  class_id: classId,
+                  invoice_type: 'prepaid_class',
                 }
-              }
+              })
+            );
 
-              if (prepaidErrors > 0) {
+            Promise.allSettled(invoicePromises).then((results) => {
+              const errors = results.filter(r => 
+                r.status === 'rejected' || 
+                (r.status === 'fulfilled' && (r.value.error || (r.value.data && !r.value.data.success)))
+              );
+              if (errors.length > 0) {
+                console.error('[PREPAID] Erros ao gerar faturas pré-pagas:', errors);
                 toast({
                   title: "Aviso",
-                  description: `${prepaidErrors} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
+                  description: `${errors.length} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
                   variant: "destructive"
                 });
               }
-            }
+            });
           }
-        } catch (prepaidError) {
-          console.error('[PREPAID] Erro ao verificar/gerar faturas pré-pagas:', prepaidError);
-          // Não falhar a criação da aula por erro na fatura
         }
       }
 

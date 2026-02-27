@@ -249,20 +249,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user || null);
 
       if (session?.user) {
-        setupLoadingTimeout();
-        setProfileLoading(true);
+        // Apenas mostrar loading global para eventos que mudam o usuário (login/signup)
+        // USER_UPDATED e TOKEN_REFRESHED não devem causar unmount de componentes
+        const showLoading = event === 'SIGNED_IN' || event === 'INITIAL_SESSION';
+        
+        if (showLoading) {
+          setupLoadingTimeout();
+          setProfileLoading(true);
+        }
         
         // Usar setTimeout para evitar problemas de concorrência
         setTimeout(async () => {
           try {
+            // Para USER_UPDATED, invalidar cache antes de recarregar
+            if (event === 'USER_UPDATED') {
+              profileCache.delete(session.user.id);
+            }
             const userProfile = await loadProfile(session.user);
             setProfile(userProfile);
           } catch (error) {
             console.error('AuthProvider: Erro ao carregar perfil no onAuthStateChange:', error);
             setProfile(null);
           } finally {
-            setProfileLoading(false);
-            setLoading(false);
+            if (showLoading) {
+              setProfileLoading(false);
+              setLoading(false);
+            }
             if (loadingTimeoutRef.current) {
               clearTimeout(loadingTimeoutRef.current);
             }
@@ -511,4 +523,9 @@ export const useAuth = () => {
     throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
   return context;
+};
+
+// Função para invalidar cache de perfil externamente
+export const invalidateProfileCache = (userId: string) => {
+  profileCache.delete(userId);
 };

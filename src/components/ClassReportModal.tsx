@@ -257,6 +257,7 @@ export function ClassReportModal({
           const participantInserts = classData.participants.map((p: any) => ({
             class_id: newClass.id,
             student_id: p.student_id,
+            dependent_id: p.dependent_id || null,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' 
               ? new Date().toISOString() 

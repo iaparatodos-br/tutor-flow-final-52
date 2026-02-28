@@ -177,9 +177,6 @@ export function DependentFormModal({
                     locale={ptBR}
                     initialFocus
                     className="p-3 pointer-events-auto"
-                    captionLayout="dropdown-buttons"
-                    fromYear={1950}
-                    toYear={new Date().getFullYear()}
                   />
                 </PopoverContent>
               </Popover>

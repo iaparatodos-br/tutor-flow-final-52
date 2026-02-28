@@ -1,46 +1,83 @@
 
 
-# Fix: Aulas somem do calendario apos cancelar aula virtual
+# Fix: Dependente desaparece apos materializar aula virtual
 
 ## Problema
 
-Ao cancelar uma aula virtual e fechar o modal, todas as aulas desaparecem do calendario. O problema ocorre porque o `onCancellationComplete` passa `loadClasses` sem argumentos:
+Quando uma aula virtual de um dependente e materializada (ao marcar como concluida ou cadastrar relatorio), o `dependent_id` nao e incluido no INSERT de `class_participants`. O participante e criado apenas com o `student_id` (o responsavel), fazendo com que o sistema exiba o responsavel no lugar do dependente.
 
-```
-onCancellationComplete={loadClasses}
-```
+## Causa raiz
 
-Quando `loadClasses()` e chamado sem argumentos, ele usa um fallback de `new Date()` ate `now + 1 mes`, ignorando o `visibleRange` atual do calendario. Se o usuario esta visualizando um mes diferente do atual, as aulas carregadas nao correspondem ao que o calendario exibe, e o resultado e um calendario vazio.
+Ha **3 pontos** no codigo que criam participantes durante a materializacao, e **nenhum deles** inclui o campo `dependent_id`:
 
-## Correcao
-
-### `src/pages/Agenda.tsx` - Passar visibleRange ao recarregar
-
-Alterar a linha 1863 para usar uma callback que passa o `visibleRange` atual:
+### 1. `src/pages/Agenda.tsx` - Aula em grupo (linha 1324)
 
 ```typescript
 // ANTES:
-onCancellationComplete={loadClasses}
+const participantInserts = virtualClass.participants.map(p => ({
+  class_id: newClass.id,
+  student_id: p.student_id,
+  status: targetStatus
+}));
 
 // DEPOIS:
-onCancellationComplete={() => {
-  if (visibleRange) {
-    loadClasses(visibleRange.start, visibleRange.end);
-  } else {
-    loadClasses();
-  }
-}}
+const participantInserts = virtualClass.participants.map(p => ({
+  class_id: newClass.id,
+  student_id: p.student_id,
+  dependent_id: (p as any).dependent_id || null,
+  status: targetStatus
+}));
 ```
 
-Isso garante que, apos o cancelamento, as aulas sejam recarregadas exatamente para o intervalo de datas que o usuario esta visualizando no calendario.
+### 2. `src/pages/Agenda.tsx` - Aula individual (linha 1337)
 
-## Verificacao adicional
+```typescript
+// ANTES:
+.insert({
+  class_id: newClass.id,
+  student_id: virtualClass.participants[0].student_id,
+  status: targetStatus,
+  ...
+});
 
-Existem outros locais no arquivo que chamam `loadClasses` sem argumentos apos acoes (como concluir aula, confirmar, etc.). Vou verificar se ha outros pontos com o mesmo problema e corrigi-los na mesma alteracao.
+// DEPOIS:
+.insert({
+  class_id: newClass.id,
+  student_id: virtualClass.participants[0].student_id,
+  dependent_id: (virtualClass.participants[0] as any).dependent_id || null,
+  status: targetStatus,
+  ...
+});
+```
 
-## Arquivo impactado
+### 3. `src/components/ClassReportModal.tsx` - Materializacao via relatorio (linha 195)
+
+```typescript
+// ANTES:
+const participantInserts = classData.participants.map((p: any) => ({
+  class_id: newClass.id,
+  student_id: p.student_id,
+  status: targetStatus,
+  ...
+}));
+
+// DEPOIS:
+const participantInserts = classData.participants.map((p: any) => ({
+  class_id: newClass.id,
+  student_id: p.student_id,
+  dependent_id: p.dependent_id || null,
+  status: targetStatus,
+  ...
+}));
+```
+
+## Arquivos impactados
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `src/pages/Agenda.tsx` | Passar `visibleRange` no `onCancellationComplete` e em outros callbacks similares |
+| `src/pages/Agenda.tsx` | Adicionar `dependent_id` nos 2 inserts de participantes na materializacao |
+| `src/components/ClassReportModal.tsx` | Adicionar `dependent_id` no insert de participantes na materializacao |
 
+## Resultado esperado
+
+Apos a correcao, ao materializar uma aula virtual de um dependente, o `dependent_id` sera preservado no registro de `class_participants`, mantendo a exibicao correta do nome do dependente no calendario e em todos os outros pontos do sistema.

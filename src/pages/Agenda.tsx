@@ -1309,7 +1309,7 @@ export default function Agenda() {
         status: targetStatus,
         is_experimental: virtualClass.is_experimental,
         is_group_class: virtualClass.is_group_class,
-        is_paid_class: virtualClass.is_paid_class, // FASE 4: Herdar is_paid_class do template
+        is_paid_class: virtualClass.is_paid_class ?? false, // FASE 4: Herdar is_paid_class do template (fallback defensivo)
         is_template: false,
         class_template_id: templateId
       };

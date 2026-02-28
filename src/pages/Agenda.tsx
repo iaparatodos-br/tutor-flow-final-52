@@ -1324,6 +1324,7 @@ export default function Agenda() {
         const participantInserts = virtualClass.participants.map(p => ({
           class_id: newClass.id,
           student_id: p.student_id,
+          dependent_id: (p as any).dependent_id || null,
           status: targetStatus
         }));
         const {
@@ -1337,6 +1338,7 @@ export default function Agenda() {
           .insert({
             class_id: newClass.id,
             student_id: virtualClass.participants[0].student_id,
+            dependent_id: (virtualClass.participants[0] as any).dependent_id || null,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' ? new Date().toISOString() : null,
             completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null

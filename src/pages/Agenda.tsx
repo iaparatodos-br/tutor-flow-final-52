@@ -1860,7 +1860,13 @@ export default function Agenda() {
           classDate={cancellationModal.classDate} 
           virtualClassData={cancellationModal.virtualClassData}
           dependentInfo={cancellationModal.dependentInfo}
-          onCancellationComplete={loadClasses} 
+          onCancellationComplete={() => {
+            if (visibleRange) {
+              loadClasses(visibleRange.start, visibleRange.end);
+            } else {
+              loadClasses();
+            }
+          }}
         />
 
         {/* Class Report Modal */}

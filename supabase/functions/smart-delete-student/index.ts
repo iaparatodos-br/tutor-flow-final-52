@@ -257,25 +257,47 @@ async function deleteDependentsCascade(
     const depParticipantIds = (depParticipants || []).map((p: any) => p.id);
     
     // 3a. Delete invoice_classes referencing these participants (BEFORE class_participants)
+    // PRESERVE invoice_classes linked to paid/completed invoices
     if (depParticipantIds.length > 0) {
-      const { error: invoiceClassesError } = await supabaseAdmin
+      const { data: deletableDepInvoiceClasses } = await supabaseAdmin
         .from('invoice_classes')
-        .delete()
-        .in('participant_id', depParticipantIds);
-      
-      if (invoiceClassesError) {
-        console.error('Error deleting invoice_classes for dependent participants:', invoiceClassesError);
+        .select('id, invoice_id, invoices!inner(status)')
+        .in('participant_id', depParticipantIds)
+        .not('invoices.status', 'in', '("paga","concluida")');
+
+      const deletableDepIcIds = (deletableDepInvoiceClasses || []).map((ic: any) => ic.id);
+      if (deletableDepIcIds.length > 0) {
+        const { error: invoiceClassesError } = await supabaseAdmin
+          .from('invoice_classes')
+          .delete()
+          .in('id', deletableDepIcIds);
+        
+        if (invoiceClassesError) {
+          console.error('Error deleting invoice_classes for dependent participants:', invoiceClassesError);
+        }
       }
+      console.log(`Dependent invoice_classes: ${depParticipantIds.length} participants, ${deletableDepIcIds.length} deletable (non-paid)`);
     }
 
-    // 3b. Now safe to delete class_participants
-    const { error: participantsError } = await supabaseAdmin
-      .from('class_participants')
-      .delete()
-      .in('dependent_id', dependentIds);
-    
-    if (participantsError) {
-      console.error('Error deleting class_participants:', participantsError);
+    // 3b. Now safe to delete class_participants (preserve those linked to paid invoices)
+    if (depParticipantIds.length > 0) {
+      const { data: billedDepParticipants } = await supabaseAdmin
+        .from('invoice_classes')
+        .select('participant_id, invoices!inner(status)')
+        .in('participant_id', depParticipantIds)
+        .in('invoices.status', ['paga', 'concluida']);
+
+      const preserveDepIds = [...new Set((billedDepParticipants || []).map((bp: any) => bp.participant_id).filter(Boolean))];
+      
+      if (preserveDepIds.length > 0) {
+        const toDeleteDep = depParticipantIds.filter((id: string) => !preserveDepIds.includes(id));
+        if (toDeleteDep.length > 0) {
+          await supabaseAdmin.from('class_participants').delete().in('id', toDeleteDep);
+        }
+        console.log(`Dependent class_participants: preserved ${preserveDepIds.length}, deleted ${toDeleteDep.length}`);
+      } else {
+        await supabaseAdmin.from('class_participants').delete().in('dependent_id', dependentIds);
+      }
     }
 
     // 4. Finally delete the dependents themselves
@@ -512,11 +534,44 @@ Deno.serve(async (req) => {
           .in('dependent_id', allDependentIds);
         
         const allDepParticipantIds = (allDepParticipants || []).map((p: any) => p.id);
+        
+        // PRESERVE invoice_classes linked to paid/completed invoices
         if (allDepParticipantIds.length > 0) {
-          await supabaseAdmin.from('invoice_classes').delete().in('participant_id', allDepParticipantIds);
+          const { data: deletableAllDepIc } = await supabaseAdmin
+            .from('invoice_classes')
+            .select('id, invoice_id, invoices!inner(status)')
+            .in('participant_id', allDepParticipantIds)
+            .not('invoices.status', 'in', '("paga","concluida")');
+
+          const deletableAllDepIcIds = (deletableAllDepIc || []).map((ic: any) => ic.id);
+          if (deletableAllDepIcIds.length > 0) {
+            await supabaseAdmin.from('invoice_classes').delete().in('id', deletableAllDepIcIds);
+          }
+          console.log(`All-dep invoice_classes: ${allDepParticipantIds.length} participants, ${deletableAllDepIcIds.length} deletable`);
         }
         
-        await supabaseAdmin.from('class_participants').delete().in('dependent_id', allDependentIds);
+        // PRESERVE class_participants linked to paid invoices
+        if (allDepParticipantIds.length > 0) {
+          const { data: billedAllDepParts } = await supabaseAdmin
+            .from('invoice_classes')
+            .select('participant_id, invoices!inner(status)')
+            .in('participant_id', allDepParticipantIds)
+            .in('invoices.status', ['paga', 'concluida']);
+
+          const preserveAllDepIds = [...new Set((billedAllDepParts || []).map((bp: any) => bp.participant_id).filter(Boolean))];
+          
+          if (preserveAllDepIds.length > 0) {
+            const toDeleteAllDep = allDepParticipantIds.filter((id: string) => !preserveAllDepIds.includes(id));
+            if (toDeleteAllDep.length > 0) {
+              await supabaseAdmin.from('class_participants').delete().in('id', toDeleteAllDep);
+            }
+            console.log(`All-dep class_participants: preserved ${preserveAllDepIds.length}, deleted ${toDeleteAllDep.length}`);
+          } else {
+            await supabaseAdmin.from('class_participants').delete().in('dependent_id', allDependentIds);
+          }
+        } else {
+          await supabaseAdmin.from('class_participants').delete().in('dependent_id', allDependentIds);
+        }
         
         const { error: deleteDepsError } = await supabaseAdmin
           .from('dependents')
@@ -548,10 +603,44 @@ Deno.serve(async (req) => {
         .eq('student_id', student_id);
       
       const studentParticipantIds = (studentParticipants || []).map((p: any) => p.id);
+      
+      // PRESERVE invoice_classes linked to paid/completed invoices
       if (studentParticipantIds.length > 0) {
-        await supabaseAdmin.from('invoice_classes').delete().in('participant_id', studentParticipantIds);
+        const { data: deletableStudentIc } = await supabaseAdmin
+          .from('invoice_classes')
+          .select('id, invoice_id, invoices!inner(status)')
+          .in('participant_id', studentParticipantIds)
+          .not('invoices.status', 'in', '("paga","concluida")');
+
+        const deletableStudentIcIds = (deletableStudentIc || []).map((ic: any) => ic.id);
+        if (deletableStudentIcIds.length > 0) {
+          await supabaseAdmin.from('invoice_classes').delete().in('id', deletableStudentIcIds);
+        }
+        console.log(`Student invoice_classes: ${studentParticipantIds.length} participants, ${deletableStudentIcIds.length} deletable`);
       }
-      await supabaseAdmin.from('class_participants').delete().eq('student_id', student_id);
+      
+      // PRESERVE class_participants linked to paid invoices
+      if (studentParticipantIds.length > 0) {
+        const { data: billedStudentParts } = await supabaseAdmin
+          .from('invoice_classes')
+          .select('participant_id, invoices!inner(status)')
+          .in('participant_id', studentParticipantIds)
+          .in('invoices.status', ['paga', 'concluida']);
+
+        const preserveStudentIds = [...new Set((billedStudentParts || []).map((bp: any) => bp.participant_id).filter(Boolean))];
+        
+        if (preserveStudentIds.length > 0) {
+          const toDeleteStudent = studentParticipantIds.filter((id: string) => !preserveStudentIds.includes(id));
+          if (toDeleteStudent.length > 0) {
+            await supabaseAdmin.from('class_participants').delete().in('id', toDeleteStudent);
+          }
+          console.log(`Student class_participants: preserved ${preserveStudentIds.length}, deleted ${toDeleteStudent.length}`);
+        } else {
+          await supabaseAdmin.from('class_participants').delete().eq('student_id', student_id);
+        }
+      } else {
+        await supabaseAdmin.from('class_participants').delete().eq('student_id', student_id);
+      }
 
       // Delete the relationship
       const { error: relationshipDeleteError } = await supabaseAdmin
@@ -574,24 +663,58 @@ Deno.serve(async (req) => {
         );
       }
       
-      // Try to delete from auth.users (this will cascade to profiles due to foreign key)
-      const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(student_id);
-      
-      if (authDeleteError) {
-        console.error('Error deleting user from auth:', authDeleteError);
+      // Check if student has paid invoices - if so, soft-delete to preserve fiscal data
+      const { count: paidInvoicesCount } = await supabaseAdmin
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('student_id', student_id)
+        .in('status', ['paga', 'concluida']);
+
+      if (paidInvoicesCount && paidInvoicesCount > 0) {
+        // Soft-delete: preserve profile for fiscal integrity but mark as deleted
+        console.log(`Student has ${paidInvoicesCount} paid invoices - soft-deleting profile`);
         
-        // If auth deletion fails, try to delete profile directly as fallback
-        console.log('Attempting to delete profile directly as fallback');
-        
-        const { error: profileDeleteError } = await supabaseAdmin
+        const { data: currentProfile } = await supabaseAdmin
           .from('profiles')
-          .delete()
+          .select('name')
+          .eq('id', student_id)
+          .maybeSingle();
+
+        const { error: softDeleteError } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            role: 'deleted',
+            email: `deleted_${student_id}@removed.local`,
+            name: currentProfile?.name || 'Aluno removido',
+            updated_at: new Date().toISOString()
+          })
           .eq('id', student_id);
 
-        if (profileDeleteError) {
-          console.error('Error deleting profile:', profileDeleteError);
-          // Don't return error here since relationship was already deleted
-          console.log('Profile deletion failed, but relationship was removed successfully');
+        if (softDeleteError) {
+          console.error('Error soft-deleting profile:', softDeleteError);
+        } else {
+          console.log('Profile soft-deleted successfully (fiscal data preserved)');
+        }
+        // Do NOT delete auth user - keep for referential integrity
+      } else {
+        // No paid invoices - hard-delete completely
+        const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(student_id);
+        
+        if (authDeleteError) {
+          console.error('Error deleting user from auth:', authDeleteError);
+          
+          // If auth deletion fails, try to delete profile directly as fallback
+          console.log('Attempting to delete profile directly as fallback');
+          
+          const { error: profileDeleteError } = await supabaseAdmin
+            .from('profiles')
+            .delete()
+            .eq('id', student_id);
+
+          if (profileDeleteError) {
+            console.error('Error deleting profile:', profileDeleteError);
+            console.log('Profile deletion failed, but relationship was removed successfully');
+          }
         }
       }
 

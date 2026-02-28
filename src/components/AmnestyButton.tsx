@@ -114,11 +114,11 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
             <span tabIndex={0}>
               <Button
                 variant="outline"
-                size="default"
+                size="lg"
                 disabled
                 className="gap-2"
               >
-                <Ban className="h-4 w-4" />
+                <Ban className="h-5 w-5" />
                 {t('button')}
               </Button>
             </span>
@@ -136,11 +136,11 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="default"
+          size="lg"
           disabled={isDisabled}
           className="gap-2"
         >
-          <HandHeart className="h-4 w-4" />
+          <HandHeart className="h-5 w-5" />
           {t('button')}
         </Button>
       </DialogTrigger>

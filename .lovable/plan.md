@@ -1,52 +1,37 @@
 
 
-# Fix: Aulas nao carregam ao trocar de mes no calendario
+# Fix: Aulas virtuais nao herdam `is_paid_class` do template
 
 ## Causa raiz
 
-O `handleVisibleRangeChange` em `Agenda.tsx` (linha 267) e uma funcao inline sem `useCallback`. Isso cria uma nova referencia a cada render do componente.
+A funcao RPC `get_classes_with_participants` **nao inclui o campo `is_paid_class`** no SELECT. Quando o frontend carrega os templates via essa RPC, o campo vem como `undefined`. Ao gerar instancias virtuais com `...templateClass`, o `is_paid_class` continua `undefined`. Na materializacao (INSERT no banco), o campo `undefined` viola a constraint NOT NULL da coluna `is_paid_class`.
 
-No `SimpleCalendar.tsx`, o `useEffect` (linha 224) depende de `onVisibleRangeChange`:
-
-```text
-useEffect -> [currentDate, onVisibleRangeChange]
-```
-
-Como `onVisibleRangeChange` muda a cada render do Agenda:
-
-```text
-1. Agenda renderiza -> handleVisibleRangeChange e uma nova funcao
-2. SimpleCalendar recebe nova prop -> useEffect dispara -> chama onVisibleRangeChange(start, end)
-3. setVisibleRange cria novo objeto -> Agenda re-renderiza
-4. Volta ao passo 1 -> loop infinito
-5. O debounce de 300ms e resetado a cada ciclo -> loadClasses NUNCA executa
-```
-
-O resultado: ao navegar entre meses, o debounce e cancelado repetidamente e a requisicao de aulas nunca chega a ser feita. Apenas um F5 (que reseta tudo e usa o carregamento inicial sem debounce) funciona.
+O template esta sendo criado corretamente com `is_paid_class = true` no banco, mas a informacao se perde no caminho de volta ao frontend.
 
 ## Correcao
 
-### `src/pages/Agenda.tsx` - uma unica mudanca
+### 1. Migracao: Atualizar a RPC `get_classes_with_participants`
 
-Envolver `handleVisibleRangeChange` em `useCallback` com dependencias vazias (a funcao so usa `setVisibleRange`, que e estavel):
+Adicionar `c.is_paid_class` ao SELECT de ambas as queries (materializadas e templates) na funcao RPC.
 
-```typescript
-// ANTES (linha 267):
-const handleVisibleRangeChange = (start: Date, end: Date) => {
-  setVisibleRange({ start, end });
-};
+### 2. `src/pages/Agenda.tsx` - Fallback defensivo na materializacao
 
-// DEPOIS:
-const handleVisibleRangeChange = useCallback((start: Date, end: Date) => {
-  setVisibleRange({ start, end });
-}, []);
+Manter o fallback `?? false` na linha 1312 como camada de seguranca adicional, caso templates antigos no banco tenham `is_paid_class = NULL` (improvavel mas defensivo):
+
+```text
+is_paid_class: virtualClass.is_paid_class ?? false,
 ```
 
-Com a referencia estavel, o useEffect do SimpleCalendar so dispara quando `currentDate` realmente muda (usuario clica nas setas de navegacao), nao em cada re-render do Agenda.
+## Impacto
 
-## Arquivo impactado
+| Componente | Alteracao |
+|------------|-----------|
+| RPC `get_classes_with_participants` | Adicionar `c.is_paid_class` nos dois SELECTs |
+| `src/pages/Agenda.tsx` | Fallback `?? false` no `materializeVirtualClass` |
 
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/pages/Agenda.tsx` | Adicionar `useCallback` ao `handleVisibleRangeChange` |
+Com essa correcao, o fluxo completo fica:
+1. Template criado com `is_paid_class = true` (ja funciona)
+2. RPC retorna `is_paid_class` do template (correcao)
+3. Virtual herda via spread (ja funciona)
+4. Materializacao insere o valor correto (correcao + fallback)
 

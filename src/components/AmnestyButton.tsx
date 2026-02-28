@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Heart, AlertCircle, Ban } from "lucide-react";
+import { HandHeart, AlertCircle, Ban } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
@@ -114,7 +114,7 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
             <span tabIndex={0}>
               <Button
                 variant="outline"
-                size="sm"
+                size="default"
                 disabled
                 className="gap-2"
               >
@@ -136,18 +136,18 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
+          size="default"
           disabled={isDisabled}
           className="gap-2"
         >
-          <Heart className="h-4 w-4" />
+          <HandHeart className="h-4 w-4" />
           {t('button')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Heart className="h-5 w-5 text-red-500" />
+            <HandHeart className="h-5 w-5 text-red-500" />
             {t('title')}
           </DialogTitle>
           <DialogDescription dangerouslySetInnerHTML={{ __html: t('description', { studentName }) }} />

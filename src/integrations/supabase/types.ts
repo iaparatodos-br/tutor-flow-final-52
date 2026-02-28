@@ -2267,6 +2267,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean
           notes: string
           participants: Json

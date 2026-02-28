@@ -443,6 +443,54 @@ Deno.serve(async (req) => {
       }
       dependentsDeleted = cascadeResult.deleted;
       
+      // Clean up student's direct records scoped to this teacher's classes
+      // Get this teacher's class IDs for scoped cleanup
+      const { data: teacherClassesForCleanup } = await supabaseAdmin
+        .from('classes')
+        .select('id')
+        .eq('teacher_id', teacher_id);
+      const teacherClassIdsForCleanup = (teacherClassesForCleanup || []).map((c: any) => c.id);
+
+      if (teacherClassIdsForCleanup.length > 0) {
+        // Get report IDs from this teacher's classes for scoped feedback cleanup
+        const { data: teacherReports } = await supabaseAdmin
+          .from('class_reports')
+          .select('id')
+          .eq('teacher_id', teacher_id);
+        const teacherReportIds = (teacherReports || []).map((r: any) => r.id);
+
+        if (teacherReportIds.length > 0) {
+          await supabaseAdmin
+            .from('class_report_feedbacks')
+            .delete()
+            .eq('student_id', student_id)
+            .in('report_id', teacherReportIds);
+        }
+
+        // Delete material_access granted by this teacher
+        const { data: teacherMaterials } = await supabaseAdmin
+          .from('materials')
+          .select('id')
+          .eq('teacher_id', teacher_id);
+        const teacherMaterialIds = (teacherMaterials || []).map((m: any) => m.id);
+
+        if (teacherMaterialIds.length > 0) {
+          await supabaseAdmin
+            .from('material_access')
+            .delete()
+            .eq('student_id', student_id)
+            .in('material_id', teacherMaterialIds);
+        }
+
+        // Delete class_notifications for this teacher's classes
+        await supabaseAdmin
+          .from('class_notifications')
+          .delete()
+          .eq('student_id', student_id)
+          .in('class_id', teacherClassIdsForCleanup);
+      }
+      console.log('Cleaned up student direct records (scoped to teacher)');
+
       // Delete student_monthly_subscriptions BEFORE relationship (FK RESTRICT)
       const { error: smsUnlinkError } = await supabaseAdmin
         .from('student_monthly_subscriptions')
@@ -595,6 +643,12 @@ Deno.serve(async (req) => {
       if (smsDeleteError) {
         console.error('Error deleting student_monthly_subscriptions:', smsDeleteError);
       }
+
+      // Clean up student's direct records (all, since user is being fully deleted)
+      await supabaseAdmin.from('class_report_feedbacks').delete().eq('student_id', student_id);
+      await supabaseAdmin.from('material_access').delete().eq('student_id', student_id);
+      await supabaseAdmin.from('class_notifications').delete().eq('student_id', student_id);
+      console.log('Cleaned up student direct records (class_report_feedbacks, material_access, class_notifications)');
 
       // Also clean invoice_classes and class_participants for the student's own participations
       const { data: studentParticipants } = await supabaseAdmin

@@ -1,37 +1,46 @@
 
 
-# Fix: Aulas virtuais nao herdam `is_paid_class` do template
+# Fix: Aulas somem do calendario apos cancelar aula virtual
 
-## Causa raiz
+## Problema
 
-A funcao RPC `get_classes_with_participants` **nao inclui o campo `is_paid_class`** no SELECT. Quando o frontend carrega os templates via essa RPC, o campo vem como `undefined`. Ao gerar instancias virtuais com `...templateClass`, o `is_paid_class` continua `undefined`. Na materializacao (INSERT no banco), o campo `undefined` viola a constraint NOT NULL da coluna `is_paid_class`.
+Ao cancelar uma aula virtual e fechar o modal, todas as aulas desaparecem do calendario. O problema ocorre porque o `onCancellationComplete` passa `loadClasses` sem argumentos:
 
-O template esta sendo criado corretamente com `is_paid_class = true` no banco, mas a informacao se perde no caminho de volta ao frontend.
+```
+onCancellationComplete={loadClasses}
+```
+
+Quando `loadClasses()` e chamado sem argumentos, ele usa um fallback de `new Date()` ate `now + 1 mes`, ignorando o `visibleRange` atual do calendario. Se o usuario esta visualizando um mes diferente do atual, as aulas carregadas nao correspondem ao que o calendario exibe, e o resultado e um calendario vazio.
 
 ## Correcao
 
-### 1. Migracao: Atualizar a RPC `get_classes_with_participants`
+### `src/pages/Agenda.tsx` - Passar visibleRange ao recarregar
 
-Adicionar `c.is_paid_class` ao SELECT de ambas as queries (materializadas e templates) na funcao RPC.
+Alterar a linha 1863 para usar uma callback que passa o `visibleRange` atual:
 
-### 2. `src/pages/Agenda.tsx` - Fallback defensivo na materializacao
+```typescript
+// ANTES:
+onCancellationComplete={loadClasses}
 
-Manter o fallback `?? false` na linha 1312 como camada de seguranca adicional, caso templates antigos no banco tenham `is_paid_class = NULL` (improvavel mas defensivo):
-
-```text
-is_paid_class: virtualClass.is_paid_class ?? false,
+// DEPOIS:
+onCancellationComplete={() => {
+  if (visibleRange) {
+    loadClasses(visibleRange.start, visibleRange.end);
+  } else {
+    loadClasses();
+  }
+}}
 ```
 
-## Impacto
+Isso garante que, apos o cancelamento, as aulas sejam recarregadas exatamente para o intervalo de datas que o usuario esta visualizando no calendario.
 
-| Componente | Alteracao |
-|------------|-----------|
-| RPC `get_classes_with_participants` | Adicionar `c.is_paid_class` nos dois SELECTs |
-| `src/pages/Agenda.tsx` | Fallback `?? false` no `materializeVirtualClass` |
+## Verificacao adicional
 
-Com essa correcao, o fluxo completo fica:
-1. Template criado com `is_paid_class = true` (ja funciona)
-2. RPC retorna `is_paid_class` do template (correcao)
-3. Virtual herda via spread (ja funciona)
-4. Materializacao insere o valor correto (correcao + fallback)
+Existem outros locais no arquivo que chamam `loadClasses` sem argumentos apos acoes (como concluir aula, confirmar, etc.). Vou verificar se ha outros pontos com o mesmo problema e corrigi-los na mesma alteracao.
+
+## Arquivo impactado
+
+| Arquivo | Alteracao |
+|---------|-----------|
+| `src/pages/Agenda.tsx` | Passar `visibleRange` no `onCancellationComplete` e em outros callbacks similares |
 

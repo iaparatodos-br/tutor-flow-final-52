@@ -1,55 +1,50 @@
 
-## Corrigir dados ausentes ao cancelar aula virtual recorrente
 
-### Diagnostico raiz
+## Corrigir fonte de dados para cancelamento de aula virtual
 
-O bug esta na linha 1730 de `Agenda.tsx`:
+### Problema
+
+O codigo em `Agenda.tsx` (linha 1731-1733) tenta encontrar o template da aula virtual no array `classes`:
 
 ```typescript
-const fullClassData = classes.find(c => c.id === classId);
+const fullClassData = classToCancel.isVirtual 
+  ? classes.find(c => c.id === classToCancel.class_template_id)
+  : classes.find(c => c.id === classId);
 ```
 
-Para aulas virtuais, o `classId` tem formato `templateId_virtual_timestamp` (ex: `abc123_virtual_1709420400000`). Esse ID **nao existe** no array `classes` (que contem apenas dados brutos do RPC). Resultado: `fullClassData` e `null`, o que faz `virtualData` ser `undefined`.
+Porem, o array `classes` contem **apenas aulas materializadas** (nao-templates). Os templates sao filtrados na linha 840-841 e usados separadamente para gerar instancias virtuais. Resultado: `fullClassData` e sempre `null` para aulas virtuais, `virtualData` fica `undefined`, e o modal tenta buscar no banco com o ID virtual (`xxx_virtual_timestamp`), gerando o erro UUID invalido no console.
 
-Sem `virtualData`, o `CancellationModal` tenta buscar a aula no banco pelo ID virtual (que tambem nao existe), e acaba com dados incompletos -- `is_paid_class` fica `undefined`, entao o modal assume que a aula e paga e exibe alertas incorretos (prepaid, cobranca, etc).
-
-Enquanto isso, o `classToCancel` (da linha 1718, buscado em `calendarClasses`) **ja tem todos os dados corretos** porque as instancias virtuais sao geradas com `...templateClass` (linha 306), que inclui `is_paid_class`, `is_experimental`, `service_id`, etc.
+Sem `virtualData`, o modal nao recebe `is_paid_class`, `is_experimental`, etc., e exibe alertas incorretos.
 
 ### Solucao
 
-Usar `classToCancel` como fonte de dados para construir o `virtualData`, em vez de `fullClassData`. Para o template ID, usar `classToCancel.class_template_id`. Para dependentes, usar `classToCancel.participants`.
+Para aulas virtuais, usar `classToCancel` diretamente como fonte de dados. O `classToCancel` vem de `calendarClasses`, que ja contem todos os dados do template (via spread `...templateClass` na linha 306-315), incluindo `is_paid_class`, `is_experimental`, `service_id`, `teacher_id`, etc.
 
-### Alteracoes
+### Alteracao
 
-**Arquivo: `src/pages/Agenda.tsx` (linhas 1729-1763)**
+**Arquivo: `src/pages/Agenda.tsx` (linha 1731-1733)**
 
-Substituir o bloco que busca `fullClassData` e constroi `virtualData`:
-
+De:
 ```typescript
-// For virtual classes, use classToCancel directly (it has all template data)
-// For materialized classes, find in the raw classes array
 const fullClassData = classToCancel.isVirtual 
-  ? classToCancel 
+  ? classes.find(c => c.id === classToCancel.class_template_id)
   : classes.find(c => c.id === classId);
-
-const virtualData = classToCancel.isVirtual && fullClassData ? {
-  teacher_id: fullClassData.teacher_id || profile!.id,
-  class_date: fullClassData.class_date,
-  service_id: fullClassData.service_id || null,
-  is_group_class: fullClassData.is_group_class || false,
-  is_experimental: fullClassData.is_experimental || false,
-  is_paid_class: fullClassData.is_paid_class ?? true,
-  service_price: fullClassData.service_id
-    ? services.find(s => s.id === fullClassData.service_id)?.price || 0
-    : 0,
-  class_template_id: fullClassData.class_template_id || '',
-  duration_minutes: fullClassData.duration_minutes || 60,
-  status: fullClassData.status || 'confirmada'
-} : undefined;
 ```
+
+Para:
+```typescript
+const fullClassData = classToCancel.isVirtual 
+  ? classToCancel
+  : classes.find(c => c.id === classId);
+```
+
+Tambem ajustar `class_template_id` no `virtualData` (linha 1746) porque `classToCancel.class_template_id` ja aponta para o template correto, enquanto `fullClassData.class_template_id` (quando `fullClassData = classToCancel`) tambem tera o valor correto.
+
+E ajustar `class_date` no `virtualData` (linha 1738) para usar a data da instancia virtual (`classToCancel.class_date`) e nao a data do template original.
 
 ### Resultado esperado
 
-- Aulas virtuais com `is_paid_class = false` exibirao o alerta "Aula Gratuita" corretamente
-- Aulas virtuais de professor com `charge_timing = 'prepaid'` mas marcadas como nao cobradas (`is_paid_class = false`) **nao** exibirao o alerta de pre-pago
-- Todos os demais cenarios (experimental, pago, grupo) funcionarao corretamente porque os dados vem do template original
+- O alerta emerald "Aula Gratuita" aparecera corretamente para aulas virtuais com `is_paid_class = false`
+- O erro `invalid input syntax for type uuid` desaparecera do console
+- Todos os outros cenarios (experimental, prepaid, postpaid) funcionarao corretamente
+

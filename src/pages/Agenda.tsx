@@ -1772,6 +1772,7 @@ export default function Agenda() {
       is_paid_class: classToCancel.is_paid_class ?? false,
       service_price: servicePrice,
       class_template_id: classToCancel.class_template_id || classId,
+      is_virtual: classToCancel.isVirtual || false,
       duration_minutes: classToCancel.duration_minutes || 60,
       status: classToCancel.isVirtual
         ? 'confirmada' as const

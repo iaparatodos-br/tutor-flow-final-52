@@ -1,77 +1,50 @@
 
 
-## Plano: Conflitos de Horario - Warning ao inves de Bloqueio + Icone no Calendario
+## Plano: Verificacao de Conflito em Tempo Real no ClassForm
 
-### Resumo
+### Problema
 
-Tres alteracoes principais:
-1. **ClassForm**: Mudar conflito de bloqueio (erro vermelho) para aviso (warning amarelo), permitindo submissao
-2. **ClassForm**: Incluir aulas virtuais de recorrencia (ate 2 meses) na verificacao de conflitos
-3. **SimpleCalendar + MobileCalendarList**: Exibir icone de exclamacao amarelo nos dias com conflitos de horario
+A verificacao de conflitos roda apenas no `handleSubmit`. Como o conflito nao bloqueia mais a submissao, o formulario salva e fecha o modal antes do professor ver o aviso amarelo.
 
----
+### Solucao
 
-### 1. ClassForm - Warning ao inves de Bloqueio
+Mover a logica de deteccao de conflitos para um `useEffect` reativo que dispara sempre que `class_date`, `time`, `service_id`, `is_paid_class`, `showRecurrence` ou parametros de recorrencia mudam. Assim o warning amarelo aparece em tempo real no formulario, antes do professor clicar em "Salvar".
 
-**Arquivo**: `src/components/ClassForm/ClassForm.tsx`
-
-- Renomear `timeConflict` de erro de validacao para um estado separado `timeConflictWarning` (boolean) que NAO bloqueia a submissao
-- Remover `timeConflict` do objeto `validationErrors` (para que `Object.values(errors).some(Boolean)` nao bloqueie)
-- Criar um estado `const [timeConflictWarning, setTimeConflictWarning] = useState(false)`
-- Manter a mesma logica de deteccao de conflitos, mas setar `setTimeConflictWarning(true)` ao inves de `errors.timeConflict = true`
-- Trocar a mensagem de erro vermelha por um `Alert` amarelo com variante `warning`
-- Atualizar estilos dos campos de data/hora para borda amarela (ao inves de vermelha) quando houver conflito
-
-### 2. ClassForm - Verificar Conflitos em Aulas Virtuais de Recorrencia
+### Alteracoes
 
 **Arquivo**: `src/components/ClassForm/ClassForm.tsx`
 
-- As `existingClasses` ja incluem aulas materializadas e templates. Precisamos gerar virtuais a partir dos templates para verificar conflitos
-- Na logica de `handleSubmit`, antes de verificar conflitos, gerar instancias virtuais dos templates presentes em `existingClasses` (que possuem `recurrence_pattern`) ate 2 meses a partir da data do template
-- Usar a mesma logica de RRULE usada em `Agenda.tsx` (`generateVirtualInstances`) para calcular as datas
-- Incluir essas instancias virtuais na lista de aulas verificadas para conflito
-- Tambem verificar conflitos quando a nova aula for recorrente: gerar as datas futuras da recorrencia (ate 2 meses) e verificar cada uma contra as aulas existentes + virtuais
+1. **Extrair a logica de conflito para um `useEffect`**
+   - Criar um `useEffect` com dependencias: `formData.class_date`, `formData.time`, `formData.service_id`, `formData.is_paid_class`, `formData.duration_minutes`, `showRecurrence`, `formData.recurrence`, `existingClasses`, `services`
+   - Dentro desse `useEffect`, executar toda a logica de expansao de aulas virtuais (RRULE) e verificacao de sobreposicao que hoje esta no `handleSubmit`
+   - Chamar `setTimeConflictWarning(true/false)` conforme o resultado
 
-### 3. Icone de Conflito no Calendario
+2. **Remover a logica de conflito do `handleSubmit`**
+   - Remover as linhas 256-369 (verificacao de conflito) do `handleSubmit`
+   - O `handleSubmit` fica responsavel apenas pela validacao de campos obrigatorios e submissao
 
-**Arquivo**: `src/components/Calendar/SimpleCalendar.tsx`
+3. **Debounce opcional**
+   - A verificacao envolve iteracao sobre `existingClasses` e geracao de RRULE, mas como os dados ja estao em memoria (sem chamada de rede), a performance deve ser aceitavel sem debounce
 
-- Criar um `useMemo` que calcula quais dias tem conflitos (2+ aulas ativas com horarios sobrepostos no mesmo dia)
-- Na celula do dia (grid do calendario), ao lado do numero do dia, renderizar um icone `AlertTriangle` com fundo amarelo quando houver conflito
-- Envolver o icone em um `Tooltip` (ja importado no projeto) com a mensagem de conflito
-- Logica de deteccao: para cada dia, verificar se algum par de aulas (nao canceladas/concluidas) tem sobreposicao de horario
+### Resultado
 
-**Arquivo**: `src/components/Calendar/MobileCalendarList.tsx`
-
-- Aplicar a mesma logica de deteccao de conflitos para a versao mobile
-- Exibir o icone de aviso amarelo nos itens de dia que possuem conflitos
-
-### 4. Traducoes i18n
-
-**Arquivos**: `src/i18n/locales/pt/classes.json` e `src/i18n/locales/en/classes.json`
-
-- Alterar `timeConflictError` para `timeConflictWarning` com texto: "Ja existe uma aula agendada neste horario. Voce pode continuar mesmo assim."
-- Adicionar chave `calendar.timeConflict`: "Existem aulas com horarios conflitantes neste dia"
-
----
+- O warning amarelo aparece assim que o professor seleciona data e hora que conflitam com outra aula
+- O professor ve o aviso antes de clicar em "Salvar"
+- O botao "Salvar" continua habilitado (nao bloqueia)
+- Se o professor alterar a data/hora para um horario livre, o warning desaparece automaticamente
 
 ### Detalhes Tecnicos
 
-**Deteccao de conflitos no calendario (SimpleCalendar)**:
 ```text
-Para cada dia com 2+ aulas ativas:
-  Para cada par (aulaA, aulaB):
-    Se aulaA.start < aulaB.end E aulaA.end > aulaB.start:
-      marcar dia como conflitante
+useEffect(() => {
+  if (!formData.class_date || !formData.time) {
+    setTimeConflictWarning(false);
+    return;
+  }
+  // ... mesma logica de expansao de virtuais e verificacao de sobreposicao
+  // que ja existe no handleSubmit (linhas 256-367)
+  setTimeConflictWarning(hasConflict);
+}, [formData.class_date, formData.time, formData.service_id, ...]);
 ```
 
-**Geracao de virtuais para verificacao no ClassForm**:
-- Filtrar `existingClasses` onde `is_template === true` e `recurrence_pattern` existe
-- Para cada template, gerar ocorrencias usando RRULE ate `min(recurrence_end_date, template_date + 2 meses)`
-- Concatenar com `existingClasses` normais para a verificacao de conflito
-
-**Verificacao de conflitos para novas recorrencias**:
-- Quando o professor marca recorrencia no formulario, gerar as datas futuras (ate 2 meses) da nova aula
-- Verificar cada data gerada contra todas as aulas existentes + virtuais
-- Se qualquer data tiver conflito, exibir o warning amarelo listando quantos conflitos foram encontrados
-
+Nenhum outro arquivo precisa ser alterado. A mudanca e isolada ao `ClassForm.tsx`.

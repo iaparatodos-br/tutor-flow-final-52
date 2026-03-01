@@ -1,51 +1,47 @@
 
-## Corrigir modal de cancelamento para aulas materializadas do aluno
 
-### Problema
-Para aulas materializadas (nao-virtuais), o `handleRecurringClassCancel` so passa `virtualClassData` ao modal quando `classToCancel.isVirtual === true`. Para aulas materializadas, o modal tenta buscar dados diretamente na tabela `classes` via `.eq('id', classId)`, mas o RLS (Row Level Security) bloqueia a leitura do aluno. Resultado: query retorna vazio, `classData` fica `null`, nenhum alert e exibido.
+## Problemas identificados
 
-Evidencia nos logs:
-- Console: `Error loading class data: null`
-- Network: `classes?id=eq.f2f44711-...` retorna `[]`
+### Problema 1: CategoryModal salva na tabela errada
+O `ExpenseModal` reutiliza o `CategoryModal` (linha 398), mas esse componente foi criado para **materiais** e insere/atualiza na tabela `material_categories` (linha 79-98 do CategoryModal). As despesas usam a tabela `expense_categories`. Resultado: ao criar uma "nova categoria" dentro do modal de despesa, ela vai para a tabela errada e nunca aparece no dropdown de categorias de despesas.
 
-### Solucao
-Para o fluxo de aluno, passar os dados da aula ao modal tambem para aulas materializadas, eliminando a necessidade de query direta na tabela `classes`.
+### Problema 2: Sem funcionalidade de excluir categorias de despesas
+Nenhum componente permite ao professor excluir (ou gerenciar) categorias de despesas. O `ExpenseList` carrega categorias para filtro, mas nao oferece CRUD. O botao "Gerenciar categorias" referenciado nas traduções (`category.manageCategories`) nao existe na UI.
 
-### Alteracao
+---
 
-**Arquivo: `src/pages/Agenda.tsx`**
+## Plano de correção
 
-1. No `handleRecurringClassCancel`, criar o objeto de dados para TODAS as aulas (nao apenas virtuais), usando `classToCancel` que ja contem todos os campos necessarios vindos do `calendarClasses`:
+### 1. Criar componente `ExpenseCategoryModal`
+Novo arquivo: `src/components/ExpenseCategoryModal.tsx`
 
-```typescript
-// Antes (so virtual):
-const virtualData = classToCancel.isVirtual ? { ... } : undefined;
+- Copia a estrutura do `CategoryModal` existente
+- Aponta para a tabela `expense_categories` em vez de `material_categories`
+- Usa traduções do namespace `expenses` (ja existem chaves como `category.newCategory`, `category.selectCategory`)
+- Suporta criação e edição de categorias de despesas
 
-// Depois (todas as aulas):
-const classDataForModal = {
-  teacher_id: classToCancel.teacher_id || profile!.id,
-  class_date: classToCancel.class_date || classToCancel.start.toISOString(),
-  service_id: classToCancel.service_id || null,
-  is_group_class: classToCancel.is_group_class || false,
-  is_experimental: classToCancel.is_experimental || false,
-  is_paid_class: classToCancel.is_paid_class ?? false,
-  service_price: classToCancel.service_id
-    ? services.find(s => s.id === classToCancel.service_id)?.price || 0
-    : 0,
-  class_template_id: classToCancel.class_template_id || classId,
-  duration_minutes: classToCancel.duration_minutes || 60,
-  status: classToCancel.isVirtual 
-    ? 'confirmada' as const 
-    : (classToCancel.status || 'confirmada')
-};
-```
+### 2. Criar componente `ExpenseCategoryManager`
+Novo arquivo: `src/components/ExpenseCategoryManager.tsx`
 
-2. Passar `classDataForModal` como `virtualClassData` no `setCancellationModal` para todas as aulas, nao apenas virtuais.
+- Dialog/Sheet que lista todas as categorias de despesa do professor
+- Permite editar (abre `ExpenseCategoryModal` com dados preenchidos)
+- Permite excluir categorias (com confirmação)
+- Botão para criar nova categoria
 
-3. Atualizar o tipo do estado `cancellationModal` para incluir os campos `is_experimental`, `is_paid_class` e `status` que ja existem na interface `VirtualClassData` do modal mas estavam ausentes no tipo local.
+### 3. Atualizar `ExpenseModal`
+Arquivo: `src/components/ExpenseModal.tsx`
 
-### Resultado esperado
-- Aulas materializadas do aluno exibirao os alerts corretos (emerald para nao cobrada, green/red para pos-paga conforme prazo, amber para pre-paga, violeta para experimental)
-- O erro `Error loading class data: null` desaparecera do console
-- O modal nao precisara mais fazer query direta na tabela `classes` para o fluxo de aluno
-- Aulas virtuais continuam funcionando como antes (sem regressao)
+- Substituir `CategoryModal` por `ExpenseCategoryModal`
+- Manter o comportamento atual de recarregar categorias após criação
+
+### 4. Adicionar botão "Gerenciar Categorias" no `ExpenseList`
+Arquivo: `src/components/ExpenseList.tsx`
+
+- Adicionar botão junto aos filtros para abrir o `ExpenseCategoryManager`
+- Recarregar categorias após qualquer alteração
+
+### 5. Adicionar traduções faltantes
+Arquivos: `src/i18n/locales/pt/expenses.json` e `src/i18n/locales/en/expenses.json`
+
+- Adicionar chaves para confirmação de exclusão de categoria, mensagens de sucesso/erro
+

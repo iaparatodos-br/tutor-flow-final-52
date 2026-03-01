@@ -1,50 +1,92 @@
 
+Objetivo: corrigir definitivamente o caso “Aula confirmada não cobrada virtual” exibindo alerta pré-pago (amber) em vez de “Política + Aula Gratuita” (emerald).
 
-## Corrigir fonte de dados para cancelamento de aula virtual
+Diagnóstico confirmado no código atual
 
-### Problema
+1) O problema não está no modal em si; está no dado que chega nele para aulas virtuais.
+- Em `CancellationModal.tsx`, o amber só aparece quando:
+  - `classData.charge_timing === 'prepaid'` e
+  - `classData.is_paid_class === true`.
+- Para aula não cobrada, deveria chegar `is_paid_class === false` e aí aparece o emerald.
 
-O codigo em `Agenda.tsx` (linha 1731-1733) tenta encontrar o template da aula virtual no array `classes`:
+2) No fluxo de aluno em `Agenda.tsx`, as queries de `classes` não selecionam `is_paid_class`.
+- Blocos de query do aluno (materializadas, templates, grupo, dependentes) selecionam `id`, `class_date`, `status`, etc., mas não `is_paid_class`.
+- Resultado: templates/instâncias virtuais chegam com `is_paid_class` indefinido.
 
-```typescript
-const fullClassData = classToCancel.isVirtual 
-  ? classes.find(c => c.id === classToCancel.class_template_id)
-  : classes.find(c => c.id === classId);
-```
+3) Em `handleRecurringClassCancel`, o `virtualData` usa fallback que transforma indefinido em pago:
+- `is_paid_class: classToCancel.is_paid_class ?? true`
+- Como o professor está em `charge_timing = prepaid`, o modal interpreta como pré-paga e mostra amber.
 
-Porem, o array `classes` contem **apenas aulas materializadas** (nao-templates). Os templates sao filtrados na linha 840-841 e usados separadamente para gerar instancias virtuais. Resultado: `fullClassData` e sempre `null` para aulas virtuais, `virtualData` fica `undefined`, e o modal tenta buscar no banco com o ID virtual (`xxx_virtual_timestamp`), gerando o erro UUID invalido no console.
+4) Evidência de dados de negócio:
+- Templates recorrentes desse professor estão `is_paid_class = false`.
+- Portanto, o alerta esperado é emerald, não amber.
 
-Sem `virtualData`, o modal nao recebe `is_paid_class`, `is_experimental`, etc., e exibe alertas incorretos.
+Plano de correção
 
-### Solucao
+1) Incluir `is_paid_class` em todas as queries de aluno no `loadClasses` da `Agenda.tsx`
+Arquivo: `src/pages/Agenda.tsx`
 
-Para aulas virtuais, usar `classToCancel` diretamente como fonte de dados. O `classToCancel` vem de `calendarClasses`, que ja contem todos os dados do template (via spread `...templateClass` na linha 306-315), incluindo `is_paid_class`, `is_experimental`, `service_id`, `teacher_id`, etc.
+Adicionar `is_paid_class` nos `select` de:
+- Query 1: aulas materializadas individuais
+- Query 2: aulas materializadas em grupo
+- Query 3: templates individuais
+- Query 4: templates em grupo
+- Query 5: aulas materializadas de dependentes
+- Query 6: templates de dependentes
 
-### Alteracao
+Resultado esperado desta etapa:
+- `ClassWithParticipants` passa a carregar `is_paid_class` corretamente para templates e virtuais.
 
-**Arquivo: `src/pages/Agenda.tsx` (linha 1731-1733)**
+2) Ajustar fallback de `is_paid_class` no cancelamento virtual para evitar falso-positivo de pré-paga
+Arquivo: `src/pages/Agenda.tsx` (bloco `handleRecurringClassCancel`)
 
-De:
-```typescript
-const fullClassData = classToCancel.isVirtual 
-  ? classes.find(c => c.id === classToCancel.class_template_id)
-  : classes.find(c => c.id === classId);
-```
+Trocar:
+- `is_paid_class: classToCancel.is_paid_class ?? true`
+por fallback seguro para recorrência:
+- `is_paid_class: classToCancel.is_paid_class ?? false`
 
-Para:
-```typescript
-const fullClassData = classToCancel.isVirtual 
-  ? classToCancel
-  : classes.find(c => c.id === classId);
-```
+Justificativa:
+- Recorrência pré-paga paga é bloqueada por regra de negócio; portanto, em ausência de dado, o default “true” cria erro de UX.
+- Esse ajuste elimina a classificação indevida como pré-paga quando houver qualquer lacuna de carregamento.
 
-Tambem ajustar `class_template_id` no `virtualData` (linha 1746) porque `classToCancel.class_template_id` ja aponta para o template correto, enquanto `fullClassData.class_template_id` (quando `fullClassData = classToCancel`) tambem tera o valor correto.
+3) Manter o fluxo atual do modal (sem alterar regras de negócio de cobrança)
+Arquivo: `src/components/CancellationModal.tsx`
 
-E ajustar `class_date` no `virtualData` (linha 1738) para usar a data da instancia virtual (`classToCancel.class_date`) e nao a data do template original.
+Nenhuma mudança de regra necessária:
+- A lógica já está correta se `is_paid_class` vier corretamente.
+- Com os dados corrigidos, o modal exibirá:
+  - Política + emerald para virtual não cobrada.
+  - Amber somente quando realmente pré-paga e paga.
 
-### Resultado esperado
+Validação (checklist de aceite)
 
-- O alerta emerald "Aula Gratuita" aparecera corretamente para aulas virtuais com `is_paid_class = false`
-- O erro `invalid input syntax for type uuid` desaparecera do console
-- Todos os outros cenarios (experimental, prepaid, postpaid) funcionarao corretamente
+1) Caso reportado pelo usuário (principal)
+- Aula virtual recorrente confirmada, não cobrada (`is_paid_class=false`), professor com `charge_timing=prepaid`.
+- Esperado:
+  - Exibir bloco de política.
+  - Exibir alerta emerald “Aula Gratuita”.
+  - Não exibir alerta amber.
 
+2) Regressão de cenários próximos
+- Virtual confirmada pós-paga paga: dentro do prazo => green; fora do prazo => red (se módulo financeiro ativo).
+- Virtual confirmada pré-paga paga (se existir por legado/dado manual): amber.
+- Virtual experimental: violeta.
+- Não virtual pendente: azul exclusivo.
+
+3) Verificação técnica rápida
+- Conferir no Network da query `classes` (fluxo aluno) que o `select` agora inclui `is_paid_class`.
+- Conferir no objeto `classToCancel` e no `virtualData` que `is_paid_class` chega booleano correto antes de abrir o modal.
+
+Riscos e mitigação
+
+- Risco baixo: alteração é pontual em `select` e fallback do virtualData.
+- Mitigação:
+  - Não mexer na lógica financeira do backend/edge.
+  - Validar explicitamente os cenários acima antes de concluir.
+
+Escopo final de implementação
+- `src/pages/Agenda.tsx`:
+  - adicionar `is_paid_class` nos selects do fluxo de aluno.
+  - ajustar fallback de `is_paid_class` no `virtualData` do cancelamento recorrente.
+- `src/components/CancellationModal.tsx`:
+  - sem alteração funcional (apenas validação comportamental pós-correção).

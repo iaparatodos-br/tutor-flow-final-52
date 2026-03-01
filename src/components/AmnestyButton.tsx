@@ -116,9 +116,9 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
                 variant="outline"
                 size="lg"
                 disabled
-                className="gap-2 bg-amber-50 border-amber-300 text-amber-700 font-semibold px-6 py-3 h-auto text-base"
+                className="w-full h-12 border-2 border-muted-foreground/30 text-muted-foreground hover:bg-muted hover:text-foreground text-base font-semibold gap-2"
               >
-                <Ban className="h-6 w-6" />
+                <Ban className="h-5 w-5" />
                 {t('button')}
               </Button>
             </span>
@@ -138,9 +138,9 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
           variant="outline"
           size="lg"
           disabled={isDisabled}
-          className="gap-2 bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:border-amber-400 font-semibold px-6 py-3 h-auto text-base"
+          className="w-full h-12 border-2 border-muted-foreground/30 text-muted-foreground hover:bg-muted hover:text-foreground text-base font-semibold gap-2"
         >
-          <HandHeart className="h-6 w-6" />
+          <HandHeart className="h-5 w-5" />
           {t('button')}
         </Button>
       </DialogTrigger>

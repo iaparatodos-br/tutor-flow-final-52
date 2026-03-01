@@ -414,7 +414,6 @@ export default function Financeiro() {
         </div>
 
         <FeatureGate feature="financial_module">
-          <StripeAccountGuard requireChargesEnabled={true}>
             <div className="space-y-6">
 
         {/* Fee Transparency Alert - Only for Professors */}
@@ -513,6 +512,7 @@ export default function Financeiro() {
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
+              <StripeAccountGuard requireChargesEnabled={true}>
               <Card className="shadow-card">
                 <CardHeader>
                   <div className="flex justify-between items-center">
@@ -656,6 +656,7 @@ export default function Financeiro() {
                     </Table>}
                 </CardContent>
               </Card>
+            </StripeAccountGuard>
             </TabsContent>
             
             <TabsContent value="despesas" className="space-y-4">
@@ -813,7 +814,6 @@ export default function Financeiro() {
         </Dialog>
 
             </div>
-          </StripeAccountGuard>
         </FeatureGate>
       </div>
     </Layout>;

@@ -51,7 +51,7 @@ export default function Faturas() {
   const { t } = useTranslation('financial');
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   // Deep-linking support from Inbox
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
@@ -62,21 +62,21 @@ export default function Faturas() {
     queryKey: ['userDependentIds', user?.id, selectedTeacherId],
     queryFn: async () => {
       if (!user?.id || !selectedTeacherId) return [];
-      
-      const { data, error } = await supabase
-        .from('dependents')
-        .select('id')
-        .eq('responsible_id', user.id)
-        .eq('teacher_id', selectedTeacherId);
+
+      const { data, error } = await supabase.
+      from('dependents').
+      select('id').
+      eq('responsible_id', user.id).
+      eq('teacher_id', selectedTeacherId);
 
       if (error) {
         console.error('Error fetching dependents:', error);
         return [];
       }
 
-      return data?.map(d => d.id) || [];
+      return data?.map((d) => d.id) || [];
     },
-    enabled: !!user?.id && !!selectedTeacherId,
+    enabled: !!user?.id && !!selectedTeacherId
   });
 
   // Query principal de faturas (próprias + dependentes)
@@ -85,16 +85,16 @@ export default function Faturas() {
     queryFn: async () => {
       if (!selectedTeacherId || !user?.id) return [];
 
-      let query = supabase
-        .from('invoices')
-        .select(`
+      let query = supabase.
+      from('invoices').
+      select(`
           id, created_at, due_date, amount, status, stripe_hosted_invoice_url, 
           description, teacher_id, payment_origin, manual_payment_notes, 
           payment_intent_cancelled_at, payment_intent_cancelled_by, invoice_type,
           student_id, payment_method, boleto_url,
           student:profiles!invoices_student_id_fkey(id, name, email)
-        `)
-        .eq('teacher_id', selectedTeacherId);
+        `).
+      eq('teacher_id', selectedTeacherId);
 
       const allStudentIds = [user.id, ...dependentIds];
       query = query.in('student_id', allStudentIds);
@@ -104,7 +104,7 @@ export default function Faturas() {
       if (error) throw new Error(error.message);
       return data as Invoice[];
     },
-    enabled: !!selectedTeacherId && !!user?.id,
+    enabled: !!selectedTeacherId && !!user?.id
   });
 
   const handlePayNow = async (invoice: Invoice) => {
@@ -127,7 +127,7 @@ export default function Faturas() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
-      currency: 'BRL',
+      currency: 'BRL'
     }).format(amount);
   };
 
@@ -142,7 +142,7 @@ export default function Faturas() {
   // Deep-linking: Process URL parameters from Inbox navigation
   useEffect(() => {
     const highlightParam = searchParams.get('highlight');
-    
+
     if (highlightParam && invoices) {
       setHighlightedInvoiceId(highlightParam);
       setSearchParams({}, { replace: true });
@@ -173,8 +173,8 @@ export default function Faturas() {
             </CardContent>
           </Card>
         </div>
-      </Layout>
-    );
+      </Layout>);
+
   }
 
   if (!selectedTeacherId) {
@@ -191,8 +191,8 @@ export default function Faturas() {
             </AlertDescription>
           </Alert>
         </div>
-      </Layout>
-    );
+      </Layout>);
+
   }
 
   return (
@@ -207,22 +207,22 @@ export default function Faturas() {
             <CardTitle>{t('studentInvoices.billingHistory')}</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <div className="space-y-3">
+            {isLoading ?
+            <div className="space-y-3">
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
                 <Skeleton className="h-12 w-full" />
-              </div>
-            ) : error ? (
-              <div className="text-center py-8">
+              </div> :
+            error ?
+            <div className="text-center py-8">
                 <p className="text-destructive">{t('studentInvoices.loadError')}</p>
-              </div>
-            ) : !invoices || invoices.length === 0 ? (
-              <div className="text-center py-8">
+              </div> :
+            !invoices || invoices.length === 0 ?
+            <div className="text-center py-8">
                 <p className="text-muted-foreground">{t('studentInvoices.noInvoices')}</p>
-              </div>
-            ) : (
-              <Table>
+              </div> :
+
+            <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('studentInvoices.columns.date')}</TableHead>
@@ -234,89 +234,89 @@ export default function Faturas() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                {invoices.map((invoice) => (
-                    <TableRow 
-                      key={invoice.id}
-                      ref={invoice.id === highlightedInvoiceId ? highlightedRowRef : null}
-                      className={cn(
-                        invoice.id === highlightedInvoiceId && 'ring-2 ring-primary animate-pulse bg-primary/5'
-                      )}
-                    >
+                {invoices.map((invoice) =>
+                <TableRow
+                  key={invoice.id}
+                  ref={invoice.id === highlightedInvoiceId ? highlightedRowRef : null}
+                  className={cn(
+                    invoice.id === highlightedInvoiceId && 'ring-2 ring-primary animate-pulse bg-primary/5'
+                  )}>
+
                       <TableCell>
                         {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: ptBR })}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {invoice.description || t('studentInvoices.defaultDescription')}
-                          {isDependent(invoice) && (
-                            <Badge variant="outline" className="text-xs">
+                          {isDependent(invoice) &&
+                      <Badge variant="outline" className="text-xs">
                               <Users className="h-3 w-3 mr-1" />
                               {invoice.student?.name || t('studentInvoices.dependentBadge')}
                             </Badge>
-                          )}
+                      }
                         </div>
                       </TableCell>
                       <TableCell>
-                        {invoice.due_date 
-                          ? format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: ptBR }) 
-                          : '-'
-                        }
+                        {invoice.due_date ?
+                    format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: ptBR }) :
+                    '-'
+                    }
                       </TableCell>
                       <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <InvoiceTypeBadge invoiceType={invoice.invoice_type} />
-                          <InvoiceStatusBadge 
-                            status={invoice.status} 
-                            paymentOrigin={invoice.payment_origin}
-                          />
+                          <InvoiceStatusBadge
+                        status={invoice.status}
+                        paymentOrigin={invoice.payment_origin} />
+
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           {/* Faturas pendentes/vencidas */}
-                          {(invoice.status === 'open' || 
-                            invoice.status === 'overdue' || 
-                            invoice.status === 'pendente' || 
-                            invoice.status === 'vencida' ||
-                            invoice.status === 'falha_pagamento') && (
-                            <>
-                              {hasPaymentReady(invoice) ? (
-                                <Button 
-                                  onClick={() => handlePayNow(invoice)}
-                                  size="sm"
-                                >
+                          {(invoice.status === 'open' ||
+                      invoice.status === 'overdue' ||
+                      invoice.status === 'pendente' ||
+                      invoice.status === 'vencida' ||
+                      invoice.status === 'falha_pagamento') &&
+                      <>
+                              {hasPaymentReady(invoice) ?
+                        <Button
+                          onClick={() => handlePayNow(invoice)}
+                          size="sm">
+
                                   {t('studentInvoices.payNow')}
-                                </Button>
-                              ) : (
-                                <span className="text-sm text-muted-foreground">
-                                  Aguardando boleto
+                                </Button> :
+
+                        <span className="text-sm text-muted-foreground">
+                                  Sem boleto
                                 </span>
-                              )}
+                        }
                             </>
-                          )}
+                      }
 
                           {/* Faturas pagas */}
-                          {(invoice.status === 'paid' || invoice.status === 'paga') && (
-                            <Button 
-                              onClick={() => handleViewReceipt(invoice.id)}
-                              size="sm"
-                              variant="outline"
-                            >
+                          {(invoice.status === 'paid' || invoice.status === 'paga') &&
+                      <Button
+                        onClick={() => handleViewReceipt(invoice.id)}
+                        size="sm"
+                        variant="outline">
+
                               <FileText className="h-4 w-4 mr-2" />
                               {t('studentInvoices.viewReceipt')}
                             </Button>
-                          )}
+                      }
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                )}
                 </TableBody>
               </Table>
-            )}
+            }
           </CardContent>
         </Card>
       </div>
-    </Layout>
-  );
+    </Layout>);
+
 }

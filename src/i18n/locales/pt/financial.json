@@ -72,7 +72,7 @@
     "studentAndAmountRequired": "Destinatário e valor são obrigatórios",
     "amountMustBePositive": "O valor deve ser maior que zero",
     "amountBelowMinimum": "O valor mínimo para geração de fatura é R$ 5,00",
-    "amountAboveMaximum": "O valor máximo para boleto é R$ 49.999,99"
+    "amountAboveMaximum": "O valor máximo para fatura é R$ 49.999,99"
   },
   "status": {
     "paid": "Paga",
@@ -191,7 +191,7 @@
   },
   "boleto": {
     "minimumAmountError": "O valor mínimo para geração de fatura é R$ 5,00",
-    "maximumAmountError": "O valor máximo para boleto é R$ 49.999,99",
+    "maximumAmountError": "O valor máximo para fatura é R$ 49.999,99",
     "amountBelowMinimum": "Valor abaixo do mínimo para boleto",
     "amountBelowMinimumStudent": "O valor desta fatura está abaixo do mínimo de R$ 5,00 para geração de boleto. Entre em contato com o professor."
   },

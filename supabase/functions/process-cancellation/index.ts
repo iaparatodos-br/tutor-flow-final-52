@@ -299,11 +299,8 @@ serve(async (req) => {
         })
         .eq('class_id', class_id);
 
-      if (dependent_id) {
-        updateQuery = updateQuery.eq('dependent_id', dependent_id);
-      } else {
-        updateQuery = updateQuery.eq('student_id', safeCancelledBy);
-      }
+      // Cancel ALL participations for this student/responsible (self + dependents)
+      updateQuery = updateQuery.eq('student_id', safeCancelledBy);
 
       const { error: updateParticipantError } = await updateQuery;
 

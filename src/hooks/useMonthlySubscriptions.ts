@@ -193,10 +193,22 @@ export function useUpdateMonthlySubscription() {
         .single();
 
       if (error) throw error;
+
+      // Cascade: deactivate all linked students when subscription is deactivated
+      if (formData.is_active === false) {
+        await supabase
+          .from('student_monthly_subscriptions')
+          .update({ is_active: false, ends_at: new Date().toISOString().split('T')[0] })
+          .eq('subscription_id', id)
+          .eq('is_active', true);
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monthly-subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['subscription-students'] });
+      queryClient.invalidateQueries({ queryKey: ['available-students-for-subscription'] });
       toast.success(t('messages.updateSuccess'));
     },
     onError: (error) => {

@@ -351,7 +351,7 @@ export function CancellationModal({
       toast({
         title: t('messages.success'),
         description: data.message,
-        variant: data.charged ? "destructive" : "default",
+        variant: "default",
       });
 
       onCancellationComplete();

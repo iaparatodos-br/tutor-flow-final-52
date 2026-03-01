@@ -1,62 +1,77 @@
 
 
-# Auditoria: Correções na exclusão de aluno (smart-delete-student)
+## Plano: Conflitos de Horario - Warning ao inves de Bloqueio + Icone no Calendario
 
-## Resumo da Avaliação
+### Resumo
 
-A lógica de preservação fiscal (invoice_classes, class_participants, soft-delete de perfil) está **correta**. Porém, há **3 tabelas com dados do aluno direto que não são limpas**, podendo causar registros órfãos ou falhas de FK ao fazer hard-delete.
+Tres alteracoes principais:
+1. **ClassForm**: Mudar conflito de bloqueio (erro vermelho) para aviso (warning amarelo), permitindo submissao
+2. **ClassForm**: Incluir aulas virtuais de recorrencia (ate 2 meses) na verificacao de conflitos
+3. **SimpleCalendar + MobileCalendarList**: Exibir icone de exclamacao amarelo nos dias com conflitos de horario
 
-## Problemas Identificados
+---
 
-### 1. `class_report_feedbacks` do aluno direto -- NAO limpas
-A função limpa feedbacks apenas para `dependent_id IN dependentIds`, mas nunca limpa feedbacks onde `student_id = student_id` do aluno principal. Quando ocorre hard-delete (sem faturas pagas), esses registros ficam com referência quebrada.
+### 1. ClassForm - Warning ao inves de Bloqueio
 
-### 2. `material_access` do aluno direto -- NAO limpa
-Mesma situação: só limpa para dependentes, nunca para `student_id = student_id`. Registros de compartilhamento de materiais ficam órfãos.
+**Arquivo**: `src/components/ClassForm/ClassForm.tsx`
 
-### 3. `class_notifications` -- NUNCA limpas
-A tabela `class_notifications` tem coluna `student_id` e nunca é tratada na exclusão. Notificações do aluno permanecem após remoção.
+- Renomear `timeConflict` de erro de validacao para um estado separado `timeConflictWarning` (boolean) que NAO bloqueia a submissao
+- Remover `timeConflict` do objeto `validationErrors` (para que `Object.values(errors).some(Boolean)` nao bloqueie)
+- Criar um estado `const [timeConflictWarning, setTimeConflictWarning] = useState(false)`
+- Manter a mesma logica de deteccao de conflitos, mas setar `setTimeConflictWarning(true)` ao inves de `errors.timeConflict = true`
+- Trocar a mensagem de erro vermelha por um `Alert` amarelo com variante `warning`
+- Atualizar estilos dos campos de data/hora para borda amarela (ao inves de vermelha) quando houver conflito
 
-## O que está CORRETO (não precisa mudar)
+### 2. ClassForm - Verificar Conflitos em Aulas Virtuais de Recorrencia
 
-- Preservação de `invoice_classes` de faturas pagas/concluídas
-- Preservação de `class_participants` vinculados a faturas pagas
-- Soft-delete do perfil quando há faturas pagas (nome preservado, email anonimizado)
-- Hard-delete do auth quando não há faturas pagas
-- Exclusão de `student_monthly_subscriptions` antes do relationship
-- Cascade delete de dependentes com mesma lógica de preservação fiscal
-- Atualização do Stripe subscription quantity
+**Arquivo**: `src/components/ClassForm/ClassForm.tsx`
 
-## Correções Propostas
+- As `existingClasses` ja incluem aulas materializadas e templates. Precisamos gerar virtuais a partir dos templates para verificar conflitos
+- Na logica de `handleSubmit`, antes de verificar conflitos, gerar instancias virtuais dos templates presentes em `existingClasses` (que possuem `recurrence_pattern`) ate 2 meses a partir da data do template
+- Usar a mesma logica de RRULE usada em `Agenda.tsx` (`generateVirtualInstances`) para calcular as datas
+- Incluir essas instancias virtuais na lista de aulas verificadas para conflito
+- Tambem verificar conflitos quando a nova aula for recorrente: gerar as datas futuras da recorrencia (ate 2 meses) e verificar cada uma contra as aulas existentes + virtuais
 
-### Arquivo: `supabase/functions/smart-delete-student/index.ts`
+### 3. Icone de Conflito no Calendario
 
-Adicionar 3 etapas de limpeza **antes** da exclusão do relationship (na seção de "delete completely", por volta da linha 599):
+**Arquivo**: `src/components/Calendar/SimpleCalendar.tsx`
 
-1. **Deletar `class_report_feedbacks`** do aluno direto:
+- Criar um `useMemo` que calcula quais dias tem conflitos (2+ aulas ativas com horarios sobrepostos no mesmo dia)
+- Na celula do dia (grid do calendario), ao lado do numero do dia, renderizar um icone `AlertTriangle` com fundo amarelo quando houver conflito
+- Envolver o icone em um `Tooltip` (ja importado no projeto) com a mensagem de conflito
+- Logica de deteccao: para cada dia, verificar se algum par de aulas (nao canceladas/concluidas) tem sobreposicao de horario
+
+**Arquivo**: `src/components/Calendar/MobileCalendarList.tsx`
+
+- Aplicar a mesma logica de deteccao de conflitos para a versao mobile
+- Exibir o icone de aviso amarelo nos itens de dia que possuem conflitos
+
+### 4. Traducoes i18n
+
+**Arquivos**: `src/i18n/locales/pt/classes.json` e `src/i18n/locales/en/classes.json`
+
+- Alterar `timeConflictError` para `timeConflictWarning` com texto: "Ja existe uma aula agendada neste horario. Voce pode continuar mesmo assim."
+- Adicionar chave `calendar.timeConflict`: "Existem aulas com horarios conflitantes neste dia"
+
+---
+
+### Detalhes Tecnicos
+
+**Deteccao de conflitos no calendario (SimpleCalendar)**:
+```text
+Para cada dia com 2+ aulas ativas:
+  Para cada par (aulaA, aulaB):
+    Se aulaA.start < aulaB.end E aulaA.end > aulaB.start:
+      marcar dia como conflitante
 ```
-await supabaseAdmin.from('class_report_feedbacks').delete().eq('student_id', student_id);
-```
 
-2. **Deletar `material_access`** do aluno direto:
-```
-await supabaseAdmin.from('material_access').delete().eq('student_id', student_id);
-```
+**Geracao de virtuais para verificacao no ClassForm**:
+- Filtrar `existingClasses` onde `is_template === true` e `recurrence_pattern` existe
+- Para cada template, gerar ocorrencias usando RRULE ate `min(recurrence_end_date, template_date + 2 meses)`
+- Concatenar com `existingClasses` normais para a verificacao de conflito
 
-3. **Deletar `class_notifications`** do aluno:
-```
-await supabaseAdmin.from('class_notifications').delete().eq('student_id', student_id);
-```
-
-Essas 3 linhas devem ser adicionadas logo antes do bloco que busca `class_participants` do aluno (linha 600), e também no fluxo de "unlink" (antes da linha 456) para o caso de desvinculação, filtrando apenas aulas do professor em questão.
-
-### Observação sobre o fluxo "unlink"
-
-No caso de desvinculação (aluno tem outros professores), as limpezas de `class_report_feedbacks`, `material_access` e `class_notifications` devem ser filtradas apenas para aulas daquele professor específico (via join com `classes.teacher_id`), para não apagar dados de outros professores.
-
-## Resultado Esperado
-
-- Nenhum registro órfão após exclusão completa do aluno
-- Dados fiscais (faturas pagas, itens, participações) continuam preservados
-- Limpeza segura no caso de unlink (apenas dados do professor em questão)
+**Verificacao de conflitos para novas recorrencias**:
+- Quando o professor marca recorrencia no formulario, gerar as datas futuras (ate 2 meses) da nova aula
+- Verificar cada data gerada contra todas as aulas existentes + virtuais
+- Se qualquer data tiver conflito, exibir o warning amarelo listando quantos conflitos foram encontrados
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info, CalendarIcon } from 'lucide-react';
+import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info, CalendarIcon, AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -25,6 +25,7 @@ import { useProfile } from '@/contexts/ProfileContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { RRule, Frequency } from 'rrule';
 
 interface Student {
   id: string;
@@ -83,6 +84,9 @@ interface ClassFormProps {
     class_date: string;
     duration_minutes: number;
     status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
+    is_template?: boolean;
+    recurrence_pattern?: any;
+    recurrence_end_date?: string;
   }>;
   onSubmit: (data: ClassFormData) => Promise<void>;
   loading?: boolean;
@@ -112,12 +116,12 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
   const [showRecurrence, setShowRecurrence] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'date' | 'count' | 'infinite'>('date');
+  const [timeConflictWarning, setTimeConflictWarning] = useState(false);
   const [validationErrors, setValidationErrors] = useState({
     students: false,
     service: false,
     date: false,
     time: false,
-    timeConflict: false,
   });
 
   // Load charge_timing from business_profiles
@@ -156,7 +160,8 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     });
     setShowRecurrence(false);
     setRecurrenceType('date');
-    setValidationErrors({ students: false, service: false, date: false, time: false, timeConflict: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false });
+    setTimeConflictWarning(false);
   };
 
   // Handle student selection
@@ -245,11 +250,11 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       service: formData.is_paid_class && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
-      timeConflict: false,
       duration: !formData.is_paid_class && !formData.service_id && (formData.duration_minutes < 15 || formData.duration_minutes > 480),
     };
 
-    // Check for time conflicts (past date validation removed - teachers can schedule past classes)
+    // Check for time conflicts (warning only, does not block submission)
+    let hasConflictWarning = false;
     if (formData.class_date && formData.time) {
       const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
 
@@ -265,37 +270,103 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
         }
       }
 
-      // Check for time conflicts with existing classes
-      const classEnd = new Date(classDateTime.getTime() + (duration * 60 * 1000));
+      // Build expanded list including virtual instances from recurrence templates
+      const expandedClasses = [...existingClasses];
       
-      const hasConflict = existingClasses.some(existingClass => {
-        // Skip cancelled or completed classes
-        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') {
-          return false;
-        }
-        
-        // For group classes, check if there are active participants
-        if ((existingClass as any).is_group_class && (existingClass as any).participants) {
-          const activeParticipants = (existingClass as any).participants.filter(
-            (p: any) => p.status === 'pendente' || p.status === 'confirmada'
-          );
-          if (activeParticipants.length === 0) {
-            return false; // No active participants = no conflict
+      // Generate virtual instances from templates (up to 2 months from template date)
+      existingClasses.forEach(ec => {
+        if (ec.is_template && ec.recurrence_pattern && ec.status !== 'cancelada') {
+          const pattern = ec.recurrence_pattern;
+          const templateDate = new Date(ec.class_date);
+          const twoMonthsLater = new Date(templateDate);
+          twoMonthsLater.setMonth(twoMonthsLater.getMonth() + 2);
+          
+          const endLimit = ec.recurrence_end_date 
+            ? new Date(Math.min(new Date(ec.recurrence_end_date).getTime(), twoMonthsLater.getTime()))
+            : twoMonthsLater;
+
+          const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY 
+            : pattern.frequency === 'biweekly' ? Frequency.WEEKLY 
+            : pattern.frequency === 'monthly' ? Frequency.MONTHLY 
+            : Frequency.WEEKLY;
+          const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+
+          try {
+            const rule = new RRule({ freq, interval, dtstart: templateDate, until: endLimit });
+            const occurrences = rule.all();
+            occurrences.forEach(date => {
+              // Skip the template date itself (already in existingClasses)
+              if (date.getTime() === templateDate.getTime()) return;
+              expandedClasses.push({
+                id: `${ec.id}_virtual_${date.getTime()}`,
+                class_date: date.toISOString(),
+                duration_minutes: ec.duration_minutes,
+                status: 'confirmada',
+              });
+            });
+          } catch (e) {
+            console.warn('Error generating virtual instances for conflict check:', e);
           }
         }
-        
-        const existingStart = new Date(existingClass.class_date);
-        const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
-        
-        // Check if times overlap
-        return (classDateTime < existingEnd && classEnd > existingStart);
       });
+
+      // Generate dates for the new class if it's recurrent
+      const newClassDates: Date[] = [classDateTime];
+      if (showRecurrence && formData.recurrence?.frequency) {
+        const freq = formData.recurrence.frequency === 'weekly' ? Frequency.WEEKLY
+          : formData.recurrence.frequency === 'biweekly' ? Frequency.WEEKLY
+          : Frequency.MONTHLY;
+        const interval = formData.recurrence.frequency === 'biweekly' ? 2 : 1;
+        const twoMonthsFromNow = new Date(classDateTime);
+        twoMonthsFromNow.setMonth(twoMonthsFromNow.getMonth() + 2);
+
+        let untilDate = twoMonthsFromNow;
+        if (formData.recurrence.end_date) {
+          untilDate = new Date(Math.min(new Date(formData.recurrence.end_date).getTime(), twoMonthsFromNow.getTime()));
+        }
+
+        try {
+          const rule = new RRule({ freq, interval, dtstart: classDateTime, until: untilDate, count: formData.recurrence.occurrences });
+          const futureOccurrences = rule.all().filter(d => d.getTime() !== classDateTime.getTime());
+          newClassDates.push(...futureOccurrences);
+        } catch (e) {
+          console.warn('Error generating new recurrence dates for conflict check:', e);
+        }
+      }
+
+      // Check each new class date against expanded existing classes
+      const classEnd = new Date(classDateTime.getTime() + (duration * 60 * 1000));
       
-      if (hasConflict) {
-        errors.timeConflict = true;
+      for (const newDate of newClassDates) {
+        const newEnd = new Date(newDate.getTime() + (duration * 60 * 1000));
+        
+        const conflict = expandedClasses.some(existingClass => {
+          if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') {
+            return false;
+          }
+          if ((existingClass as any).is_group_class && (existingClass as any).participants) {
+            const activeParticipants = (existingClass as any).participants.filter(
+              (p: any) => p.status === 'pendente' || p.status === 'confirmada'
+            );
+            if (activeParticipants.length === 0) return false;
+          }
+          // Skip templates from conflict check (their virtuals are already expanded)
+          if (existingClass.is_template) return false;
+          
+          const existingStart = new Date(existingClass.class_date);
+          const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
+          
+          return (newDate < existingEnd && newEnd > existingStart);
+        });
+        
+        if (conflict) {
+          hasConflictWarning = true;
+          break;
+        }
       }
     }
 
+    setTimeConflictWarning(hasConflictWarning);
     setValidationErrors(errors);
 
     if (Object.values(errors).some(Boolean)) {
@@ -640,7 +711,8 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                     className={cn(
                       "w-full justify-start text-left font-normal h-10",
                       !formData.class_date && "text-muted-foreground",
-                      (validationErrors.date || validationErrors.timeConflict) && "border-destructive"
+                      validationErrors.date && "border-destructive",
+                      timeConflictWarning && !validationErrors.date && "border-amber-500"
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
@@ -656,7 +728,8 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                     onSelect={(date) => {
                       if (date) {
                         setFormData(prev => ({ ...prev, class_date: format(date, 'yyyy-MM-dd') }));
-                        setValidationErrors(prev => ({ ...prev, date: false, timeConflict: false }));
+                        setValidationErrors(prev => ({ ...prev, date: false }));
+                        setTimeConflictWarning(false);
                       }
                     }}
                     locale={ptBR}
@@ -674,9 +747,10 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                 value={formData.time}
                 onChange={(val) => {
                   setFormData(prev => ({ ...prev, time: val }));
-                  setValidationErrors(prev => ({ ...prev, time: false, timeConflict: false }));
+                  setValidationErrors(prev => ({ ...prev, time: false }));
+                  setTimeConflictWarning(false);
                 }}
-                className={validationErrors.time || validationErrors.timeConflict ? "border-destructive" : ""}
+                className={validationErrors.time ? "border-destructive" : timeConflictWarning ? "border-amber-500" : ""}
                 required
               />
             </div>
@@ -692,10 +766,13 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
             </Alert>
           )}
           
-          {validationErrors.timeConflict && (
-            <p className="text-sm text-destructive">
-              {t('timeConflictError')}
-            </p>
+          {timeConflictWarning && (
+            <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700 dark:text-amber-400">
+                {t('timeConflictWarning')}
+              </AlertDescription>
+            </Alert>
           )}
 
 

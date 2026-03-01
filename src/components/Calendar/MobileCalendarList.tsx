@@ -2,10 +2,11 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, ChevronRight, Clock, User, Calendar as CalendarIcon, Baby, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, User, Calendar as CalendarIcon, Baby, Plus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { useTranslation } from 'react-i18next';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   format, 
   startOfMonth, 
@@ -75,6 +76,30 @@ export function MobileCalendarList({
     return map;
   }, [classes, availabilityBlocks]);
 
+  // Detect days with time conflicts
+  const conflictDays = useMemo(() => {
+    const conflicts = new Set<string>();
+    
+    eventsByDate.forEach((dayData, dateKey) => {
+      const activeEvents = dayData.events.filter(
+        e => e.status !== 'cancelada' && e.status !== 'concluida'
+      );
+      if (activeEvents.length < 2) return;
+      
+      for (let i = 0; i < activeEvents.length; i++) {
+        for (let j = i + 1; j < activeEvents.length; j++) {
+          const a = activeEvents[i];
+          const b = activeEvents[j];
+          if (a.start < b.end && a.end > b.start) {
+            conflicts.add(dateKey);
+            return;
+          }
+        }
+      }
+    });
+    
+    return conflicts;
+  }, [eventsByDate]);
   // Obter dias do mês com eventos
   const daysWithEvents = useMemo(() => {
     const monthStart = startOfMonth(currentDate);
@@ -284,7 +309,7 @@ export function MobileCalendarList({
                   )}>
                     {format(day, 'd')}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <div className={cn(
                       "text-xs font-semibold uppercase tracking-wide",
                       isToday(day) ? "text-primary" : "text-muted-foreground"
@@ -295,6 +320,20 @@ export function MobileCalendarList({
                       {format(day, 'd MMMM', { locale })}
                     </div>
                   </div>
+                  {conflictDays.has(key) && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="w-6 h-6 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="left">
+                          <p className="text-xs">{t('calendar.timeConflict')}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
 
                 {/* Events for this day */}

@@ -96,6 +96,17 @@ export function CancellationModal({
       
       // If virtualClassData is provided, use it instead of fetching from DB
       if (virtualClassData) {
+        // Resolve service price: use provided value, or fetch directly as fallback
+        let resolvedServicePrice = virtualClassData.service_price || 0;
+        if (resolvedServicePrice === 0 && virtualClassData.service_id) {
+          const { data: svcFallback } = await supabase
+            .from('class_services')
+            .select('price')
+            .eq('id', virtualClassData.service_id)
+            .maybeSingle();
+          resolvedServicePrice = svcFallback?.price ? Number(svcFallback.price) : 0;
+        }
+
         fetchedClassData = {
           teacher_id: virtualClassData.teacher_id,
           class_date: virtualClassData.class_date,
@@ -103,7 +114,7 @@ export function CancellationModal({
           is_group_class: virtualClassData.is_group_class,
           is_experimental: virtualClassData.is_experimental,
           is_paid_class: virtualClassData.is_paid_class,
-          class_services: virtualClassData.service_price ? { price: virtualClassData.service_price } : null
+          class_services: resolvedServicePrice ? { price: resolvedServicePrice } : null
         };
         
         // FASE 6: Buscar charge_timing do business_profile do professor

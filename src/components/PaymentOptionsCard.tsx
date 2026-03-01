@@ -181,7 +181,7 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
   const isBelowMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
 
   return (
-    <StripeAccountGuard requireChargesEnabled={true}>
+    <StripeAccountGuard>
       <Card className="w-full">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 
@@ -229,28 +229,28 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
             💡 {t('fields.groupPricingNote', 'Em aulas em grupo, este valor será cobrado individualmente de cada participante, não sendo dividido entre os alunos.')}
           </p>
 
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
+          {service && (
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <Label htmlFor="is_active" className="text-sm font-medium cursor-pointer">
+                {t('fields.isActive')}
+              </Label>
+              <Switch
                 id="is_active"
                 checked={formData.is_active}
                 onCheckedChange={(checked) => handleChange('is_active', checked)}
               />
-              <Label htmlFor="is_active" className="text-sm">
-                {t('fields.isActive')}
-              </Label>
             </div>
+          )}
 
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="is_default"
-                checked={formData.is_default}
-                onCheckedChange={(checked) => handleChange('is_default', checked)}
-              />
-              <Label htmlFor="is_default" className="text-sm">
-                {t('fields.isDefault')}
-              </Label>
-            </div>
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <Label htmlFor="is_default" className="text-sm font-medium cursor-pointer">
+              {t('fields.isDefault')}
+            </Label>
+            <Switch
+              id="is_default"
+              checked={formData.is_default}
+              onCheckedChange={(checked) => handleChange('is_default', checked)}
+            />
           </div>
 
           <div className="flex gap-2 pt-4">

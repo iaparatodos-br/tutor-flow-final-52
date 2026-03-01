@@ -73,30 +73,8 @@ export function ClassServicesManager() {
     setModalOpen(true);
   };
 
-  const handleToggleActive = async (id: string, currentActive: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('class_services')
-        .update({ is_active: !currentActive })
-        .eq('id', id);
 
-      if (error) throw error;
 
-      toast({
-        title: "Sucesso",
-        description: currentActive ? "Serviço desativado." : "Serviço ativado.",
-      });
-
-      loadServices();
-    } catch (error) {
-      console.error('Erro ao alterar status:', error);
-      toast({
-        title: "Erro",
-        description: "Não foi possível alterar o status do serviço.",
-        variant: "destructive",
-      });
-    }
-  };
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -199,22 +177,13 @@ export function ClassServicesManager() {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleToggleActive(service.id, service.is_active)}
-                    >
-                      {service.is_active ? t('deactivate') : t('activate')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEditService(service)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEditService(service)}
+                  >
+                    <Edit className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>

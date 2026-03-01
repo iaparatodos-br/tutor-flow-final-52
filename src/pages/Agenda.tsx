@@ -120,10 +120,12 @@ export default function Agenda() {
       class_date: string;
       service_id: string | null;
       is_group_class: boolean;
+      is_experimental: boolean;
+      is_paid_class: boolean;
       service_price: number | null;
       class_template_id: string;
       duration_minutes: number;
-      // student_id REMOVED
+      status: string;
     };
     dependentInfo?: {
       id: string;
@@ -1745,8 +1747,9 @@ export default function Agenda() {
       ? classToCancel
       : classes.find(c => c.id === classId);
     
-    // Prepare virtual class data if it's a virtual class
-    const virtualData = classToCancel.isVirtual ? {
+    // Prepare class data for ALL classes (virtual and materialized)
+    // This avoids the modal needing to query `classes` directly, which RLS blocks for students
+    const classDataForModal = {
       teacher_id: classToCancel.teacher_id || profile!.id,
       class_date: classToCancel.class_date || classToCancel.start.toISOString(),
       service_id: classToCancel.service_id || null,
@@ -1756,10 +1759,12 @@ export default function Agenda() {
       service_price: classToCancel.service_id
         ? services.find(s => s.id === classToCancel.service_id)?.price || 0
         : 0,
-      class_template_id: classToCancel.class_template_id || '',
+      class_template_id: classToCancel.class_template_id || classId,
       duration_minutes: classToCancel.duration_minutes || 60,
-      status: 'confirmada' as const
-    } : undefined;
+      status: classToCancel.isVirtual
+        ? 'confirmada' as const
+        : (classToCancel.status || 'confirmada')
+    };
     
     // Check if any participant is a dependent and extract dependent info
     let dependentInfo: { id: string; name: string; responsible_name: string } | undefined;
@@ -1783,7 +1788,7 @@ export default function Agenda() {
       classId,
       className,
       classDate,
-      virtualClassData: virtualData,
+      virtualClassData: classDataForModal,
       dependentInfo
     });
   };

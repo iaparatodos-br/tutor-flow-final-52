@@ -30,7 +30,7 @@ export const validateBoletoAmount = (amount: number): BoletoValidationResult => 
   if (amount < MINIMUM_BOLETO_AMOUNT) {
     return {
       valid: false,
-      error: `O valor mínimo para geração de boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
+      error: `O valor mínimo para geração de fatura é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
       errorKey: 'errors.amountBelowMinimum'
     };
   }

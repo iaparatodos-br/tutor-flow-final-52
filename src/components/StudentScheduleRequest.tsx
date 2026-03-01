@@ -144,7 +144,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setServices(data?.services || []);
       
       if (data?.services && data.services.length > 0) {
-        const defaultService = data.services.find((s: any) => s.is_default) || data.services[0];
+        const defaultService = data.services[0];
         setSelectedService(defaultService.id);
       }
     } catch (error) {

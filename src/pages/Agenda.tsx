@@ -1166,9 +1166,7 @@ export default function Agenda() {
       const {
         data,
         error
-      } = await supabase.from('class_services').select('id, name, price, duration_minutes').eq('teacher_id', profile.id).eq('is_active', true).order('is_default', {
-        ascending: false
-      }).order('name');
+} = await supabase.from('class_services').select('id, name, price, duration_minutes').eq('teacher_id', profile.id).eq('is_active', true).order('name');
       if (error) {
         console.error('Erro ao carregar serviços:', error);
         return;

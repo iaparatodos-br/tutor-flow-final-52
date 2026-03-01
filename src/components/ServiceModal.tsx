@@ -16,7 +16,6 @@ interface ClassService {
   price: number;
   duration_minutes: number;
   is_active: boolean;
-  is_default: boolean;
 }
 
 interface ServiceModalProps {
@@ -38,7 +37,6 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
     price: '',
     duration_minutes: '60',
     is_active: true,
-    is_default: false,
   });
 
   useEffect(() => {
@@ -49,7 +47,6 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
         price: service.price.toString(),
         duration_minutes: service.duration_minutes.toString(),
         is_active: service.is_active,
-        is_default: service.is_default,
       });
     } else {
       setFormData({
@@ -58,7 +55,6 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
         price: '',
         duration_minutes: '60',
         is_active: true,
-        is_default: false,
       });
     }
   }, [service, open]);
@@ -111,7 +107,6 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
         price: parseFloat(formData.price),
         duration_minutes: parseInt(formData.duration_minutes),
         is_active: formData.is_active,
-        is_default: formData.is_default,
         teacher_id: profileId,
       };
 
@@ -241,17 +236,6 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
               />
             </div>
           )}
-
-          <div className="flex items-center justify-between rounded-lg border p-3">
-            <Label htmlFor="is_default" className="text-sm font-medium cursor-pointer">
-              {t('fields.isDefault')}
-            </Label>
-            <Switch
-              id="is_default"
-              checked={formData.is_default}
-              onCheckedChange={(checked) => handleChange('is_default', checked)}
-            />
-          </div>
 
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">

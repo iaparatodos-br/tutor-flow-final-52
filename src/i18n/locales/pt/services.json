@@ -8,7 +8,7 @@
   "noServices": "Nenhum serviço cadastrado",
   "noServicesDescription": "Crie seu primeiro serviço para definir preços das suas aulas",
   "createFirst": "Criar Primeiro Serviço",
-  "default": "Padrão",
+  
   "active": "Ativo",
   "inactive": "Inativo",
   "activate": "Ativar",
@@ -23,7 +23,7 @@
     "duration": "Duração (min)",
     "durationPlaceholder": "60",
     "isActive": "Serviço ativo",
-    "isDefault": "Definir como padrão",
+    
     "groupPricingNote": "Em aulas em grupo, este valor será cobrado individualmente de cada participante, não sendo dividido entre os alunos."
   },
   "validation": {

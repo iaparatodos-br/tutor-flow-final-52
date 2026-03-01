@@ -5,9 +5,7 @@ import {
   Edit, 
   Users, 
   UserPlus,
-  DollarSign,
-  ToggleLeft,
-  ToggleRight
+  DollarSign
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { MonthlySubscriptionWithCount } from "@/types/monthly-subscriptions";
@@ -15,14 +13,12 @@ import type { MonthlySubscriptionWithCount } from "@/types/monthly-subscriptions
 interface MonthlySubscriptionCardProps {
   subscription: MonthlySubscriptionWithCount;
   onEdit: (subscription: MonthlySubscriptionWithCount) => void;
-  onToggleActive: (subscriptionId: string, currentActive: boolean) => void;
   onViewStudents: (subscription: MonthlySubscriptionWithCount) => void;
 }
 
 export function MonthlySubscriptionCard({
   subscription,
   onEdit,
-  onToggleActive,
   onViewStudents
 }: MonthlySubscriptionCardProps) {
   const { t } = useTranslation('monthlySubscriptions');
@@ -93,23 +89,6 @@ export function MonthlySubscriptionCard({
                 <>
                   <UserPlus className="h-4 w-4 mr-1" />
                   {t('actions.assignStudent')}
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onToggleActive(subscription.id, subscription.is_active)}
-            >
-              {subscription.is_active ? (
-                <>
-                  <ToggleRight className="h-4 w-4 mr-1" />
-                  {t('actions.deactivate')}
-                </>
-              ) : (
-                <>
-                  <ToggleLeft className="h-4 w-4 mr-1" />
-                  {t('actions.activate')}
                 </>
               )}
             </Button>

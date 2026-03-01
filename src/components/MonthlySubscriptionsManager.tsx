@@ -51,7 +51,7 @@ export function MonthlySubscriptionsManager() {
   const [editingSubscription, setEditingSubscription] = useState<MonthlySubscriptionWithCount | null>(null);
   const [viewingSubscription, setViewingSubscription] = useState<MonthlySubscriptionWithCount | null>(null);
   const [assigningToSubscription, setAssigningToSubscription] = useState<MonthlySubscriptionWithCount | null>(null);
-  const [deactivateConfirm, setDeactivateConfirm] = useState<{id: string, active: boolean} | null>(null);
+  
   const [removeStudentConfirm, setRemoveStudentConfirm] = useState<{subscriptionId: string, studentSubscriptionId: string, studentName: string} | null>(null);
 
   // Queries
@@ -103,22 +103,7 @@ export function MonthlySubscriptionsManager() {
     handleCloseModal();
   };
 
-  const handleToggleActive = (subscriptionId: string, currentActive: boolean) => {
-    if (currentActive) {
-      // Show confirmation for deactivation
-      setDeactivateConfirm({ id: subscriptionId, active: currentActive });
-    } else {
-      // Activate directly
-      toggleMutation.mutate({ id: subscriptionId, isActive: true });
-    }
-  };
 
-  const confirmDeactivate = () => {
-    if (deactivateConfirm) {
-      toggleMutation.mutate({ id: deactivateConfirm.id, isActive: false });
-      setDeactivateConfirm(null);
-    }
-  };
 
   const handleViewStudents = (subscription: MonthlySubscriptionWithCount) => {
     setViewingSubscription(subscription);
@@ -226,7 +211,6 @@ export function MonthlySubscriptionsManager() {
               key={subscription.id}
               subscription={subscription}
               onEdit={handleOpenEdit}
-              onToggleActive={handleToggleActive}
               onViewStudents={handleViewStudents}
             />
           ))}
@@ -326,24 +310,6 @@ export function MonthlySubscriptionsManager() {
         onAssign={handleAssignStudent}
         isAssigning={assignMutation.isPending}
       />
-
-      {/* Deactivate Confirmation */}
-      <AlertDialog open={!!deactivateConfirm} onOpenChange={(open) => !open && setDeactivateConfirm(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('confirm.deactivate')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('confirm.deactivateDescription')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeactivate}>
-              {t('actions.deactivate')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Remove Student Confirmation */}
       <AlertDialog open={!!removeStudentConfirm} onOpenChange={(open) => !open && setRemoveStudentConfirm(null)}>

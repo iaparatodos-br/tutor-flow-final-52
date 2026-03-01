@@ -1726,8 +1726,11 @@ export default function Agenda() {
       return;
     }
     
-    // Find the full class data from classes array to get service info
-    const fullClassData = classes.find(c => c.id === classId);
+    // For virtual classes, find the template in the raw classes array using class_template_id
+    // For materialized classes, find by classId directly
+    const fullClassData = classToCancel.isVirtual 
+      ? classes.find(c => c.id === classToCancel.class_template_id)
+      : classes.find(c => c.id === classId);
     
     // Prepare virtual class data if it's a virtual class
     const virtualData = classToCancel.isVirtual && fullClassData ? {

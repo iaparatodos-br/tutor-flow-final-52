@@ -53,6 +53,7 @@ export function MonthlySubscriptionsManager() {
   const [assigningToSubscription, setAssigningToSubscription] = useState<MonthlySubscriptionWithCount | null>(null);
   
   const [removeStudentConfirm, setRemoveStudentConfirm] = useState<{subscriptionId: string, studentSubscriptionId: string, studentName: string} | null>(null);
+  const [pendingDeactivation, setPendingDeactivation] = useState<MonthlySubscriptionFormSchema | null>(null);
 
   // Queries
   const { data: subscriptions, isLoading } = useMonthlySubscriptions(showInactive);
@@ -81,18 +82,30 @@ export function MonthlySubscriptionsManager() {
     setEditingSubscription(null);
   };
 
+  const executeUpdate = async (data: MonthlySubscriptionFormSchema) => {
+    if (!editingSubscription) return;
+    await updateMutation.mutateAsync({
+      id: editingSubscription.id,
+      formData: {
+        name: data.name,
+        description: data.description || "",
+        price: data.price,
+        is_active: data.is_active,
+        selectedStudents: []
+      }
+    });
+    handleCloseModal();
+  };
+
   const handleSubmit = async (data: MonthlySubscriptionFormSchema) => {
     if (editingSubscription) {
-      await updateMutation.mutateAsync({
-        id: editingSubscription.id,
-        formData: {
-          name: data.name,
-          description: data.description || "",
-          price: data.price,
-          is_active: data.is_active,
-          selectedStudents: []
-        }
-      });
+      // Check if deactivating a subscription with linked students
+      const isDeactivating = editingSubscription.is_active && data.is_active === false;
+      if (isDeactivating && editingSubscription.students_count > 0) {
+        setPendingDeactivation(data);
+        return;
+      }
+      await executeUpdate(data);
     } else {
       await createMutation.mutateAsync({
         name: data.name,
@@ -100,8 +113,15 @@ export function MonthlySubscriptionsManager() {
         price: data.price,
         selectedStudents: []
       });
+      handleCloseModal();
     }
-    handleCloseModal();
+  };
+
+  const confirmDeactivation = async () => {
+    if (pendingDeactivation) {
+      await executeUpdate(pendingDeactivation);
+      setPendingDeactivation(null);
+    }
   };
 
 
@@ -325,6 +345,24 @@ export function MonthlySubscriptionsManager() {
             <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={confirmRemoveStudent}>
               {t('actions.removeStudent')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Deactivation Confirmation */}
+      <AlertDialog open={!!pendingDeactivation} onOpenChange={(open) => !open && setPendingDeactivation(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('confirm.deactivate')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('confirm.deactivateDescription')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('actions.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeactivation}>
+              {t('actions.deactivate')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

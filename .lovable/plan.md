@@ -1,47 +1,61 @@
 
 
-## Problemas identificados
+## Implementacao: Corrigir categorias de despesas + adicionar gerenciamento
 
-### Problema 1: CategoryModal salva na tabela errada
-O `ExpenseModal` reutiliza o `CategoryModal` (linha 398), mas esse componente foi criado para **materiais** e insere/atualiza na tabela `material_categories` (linha 79-98 do CategoryModal). As despesas usam a tabela `expense_categories`. Resultado: ao criar uma "nova categoria" dentro do modal de despesa, ela vai para a tabela errada e nunca aparece no dropdown de categorias de despesas.
+### Resumo
+O `ExpenseModal` usa o `CategoryModal` de materiais, que salva na tabela `material_categories` em vez de `expense_categories`. Alem disso, nao ha UI para excluir categorias. A correcao envolve 5 alteracoes:
 
-### Problema 2: Sem funcionalidade de excluir categorias de despesas
-Nenhum componente permite ao professor excluir (ou gerenciar) categorias de despesas. O `ExpenseList` carrega categorias para filtro, mas nao oferece CRUD. O botao "Gerenciar categorias" referenciado nas traduções (`category.manageCategories`) nao existe na UI.
+### Alteracoes
 
----
+**1. Novo arquivo: `src/components/ExpenseCategoryModal.tsx`**
+- Modal identico ao `CategoryModal`, mas apontando para `expense_categories`
+- Sem campo description (tabela `expense_categories` nao tem essa coluna)
+- Usa namespace `expenses` para traducoes
 
-## Plano de correção
+**2. Novo arquivo: `src/components/ExpenseCategoryManager.tsx`**
+- Dialog que lista todas as categorias de despesa do professor
+- Botoes de editar e excluir para cada categoria (exceto defaults)
+- AlertDialog de confirmacao antes de excluir
+- Botao para criar nova categoria
 
-### 1. Criar componente `ExpenseCategoryModal`
-Novo arquivo: `src/components/ExpenseCategoryModal.tsx`
+**3. Atualizar `src/components/ExpenseModal.tsx`**
+- Linha 10: trocar import de `CategoryModal` por `ExpenseCategoryModal`
+- Linha 398: trocar `<CategoryModal>` por `<ExpenseCategoryModal>`
 
-- Copia a estrutura do `CategoryModal` existente
-- Aponta para a tabela `expense_categories` em vez de `material_categories`
-- Usa traduções do namespace `expenses` (ja existem chaves como `category.newCategory`, `category.selectCategory`)
-- Suporta criação e edição de categorias de despesas
+**4. Atualizar `src/components/ExpenseList.tsx`**
+- Adicionar import do `ExpenseCategoryManager`
+- Adicionar state `categoryManagerOpen`
+- Adicionar botao "Gerenciar Categorias" (icone Settings) ao lado do filtro de categoria
+- Renderizar `<ExpenseCategoryManager>` com callback para recarregar categorias
 
-### 2. Criar componente `ExpenseCategoryManager`
-Novo arquivo: `src/components/ExpenseCategoryManager.tsx`
+**5. Adicionar traducoes em ambos idiomas**
 
-- Dialog/Sheet que lista todas as categorias de despesa do professor
-- Permite editar (abre `ExpenseCategoryModal` com dados preenchidos)
-- Permite excluir categorias (com confirmação)
-- Botão para criar nova categoria
+`src/i18n/locales/pt/expenses.json` - adicionar:
+```json
+"categoryModal": {
+  "newTitle": "Nova Categoria de Despesa",
+  "editTitle": "Editar Categoria",
+  "name": "Nome",
+  "namePlaceholder": "Nome da categoria",
+  "nameRequired": "Nome é obrigatório",
+  "color": "Cor",
+  "preview": "Prévia",
+  "previewPlaceholder": "Nome da categoria",
+  "created": "Categoria criada com sucesso",
+  "updated": "Categoria atualizada com sucesso",
+  "saveError": "Erro ao salvar categoria"
+},
+"categoryManager": {
+  "title": "Gerenciar Categorias",
+  "newCategory": "Nova Categoria",
+  "default": "padrão",
+  "deleted": "Categoria excluída com sucesso",
+  "deleteError": "Erro ao excluir categoria",
+  "confirmDeleteTitle": "Excluir categoria?",
+  "confirmDeleteDescription": "A categoria \"{{name}}\" será excluída permanentemente. Despesas já cadastradas com essa categoria não serão afetadas.",
+  "deleteAction": "Excluir"
+}
+```
 
-### 3. Atualizar `ExpenseModal`
-Arquivo: `src/components/ExpenseModal.tsx`
-
-- Substituir `CategoryModal` por `ExpenseCategoryModal`
-- Manter o comportamento atual de recarregar categorias após criação
-
-### 4. Adicionar botão "Gerenciar Categorias" no `ExpenseList`
-Arquivo: `src/components/ExpenseList.tsx`
-
-- Adicionar botão junto aos filtros para abrir o `ExpenseCategoryManager`
-- Recarregar categorias após qualquer alteração
-
-### 5. Adicionar traduções faltantes
-Arquivos: `src/i18n/locales/pt/expenses.json` e `src/i18n/locales/en/expenses.json`
-
-- Adicionar chaves para confirmação de exclusão de categoria, mensagens de sucesso/erro
+`src/i18n/locales/en/expenses.json` - adicionar equivalentes em ingles.
 

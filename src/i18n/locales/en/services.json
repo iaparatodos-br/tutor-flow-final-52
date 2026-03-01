@@ -8,7 +8,7 @@
   "noServices": "No services registered",
   "noServicesDescription": "Create your first service to define prices for your classes",
   "createFirst": "Create First Service",
-  "default": "Default",
+  
   "active": "Active",
   "inactive": "Inactive",
   "activate": "Activate",
@@ -23,7 +23,7 @@
     "duration": "Duration (min)",
     "durationPlaceholder": "60",
     "isActive": "Service active",
-    "isDefault": "Set as default",
+    
     "groupPricingNote": "For group classes, this price will be charged individually to each participant, not split among students."
   },
   "validation": {

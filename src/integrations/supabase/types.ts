@@ -511,7 +511,6 @@ export type Database = {
           duration_minutes: number
           id: string
           is_active: boolean
-          is_default: boolean
           name: string
           price: number
           teacher_id: string
@@ -523,7 +522,6 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
-          is_default?: boolean
           name: string
           price?: number
           teacher_id: string
@@ -535,7 +533,6 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
-          is_default?: boolean
           name?: string
           price?: number
           teacher_id?: string

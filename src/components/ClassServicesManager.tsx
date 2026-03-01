@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Star, Clock, DollarSign } from "lucide-react";
+import { Plus, Edit, Clock, DollarSign } from "lucide-react";
 import { ServiceModal } from "./ServiceModal";
 import { useTranslation } from "react-i18next";
 
@@ -16,7 +16,6 @@ interface ClassService {
   price: number;
   duration_minutes: number;
   is_active: boolean;
-  is_default: boolean;
   created_at: string;
 }
 
@@ -46,7 +45,6 @@ export function ClassServicesManager() {
         .from('class_services')
         .select('*')
         .eq('teacher_id', profile.id)
-        .order('is_default', { ascending: false })
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -148,12 +146,6 @@ export function ClassServicesManager() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <h3 className="text-lg font-semibold">{service.name}</h3>
-                      {service.is_default && (
-                        <Badge variant="secondary" className="text-xs">
-                          <Star className="mr-1 h-3 w-3" />
-                          {t('default')}
-                        </Badge>
-                      )}
                       <Badge variant={service.is_active ? "default" : "secondary"}>
                         {service.is_active ? t('active') : t('inactive')}
                       </Badge>

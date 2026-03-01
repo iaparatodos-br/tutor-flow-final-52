@@ -99,7 +99,7 @@ serve(async (req) => {
         .order('class_date', { ascending: true }),
       supabase
         .from('class_services')
-        .select('id, name, price, duration_minutes, is_default')
+        .select('id, name, price, duration_minutes')
         .eq('teacher_id', teacherId)
         .eq('is_active', true)
         .order('name', { ascending: true })

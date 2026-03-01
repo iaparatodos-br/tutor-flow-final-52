@@ -758,9 +758,9 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
 
           {/* Past date warning (informative, not blocking) */}
           {formData.class_date && formData.time && new Date(`${formData.class_date}T${formData.time}`) < new Date() && (
-            <Alert variant="default" className="border-warning bg-warning/10">
-              <Info className="h-4 w-4 text-warning" />
-              <AlertDescription className="text-warning-foreground">
+            <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700 dark:text-amber-400">
                 {t('pastDateTimeWarning')}
               </AlertDescription>
             </Alert>

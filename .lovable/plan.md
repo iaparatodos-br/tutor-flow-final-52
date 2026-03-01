@@ -1,16 +1,25 @@
 
 
-## Remover coluna "Aulas" do modal de alunos da mensalidade
+## Remover botao ativar/desativar dos cards de Servicos e Mensalidades
 
 ### Problema
-O modal de visualizacao de alunos vinculados a uma mensalidade exibe uma coluna "Aulas" que mostra a contagem de aulas realizadas (`classes_used`). Como a mensalidade e um valor fixo mensal independente da quantidade de aulas, essa informacao e irrelevante e pode confundir o professor, dando a impressao de que existe um limite de aulas.
+Os cards de servicos e mensalidades exibem um botao de ativar/desativar diretamente na listagem. Essa opcao ja existe dentro do modal de edicao, tornando o botao no card redundante e poluindo a interface.
 
-### Alteracao
+### Alteracoes
 
-**Arquivo: `src/components/MonthlySubscriptionsManager.tsx`**
+**1. `src/components/ClassServicesManager.tsx`**
+- Remover o botao "Ativar/Desativar" do card de cada servico (linhas ~155-162)
+- Manter apenas os botoes de editar
 
-1. Remover o `<TableHead>Aulas</TableHead>` do cabecalho da tabela
-2. Remover o `<TableCell>` correspondente que exibe `student.classes_used`
+**2. `src/components/MonthlySubscriptionCard.tsx`**
+- Remover o botao de ativar/desativar (linhas 99-115)
+- Remover imports nao utilizados (`ToggleLeft`, `ToggleRight`)
+- Manter botoes de ver alunos e editar
 
-A tabela ficara com 3 colunas: **Aluno**, **Inicio** e **Acoes** — informacoes suficientes e relevantes para o professor gerenciar os vinculos.
+**3. `src/components/MonthlySubscriptionsManager.tsx`**
+- Remover a funcao `handleToggleActive` e o state/dialog de confirmacao de desativacao (`deactivateConfirm`), ja que nao serao mais chamados pelo card
+- Remover o `AlertDialog` de confirmacao de desativacao
+- Remover o prop `onToggleActive` passado ao `MonthlySubscriptionCard`
+
+Nota: A funcionalidade de ativar/desativar continuara disponivel dentro dos modais de edicao de servico (`ServiceModal`) e mensalidade (`MonthlySubscriptionModal`), sem perda de funcionalidade.
 

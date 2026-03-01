@@ -102,7 +102,7 @@ serve(async (req) => {
         .select('id, name, price, duration_minutes, is_default')
         .eq('teacher_id', teacherId)
         .eq('is_active', true)
-        .order('is_default', { ascending: false })
+        .order('name', { ascending: true })
     ]);
 
     const whErr = (workingHoursRes as any).error; if (whErr) throw whErr;

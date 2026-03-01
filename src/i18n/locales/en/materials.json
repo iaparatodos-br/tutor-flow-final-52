@@ -84,5 +84,15 @@
     "dependentsGroup": "Dependents",
     "childOf": "child of",
     "shareWith": "Share with"
+  },
+  "categoryManager": {
+    "title": "Manage Categories",
+    "newCategory": "New Category",
+    "deleted": "Category deleted successfully",
+    "deleteError": "Error deleting category",
+    "confirmDeleteTitle": "Delete category?",
+    "confirmDeleteDescription": "The category \"{{name}}\" will be permanently deleted. Materials already assigned to this category will not be affected.",
+    "deleteAction": "Delete",
+    "noCategories": "No categories found"
   }
 }

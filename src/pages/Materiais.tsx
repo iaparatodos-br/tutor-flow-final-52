@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
-import { Upload, FolderPlus, Search, FileText, Download, Share, MoreVertical, Trash2 } from "lucide-react";
+import { Upload, Search, FileText, Download, Share, MoreVertical, Trash2, Settings } from "lucide-react";
 import { MaterialUploadModal } from "@/components/MaterialUploadModal";
-import { CategoryModal } from "@/components/CategoryModal";
+import { MaterialCategoryManager } from "@/components/MaterialCategoryManager";
 import { ShareMaterialModal } from "@/components/ShareMaterialModal";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -46,7 +46,7 @@ export default function Materiais() {
   
   // Modal states
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState<{ id: string; title: string } | null>(null);
@@ -234,10 +234,10 @@ export default function Materiais() {
           <div className="flex gap-2">
             <Button 
               variant="outline"
-              onClick={() => setCategoryModalOpen(true)}
+              onClick={() => setCategoryManagerOpen(true)}
             >
-              <FolderPlus className="h-4 w-4 mr-2" />
-              Nova Categoria
+              <Settings className="h-4 w-4 mr-2" />
+              Categorias
             </Button>
             <Button onClick={() => setUploadModalOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
@@ -371,10 +371,10 @@ export default function Materiais() {
           categories={categories}
         />
         
-        <CategoryModal
-          isOpen={categoryModalOpen}
-          onClose={() => setCategoryModalOpen(false)}
-          onCategoryAdded={loadData}
+        <MaterialCategoryManager
+          isOpen={categoryManagerOpen}
+          onClose={() => setCategoryManagerOpen(false)}
+          onCategoriesChanged={loadData}
         />
         
         <ShareMaterialModal

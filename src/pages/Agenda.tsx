@@ -1725,9 +1725,9 @@ export default function Agenda() {
     // through other actions (complete, report, cancel)
   };
 
-  const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
+  const handleRecurringClassCancel = async (classId: string, className: string, classDate: string) => {
     const classToCancel = calendarClasses.find(c => c.id === classId);
-    
+
     if (!classToCancel) {
       toast({
         title: "Erro",
@@ -1745,6 +1745,22 @@ export default function Agenda() {
       ? classToCancel
       : classes.find(c => c.id === classId);
     
+    // Resolve service price: use cached services (teacher) or fetch directly (student)
+    let servicePrice = 0;
+    if (classToCancel.service_id) {
+      const cached = services.find(s => s.id === classToCancel.service_id);
+      if (cached) {
+        servicePrice = cached.price;
+      } else {
+        const { data: svcData } = await supabase
+          .from('class_services')
+          .select('price')
+          .eq('id', classToCancel.service_id)
+          .maybeSingle();
+        servicePrice = svcData?.price ? Number(svcData.price) : 0;
+      }
+    }
+
     // Prepare class data for ALL classes (virtual and materialized)
     // This avoids the modal needing to query `classes` directly, which RLS blocks for students
     const classDataForModal = {
@@ -1754,9 +1770,7 @@ export default function Agenda() {
       is_group_class: classToCancel.is_group_class || false,
       is_experimental: classToCancel.is_experimental || false,
       is_paid_class: classToCancel.is_paid_class ?? false,
-      service_price: classToCancel.service_id
-        ? services.find(s => s.id === classToCancel.service_id)?.price || 0
-        : 0,
+      service_price: servicePrice,
       class_template_id: classToCancel.class_template_id || classId,
       duration_minutes: classToCancel.duration_minutes || 60,
       status: classToCancel.isVirtual

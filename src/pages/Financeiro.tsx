@@ -512,7 +512,7 @@ export default function Financeiro() {
             </TabsList>
             
             <TabsContent value="receitas" className="space-y-4">
-              <StripeAccountGuard requireChargesEnabled={true}>
+              <StripeAccountGuard>
               <Card className="shadow-card">
                 <CardHeader>
                   <div className="flex justify-between items-center">

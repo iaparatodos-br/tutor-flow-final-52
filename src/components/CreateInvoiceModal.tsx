@@ -148,7 +148,7 @@ export function CreateInvoiceModal({
       setIsSubmitting(false);
     }
   };
-  return <StripeAccountGuard requireChargesEnabled={true}>
+  return <StripeAccountGuard>
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button>

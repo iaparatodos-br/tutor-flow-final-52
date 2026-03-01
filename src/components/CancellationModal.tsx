@@ -21,6 +21,7 @@ interface VirtualClassData {
   duration_minutes: number;
   is_experimental?: boolean;
   is_paid_class?: boolean; // FASE 6
+  is_virtual?: boolean; // Flag to indicate if class needs materialization
   status?: string; // Status real da aula virtual (confirmada por padrão)
   // student_id REMOVED - use class_participants instead
 }
@@ -297,7 +298,7 @@ export function CancellationModal({
       let materializedParticipants: Array<{ student_id: string; profile: any }> = [];
       
       // If it's a virtual class, materialize it first via Edge Function
-      if (virtualClassData) {
+      if (virtualClassData?.is_virtual) {
         console.log('Materializing virtual class before cancellation...');
         
         try {

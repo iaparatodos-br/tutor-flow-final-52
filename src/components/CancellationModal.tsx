@@ -388,123 +388,134 @@ export function CancellationModal({
         </DialogHeader>
         
         <div className="space-y-4">
-          {/* Pending Class Alert - shown exclusively, hides all other alerts */}
-          {classData?.status === 'pendente' && !isProfessor && (
-            <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-              <Clock className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-800 dark:text-blue-200">
-                <strong>{t('alert.pending.title')}</strong><br />
-                {t('alert.pending.noCharge')}
+          {isProfessor ? (
+            /* Professor: always show simple free cancellation alert */
+            <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+              <DollarSign className="h-4 w-4 text-green-600" />
+              <AlertDescription className="text-green-800 dark:text-green-200">
+                <strong>{t('alert.free.title')}</strong><br />
+                {t('alert.free.professor')}
               </AlertDescription>
             </Alert>
-          )}
-
-          {/* All other alerts only shown when class is NOT pending */}
-          {classData?.status !== 'pendente' && (
+          ) : (
             <>
-              {policy && (
-                <div className="space-y-3">
-                  {/* Status da aula */}
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    <Clock className="h-4 w-4" />
-                    <span>
-                      {t('status.hoursUntil', { hours: Math.max(0, Math.round(hoursUntilClass)) })}
-                    </span>
-                  </div>
+              {/* Pending Class Alert - shown exclusively, hides all other alerts */}
+              {classData?.status === 'pendente' && (
+                <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+                  <Clock className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-800 dark:text-blue-200">
+                    <strong>{t('alert.pending.title')}</strong><br />
+                    {t('alert.pending.noCharge')}
+                  </AlertDescription>
+                </Alert>
+              )}
 
-                  {/* Política de cancelamento */}
-                  <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
-                    <div className="font-medium text-foreground">{t('policy.title')}</div>
-                    <div>• {t('policy.freeDeadline')}: <strong>{t('policy.hours', { hours: policy.hours_before_class })}</strong> {t('policy.beforeClass')}</div>
-                    {teacherHasFinancialModule && policy.charge_percentage > 0 && (
-                      <div>• {t('policy.lateCharge')}: <strong>{t('policy.percentage', { percentage: policy.charge_percentage })}</strong> {t('policy.ofValue')}</div>
-                    )}
-                    {teacherHasFinancialModule && policy.allow_amnesty && (
-                      <div>• {t('policy.amnestyAvailable')}</div>
-                    )}
-                  </div>
+              {/* All other alerts only shown when class is NOT pending */}
+              {classData?.status !== 'pendente' && (
+                <>
+                  {policy && (
+                    <div className="space-y-3">
+                      {/* Status da aula */}
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <Clock className="h-4 w-4" />
+                        <span>
+                          {t('status.hoursUntil', { hours: Math.max(0, Math.round(hoursUntilClass)) })}
+                        </span>
+                      </div>
 
-                  {/* Alerta sobre cobrança */}
-                  {willBeCharged && teacherHasFinancialModule ? (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        <strong>{t('alert.withCharge.title')}</strong><br />
-                        {t('alert.withCharge.deadlinePassed', { hours: policy.hours_before_class })}<br />
-                        <strong>{t('alert.withCharge.chargeAmount', { amount: chargeAmount.toFixed(2) })}</strong><br />
-                        <small>{t('alert.withCharge.nextInvoice')}</small>
+                      {/* Política de cancelamento */}
+                      <div className="bg-muted/50 p-3 rounded-lg text-sm space-y-1">
+                        <div className="font-medium text-foreground">{t('policy.title')}</div>
+                        <div>• {t('policy.freeDeadline')}: <strong>{t('policy.hours', { hours: policy.hours_before_class })}</strong> {t('policy.beforeClass')}</div>
+                        {teacherHasFinancialModule && policy.charge_percentage > 0 && (
+                          <div>• {t('policy.lateCharge')}: <strong>{t('policy.percentage', { percentage: policy.charge_percentage })}</strong> {t('policy.ofValue')}</div>
+                        )}
+                        {teacherHasFinancialModule && policy.allow_amnesty && (
+                          <div>• {t('policy.amnestyAvailable')}</div>
+                        )}
+                      </div>
+
+                      {/* Alerta sobre cobrança */}
+                      {willBeCharged && teacherHasFinancialModule ? (
+                        <Alert variant="destructive">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>
+                            <strong>{t('alert.withCharge.title')}</strong><br />
+                            {t('alert.withCharge.deadlinePassed', { hours: policy.hours_before_class })}<br />
+                            <strong>{t('alert.withCharge.chargeAmount', { amount: chargeAmount.toFixed(2) })}</strong><br />
+                            <small>{t('alert.withCharge.nextInvoice')}</small>
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        !classData?.is_experimental && classData?.is_paid_class !== false && classData?.charge_timing !== 'prepaid' && (
+                          <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                            <DollarSign className="h-4 w-4 text-green-600" />
+                            <AlertDescription className="text-green-800 dark:text-green-200">
+                              <strong>{t('alert.free.title')}</strong><br />
+                              {teacherHasFinancialModule ?
+                                t('alert.free.withinDeadline', { hours: policy.hours_before_class }) :
+                                t('alert.free.systemUnavailable')
+                              }
+                            </AlertDescription>
+                          </Alert>
+                        )
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Experimental Class Alert */}
+                  {classData?.is_experimental && (
+                    <Alert className="border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950">
+                      <Beaker className="h-4 w-4 text-violet-600" />
+                      <AlertDescription className="text-violet-800 dark:text-violet-200">
+                        <strong>{t('alert.experimental.title')}</strong><br />
+                        {t('alert.experimental.noCharge')}
                       </AlertDescription>
                     </Alert>
-                  ) : (
-                    !classData?.is_experimental && classData?.is_paid_class !== false && classData?.charge_timing !== 'prepaid' && (
-                      <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                        <DollarSign className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-800 dark:text-green-200">
-                          <strong>{t('alert.free.title')}</strong><br />
-                          {isProfessor ? 
-                            t('alert.free.professor') :
-                            teacherHasFinancialModule ?
-                              t('alert.free.withinDeadline', { hours: policy.hours_before_class }) :
-                              t('alert.free.systemUnavailable')
-                          }
-                        </AlertDescription>
-                      </Alert>
-                    )
                   )}
-                </div>
-              )}
-              
-              {/* Experimental Class Alert */}
-              {classData?.is_experimental && (
-                <Alert className="border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950">
-                  <Beaker className="h-4 w-4 text-violet-600" />
-                  <AlertDescription className="text-violet-800 dark:text-violet-200">
-                    <strong>{t('alert.experimental.title')}</strong><br />
-                    {t('alert.experimental.noCharge')}
-                  </AlertDescription>
-                </Alert>
-              )}
 
-              {/* FASE 6: Prepaid Class Alert */}
-              {classData?.charge_timing === 'prepaid' && classData?.is_paid_class === true && !classData?.is_experimental && (
-                <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
-                  <DollarSign className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-amber-800 dark:text-amber-200">
-                    <strong>{t('alert.prepaid.title')}</strong><br />
-                    {t('alert.prepaid.noCharge')}
-                  </AlertDescription>
-                </Alert>
-              )}
+                  {/* FASE 6: Prepaid Class Alert */}
+                  {classData?.charge_timing === 'prepaid' && classData?.is_paid_class === true && !classData?.is_experimental && (
+                    <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                      <DollarSign className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-800 dark:text-amber-200">
+                        <strong>{t('alert.prepaid.title')}</strong><br />
+                        {t('alert.prepaid.noCharge')}
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
-              {/* FASE 6: Unpaid Class Alert */}
-              {classData?.is_paid_class === false && !classData?.is_experimental && (
-                <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
-                  <DollarSign className="h-4 w-4 text-emerald-600" />
-                  <AlertDescription className="text-emerald-800 dark:text-emerald-200">
-                    <strong>{t('alert.unpaid.title')}</strong><br />
-                    {t('alert.unpaid.noCharge')}
-                  </AlertDescription>
-                </Alert>
-              )}
+                  {/* FASE 6: Unpaid Class Alert */}
+                  {classData?.is_paid_class === false && !classData?.is_experimental && (
+                    <Alert className="border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950">
+                      <DollarSign className="h-4 w-4 text-emerald-600" />
+                      <AlertDescription className="text-emerald-800 dark:text-emerald-200">
+                        <strong>{t('alert.unpaid.title')}</strong><br />
+                        {t('alert.unpaid.noCharge')}
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
-              {classData?.is_group_class && !isProfessor && (
-                <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-                  <AlertDescription>
-                    <div className="flex items-center gap-2">
-                      <div>
-                        <strong>{t('alert.groupClass.title')}</strong>
-                        <p className="text-sm mt-1">
-                          {t('alert.groupClass.description')}
-                          {willBeCharged && (
-                            <span className="text-orange-600 font-semibold">
-                              {' '}{t('alert.groupClass.chargeApplied')}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </AlertDescription>
-                </Alert>
+                  {classData?.is_group_class && (
+                    <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+                      <AlertDescription>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <strong>{t('alert.groupClass.title')}</strong>
+                            <p className="text-sm mt-1">
+                              {t('alert.groupClass.description')}
+                              {willBeCharged && (
+                                <span className="text-orange-600 font-semibold">
+                                  {' '}{t('alert.groupClass.chargeApplied')}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
               )}
             </>
           )}

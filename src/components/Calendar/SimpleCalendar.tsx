@@ -31,7 +31,7 @@ import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileCalendarList } from './MobileCalendarList';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 
 interface SimpleCalendarProps {
   classes: CalendarClass[];
@@ -743,18 +743,16 @@ export function SimpleCalendar({
                     {day.date.getDate()}
                   </span>
                   {conflictDays.has(day.date.toDateString()) && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                            <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          <p className="text-xs">{t('calendar.timeConflict')}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center cursor-pointer">
+                          <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                        </div>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" className="w-auto px-3 py-1.5 text-xs">
+                        <p>{t('calendar.timeConflict')}</p>
+                      </PopoverContent>
+                    </Popover>
                   )}
                 </div>
 

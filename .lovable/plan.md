@@ -1,30 +1,17 @@
 
-## Simplificar alertas do modal de cancelamento para professores
 
-### Problema
-Quando o professor abre o modal de cancelamento, ele ve diferentes alertas dependendo do tipo de aula (experimental, prepaid, gratuita, etc). O comportamento correto eh sempre mostrar o mesmo alert verde simples:
-
-**"Cancelamento Gratuito -- Como professor, voce pode cancelar a qualquer momento sem custos"**
+## Tornar o botao de anistia maior e mais chamativo
 
 ### Alteracao
 
-**`src/components/CancellationModal.tsx`** -- Bloco de alertas (linhas ~390-510)
+**`src/components/AmnestyButton.tsx`**
 
-Reorganizar a logica de renderizacao para que, quando `isProfessor` for `true`, exiba **apenas** o alert verde de cancelamento gratuito, ignorando todos os outros (pending, experimental, prepaid, unpaid, group class, charge). A secao de politica de cancelamento e horas ate a aula tambem sera ocultada para o professor, ja que nao se aplica.
+Atualizar o estilo dos dois `Button` (billed e normal) para serem mais visiveis:
 
-Estrutura simplificada:
+- Trocar `variant="outline"` por um estilo customizado com fundo amber/laranja
+- Adicionar classes Tailwind: `bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 hover:border-amber-400 font-semibold px-6 py-3 h-auto text-base`
+- Aumentar icones de `h-5 w-5` para `h-6 w-6`
+- Manter `size="lg"` mas adicionar `h-auto` para permitir padding customizado
 
-```text
-{isProfessor ? (
-  // Professor: sempre mostra apenas o alert verde de cancelamento gratuito
-  <Alert verde>
-    Cancelamento Gratuito
-    Como professor, voce pode cancelar a qualquer momento sem custos
-  </Alert>
-) : (
-  // Aluno: logica atual com todos os alertas condicionais (pending, charge, experimental, etc)
-  ...codigo existente...
-)}
-```
+Isso aplica a ambos os botoes (linha 115-123 e linha 137-145).
 
-Isso remove toda a complexidade condicional para o professor e garante uma experiencia consistente.

@@ -659,7 +659,7 @@ export default function Financeiro() {
             </TabsContent>
             
             <TabsContent value="despesas" className="space-y-4">
-              <ExpenseList />
+              <ExpenseList onExpensesChanged={loadExpenseSummary} />
             </TabsContent>
 
             <TabsContent value="contas" className="space-y-4">

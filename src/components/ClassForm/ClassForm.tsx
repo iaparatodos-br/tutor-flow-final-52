@@ -138,6 +138,122 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
     }
   }, [profile?.id, open]);
 
+  // Real-time conflict detection via useEffect
+  useEffect(() => {
+    if (!formData.class_date || !formData.time) {
+      setTimeConflictWarning(false);
+      return;
+    }
+
+    const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+
+    // Get duration from selected service or use form value for unpaid classes
+    let duration = !formData.is_paid_class && !formData.service_id
+      ? formData.duration_minutes 
+      : 60;
+    
+    if (formData.service_id) {
+      const selectedService = services.find(s => s.id === formData.service_id);
+      if (selectedService) {
+        duration = selectedService.duration_minutes;
+      }
+    }
+
+    // Build expanded list including virtual instances from recurrence templates
+    const expandedClasses = [...existingClasses];
+    
+    existingClasses.forEach(ec => {
+      if (ec.is_template && ec.recurrence_pattern && ec.status !== 'cancelada') {
+        const pattern = ec.recurrence_pattern;
+        const templateDate = new Date(ec.class_date);
+        const twoMonthsLater = new Date(templateDate);
+        twoMonthsLater.setMonth(twoMonthsLater.getMonth() + 2);
+        
+        const endLimit = ec.recurrence_end_date 
+          ? new Date(Math.min(new Date(ec.recurrence_end_date).getTime(), twoMonthsLater.getTime()))
+          : twoMonthsLater;
+
+        const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY 
+          : pattern.frequency === 'biweekly' ? Frequency.WEEKLY 
+          : pattern.frequency === 'monthly' ? Frequency.MONTHLY 
+          : Frequency.WEEKLY;
+        const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+
+        try {
+          const rule = new RRule({ freq, interval, dtstart: templateDate, until: endLimit });
+          const occurrences = rule.all();
+          occurrences.forEach(date => {
+            if (date.getTime() === templateDate.getTime()) return;
+            expandedClasses.push({
+              id: `${ec.id}_virtual_${date.getTime()}`,
+              class_date: date.toISOString(),
+              duration_minutes: ec.duration_minutes,
+              status: 'confirmada',
+            });
+          });
+        } catch (e) {
+          console.warn('Error generating virtual instances for conflict check:', e);
+        }
+      }
+    });
+
+    // Generate dates for the new class if it's recurrent
+    const newClassDates: Date[] = [classDateTime];
+    if (showRecurrence && formData.recurrence?.frequency) {
+      const freq = formData.recurrence.frequency === 'weekly' ? Frequency.WEEKLY
+        : formData.recurrence.frequency === 'biweekly' ? Frequency.WEEKLY
+        : Frequency.MONTHLY;
+      const interval = formData.recurrence.frequency === 'biweekly' ? 2 : 1;
+      const twoMonthsFromNow = new Date(classDateTime);
+      twoMonthsFromNow.setMonth(twoMonthsFromNow.getMonth() + 2);
+
+      let untilDate = twoMonthsFromNow;
+      if (formData.recurrence.end_date) {
+        untilDate = new Date(Math.min(new Date(formData.recurrence.end_date).getTime(), twoMonthsFromNow.getTime()));
+      }
+
+      try {
+        const rule = new RRule({ freq, interval, dtstart: classDateTime, until: untilDate, count: formData.recurrence.occurrences });
+        const futureOccurrences = rule.all().filter(d => d.getTime() !== classDateTime.getTime());
+        newClassDates.push(...futureOccurrences);
+      } catch (e) {
+        console.warn('Error generating new recurrence dates for conflict check:', e);
+      }
+    }
+
+    // Check each new class date against expanded existing classes
+    let hasConflict = false;
+    for (const newDate of newClassDates) {
+      const newEnd = new Date(newDate.getTime() + (duration * 60 * 1000));
+      
+      const conflict = expandedClasses.some(existingClass => {
+        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') return false;
+        if ((existingClass as any).is_group_class && (existingClass as any).participants) {
+          const activeParticipants = (existingClass as any).participants.filter(
+            (p: any) => p.status === 'pendente' || p.status === 'confirmada'
+          );
+          if (activeParticipants.length === 0) return false;
+        }
+        if (existingClass.is_template) return false;
+        
+        const existingStart = new Date(existingClass.class_date);
+        const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
+        
+        return (newDate < existingEnd && newEnd > existingStart);
+      });
+      
+      if (conflict) {
+        hasConflict = true;
+        break;
+      }
+    }
+
+    setTimeConflictWarning(hasConflict);
+  }, [
+    formData.class_date, formData.time, formData.service_id, formData.is_paid_class,
+    formData.duration_minutes, showRecurrence, formData.recurrence, existingClasses, services
+  ]);
+
   // Recurrence blocking: prepaid + paid class = no recurrence
   const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class;
 
@@ -253,120 +369,6 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       duration: !formData.is_paid_class && !formData.service_id && (formData.duration_minutes < 15 || formData.duration_minutes > 480),
     };
 
-    // Check for time conflicts (warning only, does not block submission)
-    let hasConflictWarning = false;
-    if (formData.class_date && formData.time) {
-      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
-
-      // Get duration from selected service or use form value for unpaid classes
-      let duration = !formData.is_paid_class && !formData.service_id
-        ? formData.duration_minutes 
-        : 60; // Default fallback
-      
-      if (formData.service_id) {
-        const selectedService = services.find(s => s.id === formData.service_id);
-        if (selectedService) {
-          duration = selectedService.duration_minutes;
-        }
-      }
-
-      // Build expanded list including virtual instances from recurrence templates
-      const expandedClasses = [...existingClasses];
-      
-      // Generate virtual instances from templates (up to 2 months from template date)
-      existingClasses.forEach(ec => {
-        if (ec.is_template && ec.recurrence_pattern && ec.status !== 'cancelada') {
-          const pattern = ec.recurrence_pattern;
-          const templateDate = new Date(ec.class_date);
-          const twoMonthsLater = new Date(templateDate);
-          twoMonthsLater.setMonth(twoMonthsLater.getMonth() + 2);
-          
-          const endLimit = ec.recurrence_end_date 
-            ? new Date(Math.min(new Date(ec.recurrence_end_date).getTime(), twoMonthsLater.getTime()))
-            : twoMonthsLater;
-
-          const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY 
-            : pattern.frequency === 'biweekly' ? Frequency.WEEKLY 
-            : pattern.frequency === 'monthly' ? Frequency.MONTHLY 
-            : Frequency.WEEKLY;
-          const interval = pattern.frequency === 'biweekly' ? 2 : 1;
-
-          try {
-            const rule = new RRule({ freq, interval, dtstart: templateDate, until: endLimit });
-            const occurrences = rule.all();
-            occurrences.forEach(date => {
-              // Skip the template date itself (already in existingClasses)
-              if (date.getTime() === templateDate.getTime()) return;
-              expandedClasses.push({
-                id: `${ec.id}_virtual_${date.getTime()}`,
-                class_date: date.toISOString(),
-                duration_minutes: ec.duration_minutes,
-                status: 'confirmada',
-              });
-            });
-          } catch (e) {
-            console.warn('Error generating virtual instances for conflict check:', e);
-          }
-        }
-      });
-
-      // Generate dates for the new class if it's recurrent
-      const newClassDates: Date[] = [classDateTime];
-      if (showRecurrence && formData.recurrence?.frequency) {
-        const freq = formData.recurrence.frequency === 'weekly' ? Frequency.WEEKLY
-          : formData.recurrence.frequency === 'biweekly' ? Frequency.WEEKLY
-          : Frequency.MONTHLY;
-        const interval = formData.recurrence.frequency === 'biweekly' ? 2 : 1;
-        const twoMonthsFromNow = new Date(classDateTime);
-        twoMonthsFromNow.setMonth(twoMonthsFromNow.getMonth() + 2);
-
-        let untilDate = twoMonthsFromNow;
-        if (formData.recurrence.end_date) {
-          untilDate = new Date(Math.min(new Date(formData.recurrence.end_date).getTime(), twoMonthsFromNow.getTime()));
-        }
-
-        try {
-          const rule = new RRule({ freq, interval, dtstart: classDateTime, until: untilDate, count: formData.recurrence.occurrences });
-          const futureOccurrences = rule.all().filter(d => d.getTime() !== classDateTime.getTime());
-          newClassDates.push(...futureOccurrences);
-        } catch (e) {
-          console.warn('Error generating new recurrence dates for conflict check:', e);
-        }
-      }
-
-      // Check each new class date against expanded existing classes
-      const classEnd = new Date(classDateTime.getTime() + (duration * 60 * 1000));
-      
-      for (const newDate of newClassDates) {
-        const newEnd = new Date(newDate.getTime() + (duration * 60 * 1000));
-        
-        const conflict = expandedClasses.some(existingClass => {
-          if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') {
-            return false;
-          }
-          if ((existingClass as any).is_group_class && (existingClass as any).participants) {
-            const activeParticipants = (existingClass as any).participants.filter(
-              (p: any) => p.status === 'pendente' || p.status === 'confirmada'
-            );
-            if (activeParticipants.length === 0) return false;
-          }
-          // Skip templates from conflict check (their virtuals are already expanded)
-          if (existingClass.is_template) return false;
-          
-          const existingStart = new Date(existingClass.class_date);
-          const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
-          
-          return (newDate < existingEnd && newEnd > existingStart);
-        });
-        
-        if (conflict) {
-          hasConflictWarning = true;
-          break;
-        }
-      }
-    }
-
-    setTimeConflictWarning(hasConflictWarning);
     setValidationErrors(errors);
 
     if (Object.values(errors).some(Boolean)) {
@@ -729,7 +731,6 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                       if (date) {
                         setFormData(prev => ({ ...prev, class_date: format(date, 'yyyy-MM-dd') }));
                         setValidationErrors(prev => ({ ...prev, date: false }));
-                        setTimeConflictWarning(false);
                       }
                     }}
                     locale={ptBR}
@@ -748,7 +749,6 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
                 onChange={(val) => {
                   setFormData(prev => ({ ...prev, time: val }));
                   setValidationErrors(prev => ({ ...prev, time: false }));
-                  setTimeConflictWarning(false);
                 }}
                 className={validationErrors.time ? "border-destructive" : timeConflictWarning ? "border-amber-500" : ""}
                 required

@@ -1,27 +1,18 @@
 
 
-## Adicionar gerenciamento de categorias de materiais
+## Remover taxa de boleto do calculo de lucro liquido
 
-### Problema
-Na pagina de Materiais (`/materiais`), o professor consegue criar categorias via `CategoryModal`, mas nao consegue visualizar, editar ou excluir categorias existentes. O botao "Nova Categoria" apenas abre o modal de criacao.
-
-### Solucao
-Criar um componente `MaterialCategoryManager` (seguindo o padrao do `ExpenseCategoryManager` ja implementado para despesas) e integra-lo na pagina de Materiais.
+### Contexto
+Atualmente, o calculo de lucro liquido desconta R$ 3,49 por cada fatura paga (taxa do Stripe por boleto). Porem, como o professor pode desabilitar boletos e marcar pagamentos manualmente como pagos, nao ha garantia de que a taxa foi realmente cobrada. O calculo deve ser simplificado para **Receitas - Despesas**.
 
 ### Alteracoes
 
-**1. Novo componente: `src/components/MaterialCategoryManager.tsx`**
-- Dialog que lista todas as categorias de material do professor (tabela `material_categories`)
-- Botao de editar cada categoria (abre `CategoryModal` com dados preenchidos)
-- Botao de excluir cada categoria com `AlertDialog` de confirmacao
-- Botao para criar nova categoria
-- Ao excluir, remove da tabela `material_categories` (materiais existentes com essa categoria terao `category_id` como referencia orfao, mas isso e aceitavel)
+**Arquivo: `src/pages/Financeiro.tsx`**
 
-**2. Atualizar `src/pages/Materiais.tsx`**
-- Substituir o botao "Nova Categoria" por um botao "Gerenciar Categorias" (icone `Settings`) que abre o `MaterialCategoryManager`
-- Adicionar state `categoryManagerOpen`
-- Passar callback `loadData` para recarregar apos alteracoes
-- Remover import direto do `CategoryModal` (sera usado internamente pelo Manager)
+1. **Remover calculo de `stripeFees`** (linha 397): Eliminar a variavel `const stripeFees = paidInvoices.length * 3.49;`
 
-**3. Adicionar traducoes em `src/i18n/locales/pt/materials.json` e `src/i18n/locales/en/materials.json`**
-- Chaves para o gerenciador: `categoryManager.title`, `categoryManager.newCategory`, `categoryManager.deleted`, `categoryManager.deleteError`, `categoryManager.confirmDeleteTitle`, `categoryManager.confirmDeleteDescription`, `categoryManager.deleteAction`, `categoryManager.noCategories`
+2. **Simplificar calculo de `netProfit`** (linha 400): Alterar de `totalPago - stripeFees - expenseSummary.total` para `totalPago - expenseSummary.total`
+
+3. **Manter o texto descritivo** (linha 500): Ja diz "Receitas - Despesas", nao precisa alterar
+
+O alerta de transparencia de taxas do Stripe (linhas 420-447) sera mantido, pois continua sendo informacao util para o professor saber que a taxa existe — apenas nao sera mais usada no calculo do lucro liquido.

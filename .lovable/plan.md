@@ -1,45 +1,36 @@
 
-## Corrigir deadlock do StripeAccountGuard no Financeiro
+## Corrigir StripeAccountGuard para consultar a tabela correta
 
 ### Problema
-O `StripeAccountGuard` envolve todo o conteudo da pagina `/financeiro` (linhas 417-816), incluindo a aba "Contas de Recebimento" (`BusinessProfilesManager`). Quando o professor nao tem conta Stripe, ele ve apenas o alerta de bloqueio e nao consegue acessar o formulario para cadastrar sua conta -- um deadlock.
+O `StripeAccountGuard` consulta a tabela `stripe_connect_accounts` para verificar se o professor tem conta Stripe. Porem, os dados reais da conta Stripe Connect estao na tabela `business_profiles` (coluna `stripe_connect_id`). Para este professor, `stripe_connect_accounts` esta vazia, entao o guard exibe erroneamente o bloqueio "Conta Stripe nao configurada".
+
+### Diagnostico
+| Tabela | Dados do professor |
+|---|---|
+| `business_profiles` | `stripe_connect_id: acct_1SlVXzLmXH1N0Xdo` |
+| `stripe_connect_accounts` | Nenhum registro |
+| `payment_accounts` | Nenhum registro |
 
 ### Solucao
-Mover o `StripeAccountGuard` para envolver apenas os componentes que realmente precisam de conta Stripe ativa (criacao de faturas, tabela de faturas, cards de resumo), deixando a aba "Contas de Recebimento" sempre acessivel.
+Alterar o `StripeAccountGuard` para consultar `business_profiles` em vez de `stripe_connect_accounts`, ja que e la que os dados de conta Stripe Connect ficam armazenados.
 
 ### Alteracoes
 
-**Arquivo: `src/pages/Financeiro.tsx`**
+**Arquivo: `src/components/StripeAccountGuard.tsx`**
 
-1. Remover o `StripeAccountGuard` que envolve todo o conteudo (linhas 417 e 816)
-2. Mover o guard para envolver apenas os elementos que dependem de conta Stripe ativa:
-   - O alerta de taxas Stripe
-   - Os cards de resumo financeiro
-   - O botao "Nova Fatura" (`CreateInvoiceModal`)
-   - A tabela de faturas
-3. Manter fora do guard (sempre acessiveis):
-   - As abas de navegacao (Receitas, Despesas, Contas de Recebimento)
-   - A aba "Contas de Recebimento" com o `BusinessProfilesManager`
-   - A aba "Despesas" com o `ExpenseList`
+1. Alterar a query de `stripe_connect_accounts` para `business_profiles`
+2. Selecionar `stripe_connect_id` de `business_profiles` e usar `user_id` como filtro (em vez de `teacher_id`)
+3. Se existir pelo menos um `business_profile` com `stripe_connect_id`, considerar a conta como configurada
+4. Remover as verificacoes de `account_status` e `charges_enabled` que nao existem em `business_profiles` -- o guard passa a verificar apenas a existencia de um perfil de negocio com Stripe Connect configurado
+5. Se nenhum perfil existir, manter o alerta "Conta Stripe nao configurada"
 
-Na pratica, o `StripeAccountGuard` sera aplicado dentro da `TabsContent` de "receitas", envolvendo o conteudo de faturas e criacao de faturas. As abas de despesas e contas de recebimento ficarao livres do guard.
-
-### Detalhes Tecnicos
-
-Estrutura resultante simplificada:
+### Logica simplificada
 
 ```text
-FeatureGate
-  |-- Cards de resumo (sem guard, apenas exibicao)
-  |-- Tabs
-       |-- TabsContent "receitas"
-       |    |-- StripeAccountGuard
-       |         |-- CreateInvoiceModal
-       |         |-- Tabela de faturas
-       |-- TabsContent "despesas"
-       |    |-- ExpenseList (sem guard)
-       |-- TabsContent "contas"
-            |-- BusinessProfilesManager (sem guard)
+checkAccountStatus():
+  1. Consultar business_profiles WHERE user_id = profile.id
+  2. Se retornar registro(s) com stripe_connect_id -> conta existe, liberar acesso
+  3. Se nao retornar nenhum registro -> noAccount = true, bloquear
 ```
 
-Os cards de resumo no topo ficam visiveis sem guard pois sao apenas leitura. O guard bloqueia apenas as acoes que requerem conta Stripe ativa (criar fatura, gerar boleto).
+Isso alinha o guard com a arquitetura real do sistema, onde `business_profiles` e a fonte de verdade para contas Stripe Connect dos professores.

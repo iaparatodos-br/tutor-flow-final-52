@@ -38,7 +38,7 @@ export const validateBoletoAmount = (amount: number): BoletoValidationResult => 
   if (amount > MAXIMUM_BOLETO_AMOUNT) {
     return {
       valid: false,
-      error: `O valor máximo para boleto é R$ ${formatCurrency(MAXIMUM_BOLETO_AMOUNT)}`,
+      error: `O valor máximo para fatura é R$ ${formatCurrency(MAXIMUM_BOLETO_AMOUNT)}`,
       errorKey: 'errors.amountAboveMaximum'
     };
   }

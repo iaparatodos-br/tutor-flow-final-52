@@ -57,6 +57,10 @@ export interface CalendarClass {
   charge_applied?: boolean;
   amnesty_granted?: boolean;
   is_paid_class?: boolean;
+  teacher_id?: string;
+  service_id?: string;
+  class_date?: string;
+  duration_minutes?: number;
 }
 
 export interface AvailabilityBlock {

@@ -1064,7 +1064,12 @@ export default function Agenda() {
             recurrence_end_date: cls.recurrence_end_date,
             has_report: !!cls.has_report,
             charge_applied: cls.charge_applied,
-            amnesty_granted: cls.amnesty_granted
+            amnesty_granted: cls.amnesty_granted,
+            is_paid_class: cls.is_paid_class,
+            teacher_id: cls.teacher_id,
+            service_id: cls.service_id,
+            class_date: cls.class_date,
+            duration_minutes: cls.duration_minutes
           };
         });
 
@@ -1728,24 +1733,26 @@ export default function Agenda() {
     
     // For virtual classes, find the template in the raw classes array using class_template_id
     // For materialized classes, find by classId directly
+    // For virtual classes, use classToCancel directly (CalendarClass now includes all needed fields)
+    // For materialized classes, find by classId in the classes array
     const fullClassData = classToCancel.isVirtual 
-      ? classes.find(c => c.id === classToCancel.class_template_id)
+      ? classToCancel
       : classes.find(c => c.id === classId);
     
     // Prepare virtual class data if it's a virtual class
-    const virtualData = classToCancel.isVirtual && fullClassData ? {
-      teacher_id: fullClassData.teacher_id || profile!.id,
-      class_date: fullClassData.class_date,
-      service_id: fullClassData.service_id || null,
-      is_group_class: fullClassData.is_group_class || false,
-      is_experimental: fullClassData.is_experimental || false,
-      is_paid_class: fullClassData.is_paid_class ?? true,
-      service_price: fullClassData.service_id
-        ? services.find(s => s.id === fullClassData.service_id)?.price || 0
+    const virtualData = classToCancel.isVirtual ? {
+      teacher_id: classToCancel.teacher_id || profile!.id,
+      class_date: classToCancel.class_date || classToCancel.start.toISOString(),
+      service_id: classToCancel.service_id || null,
+      is_group_class: classToCancel.is_group_class || false,
+      is_experimental: classToCancel.is_experimental || false,
+      is_paid_class: classToCancel.is_paid_class ?? true,
+      service_price: classToCancel.service_id
+        ? services.find(s => s.id === classToCancel.service_id)?.price || 0
         : 0,
-      class_template_id: fullClassData.class_template_id || '',
-      duration_minutes: fullClassData.duration_minutes || 60,
-      status: fullClassData.status || 'confirmada'
+      class_template_id: classToCancel.class_template_id || '',
+      duration_minutes: classToCancel.duration_minutes || 60,
+      status: 'confirmada' as const
     } : undefined;
     
     // Check if any participant is a dependent and extract dependent info

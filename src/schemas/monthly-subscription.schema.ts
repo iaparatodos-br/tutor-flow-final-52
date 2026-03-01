@@ -30,6 +30,10 @@ export const monthlySubscriptionSchema = z.object({
     .number({ invalid_type_error: 'Informe um valor válido.' })
     .min(0, { message: 'O valor deve ser maior ou igual a zero.' }),
   
+  is_active: z
+    .boolean()
+    .optional(),
+
   selectedStudents: z
     .array(z.string().uuid())
     .default([]),

@@ -30,6 +30,7 @@ export interface MonthlySubscriptionFormData {
   name: string;
   description: string;
   price: number;
+  is_active?: boolean;
   selectedStudents: string[]; // relationship_ids
 }
 

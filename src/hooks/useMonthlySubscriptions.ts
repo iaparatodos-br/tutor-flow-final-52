@@ -183,6 +183,7 @@ export function useUpdateMonthlySubscription() {
       if (formData.name !== undefined) updateData.name = formData.name;
       if (formData.description !== undefined) updateData.description = formData.description || null;
       if (formData.price !== undefined) updateData.price = formData.price;
+      if (formData.is_active !== undefined) updateData.is_active = formData.is_active;
 
       const { data, error } = await supabase
         .from('monthly_subscriptions')

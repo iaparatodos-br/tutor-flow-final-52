@@ -89,6 +89,7 @@ export function MonthlySubscriptionsManager() {
           name: data.name,
           description: data.description || "",
           price: data.price,
+          is_active: data.is_active,
           selectedStudents: []
         }
       });

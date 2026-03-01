@@ -216,7 +216,7 @@ export function CancellationModal({
       }
 
       // Pending classes NEVER generate cancellation charges
-      const classStatus = virtualClassData ? 'pendente' : fetchedClassData.status;
+      const classStatus = virtualClassData ? 'confirmada' : fetchedClassData.status;
       if (classStatus === 'pendente') {
         console.log('⏳ Pending class - charge disabled');
         setWillBeCharged(false);

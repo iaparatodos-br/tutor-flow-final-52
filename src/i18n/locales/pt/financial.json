@@ -71,7 +71,7 @@
   "errors": {
     "studentAndAmountRequired": "Destinatário e valor são obrigatórios",
     "amountMustBePositive": "O valor deve ser maior que zero",
-    "amountBelowMinimum": "O valor mínimo para geração de boleto é R$ 5,00",
+    "amountBelowMinimum": "O valor mínimo para geração de fatura é R$ 5,00",
     "amountAboveMaximum": "O valor máximo para boleto é R$ 49.999,99"
   },
   "status": {
@@ -190,7 +190,7 @@
     "deducted": "Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá."
   },
   "boleto": {
-    "minimumAmountError": "O valor mínimo para geração de boleto é R$ 5,00",
+    "minimumAmountError": "O valor mínimo para geração de fatura é R$ 5,00",
     "maximumAmountError": "O valor máximo para boleto é R$ 49.999,99",
     "amountBelowMinimum": "Valor abaixo do mínimo para boleto",
     "amountBelowMinimumStudent": "O valor desta fatura está abaixo do mínimo de R$ 5,00 para geração de boleto. Entre em contato com o professor."

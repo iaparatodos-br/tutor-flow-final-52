@@ -1735,13 +1735,14 @@ export default function Agenda() {
       class_date: fullClassData.class_date,
       service_id: fullClassData.service_id || null,
       is_group_class: fullClassData.is_group_class || false,
+      is_experimental: fullClassData.is_experimental || false,
+      is_paid_class: fullClassData.is_paid_class ?? true,
       service_price: fullClassData.service_id
         ? services.find(s => s.id === fullClassData.service_id)?.price || 0
         : 0,
       class_template_id: fullClassData.class_template_id || '',
       duration_minutes: fullClassData.duration_minutes || 60,
       status: fullClassData.status || 'confirmada'
-      // student_id REMOVED - no longer needed
     } : undefined;
     
     // Check if any participant is a dependent and extract dependent info

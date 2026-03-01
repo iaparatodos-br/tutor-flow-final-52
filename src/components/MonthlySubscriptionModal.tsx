@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Form,
   FormControl,
@@ -53,6 +53,7 @@ export function MonthlySubscriptionModal({
       name: "",
       description: "",
       price: 0,
+      is_active: true,
       selectedStudents: []
     }
   });
@@ -65,6 +66,7 @@ export function MonthlySubscriptionModal({
           name: subscription.name,
           description: subscription.description || "",
           price: subscription.price,
+          is_active: subscription.is_active,
           selectedStudents: []
         });
       } else {
@@ -72,6 +74,7 @@ export function MonthlySubscriptionModal({
           name: "",
           description: "",
           price: 0,
+          is_active: true,
           selectedStudents: []
         });
       }
@@ -150,6 +153,26 @@ export function MonthlySubscriptionModal({
                   <FormMessage />
                 </FormItem>
               } />
+
+            {/* Active Toggle - only when editing */}
+            {isEditing && (
+              <FormField
+                control={form.control}
+                name="is_active"
+                render={({ field }) =>
+                <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                    <FormLabel className="text-sm font-medium cursor-pointer">
+                      {t('fields.isActive')}
+                    </FormLabel>
+                    <FormControl>
+                      <Switch
+                        checked={field.value ?? true}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                } />
+            )}
 
             <DialogFooter className="gap-2 sm:gap-0">
               <Button

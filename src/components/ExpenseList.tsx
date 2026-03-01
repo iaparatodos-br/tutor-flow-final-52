@@ -9,7 +9,8 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ExpenseModal } from "./ExpenseModal";
-import { Edit, Trash2, FileText, Image, Eye, Search, Filter } from "lucide-react";
+import { Edit, Trash2, FileText, Image, Eye, Search, Filter, Settings } from "lucide-react";
+import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
 import { format } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { FeatureGate } from "@/components/FeatureGate";
@@ -46,6 +47,7 @@ export function ExpenseList({ onExpensesChanged }: ExpenseListProps) {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -264,6 +266,14 @@ export function ExpenseList({ onExpensesChanged }: ExpenseListProps) {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setCategoryManagerOpen(true)}
+              title={t('category.manageCategories')}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Expenses Table */}
@@ -358,6 +368,12 @@ export function ExpenseList({ onExpensesChanged }: ExpenseListProps) {
         onClose={handleCloseModal}
         onExpenseAdded={() => { loadExpenses(); onExpensesChanged?.(); }}
         expense={selectedExpense}
+      />
+
+      <ExpenseCategoryManager
+        isOpen={categoryManagerOpen}
+        onClose={() => setCategoryManagerOpen(false)}
+        onCategoriesChanged={loadCategories}
       />
     </FeatureGate>
   );

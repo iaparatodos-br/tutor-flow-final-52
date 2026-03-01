@@ -23,6 +23,8 @@ interface Invoice {
   manual_payment_notes: string | null;
   stripe_payment_intent_id: string | null;
   updated_at: string;
+  teacher_id: string;
+  student_id: string;
   teacher: {
     name: string;
     email: string;
@@ -30,13 +32,14 @@ interface Invoice {
   student: {
     name: string;
     email: string;
-    guardian_name: string | null;
-    guardian_email: string | null;
   };
   business_profile: {
     business_name: string;
     cnpj: string | null;
   } | null;
+  // Guardian data from teacher_student_relationships
+  guardian_name: string | null;
+  guardian_email: string | null;
 }
 const fetchInvoiceDetails = async (invoiceId: string) => {
   const {
@@ -53,12 +56,38 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
       manual_payment_notes,
       stripe_payment_intent_id,
       updated_at,
+      teacher_id,
+      student_id,
       teacher:profiles!invoices_teacher_id_fkey(name, email),
       student:profiles!invoices_student_id_fkey(name, email),
       business_profile:business_profiles!invoices_business_profile_id_fkey(business_name, cnpj)
     `).eq('id', invoiceId).single();
   if (error) throw new Error(error.message);
-  return data as Invoice;
+
+  // Fetch guardian data from teacher_student_relationships
+  let guardianName: string | null = null;
+  let guardianEmail: string | null = null;
+
+  if (data.teacher_id && data.student_id) {
+    const { data: relData } = await supabase
+      .from('teacher_student_relationships' as never)
+      .select('student_guardian_name, student_guardian_email')
+      .eq('teacher_id', data.teacher_id)
+      .eq('student_id', data.student_id)
+      .maybeSingle();
+
+    if (relData) {
+      const rel = relData as { student_guardian_name: string | null; student_guardian_email: string | null };
+      guardianName = rel.student_guardian_name;
+      guardianEmail = rel.student_guardian_email;
+    }
+  }
+
+  return {
+    ...data,
+    guardian_name: guardianName,
+    guardian_email: guardianEmail,
+  } as Invoice;
 };
 export default function Recibo() {
   const {
@@ -193,12 +222,12 @@ export default function Recibo() {
               <div className="bg-muted p-4 rounded-lg space-y-2">
                 <p className="font-medium">{invoice.student.name}</p>
                 <p className="text-sm text-muted-foreground">{invoice.student.email}</p>
-                {invoice.student.guardian_name && <>
+                {invoice.guardian_name && <>
                     <p className="text-sm text-muted-foreground mt-2">
-                      Responsável: {invoice.student.guardian_name}
+                      Responsável: {invoice.guardian_name}
                     </p>
-                    {invoice.student.guardian_email && <p className="text-sm text-muted-foreground">
-                        {invoice.student.guardian_email}
+                    {invoice.guardian_email && <p className="text-sm text-muted-foreground">
+                        {invoice.guardian_email}
                       </p>}
                   </>}
               </div>

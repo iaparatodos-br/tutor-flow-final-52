@@ -22,7 +22,7 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from '@/components/ui/alert-dialog';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, Loader2, Baby } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, Loader2, Baby, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { ClassReportView } from '@/components/ClassReportView';
@@ -31,6 +31,7 @@ import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileCalendarList } from './MobileCalendarList';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface SimpleCalendarProps {
   classes: CalendarClass[];
@@ -219,6 +220,31 @@ export function SimpleCalendar({
     
     return days;
   }, [currentDate, eventsByDate]);
+
+  // Detect days with time conflicts (2+ active classes overlapping)
+  const conflictDays = useMemo(() => {
+    const conflicts = new Set<string>();
+    
+    eventsByDate.forEach((dayData, dateKey) => {
+      const activeEvents = dayData.events.filter(
+        e => e.status !== 'cancelada' && e.status !== 'concluida'
+      );
+      if (activeEvents.length < 2) return;
+      
+      for (let i = 0; i < activeEvents.length; i++) {
+        for (let j = i + 1; j < activeEvents.length; j++) {
+          const a = activeEvents[i];
+          const b = activeEvents[j];
+          if (a.start < b.end && a.end > b.start) {
+            conflicts.add(dateKey);
+            return; // found at least one conflict on this day
+          }
+        }
+      }
+    });
+    
+    return conflicts;
+  }, [eventsByDate]);
 
   // Notify parent about visible range change (useEffect to avoid side-effect inside useMemo)
   useEffect(() => {
@@ -716,6 +742,20 @@ export function SimpleCalendar({
                   >
                     {day.date.getDate()}
                   </span>
+                  {conflictDays.has(day.date.toDateString()) && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                            <AlertTriangle className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <p className="text-xs">{t('calendar.timeConflict')}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
                 </div>
 
                 {/* Events */}

@@ -29,7 +29,7 @@
   "selectServiceError": "Select a service to set the class price",
   "pastDateTimeError": "Cannot schedule classes for past date/time",
   "pastDateTimeWarning": "You are scheduling a class in the past. It will be created normally for record-keeping purposes.",
-  "timeConflictError": "There is already a class scheduled at this time",
+  "timeConflictWarning": "There is already a class scheduled at this time. You can continue anyway.",
   "selectStudentError": "Select at least one student",
   "isPaidClass": "Paid Class",
   "isPaidClassDescription": "This class will be charged to the student",
@@ -89,7 +89,8 @@
     "partialCancellation": "Partial Cancellation",
     "activeParticipants": "Active Participants",
     "cancelledParticipants": "Cancelled Participants",
-    "noEventsThisDay": "No events today"
+    "noEventsThisDay": "No events today",
+    "timeConflict": "There are classes with conflicting times on this day"
   },
   "mobile": {
     "viewDetails": "View details",

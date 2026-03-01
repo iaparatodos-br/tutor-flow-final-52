@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CategoryModal } from "./CategoryModal";
+import { ExpenseCategoryModal } from "./ExpenseCategoryModal";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -395,7 +395,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
         </DialogFooter>
       </DialogContent>
 
-      <CategoryModal
+      <ExpenseCategoryModal
         isOpen={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
         onCategoryAdded={() => {

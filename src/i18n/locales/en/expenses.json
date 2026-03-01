@@ -77,5 +77,28 @@
     "register": "Register",
     "update": "Update",
     "saving": "Saving..."
+  },
+  "categoryModal": {
+    "newTitle": "New Expense Category",
+    "editTitle": "Edit Category",
+    "name": "Name",
+    "namePlaceholder": "Category name",
+    "nameRequired": "Name is required",
+    "color": "Color",
+    "preview": "Preview",
+    "previewPlaceholder": "Category name",
+    "created": "Category created successfully",
+    "updated": "Category updated successfully",
+    "saveError": "Error saving category"
+  },
+  "categoryManager": {
+    "title": "Manage Categories",
+    "newCategory": "New Category",
+    "default": "default",
+    "deleted": "Category deleted successfully",
+    "deleteError": "Error deleting category",
+    "confirmDeleteTitle": "Delete category?",
+    "confirmDeleteDescription": "The category \"{{name}}\" will be permanently deleted. Expenses already registered with this category will not be affected.",
+    "deleteAction": "Delete"
   }
 }

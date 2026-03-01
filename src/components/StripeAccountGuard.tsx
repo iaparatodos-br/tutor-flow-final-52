@@ -19,6 +19,7 @@ export function StripeAccountGuard({
   const [accountStatus, setAccountStatus] = useState<{
     restricted: boolean;
     chargesDisabled: boolean;
+    noAccount?: boolean;
     reason?: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,7 +48,8 @@ export function StripeAccountGuard({
           reason: data.status_reason || data.charges_disabled_reason
         });
       } else {
-        setAccountStatus(null);
+      // No Stripe Connect account found
+      setAccountStatus({ restricted: false, chargesDisabled: true, noAccount: true });
       }
     } catch (error) {
       console.error('Error in checkAccountStatus:', error);
@@ -62,6 +64,28 @@ export function StripeAccountGuard({
       <div className="flex items-center justify-center p-4">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
       </div>
+    );
+  }
+
+  // If no Stripe Connect account exists at all
+  if (accountStatus?.noAccount) {
+    return (
+      <Alert variant="destructive" className="mb-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>
+          {t('financial:stripe.account.no_account.title', 'Conta Stripe não configurada')}
+        </AlertTitle>
+        <AlertDescription>
+          <div className="space-y-2">
+            <p>
+              {t('financial:stripe.account.no_account.description', 'Você precisa configurar uma conta Stripe Connect antes de criar faturas. Acesse Painel de Negócios para configurar.')}
+            </p>
+            <p className="text-sm">
+              {t('financial:stripe.account.function_disabled')}
+            </p>
+          </div>
+        </AlertDescription>
+      </Alert>
     );
   }
 

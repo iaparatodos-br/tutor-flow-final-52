@@ -31,7 +31,11 @@ interface ExpenseCategory {
   color: string;
 }
 
-export function ExpenseList() {
+interface ExpenseListProps {
+  onExpensesChanged?: () => void;
+}
+
+export function ExpenseList({ onExpensesChanged }: ExpenseListProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t, i18n } = useTranslation('expenses');
@@ -105,6 +109,7 @@ export function ExpenseList() {
       });
 
       loadExpenses();
+      onExpensesChanged?.();
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast({
@@ -351,7 +356,7 @@ export function ExpenseList() {
       <ExpenseModal
         isOpen={modalOpen}
         onClose={handleCloseModal}
-        onExpenseAdded={loadExpenses}
+        onExpenseAdded={() => { loadExpenses(); onExpensesChanged?.(); }}
         expense={selectedExpense}
       />
     </FeatureGate>

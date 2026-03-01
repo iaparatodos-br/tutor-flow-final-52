@@ -1739,7 +1739,8 @@ export default function Agenda() {
         ? services.find(s => s.id === fullClassData.service_id)?.price || 0
         : 0,
       class_template_id: fullClassData.class_template_id || '',
-      duration_minutes: fullClassData.duration_minutes || 60
+      duration_minutes: fullClassData.duration_minutes || 60,
+      status: fullClassData.status || 'confirmada'
       // student_id REMOVED - no longer needed
     } : undefined;
     

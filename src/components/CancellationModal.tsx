@@ -21,6 +21,7 @@ interface VirtualClassData {
   duration_minutes: number;
   is_experimental?: boolean;
   is_paid_class?: boolean; // FASE 6
+  status?: string; // Status real da aula virtual (confirmada por padrão)
   // student_id REMOVED - use class_participants instead
 }
 
@@ -112,14 +113,14 @@ export function CancellationModal({
           .eq('user_id', virtualClassData.teacher_id)
           .maybeSingle();
         
-        setClassData({ 
+         setClassData({ 
           is_group_class: fetchedClassData.is_group_class,
           class_date: fetchedClassData.class_date,
           class_services: fetchedClassData.class_services,
           is_experimental: fetchedClassData.is_experimental,
           is_paid_class: fetchedClassData.is_paid_class,
           charge_timing: bp?.charge_timing,
-          status: 'pendente'
+          status: virtualClassData.status || 'confirmada'
         });
       } else {
         // Normal behavior: fetch from database

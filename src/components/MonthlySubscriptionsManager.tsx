@@ -273,7 +273,7 @@ export function MonthlySubscriptionsManager() {
                   <TableRow>
                     <TableHead>Aluno</TableHead>
                     <TableHead>Início</TableHead>
-                    <TableHead>Aulas</TableHead>
+                    
                     <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -291,17 +291,6 @@ export function MonthlySubscriptionsManager() {
                           <Calendar className="h-3 w-3" />
                           {format(new Date(student.starts_at), 'dd/MM/yyyy', { locale: ptBR })}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {student.classes_used > 0 ? (
-                          <span className="text-sm">
-                            {student.classes_used} aulas
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">
-                            0 aulas
-                          </span>
-                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button

@@ -1,34 +1,25 @@
 
-
-## Plano: Alerta de conflito abre ao clicar (alem de hover)
+## Plano: Atualizar resumo financeiro ao cadastrar despesa
 
 ### Problema
-
-O icone de conflito amarelo no calendario usa `Tooltip`, que so aparece ao passar o mouse (hover). Em dispositivos moveis ou ao clicar, nada acontece.
+Quando uma despesa e cadastrada, editada ou removida no `ExpenseList`, os cards de resumo no topo da pagina (Despesas, Lucro Liquido) nao atualizam. Isso acontece porque `Financeiro.tsx` carrega o resumo de despesas apenas uma vez no mount, e o `ExpenseList` gerencia seu estado de forma independente.
 
 ### Solucao
-
-Substituir o `Tooltip` por `Popover` nos dois componentes do calendario. O `Popover` abre tanto ao clicar quanto pode ser configurado para abrir no hover. Isso garante que o professor veja a mensagem ao tocar/clicar no icone.
+Passar a funcao `loadExpenseSummary` do `Financeiro.tsx` como callback para o `ExpenseList`, que a chamara sempre que houver alteracao nas despesas.
 
 ### Alteracoes
 
-**Arquivo**: `src/components/Calendar/SimpleCalendar.tsx`
-- Substituir `TooltipProvider > Tooltip > TooltipTrigger > TooltipContent` pelo `Popover > PopoverTrigger > PopoverContent` do shadcn/ui
-- Manter o mesmo icone `AlertTriangle` com fundo amarelo como trigger
-- O `PopoverContent` tera a mesma mensagem de conflito, com estilo compacto
+**Arquivo: `src/components/ExpenseList.tsx`**
+- Adicionar uma prop `onExpensesChanged?: () => void`
+- Chamar `onExpensesChanged()` apos cada operacao que altera despesas: criar, editar e deletar (nos mesmos pontos onde ja chama `loadExpenses()`)
 
-**Arquivo**: `src/components/Calendar/MobileCalendarList.tsx`
-- Mesma substituicao de `Tooltip` para `Popover` no icone de conflito do header do dia
-- Importante para mobile onde hover nao existe
+**Arquivo: `src/pages/Financeiro.tsx`**
+- Passar `onExpensesChanged={loadExpenseSummary}` ao componente `<ExpenseList />`
 
 ### Detalhes Tecnicos
 
-O componente `Popover` do shadcn/ui ja esta disponivel no projeto (`src/components/ui/popover.tsx`). A troca e direta:
+No `ExpenseList`, a prop sera chamada em 3 pontos:
+1. No callback `onExpenseAdded` passado ao `ExpenseModal` (apos criar/editar)
+2. No `handleDelete` apos deletar com sucesso
 
-```text
-Antes:  TooltipProvider > Tooltip > TooltipTrigger + TooltipContent
-Depois: Popover > PopoverTrigger + PopoverContent (side="top", className compacto)
-```
-
-O `PopoverTrigger` recebera `asChild` e envolve o mesmo `div` com o icone. O `PopoverContent` tera padding reduzido e largura automatica para manter o visual compacto similar ao tooltip.
-
+No `Financeiro.tsx`, basta adicionar a prop na linha onde o `ExpenseList` e renderizado (dentro da aba de despesas).

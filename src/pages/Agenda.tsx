@@ -390,6 +390,7 @@ export default function Agenda() {
             class_template_id,
             charge_applied,
             amnesty_granted,
+            is_paid_class,
             class_participants!inner (
               student_id,
               dependent_id,
@@ -441,6 +442,7 @@ export default function Agenda() {
             class_template_id,
             charge_applied,
             amnesty_granted,
+            is_paid_class,
           class_participants!inner (
             student_id,
             dependent_id,
@@ -492,6 +494,7 @@ export default function Agenda() {
             class_template_id,
             charge_applied,
             amnesty_granted,
+            is_paid_class,
             class_participants!inner (
               student_id,
               dependent_id,
@@ -542,6 +545,7 @@ export default function Agenda() {
             class_template_id,
             charge_applied,
             amnesty_granted,
+            is_paid_class,
           class_participants!inner (
             student_id,
             dependent_id,
@@ -597,6 +601,7 @@ export default function Agenda() {
               class_template_id,
               charge_applied,
               amnesty_granted,
+              is_paid_class,
               class_participants!inner (
                 student_id,
                 dependent_id,
@@ -642,6 +647,7 @@ export default function Agenda() {
               class_template_id,
               charge_applied,
               amnesty_granted,
+              is_paid_class,
               class_participants!inner (
                 student_id,
                 dependent_id,
@@ -1746,7 +1752,7 @@ export default function Agenda() {
       service_id: classToCancel.service_id || null,
       is_group_class: classToCancel.is_group_class || false,
       is_experimental: classToCancel.is_experimental || false,
-      is_paid_class: classToCancel.is_paid_class ?? true,
+      is_paid_class: classToCancel.is_paid_class ?? false,
       service_price: classToCancel.service_id
         ? services.find(s => s.id === classToCancel.service_id)?.price || 0
         : 0,

@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.1 (expandida com edge functions de notificação + arquivos frontend adicionais)
+> **Versão**: 2.2 (expandida com edge functions de notificação + arquivos frontend adicionais + 5 edge functions faltantes)
 
 ---
 
@@ -250,6 +250,73 @@ const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
 
 **Ação**: Buscar timezone do professor via query de profiles e substituir.
 
+#### 5.1.6 `send-class-report-notification/index.ts`
+
+2 ocorrências de formatação de data/hora sem timezone (linhas 174-177):
+
+```typescript
+const formattedDate = classDate.toLocaleDateString('pt-BR');
+const formattedTime = classDate.toLocaleTimeString('pt-BR', { 
+  hour: '2-digit', minute: '2-digit' 
+});
+```
+
+**Impacto**: Emails de notificação de relatório de aula mostram data/hora no fuso do servidor (UTC), não do professor.
+
+**Ação**: Buscar timezone do professor e passar como opção `timeZone` na formatação.
+
+#### 5.1.7 `send-boleto-subscription-notification/index.ts`
+
+Função helper `formatDate` (linhas 34-39) formata datas SEM timezone:
+
+```typescript
+const formatDate = (dateStr: string): string => {
+  return new Date(dateStr).toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric'
+  });
+};
+```
+
+**Impacto**: Datas de vencimento de boleto nos emails de assinatura podem exibir dia errado para professores fora de BRT (especialmente `due_date` que é campo `date`).
+
+**Ação**: Parametrizar `formatDate` para receber timezone e buscar do professor.
+
+#### 5.1.8 `process-cancellation/index.ts`
+
+1 ocorrência sem timezone na descrição de fatura (linha 470):
+
+```typescript
+const classDateFormatted = new Date(classData.class_date).toLocaleDateString('pt-BR');
+```
+
+**Impacto**: Descrições de faturas de cancelamento podem mostrar data errada (dia anterior/posterior) dependendo do fuso do professor.
+
+**Ação**: Buscar timezone do professor (já disponível no contexto da função) e usar na formatação.
+
+#### 5.1.9 `process-orphan-cancellation-charges/index.ts`
+
+1 ocorrência sem timezone na descrição de fatura (linha 233):
+
+```typescript
+description: `Cancelamento - ${service?.name || 'Aula'} - ${new Date(participant.classData.class_date).toLocaleDateString('pt-BR')}`,
+```
+
+**Impacto**: Descrições de faturas órfãs com data potencialmente incorreta.
+
+**Ação**: Buscar timezone do professor e usar na formatação.
+
+#### 5.1.10 `create-invoice/index.ts`
+
+1 ocorrência sem timezone na descrição de item de fatura (linha 352):
+
+```typescript
+let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`;
+```
+
+**Impacto**: Descrições de itens de fatura manual com data potencialmente incorreta.
+
+**Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação.
+
 ---
 
 ### Passo 5.2: Refatorar `check-overdue-invoices` (Timezone na Comparação de Due Dates)
@@ -408,6 +475,11 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `supabase/functions/send-cancellation-notification/index.ts` | Substituir 1x `timeZone: 'America/Sao_Paulo'` hardcoded |
 | `supabase/functions/send-invoice-notification/index.ts` | Substituir 1x `timeZone: "America/Sao_Paulo"` hardcoded + tratar `date` offset |
 | `supabase/functions/send-class-request-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
+| `supabase/functions/send-class-report-notification/index.ts` | Adicionar timezone na formatação de data/hora (2 ocorrências) |
+| `supabase/functions/send-boleto-subscription-notification/index.ts` | Parametrizar `formatDate` com timezone |
+| `supabase/functions/process-cancellation/index.ts` | Usar timezone na descrição de fatura |
+| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descrição de fatura |
+| `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item |
 | `src/contexts/AuthContext.tsx` | Interface Profile + signUp payload |
 | `src/contexts/ProfileContext.tsx` | Interface Profile com campo `timezone` |
 | `src/hooks/useTimezoneSync.ts` | **Novo** — hook de sincronização |
@@ -555,7 +627,8 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)
 11. ⬜ Backend: refatorar notificações restantes (Passos 5.1.2–5.1.5)
-12. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
+12. ⬜ Backend: refatorar edge functions faltantes (Passos 5.1.6–5.1.10)
+13. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
 13. ⬜ Cron job: alterar billing para horário (Passo 4)
 13. ⬜ Validar idempotência com timezone (Passo 6)
 14. ⬜ Testes end-to-end

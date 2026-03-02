@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.0 (revisada com lacunas identificadas)
+> **Versão**: 2.1 (expandida com edge functions de notificação + arquivos frontend adicionais)
 
 ---
 
@@ -79,11 +79,12 @@ Se `Intl.DateTimeFormat` não estiver disponível ou retornar `undefined`, usar 
 Custom hook que:
 
 1. Roda após login / carregamento da app (quando `profile` está disponível).
-2. Compara `Intl.DateTimeFormat().resolvedOptions().timeZone` com `profile.timezone`.
-3. Se diferentes, mostra toast com ação:
+2. Obtém `profile.timezone` via `useAuth()` (o `AuthContext` já carrega o campo após o Passo 2).
+3. Compara `Intl.DateTimeFormat().resolvedOptions().timeZone` com `profile.timezone`.
+4. Se diferentes, mostra toast com ação:
    > _"Detetámos que estás num novo fuso horário ([novo]). Queres atualizar?"_
-4. Se o utilizador aceitar, faz mutation para atualizar a coluna `timezone` no Supabase.
-5. Usa `sessionStorage` para não repetir o toast na mesma sessão se o utilizador recusar.
+5. Se o utilizador aceitar, faz mutation para atualizar a coluna `timezone` no Supabase.
+6. Usa `sessionStorage` para não repetir o toast na mesma sessão se o utilizador recusar.
 
 #### Integração
 
@@ -207,9 +208,11 @@ function getBillingCycleDates(billingDay: number, timezone: string): { cycleStar
 
 ---
 
-### Passo 5.1: Refatorar `send-class-reminders` (Timezone nos Emails)
+### Passo 5.1: Refatorar Edge Functions de Notificação (Timezone nos Emails)
 
-#### Problema atual
+Todas as edge functions que formatam datas em emails usam `timeZone: "America/Sao_Paulo"` hardcoded. Cada uma precisa buscar o timezone do professor via JOIN em `profiles` antes de formatar.
+
+#### 5.1.1 `send-class-reminders/index.ts`
 
 Os emails de lembrete formatam datas com `timeZone: "America/Sao_Paulo"` hardcoded (linhas 164-174):
 
@@ -219,13 +222,33 @@ const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
 });
 ```
 
-#### Ação
-
-1. Buscar o timezone do professor na query de profiles (já é feita na linha 73-77).
-2. Substituir `"America/Sao_Paulo"` pelo timezone dinâmico do professor.
-3. O horário mostrado no email deve ser no fuso local do professor/aluno.
+**Ação**: Buscar timezone do professor na query de profiles (já é feita na linha 73-77). Substituir pelo timezone dinâmico.
 
 **Impacto no cron schedule**: Mínimo — a busca de aulas nas "próximas 24h" usa `timestamptz` e a comparação funciona em qualquer fuso. Apenas a formatação nos emails precisa de ajuste.
+
+#### 5.1.2 `send-class-confirmation-notification/index.ts`
+
+2 ocorrências de `timeZone: "America/Sao_Paulo"` na formatação de data/hora da aula confirmada.
+
+**Ação**: Buscar timezone do professor via query de profiles e substituir.
+
+#### 5.1.3 `send-cancellation-notification/index.ts`
+
+1 ocorrência de `timeZone: 'America/Sao_Paulo'` na formatação de data/hora do cancelamento.
+
+**Ação**: Buscar timezone do professor via query de profiles e substituir.
+
+#### 5.1.4 `send-invoice-notification/index.ts`
+
+1 ocorrência de `timeZone: "America/Sao_Paulo"` na formatação de `due_date`.
+
+**Ação**: Buscar timezone do professor via query de profiles e substituir. **Atenção especial**: `due_date` é campo `date` (sem hora) — ao formatar com timezone, usar a técnica de "ignorar offset" para evitar o bug de exibição de dia anterior (ver memory constraint `database-date-timezone-rendering`).
+
+#### 5.1.5 `send-class-request-notification/index.ts`
+
+2 ocorrências de `timeZone: "America/Sao_Paulo"` na formatação de data/hora da aula solicitada.
+
+**Ação**: Buscar timezone do professor via query de profiles e substituir.
 
 ---
 
@@ -350,13 +373,24 @@ export const formatDate = (
 | Arquivo | Problema |
 |---|---|
 | `src/components/Calendar/SimpleCalendar.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone (várias instâncias) |
+| `src/components/Calendar/MobileCalendarList.tsx` | `.toLocaleTimeString()` sem timezone |
 | `src/components/CancellationModal.tsx` | `.toLocaleDateString()` e `.toLocaleTimeString()` sem timezone |
 | `src/components/ClassReportModal.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone |
 | `src/components/ClassReportView.tsx` | `.toLocaleDateString()` e `.toLocaleString()` sem timezone |
+| `src/components/PendingBoletoModal.tsx` | `.toLocaleDateString()` sem timezone |
+| `src/components/StudentScheduleRequest.tsx` | `formatDate`/`formatTime` locais sem timezone (4+ ocorrências) |
+| `src/components/BusinessProfilesManager.tsx` | `.toLocaleDateString()` sem timezone |
+| `src/components/Settings/CancellationPolicySettings.tsx` | `.toLocaleDateString()` sem timezone (2 ocorrências) |
 | `src/pages/PainelNegocios.tsx` | `.toLocaleDateString('pt-BR')` sem timezone |
 | `src/pages/Materiais.tsx` | `.toLocaleDateString()` sem timezone |
+| `src/pages/MeusMateriais.tsx` | `.toLocaleDateString()` sem locale/timezone |
+| `src/pages/PerfilAluno.tsx` | ~8 chamadas (datas de aulas, cadastro, nascimento, vencimento) |
+| `src/pages/Financeiro.tsx` | `formatDate` local sem timezone |
+| `src/pages/Agenda.tsx` | `.toLocaleDateString()` para descrição de fatura |
 
-Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useProfile()` ou `useAuth()`).
+Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
+
+**Excluído da migração**: `src/pages/DevValidation.tsx` — usa `toLocaleTimeString` apenas para timestamps de log de debug. Não impacta utilizadores.
 
 ---
 
@@ -367,9 +401,13 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Migration SQL (`profiles.timezone`) | Nova coluna |
 | RPC SQL `get_relationships_to_bill_now` | Nova função PostgreSQL + tipo customizado |
 | `supabase/functions/create-teacher/index.ts` | Aceitar campo timezone |
-| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` |
+| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + 4 `toLocaleDateString` internos |
 | `supabase/functions/check-overdue-invoices/index.ts` | Comparação de due_date timezone-aware |
 | `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do professor |
+| `supabase/functions/send-class-confirmation-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
+| `supabase/functions/send-cancellation-notification/index.ts` | Substituir 1x `timeZone: 'America/Sao_Paulo'` hardcoded |
+| `supabase/functions/send-invoice-notification/index.ts` | Substituir 1x `timeZone: "America/Sao_Paulo"` hardcoded + tratar `date` offset |
+| `supabase/functions/send-class-request-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
 | `src/contexts/AuthContext.tsx` | Interface Profile + signUp payload |
 | `src/contexts/ProfileContext.tsx` | Interface Profile com campo `timezone` |
 | `src/hooks/useTimezoneSync.ts` | **Novo** — hook de sincronização |
@@ -377,11 +415,20 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/Layout.tsx` | Integrar hook |
 | `src/components/ProfileSetup.tsx` | Enviar timezone no setup |
 | `src/components/Calendar/SimpleCalendar.tsx` | Migrar datas para utilitário |
+| `src/components/Calendar/MobileCalendarList.tsx` | Migrar datas para utilitário |
 | `src/components/CancellationModal.tsx` | Migrar datas para utilitário |
 | `src/components/ClassReportModal.tsx` | Migrar datas para utilitário |
 | `src/components/ClassReportView.tsx` | Migrar datas para utilitário |
+| `src/components/PendingBoletoModal.tsx` | Migrar datas para utilitário |
+| `src/components/StudentScheduleRequest.tsx` | Migrar datas para utilitário |
+| `src/components/BusinessProfilesManager.tsx` | Migrar datas para utilitário |
+| `src/components/Settings/CancellationPolicySettings.tsx` | Migrar datas para utilitário |
 | `src/pages/PainelNegocios.tsx` | Migrar datas para utilitário |
 | `src/pages/Materiais.tsx` | Migrar datas para utilitário |
+| `src/pages/MeusMateriais.tsx` | Migrar datas para utilitário |
+| `src/pages/PerfilAluno.tsx` | Migrar ~8 chamadas de datas para utilitário |
+| `src/pages/Financeiro.tsx` | Migrar datas para utilitário |
+| `src/pages/Agenda.tsx` | Migrar datas para utilitário |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -506,9 +553,10 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 7. ⬜ Frontend: migrar componentes com datas hardcoded (Passo 8, tabela)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
-10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1)
-11. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
-12. ⬜ Cron job: alterar billing para horário (Passo 4)
+10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)
+11. ⬜ Backend: refatorar notificações restantes (Passos 5.1.2–5.1.5)
+12. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
+13. ⬜ Cron job: alterar billing para horário (Passo 4)
 13. ⬜ Validar idempotência com timezone (Passo 6)
 14. ⬜ Testes end-to-end
 

@@ -1,42 +1,95 @@
 
+Objetivo: corrigir o cancelamento feito por responsável em aula em grupo com 2 dependentes (mesmo `student_id` + `dependent_id` diferentes), para que os dois participantes sejam cancelados e o status da aula mude para `cancelada`.
 
-## Bug: Responsible cancellation only cancels one participant in "group" classes with dependents
+Resumo do diagnóstico (confirmado em logs e dados):
+1) O erro atual não está mais na materialização; ela está funcionando:
+- `materialize-virtual-class` cria a aula materializada e copia os 2 participantes corretamente.
+2) A falha ocorre no `process-cancellation` durante validação de permissão:
+- logs mostram: `Você não tem permissão para cancelar esta aula`.
+- no banco, a aula materializada tem 2 linhas em `class_participants` com o mesmo `student_id` (responsável) e `dependent_id` distintos.
+3) Causa raiz:
+- em `supabase/functions/process-cancellation/index.ts`, a validação usa `.maybeSingle()` para buscar participação por `class_id + student_id`.
+- quando existem 2 dependentes, a query retorna múltiplas linhas (PGRST116), cai no branch de erro e bloqueia o cancelamento.
+4) Efeito observado:
+- nenhum participante é atualizado para `cancelada`, então a trigger não altera `classes.status`, que permanece `confirmada`.
 
-### Root Cause
+Implementação proposta:
 
-In `supabase/functions/process-cancellation/index.ts`, when a student cancels a group class (line 280-341), the code only updates ONE participant:
+1) Corrigir validação de permissão no `process-cancellation`
+Arquivo:
+- `supabase/functions/process-cancellation/index.ts`
 
-- If `dependent_id` is provided: only the dependent's participant row is cancelled
-- If not: only the student's own participant row is cancelled
+Mudança:
+- substituir validação com `.maybeSingle()` por estratégia tolerante a múltiplas linhas:
+  - usar `.limit(1)` (ou `.select(...).eq(...);` e checar `length > 0`).
+- regra: para `cancelled_by_type === 'student'`, validar existência de pelo menos 1 participação do `safeCancelledBy` na aula, mesmo quando houver `dependent_id`.
 
-For classes where a responsible + their dependent are both participants (marked `is_group_class = true`), this means only one of the two participants gets cancelled. The trigger `sync_class_status_from_participants` sees that not all participants are cancelled and keeps the class as 'confirmada'.
+Resultado esperado:
+- responsável com múltiplos dependentes na mesma aula passa na autorização sem erro de “multiple rows”.
 
-Additionally, in `src/pages/Agenda.tsx` (lines 1782-1797), the `dependentInfo` is auto-detected by finding the first participant with a `dependent_id`. This means the cancellation modal always sends a `dependent_id`, which causes the edge function to only cancel the dependent's participation.
+2) Endurecer segurança/consistência da validação de aluno
+Arquivo:
+- `supabase/functions/process-cancellation/index.ts`
 
-### Fix
+Mudança:
+- remover o “skip” implícito da validação quando `dependent_id` existe.
+- manter validação de responsável do dependente, mas também exigir participação real na aula (`class_id + student_id`).
+- evita sucesso falso para requisições malformadas.
 
-**`supabase/functions/process-cancellation/index.ts`** (lines 287-306):
+3) Garantir que houve atualização de participantes antes de retornar sucesso
+Arquivo:
+- `supabase/functions/process-cancellation/index.ts`
 
-When a student leaves a group class, cancel ALL their participations (self + dependents) instead of just one. Replace the conditional `dependent_id` / `student_id` filter with a single `student_id = safeCancelledBy` filter:
+Mudança:
+- no update do cenário “student leaving group class”, coletar linhas afetadas (ex.: com `select('id')` após update) e validar `updated.length > 0`.
+- se 0 linhas, lançar erro de domínio (“nenhum participante elegível para cancelamento”).
 
-```text
-// Before:
-if (dependent_id) {
-  updateQuery = updateQuery.eq('dependent_id', dependent_id);
-} else {
-  updateQuery = updateQuery.eq('student_id', safeCancelledBy);
-}
+Resultado esperado:
+- evita resposta “sucesso” quando nenhuma linha foi alterada.
 
-// After:
-// Cancel ALL participations for this student/responsible (self + dependents)
-updateQuery = updateQuery.eq('student_id', safeCancelledBy);
-```
+4) Corrigir tratamento de erro no frontend para não mascarar falhas da edge function
+Arquivo:
+- `src/components/CancellationModal.tsx`
 
-This way, when a responsible cancels a group class, all their participant rows (their own + all dependents) are cancelled in one operation. The trigger will then correctly set the class to 'cancelada' if no other students remain active.
+Mudança:
+- após `supabase.functions.invoke('process-cancellation')`, além de `if (error) throw error;`, validar `if (!data?.success) throw new Error(data?.error || ...)`.
+- manter toast destrutivo no catch e não fechar modal quando houver erro.
 
-### Impact
+Resultado esperado:
+- usuário vê erro real quando backend falhar; não haverá falso positivo de cancelamento.
 
-- Classes with responsible + dependent where the responsible cancels will now correctly show 'cancelada'
-- True multi-student group classes (different `student_id` values) still work correctly: only the cancelling student's participants are removed, other students remain
-- No frontend changes needed since the edge function handles it server-side
+5) Limpeza técnica pequena (sem alterar comportamento)
+Arquivo:
+- `supabase/functions/process-cancellation/index.ts`
 
+Mudança:
+- remover variável morta `participantFilter` (não usada após refatoração anterior), para reduzir confusão.
+
+Sequência de execução recomendada:
+1. Ajustar validação de permissão no `process-cancellation` (passo crítico).
+2. Ajustar verificação de linhas afetadas no update.
+3. Ajustar frontend (`CancellationModal`) para checar `data.success`.
+4. Testar cenário principal e regressões.
+
+Plano de testes (foco no seu caso):
+1) E2E principal (obrigatório):
+- logar como responsável;
+- cancelar aula em grupo com 2 dependentes;
+- validar no calendário: aula vira `cancelada`;
+- validar no banco: os 2 `class_participants.status = 'cancelada'`.
+2) Regressão A:
+- aula em grupo com famílias diferentes: cancelar por 1 responsável deve cancelar só os próprios participantes e manter aula ativa se ainda houver outros confirmados.
+3) Regressão B:
+- cancelamento por professor continua cancelando aula inteira.
+4) Regressão C:
+- simular erro no backend e validar que modal não fecha e mostra toast de erro.
+
+Riscos e mitigação:
+- Risco: alterar sem querer regra de negócio para grupo multi-família.
+  - Mitigação: filtro de update permanece por `student_id = safeCancelledBy` no fluxo de aluno.
+- Risco: resposta 200 com `success:false` continuar invisível ao usuário.
+  - Mitigação: checagem explícita de `data.success` no frontend.
+
+Arquivos impactados:
+- `supabase/functions/process-cancellation/index.ts`
+- `src/components/CancellationModal.tsx`

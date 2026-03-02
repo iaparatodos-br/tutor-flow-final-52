@@ -196,21 +196,18 @@ serve(async (req) => {
         throw new Error('Você não tem permissão para cancelar esta aula');
       }
     } else if (cancelled_by_type === 'student') {
-      // NEW: Para dependentes, verificar se o cancelled_by é responsável
-      if (dependent_id) {
-        // Já validamos acima
-      } else {
-        // Verificar se é participante (tanto para aulas individuais quanto em grupo)
-        const { data: participation, error: participationError } = await supabaseClient
-          .from('class_participants')
-          .select('id')
-          .eq('class_id', class_id)
-          .eq('student_id', safeCancelledBy)
-          .maybeSingle();
+      // Verificar se é participante (tanto para aulas individuais quanto em grupo)
+      // Usa .limit(1) em vez de .maybeSingle() para tolerar múltiplas linhas
+      // (ex: responsável com 2+ dependentes na mesma aula)
+      const { data: participationRows, error: participationError } = await supabaseClient
+        .from('class_participants')
+        .select('id')
+        .eq('class_id', class_id)
+        .eq('student_id', safeCancelledBy)
+        .limit(1);
 
-        if (participationError || !participation) {
-          throw new Error('Você não tem permissão para cancelar esta aula');
-        }
+      if (participationError || !participationRows || participationRows.length === 0) {
+        throw new Error('Você não tem permissão para cancelar esta aula');
       }
     }
 
@@ -283,12 +280,8 @@ serve(async (req) => {
       // CENÁRIO 1: Aluno/Responsável saindo de aula em grupo
       console.log('Student leaving group class - updating only participant status');
       
-      // NEW: Para dependentes, buscar participação pelo dependent_id
-      const participantFilter = dependent_id 
-        ? { class_id, dependent_id }
-        : { class_id, student_id: safeCancelledBy };
-
-      let updateQuery = supabaseClient
+      // Cancel ALL participations for this student/responsible (self + dependents)
+      const { data: updatedRows, error: updateParticipantError } = await supabaseClient
         .from('class_participants')
         .update({
           status: 'cancelada',
@@ -297,17 +290,21 @@ serve(async (req) => {
           charge_applied: shouldCharge,
           cancellation_reason: reason
         })
-        .eq('class_id', class_id);
-
-      // Cancel ALL participations for this student/responsible (self + dependents)
-      updateQuery = updateQuery.eq('student_id', safeCancelledBy);
-
-      const { error: updateParticipantError } = await updateQuery;
+        .eq('class_id', class_id)
+        .eq('student_id', safeCancelledBy)
+        .select('id');
 
       if (updateParticipantError) {
         console.error('Error updating participant:', updateParticipantError);
         throw new Error('Erro ao atualizar participante');
       }
+
+      if (!updatedRows || updatedRows.length === 0) {
+        console.error('No participants were updated - possible data inconsistency');
+        throw new Error('Nenhum participante elegível para cancelamento');
+      }
+
+      console.log(`✅ Updated ${updatedRows.length} participant(s) to cancelada`);
 
       // Notificar apenas o professor
       await supabaseClient.from('class_notifications').insert({

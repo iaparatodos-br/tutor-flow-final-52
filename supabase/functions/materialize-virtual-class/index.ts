@@ -152,12 +152,14 @@ serve(async (req) => {
     // Authorization check based on user role
     if (profile.role === 'aluno') {
       // Students must be participants of the template (or responsible for a dependent participant)
-      const { data: participation, error: participationError } = await supabaseClient
+      const { data: participationRows, error: participationError } = await supabaseClient
         .from('class_participants')
         .select('id, student_id, dependent_id')
         .eq('class_id', template_id)
-        .or(`student_id.eq.${user.id},and(student_id.eq.${user.id},dependent_id.not.is.null)`)
-        .maybeSingle();
+        .eq('student_id', user.id)
+        .limit(1);
+      
+      const participation = participationRows && participationRows.length > 0 ? participationRows[0] : null;
 
       if (participationError) {
         console.error('❌ Error checking participation:', participationError);

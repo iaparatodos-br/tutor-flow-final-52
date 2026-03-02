@@ -347,6 +347,7 @@ export function CancellationModal({
       });
 
       if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro desconhecido no cancelamento');
 
       toast({
         title: t('messages.success'),

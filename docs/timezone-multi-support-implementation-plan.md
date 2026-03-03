@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.6.2 (v3.6.1 + revisão Gemini #6: adicionado `CreateInvoiceModal.tsx` à tabela de migração do Passo 8 — 40 componentes)
+> **Versão**: 3.6.3 (v3.6.2 + correção snippet `isTodayTz` startOfDay, nota `validate-payment-routing` dueDate, nota `Recibo.tsx` parseISO para campo date, contagem 39→40, correção "professor"→"aluno" em send-class-reminders)
 
 ---
 

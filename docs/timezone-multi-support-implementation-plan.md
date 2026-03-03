@@ -567,6 +567,7 @@ export const formatDate = (
 |---|---|
 | `src/components/Calendar/SimpleCalendar.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone (várias instâncias) |
 | `src/components/Calendar/MobileCalendarList.tsx` | `.toLocaleTimeString()` sem timezone |
+| `src/components/Calendar/CalendarView.tsx` | ~5x `moment().format()` sem timezone explícito (HH:mm, dddd DD/MM/YYYY, ddd, etc.) — migrar para utilitário timezone-aware |
 | `src/components/CancellationModal.tsx` | `.toLocaleDateString()` e `.toLocaleTimeString()` sem timezone |
 | `src/components/ClassReportModal.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone |
 | `src/components/ClassReportView.tsx` | `.toLocaleDateString()` e `.toLocaleString()` sem timezone |
@@ -640,6 +641,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/ProfileSetup.tsx` | Enviar timezone no setup |
 | `src/components/Calendar/SimpleCalendar.tsx` | Migrar datas para utilitário |
 | `src/components/Calendar/MobileCalendarList.tsx` | Migrar datas para utilitário |
+| `src/components/Calendar/CalendarView.tsx` | Migrar ~5x `moment().format()` para utilitário timezone-aware |
 | `src/components/CancellationModal.tsx` | Migrar datas para utilitário |
 | `src/components/ClassReportModal.tsx` | Migrar datas para utilitário |
 | `src/components/ClassReportView.tsx` | Migrar datas para utilitário |

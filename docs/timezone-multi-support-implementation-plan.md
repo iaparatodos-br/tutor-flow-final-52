@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.6 (v3.5 + revisão Gemini #4: regra arquitetural proibindo `startOfMonth`/`isToday` nativos do date-fns no Passo 8, regra sobre campos `date` nunca formatados com `timeZone` nos Passos 5.1 e 8)
+> **Versão**: 3.6.2 (v3.6.1 + revisão Gemini #6: adicionado `CreateInvoiceModal.tsx` à tabela de migração do Passo 8 — 40 componentes)
 
 ---
 
@@ -803,7 +803,8 @@ export const formatDate = (
 | `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
 | `src/components/Availability/AvailabilityManager.tsx` | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3) |
 | `src/components/ExpenseModal.tsx` | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil (v3.4) |
-| `src/components/RecurringClassActionModal.tsx` | 1x `Intl.DateTimeFormat('pt-BR', {...}).format(date)` sem opção `timeZone` — formata no fuso do browser em vez do perfil (v3.5) |
+| `src/components/RecurringClassActionModal.tsx` | 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5) |
+| `src/components/CreateInvoiceModal.tsx` | `parse(formData.due_date, 'yyyy-MM-dd', new Date())` + `format(date, 'yyyy-MM-dd')` + `format(parse(...), "dd 'de' MMMM, yyyy")` — usar wrappers timezone-aware (v3.6.2) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -908,6 +909,7 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 | `src/components/Availability/AvailabilityManager.tsx` | Migrar 1x `moment().format()` para utilitário timezone-aware (v3.3) |
 | `src/components/ExpenseModal.tsx` | Migrar 1x `formatDate(new Date())` para utilitário timezone-aware (v3.4) |
 | `src/components/RecurringClassActionModal.tsx` | Migrar 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5) |
+| `src/components/CreateInvoiceModal.tsx` | Migrar `format`/`parse` do date-fns para wrappers timezone-aware (v3.6.2) |
 | `supabase/functions/end-recurrence/index.ts` | Converter `endDate` para UTC no fuso do professor antes de `.gte('class_date', ...)` (v3.5) |
 | `supabase/functions/validate-monthly-subscriptions/index.ts` | Passar `p_timezone` à RPC e calcular mês/ano local (v3.5) |
 | `supabase/functions/get-teacher-availability/index.ts` | Retornar `teacherTimezone` na resposta (v3.3) |

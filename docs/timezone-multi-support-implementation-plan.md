@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.3 (expandida com edge functions de notificação + arquivos frontend adicionais + 7 edge functions faltantes)
+> **Versão**: 2.4 (expandida com edge functions de notificação + arquivos frontend adicionais + 7 edge functions faltantes + 7 RPCs de banco de dados)
 
 ---
 
@@ -357,6 +357,77 @@ if (dueDateNormalized.getTime() === tomorrow.getTime()) {
 
 ---
 
+### Passo 5.3: Refatorar Database Functions (RPCs) para Timezone-Awareness
+
+Todas as RPCs abaixo usam `CURRENT_DATE` (que no Postgres com session timezone UTC equivale à data UTC) ou `EXTRACT` de `timestamptz` sem `AT TIME ZONE`. A correção é uniforme: adicionar parâmetro `p_timezone text DEFAULT 'America/Sao_Paulo'` e substituir `CURRENT_DATE` por `(NOW() AT TIME ZONE p_timezone)::DATE`.
+
+#### 5.3.1 `count_completed_classes_in_month(p_teacher_id, p_student_id, p_year, p_month)`
+
+Usa `EXTRACT(YEAR FROM c.class_date)` e `EXTRACT(MONTH FROM c.class_date)` sobre `timestamptz`. No Postgres, `EXTRACT` de um `timestamptz` usa a timezone da sessão (UTC por default no servidor).
+
+**Problema**: Uma aula às 23:00 BRT do dia 31/Jan = 02:00 UTC do dia 01/Fev. Seria contada em Fevereiro em vez de Janeiro para um professor BRT.
+
+**Ação**: Adicionar parâmetro `p_timezone text DEFAULT 'America/Sao_Paulo'` e usar `EXTRACT(... FROM c.class_date AT TIME ZONE p_timezone)`.
+
+#### 5.3.2 `get_student_subscription_details` (2 overloads)
+
+Ambas chamam `count_completed_classes_in_month` passando `EXTRACT(YEAR FROM CURRENT_DATE)` e `EXTRACT(MONTH FROM CURRENT_DATE)`.
+
+**Problema**: `CURRENT_DATE` no servidor é UTC. Às 22:00 BRT do dia 31/Jan, `CURRENT_DATE` no Postgres já é 01/Fev. A contagem de aulas usaria o mês errado.
+
+**Ação**: Fazer JOIN com `profiles` para obter timezone do professor, converter `CURRENT_DATE` com `(NOW() AT TIME ZONE tz)::DATE` antes de passar ano/mês para `count_completed_classes_in_month`.
+
+#### 5.3.3 `get_subscription_assigned_students(p_subscription_id)`
+
+Mesmo padrão: chama `count_completed_classes_in_month` com `CURRENT_DATE` (UTC).
+
+**Ação**: Obter timezone do professor via JOIN com `monthly_subscriptions` → `profiles` e propagar.
+
+#### 5.3.4 `get_student_active_subscription(p_relationship_id)`
+
+Usa `sms.ends_at > CURRENT_DATE` para filtrar subscrições ativas.
+
+**Problema**: `ends_at` é campo `date` e `CURRENT_DATE` é `date`. A diferença máxima é de algumas horas na virada do dia UTC vs local. Para um professor em UTC-12, a subscrição poderia ser desativada até 12h antes do esperado.
+
+**Ação**: Adicionar `p_timezone text DEFAULT 'America/Sao_Paulo'` e comparar `ends_at` com `(NOW() AT TIME ZONE p_timezone)::DATE`.
+
+#### 5.3.5 `get_billing_cycle_dates(p_billing_day, p_reference_date DEFAULT CURRENT_DATE)`
+
+Parâmetro default `CURRENT_DATE` (UTC).
+
+**Problema**: Quando chamada sem `p_reference_date` explícito (ex: de dentro de `count_completed_classes_in_billing_cycle`), usa a data UTC do servidor.
+
+**Ação**: Adicionar `p_timezone text DEFAULT 'America/Sao_Paulo'` e substituir default `CURRENT_DATE` por `(NOW() AT TIME ZONE p_timezone)::DATE`.
+
+#### 5.3.6 `count_completed_classes_in_billing_cycle(p_teacher_id, p_student_id, p_billing_day, p_reference_date DEFAULT CURRENT_DATE)`
+
+Mesma questão do default `CURRENT_DATE` e faz `c.class_date::DATE` (cast que usa timezone da sessão = UTC).
+
+**Ação**: Adicionar `p_timezone text DEFAULT 'America/Sao_Paulo'`, propagar para `get_billing_cycle_dates`, e substituir `c.class_date::DATE` por `(c.class_date AT TIME ZONE p_timezone)::DATE`.
+
+#### 5.3.7 `get_teacher_notifications(...)` — cálculo de `days_overdue`
+
+```sql
+GREATEST(0, (CURRENT_DATE - i.due_date))
+GREATEST(0, EXTRACT(DAY FROM (NOW() - c.class_date))::INTEGER)
+```
+
+**Problema**: `CURRENT_DATE` é UTC, `due_date` é campo `date`. Para um professor em UTC-5 às 23:00 locais, `CURRENT_DATE` no Postgres já é o dia seguinte, inflando `days_overdue` em +1.
+
+**Ação**: Obter timezone do professor via `auth.uid()` → `profiles.timezone` e substituir `CURRENT_DATE` por `(NOW() AT TIME ZONE tz)::DATE` no cálculo de `days_overdue`.
+
+#### RPCs Confirmadas SEM Impacto
+
+- `has_overdue_invoices` — compara `status = 'overdue'` (valor estático, sem cálculo de data)
+- `get_unbilled_participants_v2` — recebe `p_start_date`/`p_end_date` como `timestamptz` (comparação absoluta)
+- `get_classes_with_participants` — recebe `p_start_date`/`p_end_date` como `timestamptz`
+- `get_calendar_events` — recebe `p_start_date`/`p_end_date` como `timestamptz`
+- `create_invoice_and_mark_classes_billed` — usa `NOW()` apenas para `created_at`/`updated_at` (timestamps absolutos)
+- `cascade_deactivate_subscription_students` — usa `now()` apenas para `updated_at`
+- `cleanup_expired_pending_profiles` — usa `NOW()` para comparação absoluta de `expires_at` (timestamptz)
+- Triggers (`sync_class_status_from_participants`, etc.) — usam `NOW()` apenas para timestamps
+- `archive_old_stripe_events` — usa `NOW() - INTERVAL '90 days'` (janela relativa absoluta)
+
 ### Passo 5.2: Refatorar `check-overdue-invoices` (Timezone na Comparação de Due Dates)
 
 #### Problema atual
@@ -520,6 +591,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item |
 | `supabase/functions/generate-teacher-notifications/index.ts` | Cálculo de "hoje" timezone-aware para faturas vencidas |
 | `supabase/functions/check-pending-boletos/index.ts` | Cálculo de "amanhã" timezone-aware para lembretes de boleto |
+| Migration SQL (refatorar 7 RPCs) | Adicionar `p_timezone` e `AT TIME ZONE` em `count_completed_classes_in_month`, `get_student_subscription_details` (2x), `get_subscription_assigned_students`, `get_student_active_subscription`, `get_billing_cycle_dates`, `count_completed_classes_in_billing_cycle`, `get_teacher_notifications` |
 | `src/contexts/AuthContext.tsx` | Interface Profile + signUp payload |
 | `src/contexts/ProfileContext.tsx` | Interface Profile com campo `timezone` |
 | `src/hooks/useTimezoneSync.ts` | **Novo** — hook de sincronização |
@@ -560,6 +632,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Faturas marcadas como vencidas prematuramente | Alta | Alto | `check-overdue-invoices` deve considerar timezone do professor (Passo 5.2) |
 | Idempotência com janela UTC incorreta | Média | Alto | Calcular `cycleStart`/`cycleEnd` no timezone local antes de query |
 | Emails com horário errado para fusos não-BRT | Alta | Médio | `send-class-reminders` usar timezone do professor (Passo 5.1) |
+| RPCs com `CURRENT_DATE` calculam data UTC em vez de local | Alta | Alto | Adicionar `p_timezone` e usar `NOW() AT TIME ZONE` (Passo 5.3) |
 
 ---
 
@@ -670,9 +743,10 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 12. ⬜ Backend: refatorar edge functions faltantes (Passos 5.1.6–5.1.10)
 13. ⬜ Backend: refatorar `generate-teacher-notifications` e `check-pending-boletos` (Passos 5.1.11–5.1.12)
 14. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
-13. ⬜ Cron job: alterar billing para horário (Passo 4)
-13. ⬜ Validar idempotência com timezone (Passo 6)
-14. ⬜ Testes end-to-end
+15. ⬜ Backend: refatorar 7 RPCs de banco de dados (Passo 5.3)
+16. ⬜ Cron job: alterar billing para horário (Passo 4)
+17. ⬜ Validar idempotência com timezone (Passo 6)
+18. ⬜ Testes end-to-end
 
 ---
 

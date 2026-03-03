@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.5 (v2.4 + 7 componentes frontend faltantes + nota sobre `formatDateBrazil` não utilizado)
+> **Versão**: 2.6 (v2.5 + 6 componentes frontend adicionais: MonthlySubscriptionsManager, PaymentOptionsCard, PlanDowngradeWarningModal, ArchivedDataViewer, DependentManager, ExpenseList)
 
 ---
 
@@ -570,6 +570,12 @@ export const formatDate = (
 | `src/components/Inbox/NotificationItem.tsx` | 2x `format()` sem timezone (invoice_due_date, class_date) |
 | `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
 | `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
+| `src/components/MonthlySubscriptionsManager.tsx` | 1x `format()` sem timezone (`starts_at` tipo `date` — bug de dia anterior) |
+| `src/components/PaymentOptionsCard.tsx` | 1x `format()` sem timezone (datas de faturas) |
+| `src/components/PlanDowngradeWarningModal.tsx` | 3x `format()` sem timezone (`subscriptionEndDate` timestamptz) |
+| `src/components/ArchivedDataViewer.tsx` | 2x `toLocaleString`/`toLocaleDateString` sem timezone (dados arquivados) |
+| `src/components/DependentManager.tsx` | 1x `format()` sem timezone (`birth_date` tipo `date`) |
+| `src/components/ExpenseList.tsx` | 1x `format()` sem timezone (`expense_date` tipo `date`) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -629,6 +635,12 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/Inbox/NotificationItem.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
 | `src/pages/Subscription.tsx` | Migrar 3x `format()` para utilitário timezone-aware |
 | `src/components/PlanDowngradeSelectionModal.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
+| `src/components/MonthlySubscriptionsManager.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
+| `src/components/PaymentOptionsCard.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
+| `src/components/PlanDowngradeWarningModal.tsx` | Migrar 3x `format()` para utilitário timezone-aware |
+| `src/components/ArchivedDataViewer.tsx` | Migrar 2x `toLocaleString`/`toLocaleDateString` para utilitário timezone-aware |
+| `src/components/DependentManager.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
+| `src/components/ExpenseList.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -751,7 +763,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 22 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 adicionados na auditoria v2.5)
+7. ⬜ Frontend: migrar 28 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)

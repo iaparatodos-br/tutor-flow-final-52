@@ -1,59 +1,79 @@
 
 
-# Avaliação dos 3 Pontos do Gemini vs. Plano v3.6
+# Avaliação dos 5 Pontos do Gemini vs. Plano v3.6.1
 
-## Resultado: 1 gap real. 2 pontos já cobertos.
+## Resultado: 2 gaps reais. 3 pontos já cobertos ou não se aplicam.
 
 ---
 
-### Ponto 1: `AvailabilityManager.tsx` — GAP REAL (Input Parsing)
+### Ponto 1: `process-expired-subscriptions` — NÃO SE APLICA (já refutado 2x)
 
-O Gemini está **correto**. No `AvailabilityManager.tsx` (linha 134):
+O Gemini insiste que o campo é tipo `date`. Já confirmei no código (linha 41-43):
 
 ```typescript
-const startDateTime = new Date(`${newBlock.start_date}T${newBlock.start_time}`);
-const endDateTime = new Date(`${newBlock.end_date}T${newBlock.end_time}`);
+.from('user_subscriptions')
+.select('id, user_id, plan_id, stripe_subscription_id, current_period_end')
+.lt('current_period_end', now.toISOString())
 ```
 
-Este é exatamente o mesmo padrão `new Date(\`${date}T${time}\`)` que a **REGRA CRÍTICA de Input Parsing** (linha 632-643 do plano) manda corrigir com `zonedTimeToUtc`. Porém, a lista de arquivos afetados na linha 643 é:
+`current_period_end` é `timestamp with time zone` (timestamptz), definido pelo Stripe como instante absoluto. A comparação `.lt(timestamptz, timestamptz)` é imune a timezone. Não existe campo `ends_at` nesta tabela/função.
 
-> **Aplicar em**: `ClassForm.tsx`, `Agenda.tsx`, `ClassExceptionForm.tsx`, `FutureClassExceptionForm.tsx`
-
-`AvailabilityManager.tsx` **não está nesta lista**. O componente aparece na tabela de migração do Passo 8 (linha 804/908), mas apenas para o problema de `moment().format()` (exibição). O bug de **input parsing** é diferente e não está coberto.
-
-**Ação**: Adicionar `AvailabilityManager.tsx` à lista da REGRA CRÍTICA de Input Parsing (linha 643).
+**Veredicto**: Nenhuma ação necessária. Terceira vez que este ponto é levantado e refutado.
 
 ---
 
-### Ponto 2: `end-recurrence` — JÁ COBERTO (v3.5)
+### Ponto 2: `CreateInvoiceModal.tsx` — GAP REAL (falta na tabela de migração)
 
-O plano já cobre isto desde a v3.5:
-- Passo 5.1.13 (linha 412+) detalha a correção
-- Tabela de arquivos impactados (linha 911)
-- Tabela de riscos (linha 943)
-- Checklist item 14 (linha 1054)
+Confirmei que `CreateInvoiceModal.tsx` **não aparece** na tabela de migração do Passo 8 (39 componentes). O componente usa:
 
-**Nenhuma ação necessária.**
+- `format(date, 'yyyy-MM-dd')` e `parse(formData.due_date, 'yyyy-MM-dd', new Date())` do date-fns
+- `format(parse(...), "dd 'de' MMMM, yyyy", { locale: ptBR })` para exibição
 
----
+O risco real é baixo (o `format` extrai dia/mês/ano do Date local que o utilizador selecionou), mas o componente **infringe a regra arquitetural** do Passo 8 que proíbe uso direto do `date-fns` sem wrappers. Além disso, a linha 199 de `create-invoice/index.ts` calcula o default `dueDate` com:
 
-### Ponto 3: `manage-class-exception` / `exception_date` — JÁ COBERTO
+```typescript
+new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+```
 
-O Gemini sugere que o `exception_date` pode desalinhar se o frontend enviar a data no fuso errado. Isto é **exatamente** o que a REGRA CRÍTICA de Input Parsing já resolve:
+Isto grava a data UTC, que pode ser 1 dia antes para utilizadores em fusos positivos (ex: Ásia/Austrália). Deve usar o timezone do professor.
 
-- `ClassExceptionForm.tsx` está listado na linha 643 como alvo de `zonedTimeToUtc`
-- `FutureClassExceptionForm.tsx` também está listado
-- Ambos estão na tabela de migração (linhas 802-803, 906-907)
-
-Se o frontend enviar o `exception_date` já convertido corretamente via `zonedTimeToUtc`, a edge function receberá o timestamp correto. **Nenhuma ação adicional necessária** na edge function.
+**Ação**: 
+1. Adicionar `CreateInvoiceModal.tsx` à tabela de migração do Passo 8 (componente 40).
+2. Adicionar nota sobre `create-invoice/index.ts` linha 199 ao Passo 5.1 (default `dueDate` deve usar timezone do professor).
 
 ---
 
-## Resumo
+### Ponto 3: `StudentScheduleRequest.tsx` — JÁ COBERTO
 
-| Alteração | Tipo | Local no documento |
+O componente **já está** na tabela de migração (linha 776, 881) e tem tratamento especial no Passo 5.4 (conversão de `working_hours` do fuso do professor para o fuso do aluno). O submit (linha 272) envia `selectedTimeSlot` que é um ISO string gerado via `toISOString()` — o valor é um instante UTC absoluto derivado do slot já convertido. O plano já cobre a migração completa deste componente.
+
+**Veredicto**: Nenhuma ação necessária.
+
+---
+
+### Ponto 4: Stripe API `due_date` Unix — NÃO SE APLICA
+
+Confirmei no `create-invoice/index.ts`: a função **não** envia `due_date` para a API do Stripe como Unix timestamp. Ela grava `due_date` como string `YYYY-MM-DD` na tabela `invoices` do Supabase (linha 214). A geração do boleto/PaymentIntent acontece em `generate-boleto-for-invoice` ou `create-payment-intent-connect`, que são funções separadas. O cenário descrito pelo Gemini não corresponde ao código real.
+
+Porém, o cálculo default do `dueDate` (linha 199) **tem** o bug UTC mencionado no Ponto 2 acima.
+
+**Veredicto**: O bug real já foi capturado no Ponto 2.
+
+---
+
+### Ponto 5: CSV Import — NÃO SE APLICA
+
+Confirmei no `StudentImportDialog.tsx`: o import **não** processa datas. Os campos importados são: `name`, `email`, `phone`, `guardian_*`, `cpf`, `billing_day`, `tipo_cadastro`, `dependentes`. Não há `birth_date` nem qualquer campo de data no mapeamento (linhas 20-37).
+
+**Veredicto**: Nenhuma ação necessária. O cenário é hipotético.
+
+---
+
+## Resumo de Alterações ao Plano v3.6.1
+
+| Alteração | Tipo | Secção |
 |---|---|---|
-| Adicionar `AvailabilityManager.tsx` à lista da REGRA CRÍTICA de Input Parsing | Correção de gap | Linha 643 do plano |
-
-Apenas 1 arquivo a adicionar numa lista existente. Contagem de componentes e RPCs não muda.
+| Adicionar `CreateInvoiceModal.tsx` à tabela do Passo 8 (componente 40) | Correção de gap | Tabela de migração |
+| Adicionar nota sobre `create-invoice/index.ts` linha 199 (default `dueDate` usa UTC) | Nota técnica | Passo 5.1 |
+| Atualizar contagem: 39 → **40 componentes** | Metadado | Passos 7 e 8 |
 

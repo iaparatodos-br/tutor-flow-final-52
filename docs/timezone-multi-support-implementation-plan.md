@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.4.1 (v3.4 + revisão final: adicionado `ExpenseModal.tsx` à tabela de migração, contagem atualizada para 38 componentes)
+> **Versão**: 3.5 (v3.4.1 + revisão Gemini #3: adicionado `end-recurrence` ao Passo 5.1.13, `RecurringClassActionModal.tsx` ao Passo 8 (39 componentes), nota sobre `validate-monthly-subscriptions` no Passo 5.3, escape hatch de timezone em `ProfileSettings.tsx` no Passo 3)
 
 ---
 
@@ -89,6 +89,17 @@ Custom hook que:
 #### Integração
 
 - Chamar `useTimezoneSync()` no `Layout.tsx` (componente que envolve todas as rotas autenticadas).
+
+#### Escape Hatch: Seletor Manual de Timezone (v3.5)
+
+Mesmo com a detecção automática como fluxo principal, adicionar um `<Select>` de timezone em `src/components/Settings/ProfileSettings.tsx` (dentro de Configurações → Perfil). Funciona como "escape hatch" para:
+- Utilizadores que recusaram acidentalmente a atualização do toast.
+- Utilizadores usando VPN cujo `Intl` retorna timezone incorreto.
+- Casos de suporte técnico.
+
+O componente deve listar os timezones IANA mais comuns (ou todos via `Intl.supportedValuesOf('timeZone')` onde disponível) e fazer mutation para atualizar `profiles.timezone` ao selecionar.
+
+**Prioridade**: Baixa — não bloqueia a fase principal. Pode ser implementado após o Passo 8.
 
 #### Atualizar interfaces `Profile`
 
@@ -379,6 +390,49 @@ if (dueDateNormalized.getTime() === tomorrow.getTime()) {
 
 **Ação**: Buscar timezone do professor (via `subscription.user_id` → `profiles.timezone`) e calcular "amanhã" no fuso local.
 
+#### 5.1.13 `end-recurrence/index.ts` (v3.5)
+
+Linha 67-72 — compara `class_date` (timestamptz) com `endDate` (string `'YYYY-MM-DD'`):
+
+```typescript
+const { data: futuresToDelete } = await supabase
+  .from('classes')
+  .select('id')
+  .eq('class_template_id', templateId)
+  .gte('class_date', endDate)  // endDate = 'YYYY-MM-DD'
+  .neq('status', 'concluida');
+```
+
+**Problema**: Quando Postgres recebe `'2026-03-15'` para comparar com `timestamptz`, interpreta como `2026-03-15 00:00:00+00` (meia-noite UTC). Uma aula do dia 14 às 22:00 BRT (= `2026-03-15 01:00:00+00`) será apagada incorretamente — causando **perda de dados de histórico e faturamento**.
+
+**Impacto**: **Alto** — deleção incorreta de aulas que já ocorreram. Afeta histórico e faturamento.
+
+**Ação**: Buscar timezone do professor via `profiles.timezone` (já temos `user.id` no contexto). Converter `endDate` para o instante UTC correto (início do dia no timezone do professor) antes de fazer `.gte('class_date', ...)`:
+
+```typescript
+// Obter timezone do professor
+const { data: teacherProfile } = await supabase
+  .from('profiles')
+  .select('timezone')
+  .eq('id', user.id)
+  .single();
+const tz = teacherProfile?.timezone || 'America/Sao_Paulo';
+
+// Converter 'YYYY-MM-DD' para instante UTC no fuso do professor
+const endDateUTC = new Date(
+  new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).format(new Date(`${endDate}T00:00:00`))
+).toISOString();
+// Usar endDateUTC na query
+.gte('class_date', endDateUTC)
+```
+
+**Alternativa mais robusta**: Usar `AT TIME ZONE` diretamente numa RPC PostgreSQL para evitar parsing JS.
+
 ---
 
 ### Passo 5.3: Refatorar Database Functions (RPCs) para Timezone-Awareness
@@ -453,6 +507,23 @@ GREATEST(0, EXTRACT(DAY FROM (NOW() - c.class_date))::INTEGER)
 **Problema**: `CURRENT_DATE` é UTC, `due_date` é campo `date`. Para um professor em UTC-5 às 23:00 locais, `CURRENT_DATE` no Postgres já é o dia seguinte, inflando `days_overdue` em +1.
 
 **Ação**: Obter timezone do professor via `auth.uid()` → `profiles.timezone` e substituir `CURRENT_DATE` por `(NOW() AT TIME ZONE tz)::DATE` no cálculo de `days_overdue`.
+
+#### Nota: `validate-monthly-subscriptions` (Script Interno) (v3.5)
+
+A edge function `supabase/functions/validate-monthly-subscriptions/index.ts` (validação V05, linhas 148-156) invoca a RPC `count_completed_classes_in_month` usando:
+
+```typescript
+p_year: now.getFullYear(),   // UTC no Deno
+p_month: now.getMonth() + 1  // UTC no Deno
+```
+
+**Problema duplo**:
+1. `now.getFullYear()` e `now.getMonth()` no Deno calculam em UTC. Às 23:00 BRT do dia 31/Jan, para o Deno já é 01/Fev — testa o mês errado.
+2. Quando a RPC ganhar o parâmetro `p_timezone` (Passo 5.3.1), esta função **quebrará** se não passar o novo parâmetro.
+
+**Ação**: Ao buscar o professor para teste (linha 140), retornar também `timezone`. Calcular mês/ano local via `Intl.DateTimeFormat` com o timezone do professor, e passar `p_timezone` à RPC.
+
+**Prioridade**: Baixa — é um script de validação interna, não afeta utilizadores. Mas deve ser atualizado junto com a migração das RPCs para evitar falsos positivos nos testes.
 
 #### RPCs Confirmadas SEM Impacto
 
@@ -531,13 +602,13 @@ if (endDateLocal < teacherLocalDate) {
 
 A aritmética de `setDate(getDate() + 7)` em `manage-future-class-exceptions/index.ts` opera em **UTC puro** no Deno runtime. No UTC não há horário de verão — a soma de +7 dias é sempre correta em termos de instante absoluto.
 
-O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 38 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
+O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 39 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
 
 ### Nota Técnica: RRule e DST no Frontend (v3.4)
 
 A biblioteca `rrule` no frontend (`ClassForm.tsx`, `Agenda.tsx`) opera sobre instantes `Date` do JavaScript. Quando o **input parsing** for corrigido (v3.4, ver seção abaixo), o `dtstart` passado ao `RRule` será o instante UTC correto derivado do timezone do perfil. O `RRule` então gera ocorrências futuras como instantes UTC — sem drift de DST no armazenamento.
 
-O risco de drift de 1h na **apresentação** das datas geradas já está coberto pela migração dos 38 componentes (Passo 8). **Não requer refatoração imediata** da biblioteca `rrule`.
+O risco de drift de 1h na **apresentação** das datas geradas já está coberto pela migração dos 39 componentes (Passo 8). **Não requer refatoração imediata** da biblioteca `rrule`.
 
 ### REGRA CRÍTICA: Input Parsing no Formulário de Aulas (v3.4)
 
@@ -713,6 +784,7 @@ export const formatDate = (
 | `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
 | `src/components/Availability/AvailabilityManager.tsx` | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3) |
 | `src/components/ExpenseModal.tsx` | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil (v3.4) |
+| `src/components/RecurringClassActionModal.tsx` | 1x `Intl.DateTimeFormat('pt-BR', {...}).format(date)` sem opção `timeZone` — formata no fuso do browser em vez do perfil (v3.5) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -787,9 +859,14 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/ClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
 | `src/components/FutureClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
 | `src/components/Availability/AvailabilityManager.tsx` | Migrar 1x `moment().format()` para utilitário timezone-aware (v3.3) |
+| `src/components/ExpenseModal.tsx` | Migrar 1x `formatDate(new Date())` para utilitário timezone-aware (v3.4) |
+| `src/components/RecurringClassActionModal.tsx` | Migrar 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5) |
+| `supabase/functions/end-recurrence/index.ts` | Converter `endDate` para UTC no fuso do professor antes de `.gte('class_date', ...)` (v3.5) |
+| `supabase/functions/validate-monthly-subscriptions/index.ts` | Passar `p_timezone` à RPC e calcular mês/ano local (v3.5) |
 | `supabase/functions/get-teacher-availability/index.ts` | Retornar `teacherTimezone` na resposta (v3.3) |
 | `supabase/functions/materialize-virtual-class/index.ts` | Comparação de expiração timezone-aware (v3.3) |
 | `supabase/functions/request-class/index.ts` | Validar horário no fuso do professor (v3.3) |
+| `src/components/Settings/ProfileSettings.tsx` | Adicionar `<Select>` de timezone como escape hatch (v3.5) |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -816,6 +893,8 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Template expirado prematuramente em `materialize-virtual-class` | Baixa | Médio | Comparar com "agora" no fuso do professor (v3.3) |
 | Aula gravada no UTC do browser em vez do perfil | Média | Alto | `zonedTimeToUtc` no submit de formulários (v3.4) |
 | Cron billing falha e grupo de professores não cobrado | Baixa | Alto | Sweeper com `>= 1` + `NOT EXISTS` auto-corretivo (v3.4) |
+| `end-recurrence` apaga aulas do dia anterior ao comparar `'YYYY-MM-DD'` com `timestamptz` | Alta | Alto | Converter `endDate` para UTC no fuso do professor antes de `.gte()` (Passo 5.1.13, v3.5) |
+| `validate-monthly-subscriptions` testa mês errado em UTC | Baixa | Baixo | Calcular mês/ano local e passar `p_timezone` à RPC (v3.5) |
 
 ---
 
@@ -918,21 +997,24 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 38 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion + 1 v3.4 ExpenseModal)
+7. ⬜ Frontend: migrar 39 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion + 1 v3.4 ExpenseModal + 1 v3.5 RecurringClassActionModal)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` com timezone do destinatário (Passo 5.1.1, v3.3)
 11. ⬜ Backend: refatorar notificações restantes com timezone do destinatário (Passos 5.1.2–5.1.5, v3.3)
 12. ⬜ Backend: refatorar edge functions faltantes (Passos 5.1.6–5.1.10)
 13. ⬜ Backend: refatorar `generate-teacher-notifications` e `check-pending-boletos` (Passos 5.1.11–5.1.12)
-14. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
-15. ⬜ Backend: refatorar 7 RPCs de banco de dados (Passo 5.3)
-16. ⬜ Backend: `get-teacher-availability` retornar `teacherTimezone` (Passo 5.4, v3.3)
-17. ⬜ Backend: `materialize-virtual-class` comparação de expiração timezone-aware (Passo 5.5, v3.3)
-18. ⬜ Backend: `request-class` validar horário no fuso do professor (Passo 5.4, v3.3)
-19. ⬜ Cron job: alterar billing para horário (Passo 4)
-20. ⬜ Validar idempotência com timezone (Passo 6)
-21. ⬜ Testes end-to-end
+14. ⬜ Backend: refatorar `end-recurrence` com timezone do professor (Passo 5.1.13, v3.5)
+15. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
+16. ⬜ Backend: refatorar 7 RPCs de banco de dados (Passo 5.3)
+17. ⬜ Backend: atualizar `validate-monthly-subscriptions` para `p_timezone` (Passo 5.3, v3.5)
+18. ⬜ Backend: `get-teacher-availability` retornar `teacherTimezone` (Passo 5.4, v3.3)
+19. ⬜ Backend: `materialize-virtual-class` comparação de expiração timezone-aware (Passo 5.5, v3.3)
+20. ⬜ Backend: `request-class` validar horário no fuso do professor (Passo 5.4, v3.3)
+21. ⬜ Frontend: adicionar escape hatch de timezone em `ProfileSettings.tsx` (Passo 3, v3.5)
+22. ⬜ Cron job: alterar billing para horário (Passo 4)
+23. ⬜ Validar idempotência com timezone (Passo 6)
+24. ⬜ Testes end-to-end
 
 ---
 

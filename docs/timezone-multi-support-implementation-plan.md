@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.4 (expandida com edge functions de notificação + arquivos frontend adicionais + 7 edge functions faltantes + 7 RPCs de banco de dados)
+> **Versão**: 2.5 (v2.4 + 7 componentes frontend faltantes + nota sobre `formatDateBrazil` não utilizado)
 
 ---
 
@@ -563,8 +563,17 @@ export const formatDate = (
 | `src/pages/PerfilAluno.tsx` | ~8 chamadas (datas de aulas, cadastro, nascimento, vencimento) |
 | `src/pages/Financeiro.tsx` | `formatDate` local sem timezone |
 | `src/pages/Agenda.tsx` | `.toLocaleDateString()` para descrição de fatura |
+| `src/pages/Recibo.tsx` | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) — documento oficial |
+| `src/pages/Faturas.tsx` | 2x `format()` sem timezone (created_at, due_date) — bug de dia anterior em `due_date` |
+| `src/pages/Historico.tsx` | `formatDateTime` sem timezone (class_date timestamptz) |
+| `src/pages/StudentDashboard.tsx` | 2x `format()` sem timezone (class_date, starts_at) |
+| `src/components/Inbox/NotificationItem.tsx` | 2x `format()` sem timezone (invoice_due_date, class_date) |
+| `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
+| `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
+
+**Nota importante**: Nenhum componente frontend atualmente importa as funções de `timezone.ts` (`formatDateBrazil`, etc.). Todos usam `format()` do date-fns ou `toLocaleDateString` diretamente. A migração dos componentes é **pré-requisito** para que a refatoração de `timezone.ts` (Passo 8) tenha efeito prático.
 
 **Excluído da migração**: `src/pages/DevValidation.tsx` — usa `toLocaleTimeString` apenas para timestamps de log de debug. Não impacta utilizadores.
 
@@ -613,6 +622,13 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/pages/PerfilAluno.tsx` | Migrar ~8 chamadas de datas para utilitário |
 | `src/pages/Financeiro.tsx` | Migrar datas para utilitário |
 | `src/pages/Agenda.tsx` | Migrar datas para utilitário |
+| `src/pages/Recibo.tsx` | Migrar 4x `format()` para utilitário timezone-aware |
+| `src/pages/Faturas.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
+| `src/pages/Historico.tsx` | Migrar `formatDateTime` para utilitário timezone-aware |
+| `src/pages/StudentDashboard.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
+| `src/components/Inbox/NotificationItem.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
+| `src/pages/Subscription.tsx` | Migrar 3x `format()` para utilitário timezone-aware |
+| `src/components/PlanDowngradeSelectionModal.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -735,7 +751,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar componentes com datas hardcoded (Passo 8, tabela)
+7. ⬜ Frontend: migrar 22 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 adicionados na auditoria v2.5)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)

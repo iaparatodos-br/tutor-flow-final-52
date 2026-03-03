@@ -1,136 +1,86 @@
 
 
-# Lacunas em Edge Functions no Plano de Timezone (v2.1)
+# Atualizar Plano de Timezone v2.3: 2 Edge Functions Faltantes
 
 ## Resumo
 
-Encontrei **5 edge functions** com formatacao de datas que NAO estao listadas no plano `docs/timezone-multi-support-implementation-plan.md`.
+Apos varredura completa de todas as 75+ edge functions do projeto, encontrei **2 edge functions adicionais** que NAO estao no plano e possuem logica sensivel a timezone.
 
 ---
 
 ## Edge Functions Faltantes
 
-### 1. `send-class-report-notification/index.ts` (FALTANDO)
+### 1. `generate-teacher-notifications/index.ts` (FALTANDO)
 
-Linhas 174-177 — formata data/hora da aula no email de relatorio SEM timezone:
+Linha 192 — usa `new Date().toISOString().split('T')[0]` para determinar "hoje" e encontrar faturas vencidas:
 
 ```typescript
-const formattedDate = classDate.toLocaleDateString('pt-BR');
-const formattedTime = classDate.toLocaleTimeString('pt-BR', { 
-  hour: '2-digit', minute: '2-digit' 
-});
+const today = new Date().toISOString().split('T')[0]
+const { data: overdueInvoices2 } = await supabase
+  .from('invoices')
+  .select('id, teacher_id')
+  .eq('status', 'pendente')
+  .lt('due_date', today)
 ```
 
-**Impacto**: Emails de notificacao de relatorio de aula mostram data/hora no fuso do servidor (UTC), nao do professor.
+**Problema**: Identico ao `check-overdue-invoices` (ja no plano como Passo 5.2). Usa data UTC do servidor para comparar com `due_date` (campo `date`). Para professores em fusos ocidentais (ex: UTC-5), faturas podem ser classificadas como "vencidas" antes do fim do dia local.
 
-**Acao**: Buscar timezone do professor e passar como opcao `timeZone` na formatacao.
+**Acao**: Buscar o timezone do professor (disponivel via `teacher_id` na fatura) e calcular "hoje" no fuso local antes de comparar com `due_date`. Alternativamente, como o cron ja roda a cada hora, pode-se agrupar faturas por professor e calcular "hoje" por timezone.
+
+### 2. `check-pending-boletos/index.ts` (FALTANDO)
+
+Linhas 178-186 — calcula "amanha" para enviar lembretes de boleto usando UTC:
+
+```typescript
+const dueDate = new Date(subscription.boleto_due_date);
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+tomorrow.setHours(0, 0, 0, 0);
+const dueDateNormalized = new Date(dueDate);
+dueDateNormalized.setHours(0, 0, 0, 0);
+if (dueDateNormalized.getTime() === tomorrow.getTime()) {
+  // send reminder
+}
+```
+
+**Problema**: "Amanha" e calculado em UTC. Para um professor em UTC-5, as 22:00 locais do dia 1, `tomorrow` seria dia 3 em UTC (nao dia 2). O lembrete pode ser enviado no dia errado ou nao ser enviado.
+
+**Impacto**: Medio — afeta apenas o timing de lembretes de boleto, nao a cobranca em si.
+
+**Acao**: Buscar timezone do professor (via `subscription.user_id` -> `profiles.timezone`) e calcular "amanha" no fuso local.
 
 ---
 
-### 2. `send-boleto-subscription-notification/index.ts` (FALTANDO)
+## Edge Functions Confirmadas SEM Impacto (verificacao completa)
 
-Linha 34-39 — funcao helper `formatDate` formata datas SEM timezone:
+As seguintes edge functions usam `new Date()` APENAS para timestamps absolutos (`updated_at`, `created_at`, `toISOString()`) e NAO precisam de alteracao:
 
-```typescript
-const formatDate = (dateStr: string): string => {
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric'
-  });
-};
-```
-
-**Impacto**: Datas de vencimento de boleto nos emails de assinatura podem exibir dia errado para professores fora de BRT (especialmente `due_date` que e campo `date`).
-
-**Acao**: Parametrizar `formatDate` para receber timezone e buscar do professor.
-
----
-
-### 3. `process-cancellation/index.ts` (FALTANDO)
-
-Linha 470 — formata data da aula para descricao de fatura SEM timezone:
-
-```typescript
-const classDateFormatted = new Date(classData.class_date).toLocaleDateString('pt-BR');
-```
-
-**Impacto**: Descricoes de faturas de cancelamento podem mostrar data errada (dia anterior/posterior) dependendo do fuso do professor.
-
-**Acao**: Buscar timezone do professor (ja disponivel no contexto da funcao) e usar na formatacao.
-
----
-
-### 4. `process-orphan-cancellation-charges/index.ts` (FALTANDO)
-
-Linha 233 — formata data da aula para descricao de fatura SEM timezone:
-
-```typescript
-description: `Cancelamento - ${service?.name || 'Aula'} - ${new Date(participant.classData.class_date).toLocaleDateString('pt-BR')}`,
-```
-
-**Impacto**: Mesmo problema — descricoes de faturas orfas com data potencialmente incorreta.
-
-**Acao**: Buscar timezone do professor e usar na formatacao.
-
----
-
-### 5. `create-invoice/index.ts` (FALTANDO)
-
-Linha 352 — formata data da aula para descricao de item de fatura SEM timezone:
-
-```typescript
-let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`;
-```
-
-**Impacto**: Descricoes de itens de fatura manual com data potencialmente incorreta.
-
-**Acao**: O `teacher_id` ja esta disponivel no contexto. Buscar timezone e usar na formatacao.
-
----
-
-## Edge Functions JA no Plano (confirmadas presentes)
-
-- `automated-billing/index.ts` — 4 ocorrencias (OK, listado)
-- `send-class-reminders/index.ts` — hardcoded (OK, Passo 5.1.1)
-- `send-class-confirmation-notification/index.ts` — 2x hardcoded (OK, Passo 5.1.2)
-- `send-cancellation-notification/index.ts` — 1x hardcoded (OK, Passo 5.1.3)
-- `send-invoice-notification/index.ts` — 1x hardcoded (OK, Passo 5.1.4)
-- `send-class-request-notification/index.ts` — 2x hardcoded (OK, Passo 5.1.5)
-- `check-overdue-invoices/index.ts` — comparacao de datas (OK, Passo 5.2)
-- `create-teacher/index.ts` — aceitar timezone (OK, Passo 2)
-
-## Edge Functions Sem Impacto (confirmadas sem problema)
-
-- `process-expired-subscriptions` — sem formatacao de datas
-- `send-student-invitation` — sem formatacao de datas
-- `send-password-reset` — sem formatacao de datas
-- `send-material-shared-notification` — sem formatacao de datas
-- `handle-student-overage` — sem formatacao de datas
-- `generate-teacher-notifications` — usa `new Date()` para `thirtyDaysAgo`, mas e uma janela relativa de 30 dias que funciona em qualquer fuso (comparacao absoluta com `timestamptz`)
+- `process-expired-subscriptions` — `new Date()` apenas para log
+- `process-payment-failure-downgrade` — `new Date().toISOString()` apenas para `updated_at`
+- `handle-student-overage` — `new Date().toISOString()` apenas para `updated_at`
+- `auto-verify-pending-invoices` — `new Date().toISOString()` apenas para `updated_at`
+- `validate-monthly-subscriptions` — `new Date()` apenas para teste/log
+- `stripe-events-monitor` — `new Date()` apenas para calculo de janela relativa (dias atras)
+- `materialize-virtual-class` — compara `recurrence_end_date` (timestamptz) com `new Date()` — comparacao absoluta OK
+- `manage-future-class-exceptions` — gera datas de recorrencia — opera com timestamptz, sem formatacao para exibicao
+- `request-class` — `new Date(datetime).toISOString()` — conversao de input para timestamptz
+- `send-student-invitation` — `new Date().getFullYear()` — apenas para copyright no email
+- `get-teacher-availability` — `new Date().toISOString()` — filtro absoluto
+- `send-password-reset`, `send-material-shared-notification`, `end-recurrence`, etc. — sem uso de datas
 
 ---
 
 ## Alteracoes ao Documento
 
-Adicionar ao Passo 5.1 (ou criar 5.1.6 a 5.1.10):
-
-1. **5.1.6** `send-class-report-notification/index.ts` — 2 ocorrencias sem timezone
-2. **5.1.7** `send-boleto-subscription-notification/index.ts` — funcao `formatDate` sem timezone
-3. **5.1.8** `process-cancellation/index.ts` — 1 ocorrencia sem timezone (descricao de fatura)
-4. **5.1.9** `process-orphan-cancellation-charges/index.ts` — 1 ocorrencia sem timezone (descricao de fatura)
-5. **5.1.10** `create-invoice/index.ts` — 1 ocorrencia sem timezone (descricao de item)
-
-Adicionar a Secao 3 (Arquivos Impactados):
-
-| Arquivo | Tipo de Mudanca |
-|---|---|
-| `supabase/functions/send-class-report-notification/index.ts` | Adicionar timezone na formatacao de data/hora |
-| `supabase/functions/send-boleto-subscription-notification/index.ts` | Parametrizar `formatDate` com timezone |
-| `supabase/functions/process-cancellation/index.ts` | Usar timezone na descricao de fatura |
-| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descricao de fatura |
-| `supabase/functions/create-invoice/index.ts` | Usar timezone na descricao de item |
+1. **Adicionar Passo 5.1.11**: `generate-teacher-notifications/index.ts` — calculo de "hoje" para faturas vencidas deve considerar timezone do professor.
+2. **Adicionar Passo 5.1.12**: `check-pending-boletos/index.ts` — calculo de "amanha" para lembretes de boleto deve considerar timezone do professor.
+3. **Atualizar Secao 3 (Arquivos Impactados)**: Adicionar as 2 edge functions.
+4. **Atualizar checklist** (Secao 7): Adicionar item para estas 2 funcoes.
+5. **Atualizar versao** para 2.3.
 
 ---
 
 ## Arquivo a Modificar
 
-- `docs/timezone-multi-support-implementation-plan.md` (unico arquivo — atualizar para v2.2)
+- `docs/timezone-multi-support-implementation-plan.md` (unico arquivo)
+

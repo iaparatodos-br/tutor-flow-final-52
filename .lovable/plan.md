@@ -1,90 +1,67 @@
 
 
-# Furos no Frontend: Componentes Ausentes do Plano v2.4
+# Auditoria Frontend v2.5: 6 Componentes Adicionais Faltantes
 
-## Resumo da Auditoria
+## Resumo
 
-Cruzei todos os arquivos do frontend que formatam datas (`format()` do date-fns, `toLocaleDateString`, `toLocaleTimeString`) com a tabela do Passo 8 (linhas 549-566 do plano). Encontrei **7 arquivos com impacto real** que estao ausentes.
+Cruzei todos os arquivos `.tsx` do `src/` que usam `format(new Date(...))`, `toLocaleDateString` ou `toLocaleTimeString` com a tabela do Passo 8 (22 entradas atuais). Encontrei **6 arquivos com impacto real** ausentes do plano.
 
 ---
 
-## Arquivos Ausentes com ALTO Impacto
+## Arquivos Ausentes
 
-Estes renderizam campos `timestamptz` ou `date` vindos do banco de dados sem timezone explicito, podendo mostrar dia/hora errados:
+### 1. `src/components/MonthlySubscriptionsManager.tsx`
+- `format(new Date(student.starts_at), 'dd/MM/yyyy')` — campo `starts_at` e tipo `date` (sujeito ao bug de dia anterior)
+- **Criticidade**: Alta
 
-### 1. `src/pages/Recibo.tsx`
-- 4 ocorrencias de `format(new Date(...))` sem timezone
-- `invoice.created_at` (timestamptz), `invoice.due_date` (date), `invoice.updated_at` (timestamptz)
-- `format(new Date(), ...)` para "Recibo gerado em" -- usa hora local do browser, nao do professor
-- **Criticidade**: Alta -- recibo e documento oficial
-
-### 2. `src/pages/Faturas.tsx`
-- 2 ocorrencias: `invoice.created_at` e `invoice.due_date` com `format(new Date(...), 'dd/MM/yyyy')`
-- **Criticidade**: Alta -- lista de faturas, campo `due_date` e tipo `date` (sujeito ao bug de dia anterior)
-
-### 3. `src/pages/Historico.tsx`
-- Funcao `formatDateTime` com `format(new Date(dateString), "dd/MM/yyyy HH:mm")` sem timezone
-- Formata `class_date` (timestamptz) -- pode mostrar hora errada
+### 2. `src/components/PaymentOptionsCard.tsx`
+- `formatDate` com `format(new Date(dateString), "dd/MM/yyyy")` — formata datas de faturas
 - **Criticidade**: Media-alta
 
-### 4. `src/pages/StudentDashboard.tsx`
-- 2 ocorrencias: `cls.class_date` (timestamptz) e `activeSubscription.starts_at` (date)
-- Portal do aluno -- pode mostrar data de aula errada
-- **Criticidade**: Media-alta
-
-### 5. `src/components/Inbox/NotificationItem.tsx`
-- 2 ocorrencias: `notification.invoice_due_date` (date) e `notification.class_date` (timestamptz)
-- `format(new Date(...), 'dd/MM/yyyy')` sem timezone
+### 3. `src/components/PlanDowngradeWarningModal.tsx`
+- 3x `format(new Date(subscriptionEndDate), 'dd/MM/yyyy')` — `subscriptionEndDate` vem do Stripe (timestamptz)
 - **Criticidade**: Media
 
-### 6. `src/pages/Subscription.tsx`
-- 3 ocorrencias: `subscription.current_period_end` e `invoice.created` (timestamps do Stripe, em epoch seconds)
-- Ja usa `dateLocale` mas sem timezone explicito
-- **Criticidade**: Media (dados do Stripe, nao do banco local)
+### 4. `src/components/ArchivedDataViewer.tsx`
+- `toLocaleString` e `toLocaleDateString` em `formatDateTime`/`formatDate` locais — dados arquivados com timestamps
+- **Criticidade**: Media (dados historicos)
 
-### 7. `src/components/PlanDowngradeSelectionModal.tsx`
-- 1 ocorrencia: `entity.created_at` com `format(new Date(...), 'dd/MM/yyyy')`
-- **Criticidade**: Baixa (informacional)
+### 5. `src/components/DependentManager.tsx`
+- `format(new Date(dateStr), 'dd/MM/yyyy')` em `birth_date` — tipo `date` (dia anterior possivel)
+- **Criticidade**: Media
 
----
-
-## Arquivos Ausentes com BAIXO Impacto (nao recomendo adicionar ao plano)
-
-- `src/pages/Legal.tsx` -- `published_at` e data estatica, nao depende de timezone do usuario
-- `src/components/InlineDependentForm.tsx` -- `birth_date` e campo `date` inserido pelo usuario, exibe via `parse('yyyy-MM-dd')` (seguro)
-- `src/pages/DevValidation.tsx` -- ja excluido no plano (logs de debug)
+### 6. `src/components/ExpenseList.tsx`
+- `formatDate` com `format(new Date(dateString), 'dd/MM/yyyy')` em `expense_date` — tipo `date`
+- **Criticidade**: Media
 
 ---
 
-## Observacao: `formatDateBrazil` nao e usado
+## Excluidos (sem impacto real)
 
-As funcoes `formatDateBrazil`, `formatTimeBrazil` e `formatDateTimeBrazil` de `src/utils/timezone.ts` nao sao importadas por **nenhum** componente. Todos usam `format()` do date-fns ou `toLocaleDateString` diretamente. O plano preve refatora-las (Passo 8), mas sera necessario tambem **migrar os componentes para usa-las** -- caso contrario a refatoracao de `timezone.ts` nao tera efeito pratico.
+- `SecurityMonitoringDashboard.tsx` — painel admin/debug, nao afeta usuarios finais
+- `CreateInvoiceModal.tsx`, `ClassForm.tsx`, `ExpenseModal.tsx`, `AvailabilityManager.tsx`, `DependentFormModal.tsx` — usam `format(parse(..., 'yyyy-MM-dd', new Date()))` em campos de input do usuario (seguro, sem dados do banco)
+- `StudentSubscriptionSelect.tsx` — `format(new Date(), 'yyyy-MM-dd')` para default de campo (data local do browser e aceitavel para valor inicial)
 
 ---
 
 ## Alteracoes Propostas ao Documento
 
-### 1. Tabela do Passo 8 (linha 549-566) -- Adicionar 7 linhas
+### 1. Tabela do Passo 8 — Adicionar 6 linhas
 
 | Arquivo | Problema |
 |---|---|
-| `src/pages/Recibo.tsx` | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) -- documento oficial |
-| `src/pages/Faturas.tsx` | 2x `format()` sem timezone (created_at, due_date) -- bug de dia anterior em `due_date` |
-| `src/pages/Historico.tsx` | `formatDateTime` sem timezone (class_date timestamptz) |
-| `src/pages/StudentDashboard.tsx` | 2x `format()` sem timezone (class_date, starts_at) |
-| `src/components/Inbox/NotificationItem.tsx` | 2x `format()` sem timezone (invoice_due_date, class_date) |
-| `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
-| `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
+| `src/components/MonthlySubscriptionsManager.tsx` | 1x `format()` sem timezone (`starts_at` tipo `date` — bug de dia anterior) |
+| `src/components/PaymentOptionsCard.tsx` | 1x `format()` sem timezone (datas de faturas) |
+| `src/components/PlanDowngradeWarningModal.tsx` | 3x `format()` sem timezone (`subscriptionEndDate` timestamptz) |
+| `src/components/ArchivedDataViewer.tsx` | 2x `toLocaleString`/`toLocaleDateString` sem timezone (dados arquivados) |
+| `src/components/DependentManager.tsx` | 1x `format()` sem timezone (`birth_date` tipo `date`) |
+| `src/components/ExpenseList.tsx` | 1x `format()` sem timezone (`expense_date` tipo `date`) |
 
-### 2. Secao 3 (Arquivos Impactados, linha 573) -- Adicionar 7 linhas
+### 2. Secao 3 (Arquivos Impactados) — Adicionar 6 linhas
 
-Adicionar os mesmos 7 arquivos na tabela de arquivos impactados com tipo "Migrar datas para utilitario".
+Mesmos 6 arquivos com tipo "Migrar datas para utilitario timezone-aware".
 
-### 3. Checklist Secao 8 (item 7, linha 738) -- Atualizar contagem
+### 3. Checklist item 7 — Atualizar contagem
 
-Atualizar a descricao do item 7 para refletir que agora sao **22 componentes frontend** (15 existentes + 7 novos) a migrar.
-
-### 4. Nota sobre `formatDateBrazil` nao utilizado
-
-Adicionar uma nota ao Passo 8 alertando que nenhum componente importa as funcoes atuais de `timezone.ts`, portanto a migracao dos componentes e **pre-requisito** para que a refatoracao tenha efeito.
+De **22 componentes** para **28 componentes** (22 + 6).
 

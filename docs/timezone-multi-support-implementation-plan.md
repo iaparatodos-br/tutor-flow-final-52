@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.6.2 (v3.6.1 + revisão Gemini #6: adicionado `CreateInvoiceModal.tsx` à tabela de migração do Passo 8 — 40 componentes)
+> **Versão**: 3.6.3 (v3.6.2 + correção snippet `isTodayTz` startOfDay, nota `validate-payment-routing` dueDate, nota `Recibo.tsx` parseISO para campo date, contagem 39→40, correção "professor"→"aluno" em send-class-reminders)
 
 ---
 
@@ -371,7 +371,8 @@ let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_d
 
 **Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação. Além da descrição, corrigir fallback `dueDate` (linha 199) para usar timezone do professor via `Intl.DateTimeFormat('en-CA', { timeZone })` em vez de `new Date(Date.now() + ...).toISOString().split('T')[0]`.
 
-#### 5.1.11 `generate-teacher-notifications/index.ts`
+> **Nota v3.6.3**: `validate-payment-routing/index.ts` (linha 241) também usa `new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]` para `due_date` de teste. Mesma vulnerabilidade, mas impacto baixo (validação interna, não persiste dados). Corrigir junto com o Passo 5.1.10.
+
 
 Linha 192 — calcula "hoje" em UTC para encontrar faturas vencidas:
 
@@ -818,7 +819,7 @@ Estas funções operam no timezone do browser, não do perfil. **Obrigatório** 
 
 ```typescript
 import { toZonedTime } from 'date-fns-tz';
-import { startOfMonth as dfStartOfMonth } from 'date-fns';
+import { startOfMonth as dfStartOfMonth, startOfDay as dfStartOfDay } from 'date-fns';
 
 export const startOfMonthTz = (date: Date, timezone: string): Date => {
   const zonedDate = toZonedTime(date, timezone);
@@ -828,7 +829,7 @@ export const startOfMonthTz = (date: Date, timezone: string): Date => {
 export const isTodayTz = (date: Date, timezone: string): boolean => {
   const zonedNow = toZonedTime(new Date(), timezone);
   const zonedDate = toZonedTime(date, timezone);
-  return dfStartOfMonth(zonedNow).getTime() === dfStartOfMonth(zonedDate).getTime();
+  return dfStartOfDay(zonedNow).getTime() === dfStartOfDay(zonedDate).getTime();
 };
 ```
 
@@ -853,7 +854,7 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 | `supabase/functions/create-teacher/index.ts` | Aceitar campo timezone |
 | `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + **5** `toLocaleDateString` internos (inclui descrição de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939) + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor |
 | `supabase/functions/check-overdue-invoices/index.ts` | Comparação de due_date timezone-aware |
-| `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do professor |
+| `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do destinatário (aluno) |
 | `supabase/functions/send-class-confirmation-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
 | `supabase/functions/send-cancellation-notification/index.ts` | Substituir 1x `timeZone: 'America/Sao_Paulo'` hardcoded |
 | `supabase/functions/send-invoice-notification/index.ts` | Substituir 1x `timeZone: "America/Sao_Paulo"` hardcoded + tratar `date` offset |
@@ -888,7 +889,7 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 | `src/pages/PerfilAluno.tsx` | Migrar ~8 chamadas de datas para utilitário |
 | `src/pages/Financeiro.tsx` | Migrar datas para utilitário |
 | `src/pages/Agenda.tsx` | Migrar datas para utilitário |
-| `src/pages/Recibo.tsx` | Migrar 4x `format()` para utilitário timezone-aware |
+| `src/pages/Recibo.tsx` | Migrar 4x `format()` para utilitário timezone-aware. **ATENÇÃO**: `due_date` é campo `date` — usar `parseISO(invoice.due_date)` em vez de `new Date(invoice.due_date)` para evitar off-by-one (regra v3.6) |
 | `src/pages/Faturas.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
 | `src/pages/Historico.tsx` | Migrar `formatDateTime` para utilitário timezone-aware |
 | `src/pages/StudentDashboard.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
@@ -1046,7 +1047,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 39 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion + 1 v3.4 ExpenseModal + 1 v3.5 RecurringClassActionModal)
+7. ⬜ Frontend: migrar 40 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion + 1 v3.4 ExpenseModal + 1 v3.5 RecurringClassActionModal + 1 v3.6.2 CreateInvoiceModal)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` com timezone do destinatário (Passo 5.1.1, v3.3)

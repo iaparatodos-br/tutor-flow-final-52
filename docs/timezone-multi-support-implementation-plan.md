@@ -371,7 +371,8 @@ let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_d
 
 **Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação. Além da descrição, corrigir fallback `dueDate` (linha 199) para usar timezone do professor via `Intl.DateTimeFormat('en-CA', { timeZone })` em vez de `new Date(Date.now() + ...).toISOString().split('T')[0]`.
 
-#### 5.1.11 `generate-teacher-notifications/index.ts`
+> **Nota v3.6.3**: `validate-payment-routing/index.ts` (linha 241) também usa `new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]` para `due_date` de teste. Mesma vulnerabilidade, mas impacto baixo (validação interna, não persiste dados). Corrigir junto com o Passo 5.1.10.
+
 
 Linha 192 — calcula "hoje" em UTC para encontrar faturas vencidas:
 

@@ -1,131 +1,51 @@
 
 
-# Auditoria Final de Queries v3.2: 2 Gaps Menores Encontrados
+# Auditoria v3.2 — 1 Componente Frontend Ausente
 
-## Resumo
+## Resultado
 
-Cruzamento completo de todas as queries e calculos propostos no plano v3.2 com o codigo real. O plano esta **substancialmente correto**. Encontrei **2 gaps menores** que nao alteram a arquitetura mas devem ser corrigidos no documento para evitar que sejam esquecidos na implementacao.
-
----
-
-## Gap 1: `automated-billing` tem 5 `toLocaleDateString`, nao 4
-
-### Onde o plano diz
-
-Secao 3 (Arquivos Impactados), linha 618:
-> "4 `toLocaleDateString` internos"
-
-### Ocorrencias reais no codigo
-
-| Linha | Codigo | Contexto |
-|---|---|---|
-| 412 | `new Date(classItem.class_date).toLocaleDateString('pt-BR')` | Descricao de aula concluida (billing tradicional) |
-| 472 | `now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })` | Descricao geral da fatura |
-| 696 | `cycleStart.toLocaleDateString('pt-BR')` | Descricao do ciclo de mensalidade |
-| 697 | `cycleEnd.toLocaleDateString('pt-BR')` | Descricao do ciclo de mensalidade |
-| **939** | `new Date(classInfo.class_date).toLocaleDateString('pt-BR')` | **Descricao de aula avulsa fora do ciclo (processMonthlySubscriptionBilling)** |
-
-A 5a ocorrencia (linha 939) esta dentro da funcao `processMonthlySubscriptionBilling`, na secao de aulas fora do ciclo de faturamento. Gera descricoes como "Aula avulsa (anterior a mensalidade) - Servico - 15/01/2026".
-
-### Impacto
-
-Baixo -- afeta apenas texto descritivo em faturas. Mas se nao for corrigido, a data na descricao pode mostrar o dia errado para professores em fusos positivos.
-
-### Acao
-
-Atualizar a contagem na Secao 3 de "4 `toLocaleDateString` internos" para "**5** `toLocaleDateString` internos" e mencionar explicitamente a ocorrencia na linha 939.
+O plano v3.2 está completo para backend (edge functions, RPCs, cron jobs). Encontrei **1 componente frontend ausente** da tabela de migração.
 
 ---
 
-## Gap 2: `check-overdue-invoices` -- lembretes "proximos ao vencimento" tambem usam UTC
+## Gap: `src/components/Calendar/CalendarView.tsx` ausente da tabela do Passo 8
 
-### Onde o plano cobre
+Este componente usa `moment().format()` em ~5 locais para formatar datas (linhas 185, 261, 302, 346):
 
-Passo 5.2 discute a comparacao de faturas **vencidas** (overdue):
 ```typescript
-.lt("due_date", now.toISOString().split('T')[0])
+moment(start).format('HH:mm')
+moment(selectedEvent.start).format('dddd, DD/MM/YYYY')
 ```
 
-### O que falta
+`moment()` usa o timezone local do browser por padrão, o que é o comportamento desejado pela regra do plano ("cada componente usa o timezone do utilizador logado"). Porém, o componente deveria ser listado na tabela de migração para ser migrado das funções `moment` para o utilitário `timezone.ts` refatorado — consistente com o objetivo de substituição progressiva do `moment.js` mencionado no Passo 7.
 
-A mesma funcao tambem calcula faturas **proximas ao vencimento** (linhas 115-116):
-```typescript
-const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-.gte("due_date", now.toISOString().split('T')[0])
-.lte("due_date", threeDaysFromNow.toISOString().split('T')[0])
-```
+**Ação**: Adicionar à tabela do Passo 8 (linha ~568) e à Seção 3 (linha ~641):
 
-`now` e `threeDaysFromNow` sao calculados em UTC. Para um professor em UTC+9 as 10:00 local do dia 15, `now.toISOString().split('T')[0]` = dia 15 (01:00 UTC). Mas para um professor em UTC-5 as 22:00 local do dia 15, `now.toISOString().split('T')[0]` = dia 16 (03:00 UTC). O lembrete de "proximo ao vencimento" pode ser enviado 1 dia antes ou depois do esperado.
-
-### Impacto
-
-Medio -- afeta o timing de lembretes de pagamento (pode enviar lembrete cedo demais ou tarde demais), mas nao afeta cobranca.
-
-### Acao
-
-No Passo 5.2, alem da comparacao de overdue, adicionar nota sobre a comparacao de "upcoming" (3 dias) que precisa do mesmo tratamento timezone-aware.
+| Arquivo | Problema |
+|---|---|
+| `src/components/Calendar/CalendarView.tsx` | ~5x `moment().format()` sem timezone explícito — migrar para utilitário timezone-aware |
 
 ---
 
-## Verificacoes Realizadas (Sem Gaps Adicionais)
+## Componentes Verificados e Confirmados SEM Gap
 
-### Edge Functions -- Queries confirmadas corretas
+| Componente | Razão para exclusão |
+|---|---|
+| `ExpenseModal.tsx` | Usa `format(parse('yyyy-MM-dd', ...))` — apenas reformatação de string de data, sem conversão de timezone |
+| `ClassForm/ClassForm.tsx` | Mesmo padrão de `format(parse(...))` — sem impacto de timezone |
+| `SecurityMonitoringDashboard.tsx` | Componente admin/debug, similar ao `DevValidation.tsx` já excluído |
 
-| Edge Function | Ocorrencias no plano | Verificacao |
-|---|---|---|
-| `send-class-reminders` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 168, 173) |
-| `send-class-confirmation-notification` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 110, 115) |
-| `send-cancellation-notification` | 1x `timeZone: 'America/Sao_Paulo'` | Confirmado (linha 161) |
-| `send-invoice-notification` | 1x `timeZone: "America/Sao_Paulo"` | Confirmado (linha 194) |
-| `send-class-request-notification` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 105, 110) |
-| `send-class-report-notification` | 2x sem timezone | Confirmado (linhas 174-175) |
-| `send-boleto-subscription-notification` | `formatDate` sem timezone | Confirmado (linhas 34-37) |
-| `process-cancellation` | 1x sem timezone | Confirmado (linha 470) |
-| `process-orphan-cancellation-charges` | 1x descricao + dueDate | Confirmado (linhas 233, 252) |
-| `create-invoice` | 1x descricao + dueDate fallback | Confirmado (linhas 352, 199) |
-| `generate-teacher-notifications` | `today` UTC | Confirmado (linha 192) |
-| `check-pending-boletos` | `tomorrow` UTC | Confirmado (linhas 179-186) |
+## Verificações de Backend Confirmadas (Sem Gaps)
 
-### `due_date` com `toISOString().split('T')[0]` -- 3 ocorrencias de negocio confirmadas
-
-| Arquivo | Linha | Contexto |
-|---|---|---|
-| `automated-billing` | 499 | Billing tradicional |
-| `automated-billing` | 823 | Mensalidade |
-| `automated-billing` | 961 | Aulas fora do ciclo |
-| `process-orphan-cancellation-charges` | 252 | Orphan charges |
-| `create-invoice` | 199 | Fallback manual |
-
-**Nota**: Linhas 700-702 e 774 do `automated-billing` tambem usam `toISOString().split('T')[0]` mas apenas em **log messages** (nao em dados gravados no banco). Nao precisam de correcao.
-
-### `validate-payment-routing` -- Confirmado sem impacto
-
-Linha 241 usa `toISOString().split('T')[0]` para um `due_date` de teste. E uma funcao de validacao/debug, nao de producao. Corretamente excluida do plano.
-
-### RPCs -- Todas confirmadas corretas
-
-As 7 RPCs listadas no Passo 5.3 cobrem todos os casos identificados. A arvore de propagacao de `p_timezone` esta correta.
-
-### RPC `get_relationships_to_bill_now` -- Query confirmada correta
-
-A query com `EXTRACT(DAY/HOUR FROM now() AT TIME ZONE tz)` e o filtro por hora=1 estao logicamente corretos.
+- 11 edge functions com formatação de data: todas cobertas (5.1.1–5.1.12)
+- 5x `toISOString().split('T')[0]` de negócio: todas cobertas
+- 7 RPCs com `CURRENT_DATE`: todas cobertas (5.3.1–5.3.7)
+- `check-overdue-invoices` overdue + upcoming: coberto (5.2 + nota)
+- `validate-payment-routing`: corretamente excluído (debug)
 
 ---
 
-## Alteracoes Propostas ao Documento
+## Alteração Proposta
 
-### 1. Secao 3 (Arquivos Impactados) -- Corrigir contagem
-
-**Antes**: "4 `toLocaleDateString` internos"
-**Depois**: "**5** `toLocaleDateString` internos (inclui descricao de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939)"
-
-### 2. Passo 5.2 -- Adicionar nota sobre lembretes "upcoming"
-
-Apos o bloco de codigo do Passo 5.2 (Opcao A/B), adicionar:
-
-> **Nota**: A mesma funcao tambem calcula faturas proximas ao vencimento (3 dias) usando `threeDaysFromNow.toISOString().split('T')[0]` (linhas 115-116). Esta comparacao precisa do mesmo tratamento timezone-aware para que os lembretes sejam enviados no dia correto no fuso do professor.
-
-### 3. Versao do documento
-
-Manter em **v3.2** (sao correcoes de documentacao, nao novos gaps de arquitetura). Ou atualizar para **v3.2.1** se preferir rastreabilidade granular.
+Adicionar `CalendarView.tsx` à tabela do Passo 8 e à Seção 3. Manter versão **v3.2** (correção menor de documentação).
 

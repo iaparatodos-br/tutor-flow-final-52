@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 3.0 (v2.9 + StudentSubscriptionSelect + ClassExceptionForm + FutureClassExceptionForm)
+> **Versão**: 3.1 (v3.0 + isOverdue logic em Financeiro.tsx e PaymentOptionsCard.tsx)
 
 ---
 
@@ -575,7 +575,7 @@ export const formatDate = (
 | `src/pages/Materiais.tsx` | `.toLocaleDateString()` sem timezone |
 | `src/pages/MeusMateriais.tsx` | `.toLocaleDateString()` sem locale/timezone |
 | `src/pages/PerfilAluno.tsx` | ~8 chamadas (datas de aulas, cadastro, nascimento, vencimento) |
-| `src/pages/Financeiro.tsx` | `formatDate` local sem timezone + cálculo de `currentMonth` com `new Date().toISOString()` sem timezone (resumo de despesas pode mostrar mês errado) |
+| `src/pages/Financeiro.tsx` | `formatDate` local sem timezone + cálculo de `currentMonth` com `new Date().toISOString()` sem timezone (resumo de despesas pode mostrar mês errado) + função `isOverdue()` compara `due_date` (campo `date`) com data local sem timezone do perfil (pode marcar fatura como vencida 1 dia antes) |
 | `src/pages/Agenda.tsx` | `.toLocaleDateString()` para descrição de fatura |
 | `src/pages/Recibo.tsx` | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) — documento oficial |
 | `src/pages/Faturas.tsx` | 2x `format()` sem timezone (created_at, due_date) — bug de dia anterior em `due_date` |
@@ -586,7 +586,7 @@ export const formatDate = (
 | `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
 | `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
 | `src/components/MonthlySubscriptionsManager.tsx` | 1x `format()` sem timezone (`starts_at` tipo `date` — bug de dia anterior) |
-| `src/components/PaymentOptionsCard.tsx` | 1x `format()` sem timezone (datas de faturas) |
+| `src/components/PaymentOptionsCard.tsx` | 1x `format()` sem timezone (datas de faturas) + `isOverdue` compara `due_date` com `new Date()` sem timezone (pode marcar fatura como vencida 1 dia antes) |
 | `src/components/PlanDowngradeWarningModal.tsx` | 3x `format()` sem timezone (`subscriptionEndDate` timestamptz) |
 | `src/components/ArchivedDataViewer.tsx` | 2x `toLocaleString`/`toLocaleDateString` sem timezone (dados arquivados) |
 | `src/components/DependentManager.tsx` | 1x `format()` sem timezone (`birth_date` tipo `date`) |

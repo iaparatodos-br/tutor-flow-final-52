@@ -1,8 +1,8 @@
 # Plano de Implementação: Suporte a Múltiplos Fusos Horários
 
 > **Status**: Pendente de implementação  
-> **Data**: 2026-03-02  
-> **Versão**: 3.3 (v3.2 + revisão Gemini: timezone do destinatário em emails, get-teacher-availability, AvailabilityManager.tsx, materialize-virtual-class)
+> **Data**: 2026-03-03  
+> **Versão**: 3.4 (v3.3 + revisão Gemini #2: input parsing com `zonedTimeToUtc`, sweeper auto-corretivo `>= 1` + `NOT EXISTS`, nota RRule/DST)
 
 ---
 
@@ -169,11 +169,18 @@ AS $$
   JOIN profiles p ON p.id = tsr.teacher_id
   WHERE tsr.is_active = true
     AND tsr.billing_day = EXTRACT(DAY FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo')))
-    AND EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo'))) = 1
+    AND EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo'))) >= 1
+    AND NOT EXISTS (
+      SELECT 1 FROM invoices i 
+      WHERE i.teacher_id = tsr.teacher_id 
+        AND i.student_id = tsr.student_id
+        AND i.invoice_type = 'monthly'
+        AND i.created_at >= ((now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo'))::date)::timestamptz
+    )
 $$;
 ```
 
-**Lógica**: Retorna apenas os relacionamentos cujo professor está na hora `01:00` local. A maioria das execuções horárias retorna 0 registros. **Inclui o timezone do professor** para uso no cálculo de `getBillingCycleDates`.
+**Lógica**: Retorna relacionamentos cujo professor já passou da `01:00` local **e** que ainda não foram cobrados "hoje local". Isso torna o sweeper **auto-corretivo**: se o cron falhar às 01:00 UTC, a execução das 02:00 recupera automaticamente. A cláusula `NOT EXISTS` garante idempotência na própria query SQL. **Inclui o timezone do professor** para uso no cálculo de `getBillingCycleDates`.
 
 #### Alterações na Edge Function
 
@@ -526,6 +533,25 @@ A aritmética de `setDate(getDate() + 7)` em `manage-future-class-exceptions/ind
 
 O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 37 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
 
+### Nota Técnica: RRule e DST no Frontend (v3.4)
+
+A biblioteca `rrule` no frontend (`ClassForm.tsx`, `Agenda.tsx`) opera sobre instantes `Date` do JavaScript. Quando o **input parsing** for corrigido (v3.4, ver seção abaixo), o `dtstart` passado ao `RRule` será o instante UTC correto derivado do timezone do perfil. O `RRule` então gera ocorrências futuras como instantes UTC — sem drift de DST no armazenamento.
+
+O risco de drift de 1h na **apresentação** das datas geradas já está coberto pela migração dos 37 componentes (Passo 8). **Não requer refatoração imediata** da biblioteca `rrule`.
+
+### REGRA CRÍTICA: Input Parsing no Formulário de Aulas (v3.4)
+
+Ao submeter datas de formulários, o `new Date(\`${date}T${time}\`)` usa o timezone do browser. Se o utilizador estiver fisicamente num fuso diferente do perfil (ex: professor brasileiro viajando pela Europa que recusou a atualização do `useTimezoneSync`), a aula será gravada no horário errado.
+
+**Correção**: Usar `zonedTimeToUtc` do `date-fns-tz` para forçar o parse no timezone do perfil:
+
+```typescript
+import { zonedTimeToUtc } from 'date-fns-tz';
+const classDateTime = zonedTimeToUtc(`${formData.class_date}T${formData.time}`, profile.timezone);
+```
+
+**Aplicar em**: `ClassForm.tsx` (linha 148), `Agenda.tsx` (linha 1424), `ClassExceptionForm.tsx`, `FutureClassExceptionForm.tsx`.
+
 ---
 
 ### Passo 5.2: Refatorar `check-overdue-invoices` (Timezone na Comparação de Due Dates)
@@ -787,6 +813,8 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Aluno agenda aula fora do expediente do professor (fusos diferentes) | Média | Alto | `get-teacher-availability` retorna `teacherTimezone`; frontend converte `working_hours` para fuso do aluno (v3.3) |
 | Email de lembrete com horário no fuso errado para aluno | Alta | Alto | Usar timezone do destinatário (aluno), não do professor (v3.3) |
 | Template expirado prematuramente em `materialize-virtual-class` | Baixa | Médio | Comparar com "agora" no fuso do professor (v3.3) |
+| Aula gravada no UTC do browser em vez do perfil | Média | Alto | `zonedTimeToUtc` no submit de formulários (v3.4) |
+| Cron billing falha e grupo de professores não cobrado | Baixa | Alto | Sweeper com `>= 1` + `NOT EXISTS` auto-corretivo (v3.4) |
 
 ---
 

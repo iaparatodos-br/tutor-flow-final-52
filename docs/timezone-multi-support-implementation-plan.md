@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.2 (expandida com edge functions de notificação + arquivos frontend adicionais + 5 edge functions faltantes)
+> **Versão**: 2.3 (expandida com edge functions de notificação + arquivos frontend adicionais + 7 edge functions faltantes)
 
 ---
 
@@ -317,6 +317,44 @@ let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_d
 
 **Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação.
 
+#### 5.1.11 `generate-teacher-notifications/index.ts`
+
+Linha 192 — calcula "hoje" em UTC para encontrar faturas vencidas:
+
+```typescript
+const today = new Date().toISOString().split('T')[0]
+const { data: overdueInvoices2 } = await supabase
+  .from('invoices')
+  .select('id, teacher_id')
+  .eq('status', 'pendente')
+  .lt('due_date', today)
+```
+
+**Problema**: Idêntico ao `check-overdue-invoices` (Passo 5.2). Usa data UTC do servidor para comparar com `due_date` (campo `date`). Para professores em fusos ocidentais (ex: UTC-5), faturas podem ser classificadas como "vencidas" antes do fim do dia local.
+
+**Ação**: Agrupar faturas por professor, buscar timezone via `teacher_id`, e calcular "hoje" no fuso local antes de comparar com `due_date`.
+
+#### 5.1.12 `check-pending-boletos/index.ts`
+
+Linhas 178-186 — calcula "amanhã" em UTC para enviar lembretes de boleto:
+
+```typescript
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+tomorrow.setHours(0, 0, 0, 0);
+const dueDateNormalized = new Date(dueDate);
+dueDateNormalized.setHours(0, 0, 0, 0);
+if (dueDateNormalized.getTime() === tomorrow.getTime()) {
+  // send reminder
+}
+```
+
+**Problema**: "Amanhã" é calculado em UTC. Para um professor em UTC-5, às 22:00 locais do dia 1, `tomorrow` seria dia 3 em UTC (não dia 2). O lembrete pode ser enviado no dia errado ou não ser enviado.
+
+**Impacto**: Médio — afeta apenas o timing de lembretes de boleto, não a cobrança em si.
+
+**Ação**: Buscar timezone do professor (via `subscription.user_id` → `profiles.timezone`) e calcular "amanhã" no fuso local.
+
 ---
 
 ### Passo 5.2: Refatorar `check-overdue-invoices` (Timezone na Comparação de Due Dates)
@@ -480,6 +518,8 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `supabase/functions/process-cancellation/index.ts` | Usar timezone na descrição de fatura |
 | `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descrição de fatura |
 | `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item |
+| `supabase/functions/generate-teacher-notifications/index.ts` | Cálculo de "hoje" timezone-aware para faturas vencidas |
+| `supabase/functions/check-pending-boletos/index.ts` | Cálculo de "amanhã" timezone-aware para lembretes de boleto |
 | `src/contexts/AuthContext.tsx` | Interface Profile + signUp payload |
 | `src/contexts/ProfileContext.tsx` | Interface Profile com campo `timezone` |
 | `src/hooks/useTimezoneSync.ts` | **Novo** — hook de sincronização |
@@ -628,7 +668,8 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)
 11. ⬜ Backend: refatorar notificações restantes (Passos 5.1.2–5.1.5)
 12. ⬜ Backend: refatorar edge functions faltantes (Passos 5.1.6–5.1.10)
-13. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
+13. ⬜ Backend: refatorar `generate-teacher-notifications` e `check-pending-boletos` (Passos 5.1.11–5.1.12)
+14. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
 13. ⬜ Cron job: alterar billing para horário (Passo 4)
 13. ⬜ Validar idempotência com timezone (Passo 6)
 14. ⬜ Testes end-to-end

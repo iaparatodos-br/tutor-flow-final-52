@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 3.2 (v3.1 + due_date calculation fix em 3 edge functions)
+> **Versão**: 3.3 (v3.2 + revisão Gemini: timezone do destinatário em emails, get-teacher-availability, AvailabilityManager.tsx, materialize-virtual-class)
 
 ---
 
@@ -211,7 +211,23 @@ function getBillingCycleDates(billingDay: number, timezone: string): { cycleStar
 
 ### Passo 5.1: Refatorar Edge Functions de Notificação (Timezone nos Emails)
 
-Todas as edge functions que formatam datas em emails usam `timeZone: "America/Sao_Paulo"` hardcoded. Cada uma precisa buscar o timezone do professor via JOIN em `profiles` antes de formatar.
+Todas as edge functions que formatam datas em emails usam `timeZone: "America/Sao_Paulo"` hardcoded. Cada uma precisa buscar o timezone do **destinatário** via JOIN em `profiles` antes de formatar.
+
+#### REGRA CRÍTICA: Timezone do Destinatário (v3.3)
+
+- **Email para o professor** → usar `profiles.timezone` do professor.
+- **Email para o aluno/responsável** → usar `profiles.timezone` do aluno.
+- **Boa prática UX**: Sempre incluir acrônimo do fuso no corpo do email (ex: "15:00 BRT") via opção `timeZoneName: 'short'` no `Intl.DateTimeFormat`. Elimina ambiguidade quando professor e aluno estão em fusos diferentes.
+
+```typescript
+// Exemplo de formatação com acrônimo de fuso
+const formattedTime = classDateTime.toLocaleTimeString("pt-BR", {
+  timeZone: recipientTimezone, // timezone do DESTINATÁRIO
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZoneName: 'short', // ex: "15:00 BRT"
+});
+```
 
 #### 5.1.1 `send-class-reminders/index.ts`
 
@@ -223,7 +239,7 @@ const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
 });
 ```
 
-**Ação**: Buscar timezone do professor na query de profiles (já é feita na linha 73-77). Substituir pelo timezone dinâmico.
+**Ação**: Email de lembrete vai para o **aluno**. Buscar timezone do aluno via `student_id` → `profiles.timezone`. Substituir pelo timezone do destinatário (aluno).
 
 **Impacto no cron schedule**: Mínimo — a busca de aulas nas "próximas 24h" usa `timestamptz` e a comparação funciona em qualquer fuso. Apenas a formatação nos emails precisa de ajuste.
 
@@ -231,25 +247,25 @@ const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
 
 2 ocorrências de `timeZone: "America/Sao_Paulo"` na formatação de data/hora da aula confirmada.
 
-**Ação**: Buscar timezone do professor via query de profiles e substituir.
+**Ação**: Email de confirmação pode ir para professor e/ou aluno. Buscar timezone do **destinatário** e usar na formatação.
 
 #### 5.1.3 `send-cancellation-notification/index.ts`
 
 1 ocorrência de `timeZone: 'America/Sao_Paulo'` na formatação de data/hora do cancelamento.
 
-**Ação**: Buscar timezone do professor via query de profiles e substituir.
+**Ação**: Email de cancelamento pode ir para professor e/ou aluno. Buscar timezone do **destinatário** e usar na formatação.
 
 #### 5.1.4 `send-invoice-notification/index.ts`
 
 1 ocorrência de `timeZone: "America/Sao_Paulo"` na formatação de `due_date`.
 
-**Ação**: Buscar timezone do professor via query de profiles e substituir. **Atenção especial**: `due_date` é campo `date` (sem hora) — ao formatar com timezone, usar a técnica de "ignorar offset" para evitar o bug de exibição de dia anterior (ver memory constraint `database-date-timezone-rendering`).
+**Ação**: Email de fatura vai para o **aluno**. Buscar timezone do aluno via `student_id` → `profiles.timezone`. **Atenção especial**: `due_date` é campo `date` (sem hora) — ao formatar com timezone, usar a técnica de "ignorar offset" para evitar o bug de exibição de dia anterior (ver memory constraint `database-date-timezone-rendering`).
 
 #### 5.1.5 `send-class-request-notification/index.ts`
 
 2 ocorrências de `timeZone: "America/Sao_Paulo"` na formatação de data/hora da aula solicitada.
 
-**Ação**: Buscar timezone do professor via query de profiles e substituir.
+**Ação**: Email de solicitação de aula vai para o **professor**. Buscar timezone do professor e usar na formatação.
 
 #### 5.1.6 `send-class-report-notification/index.ts`
 
@@ -264,7 +280,7 @@ const formattedTime = classDate.toLocaleTimeString('pt-BR', {
 
 **Impacto**: Emails de notificação de relatório de aula mostram data/hora no fuso do servidor (UTC), não do professor.
 
-**Ação**: Buscar timezone do professor e passar como opção `timeZone` na formatação.
+**Ação**: Email de relatório vai para o **aluno**. Buscar timezone do aluno via `student_id` → `profiles.timezone` e usar na formatação.
 
 #### 5.1.7 `send-boleto-subscription-notification/index.ts`
 
@@ -280,7 +296,7 @@ const formatDate = (dateStr: string): string => {
 
 **Impacto**: Datas de vencimento de boleto nos emails de assinatura podem exibir dia errado para professores fora de BRT (especialmente `due_date` que é campo `date`).
 
-**Ação**: Parametrizar `formatDate` para receber timezone e buscar do professor.
+**Ação**: Email de boleto vai para o **aluno/responsável**. Parametrizar `formatDate` para receber timezone e buscar do aluno.
 
 #### 5.1.8 `process-cancellation/index.ts`
 
@@ -443,6 +459,75 @@ GREATEST(0, EXTRACT(DAY FROM (NOW() - c.class_date))::INTEGER)
 - Triggers (`sync_class_status_from_participants`, etc.) — usam `NOW()` apenas para timestamps
 - `archive_old_stripe_events` — usa `NOW() - INTERVAL '90 days'` (janela relativa absoluta)
 
+### Passo 5.4: `get-teacher-availability` — Retornar Timezone do Professor (v3.3)
+
+#### Problema
+
+A edge function `get-teacher-availability/index.ts` retorna `working_hours` (ex: `start_time: "09:00"`, `end_time: "18:00"`) sem contexto de timezone. Esses horários são relativos ao fuso local do professor.
+
+No frontend (`StudentScheduleRequest.tsx`, linhas 180-187), o componente aplica esses horários diretamente ao `Date` local do aluno:
+
+```typescript
+const [startHour, startMinute] = workingHour.start_time.split(':').map(Number);
+startTime.setHours(startHour, startMinute, 0, 0); // Usa timezone do ALUNO, não do professor
+```
+
+Se um aluno em Lisboa (UTC+0) tenta agendar com um professor no Brasil (UTC-3), vê a disponibilidade como 09:00-18:00 no horário de Lisboa, mas para o professor seria 06:00-15:00. O aluno pode agendar fora do expediente real.
+
+#### Ação
+
+| Local | Mudança |
+|---|---|
+| `get-teacher-availability/index.ts` | Buscar `profiles.timezone` do professor e incluir campo `teacherTimezone` na resposta JSON |
+| `StudentScheduleRequest.tsx` | Converter `working_hours` do fuso do professor para o fuso do aluno antes de renderizar slots |
+| `supabase/functions/request-class/index.ts` | Validar que o horário solicitado cai dentro do expediente do professor no fuso **do professor** |
+
+---
+
+### Passo 5.5: `materialize-virtual-class` — Comparação de Expiração Timezone-Aware (v3.3)
+
+#### Problema
+
+Linha 224-226 compara `recurrence_end_date` com `new Date()` (UTC):
+
+```typescript
+if (template.recurrence_end_date) {
+  const endDate = new Date(template.recurrence_end_date);
+  if (endDate < new Date()) { ... } // "now" em UTC
+}
+```
+
+`recurrence_end_date` é `timestamptz` armazenado como `endOfDay` no fuso local do professor (conforme memory `logica-data-fim-recorrencia`). Para professores em fusos negativos profundos (ex: UTC-12), a aula pode ser considerada "expirada" prematuramente.
+
+#### Ação
+
+Buscar timezone do professor (dono do template, `template.teacher_id`) via `profiles.timezone` e comparar `recurrence_end_date` com "agora" no fuso local do professor:
+
+```typescript
+// Obter "agora" no timezone do professor
+const teacherLocalDate = new Intl.DateTimeFormat('en-CA', {
+  timeZone: teacherTimezone,
+}).format(new Date()); // 'YYYY-MM-DD'
+
+const endDateLocal = new Intl.DateTimeFormat('en-CA', {
+  timeZone: teacherTimezone,
+}).format(new Date(template.recurrence_end_date));
+
+if (endDateLocal < teacherLocalDate) {
+  // Template expirado no fuso do professor
+}
+```
+
+---
+
+### Nota Técnica: DST em Aulas Recorrentes (`manage-future-class-exceptions`) (v3.3)
+
+A aritmética de `setDate(getDate() + 7)` em `manage-future-class-exceptions/index.ts` opera em **UTC puro** no Deno runtime. No UTC não há horário de verão — a soma de +7 dias é sempre correta em termos de instante absoluto.
+
+O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 37 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
+
+---
+
 ### Passo 5.2: Refatorar `check-overdue-invoices` (Timezone na Comparação de Due Dates)
 
 #### Problema atual
@@ -572,7 +657,7 @@ export const formatDate = (
 | `src/components/ClassReportModal.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone |
 | `src/components/ClassReportView.tsx` | `.toLocaleDateString()` e `.toLocaleString()` sem timezone |
 | `src/components/PendingBoletoModal.tsx` | `.toLocaleDateString()` sem timezone |
-| `src/components/StudentScheduleRequest.tsx` | `formatDate`/`formatTime` locais sem timezone (4+ ocorrências) |
+| `src/components/StudentScheduleRequest.tsx` | `formatDate`/`formatTime` locais sem timezone (4+ ocorrências) + **converter `working_hours` do fuso do professor para fuso do aluno** (v3.3) |
 | `src/components/BusinessProfilesManager.tsx` | `.toLocaleDateString()` sem timezone |
 | `src/components/Settings/CancellationPolicySettings.tsx` | `.toLocaleDateString()` sem timezone (2 ocorrências) |
 | `src/pages/PainelNegocios.tsx` | `.toLocaleDateString('pt-BR')` sem timezone |
@@ -600,6 +685,7 @@ export const formatDate = (
 | `src/components/StudentSubscriptionSelect.tsx` | 3x `format(new Date(), 'yyyy-MM-dd')` para default de `startsAt` — usa timezone do browser em vez do perfil |
 | `src/components/ClassExceptionForm.tsx` | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) — inconsistência data/hora, pré-preenche dia errado |
 | `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
+| `src/components/Availability/AvailabilityManager.tsx` | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -673,6 +759,10 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/StudentSubscriptionSelect.tsx` | Migrar 3x `format(new Date())` para utilitário timezone-aware |
 | `src/components/ClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
 | `src/components/FutureClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
+| `src/components/Availability/AvailabilityManager.tsx` | Migrar 1x `moment().format()` para utilitário timezone-aware (v3.3) |
+| `supabase/functions/get-teacher-availability/index.ts` | Retornar `teacherTimezone` na resposta (v3.3) |
+| `supabase/functions/materialize-virtual-class/index.ts` | Comparação de expiração timezone-aware (v3.3) |
+| `supabase/functions/request-class/index.ts` | Validar horário no fuso do professor (v3.3) |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -691,9 +781,12 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Timezone do aluno criado pelo professor | Média | Baixo | Não copiar timezone do professor; `useTimezoneSync` atualiza no 1º login do aluno |
 | Faturas marcadas como vencidas prematuramente | Alta | Alto | `check-overdue-invoices` deve considerar timezone do professor (Passo 5.2) |
 | Idempotência com janela UTC incorreta | Média | Alto | Calcular `cycleStart`/`cycleEnd` no timezone local antes de query |
-| Emails com horário errado para fusos não-BRT | Alta | Médio | `send-class-reminders` usar timezone do professor (Passo 5.1) |
+| Emails com horário errado para fusos não-BRT | Alta | Médio | Usar timezone do **destinatário** (aluno ou professor) — não do professor fixo (Passo 5.1, v3.3) |
 | RPCs com `CURRENT_DATE` calculam data UTC em vez de local | Alta | Alto | Adicionar `p_timezone` e usar `NOW() AT TIME ZONE` (Passo 5.3) |
 | `due_date` gravado 1 dia antes para professores em fusos positivos (UTC+N) | Alta | Alto | Calcular "hoje local" com `Intl.DateTimeFormat('en-CA', { timeZone })` antes de adicionar `payment_due_days` (3 edge functions: `automated-billing`, `process-orphan-cancellation-charges`, `create-invoice`) |
+| Aluno agenda aula fora do expediente do professor (fusos diferentes) | Média | Alto | `get-teacher-availability` retorna `teacherTimezone`; frontend converte `working_hours` para fuso do aluno (v3.3) |
+| Email de lembrete com horário no fuso errado para aluno | Alta | Alto | Usar timezone do destinatário (aluno), não do professor (v3.3) |
+| Template expirado prematuramente em `materialize-virtual-class` | Baixa | Médio | Comparar com "agora" no fuso do professor (v3.3) |
 
 ---
 
@@ -796,18 +889,21 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 34 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0)
+7. ⬜ Frontend: migrar 37 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
-10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)
-11. ⬜ Backend: refatorar notificações restantes (Passos 5.1.2–5.1.5)
+10. ⬜ Backend: refatorar `send-class-reminders` com timezone do destinatário (Passo 5.1.1, v3.3)
+11. ⬜ Backend: refatorar notificações restantes com timezone do destinatário (Passos 5.1.2–5.1.5, v3.3)
 12. ⬜ Backend: refatorar edge functions faltantes (Passos 5.1.6–5.1.10)
 13. ⬜ Backend: refatorar `generate-teacher-notifications` e `check-pending-boletos` (Passos 5.1.11–5.1.12)
 14. ⬜ Backend: refatorar `check-overdue-invoices` (Passo 5.2)
 15. ⬜ Backend: refatorar 7 RPCs de banco de dados (Passo 5.3)
-16. ⬜ Cron job: alterar billing para horário (Passo 4)
-17. ⬜ Validar idempotência com timezone (Passo 6)
-18. ⬜ Testes end-to-end
+16. ⬜ Backend: `get-teacher-availability` retornar `teacherTimezone` (Passo 5.4, v3.3)
+17. ⬜ Backend: `materialize-virtual-class` comparação de expiração timezone-aware (Passo 5.5, v3.3)
+18. ⬜ Backend: `request-class` validar horário no fuso do professor (Passo 5.4, v3.3)
+19. ⬜ Cron job: alterar billing para horário (Passo 4)
+20. ⬜ Validar idempotência com timezone (Passo 6)
+21. ⬜ Testes end-to-end
 
 ---
 

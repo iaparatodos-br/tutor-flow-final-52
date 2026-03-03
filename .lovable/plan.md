@@ -1,70 +1,64 @@
 
 
-# Revisao Final do Plano v3.4 — Resultado
+# Avaliacao dos 4 Pontos do Gemini vs. Plano v3.4.1
 
-## Metodologia
-
-Cruzei todos os padroes sensiveis a timezone no codigo (`toLocaleDateString`, `toLocaleTimeString`, `format(new Date(...))`, `new Date().toISOString().split`, `moment()`, `formatDate(new Date())`) contra a tabela de migracao do Passo 8 e as secoes 5.1-5.5 do plano.
-
-## Resultado
-
-**1 gap menor encontrado. O plano v3.4 esta 99% completo.**
+## Resultado: 3 gaps reais encontrados. 1 ponto e uma boa sugestao de UX.
 
 ---
 
-### Gap Encontrado: `src/components/ExpenseModal.tsx`
+### Ponto 1: `end-recurrence` — GAP REAL
 
-Linhas 49 e 97:
+O Gemini esta **correto**. A edge function `end-recurrence/index.ts` (linha 67) faz:
+
 ```typescript
-expense_date: formatDate(new Date(), 'yyyy-MM-dd'),
+.gte('class_date', endDate)  // endDate = 'YYYY-MM-DD'
 ```
 
-Usa `formatDate` do `date-fns` que opera no timezone do browser para definir a data padrao de uma nova despesa. Se o professor estiver fisicamente num fuso diferente do perfil, a despesa pode ser registrada com a data errada (ex: professor em UTC+9 as 01:00 local do dia 2, browser mostra dia 2, mas perfil em BRT ainda esta no dia 1).
+Quando Postgres recebe `'2026-03-15'` para comparar com `timestamptz`, interpreta como `2026-03-15 00:00:00+00` (meia-noite UTC). Uma aula do dia 14 as 22h BRT (= `2026-03-15 01:00:00+00`) sera apagada incorretamente.
 
-**Impacto**: Baixo — a despesa e criada pelo professor para seus proprios registros, e ele pode alterar a data manualmente. Mas por consistencia deve estar na tabela de migracao.
+**Confirmei**: `end-recurrence` **nao aparece** em nenhuma secao do plano. E um gap real.
 
-**Acao**: Adicionar `src/components/ExpenseModal.tsx` a tabela do Passo 8 (1x `formatDate(new Date())` — default de `expense_date` deve usar timezone do perfil).
+**Acao**: Adicionar `end-recurrence` ao Passo 5.1 (Edge Functions). A funcao deve buscar o timezone do professor via `profiles.timezone`, converter `endDate` para o instante UTC correto (inicio do dia no timezone do professor) antes de fazer `.gte('class_date', ...)`.
 
 ---
 
-### Arquivos Verificados e Confirmados SEM Impacto (nao precisam de migracao)
+### Ponto 2: `RecurringClassActionModal.tsx` — GAP REAL
 
-| Arquivo | Padrao | Razao para exclusao |
+O Gemini esta **correto**. O componente usa `Intl.DateTimeFormat('pt-BR', {...}).format(date)` **sem** a opcao `timeZone`. Isto formata no fuso do browser, nao do perfil.
+
+**Confirmei**: `RecurringClassActionModal` **nao aparece** na tabela de migracao do Passo 8 (38 componentes).
+
+**Acao**: Adicionar `RecurringClassActionModal.tsx` a tabela do Passo 8. Atualizar contagem de 38 para **39 componentes**.
+
+---
+
+### Ponto 3: `validate-monthly-subscriptions` — GAP REAL (baixa prioridade)
+
+O Gemini esta **correto**. A funcao usa `now.getFullYear()` e `now.getMonth() + 1` no Deno (UTC). Alem disso, quando a RPC `count_completed_classes_in_month` ganhar o parametro `p_timezone` (Passo 5.3.1), esta funcao quebrara se nao for atualizada.
+
+**Confirmei**: `validate-monthly-subscriptions` **nao aparece** no plano.
+
+**Acao**: Adicionar uma nota ao Passo 5.3 indicando que `validate-monthly-subscriptions` deve ser atualizado para: (a) buscar o timezone do professor, (b) calcular mes/ano local, (c) passar `p_timezone` a RPC. Impacto baixo — e um script de validacao interna, nao afeta utilizadores diretamente.
+
+---
+
+### Ponto 4: Escape hatch (seletor manual de timezone em ProfileSettings) — BOA SUGESTAO
+
+O plano atual (Passo 3) usa `useTimezoneSync` com `sessionStorage` para nao repetir o toast. Se o utilizador recusar acidentalmente, fica "preso" ate a proxima sessao.
+
+O plano **nao menciona** um seletor manual de timezone nas Configuracoes.
+
+**Acao**: Adicionar ao Passo 3 uma nota sobre incluir um `<Select>` de timezone em `ProfileSettings.tsx` como escape hatch. Nao e critico, mas e uma boa pratica de UX para suporte tecnico.
+
+---
+
+## Resumo de Alteracoes ao Plano v3.4.1
+
+| Alteracao | Prioridade | Secao |
 |---|---|---|
-| `DependentFormModal.tsx` | `format(parse(birth_date, 'yyyy-MM-dd', ...))` | Display de campo `date` puro (data de nascimento). O `parse` de string `yyyy-MM-dd` e locale-independent. Sem sensibilidade a timezone. |
-| `InlineDependentForm.tsx` | `format(parse(birth_date, 'yyyy-MM-dd', ...))` | Mesmo padrao — display de `birth_date`. Seguro. |
-| `CreateInvoiceModal.tsx` | `format(parse(due_date, 'yyyy-MM-dd', ...))` | Display de data selecionada pelo utilizador em calendar picker. A data ja e string `yyyy-MM-dd`. Seguro. |
-| `MonthlySubscriptionCard.tsx` | `Intl.NumberFormat.format(price)` | Apenas formatacao de moeda, sem datas. |
-| `Dashboard.tsx` (query) | `.gte('class_date', new Date().toISOString())` | Comparacao de `timestamptz` com instante absoluto UTC — correto. |
-| `StudentDashboard.tsx` (queries) | 4x `.gte('classes.class_date', new Date().toISOString())` | Mesmo padrao — comparacao absoluta de `timestamptz`. Correto. |
-| `Agenda.tsx` (query) | `.gte('end_datetime', new Date().toISOString())` | Comparacao absoluta. Correto. |
-| `Alunos.tsx` | `new Date().toISOString()` para `created_at` | Timestamp absoluto, sem sensibilidade a timezone. |
-| `AmnestyButton.tsx` | `new Date().toISOString()` para `amnesty_granted_at` | Timestamp absoluto. |
-| `ClassReportModal.tsx` (mutations) | `new Date().toISOString()` para `confirmed_at`, `created_at` | Timestamps absolutos. |
-
-### Backend — Confirmacao
-
-Todas as 10 edge functions com `toLocaleDateString`/`toLocaleTimeString` hardcoded estao cobertas (5.1.1-5.1.10). O `generate-teacher-notifications` (5.1.11) e `check-pending-boletos` (5.1.12) tambem. O `send-cancellation-notification` confirmado com `timeZone: 'America/Sao_Paulo'` hardcoded na linha 161 — coberto pelo 5.1.3.
-
----
-
-## Alteracao Proposta ao Plano v3.4
-
-### Unica alteracao: Adicionar `ExpenseModal.tsx` a tabela do Passo 8
-
-Na tabela de migracao frontend, adicionar:
-
-| Arquivo | Problema |
-|---|---|
-| `src/components/ExpenseModal.tsx` | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil |
-
-Atualizar contagem de componentes de 37 para **38**.
-
-Atualizar a sequencia de execucao (item 7) de "37 componentes" para "38 componentes".
-
----
-
-## Conclusao
-
-O plano v3.4 esta **essencialmente completo**. O unico gap e o `ExpenseModal.tsx` (impacto baixo). Apos esta adicao, o plano cobrira 100% dos padroes sensiveis a timezone encontrados no codigo.
+| Adicionar `end-recurrence` ao inventario de edge functions (Passo 5.1) | Alta | Nova subsecao 5.1.13 |
+| Adicionar `RecurringClassActionModal.tsx` a tabela do Passo 8 | Media | Tabela de migracao |
+| Adicionar nota sobre `validate-monthly-subscriptions` no Passo 5.3 | Baixa | Nota tecnica |
+| Adicionar escape hatch (seletor timezone) no Passo 3 | Baixa | Nota de UX |
+| Atualizar contagem: 38 → **39 componentes** | — | Passos 7 e 8 |
 

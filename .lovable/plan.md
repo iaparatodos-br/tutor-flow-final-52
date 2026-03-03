@@ -1,100 +1,82 @@
 
-
-# Auditoria v2.9: 3 Componentes Frontend Faltantes
+# Auditoria Final v3.0: 2 Gaps de Logica de Comparacao de Datas
 
 ## Resumo
 
-Cruzamento do plano v2.9 com toda a base de codigo. Encontrei **3 arquivos frontend faltantes** com bugs reais de timezone.
+Cruzamento completo do plano v3.0 com toda a base de codigo. Encontrei **2 gaps de logica** em comparacoes de `due_date` (campo `date`) que nao estao documentados no plano. Nao sao bugs de formatacao visual -- sao bugs de **logica de negocio** que afetam se uma fatura e marcada como "vencida" ou nao.
 
 ---
 
-## Gap 1: `src/components/StudentSubscriptionSelect.tsx` -- 3x data do dia atual sem timezone
+## Gap 1: `src/pages/Financeiro.tsx` -- `isOverdue()` compara `due_date` com data local sem timezone do perfil
 
-**Linhas 53, 59, 64**:
+**Linhas 150-162**:
 
 ```typescript
-const [startsAt, setStartsAt] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
-// ...
-setStartsAt(format(new Date(), 'yyyy-MM-dd'));
-// ...
-setStartsAt(format(new Date(), 'yyyy-MM-dd'));
+const isOverdue = (dueDate: string, status: string): boolean => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate);
+  due.setHours(0, 0, 0, 0);
+  return due < today;
+};
 ```
 
-**Problema**: `format(new Date(), 'yyyy-MM-dd')` do date-fns usa a hora LOCAL do browser para gerar a data. Embora `format()` do date-fns use hora local (nao UTC), a data resultante e no fuso do browser, nao no fuso do perfil do utilizador. Para um professor que esta temporariamente num fuso diferente do seu perfil (ex: viajou de BRT para UTC+9), o `startsAt` refletira o dia no fuso do browser, nao no fuso configurado.
+**Problema**: `new Date('2026-02-15')` cria um objeto Date em UTC midnight. `setHours(0,0,0,0)` ajusta para meia-noite LOCAL. Para um professor em UTC-5 (Americas), `new Date('2026-02-15')` = Feb 14 19:00 local. Apos `setHours(0,0,0,0)`, `due` = Feb 14 00:00 local. A fatura com `due_date = '2026-02-15'` seria marcada como vencida no dia 14, um dia antes.
 
-**Criticidade**: Baixa (date-fns `format` ja usa hora local, o que e correto na maioria dos casos, mas nao respeita o timezone do perfil).
+**Criticidade**: Media -- afeta a indicacao visual de "vencida" na lista de faturas. Pode causar confusao no professor.
 
-**Acao**: Adicionar a tabela do Passo 8 para migracao para utilitario timezone-aware que usa o timezone do perfil.
+**Nota**: `Financeiro.tsx` ja esta listado no plano para formatacao visual e `currentMonth`, mas este bug de **logica `isOverdue`** nao esta coberto.
+
+**Acao**: Adicionar nota ao item existente de `Financeiro.tsx` na tabela do Passo 8.
 
 ---
 
-## Gap 2: `src/components/ClassExceptionForm.tsx` -- Data e hora extraidas com metodos inconsistentes
+## Gap 2: `src/components/PaymentOptionsCard.tsx` -- `isOverdue` compara `due_date` com `new Date()` sem timezone
 
-**Linhas 65-67**:
+**Linha 179**:
 
 ```typescript
-const startDate = new Date(originalClass.start);
-const dateStr = startDate.toISOString().split('T')[0];  // UTC date
-const timeStr = startDate.toTimeString().slice(0, 5);    // LOCAL time
+const isOverdue = new Date(invoice.due_date) < new Date();
 ```
 
-**Problema**: A data e extraida em UTC (`toISOString`) mas o horario e extraido em hora local (`toTimeString`). Isso causa inconsistencia: para uma aula as 22:00 BRT do dia 15, o formulario pre-preenche com data **16** (UTC) mas horario **22:00** (local). O professor ve o dia errado no formulario de excecao.
+**Problema**: Identico ao Gap 1. `new Date(invoice.due_date)` cria UTC midnight. `new Date()` e a hora local atual. Para um professor em UTC-5 as 20:00 local do dia 14, `new Date('2026-02-15')` = Feb 14 19:00 local < Feb 14 20:00 local = **true**. A fatura seria marcada como vencida um dia antes do esperado.
 
-**Criticidade**: Media -- afeta a usabilidade do formulario de excecao de aula (pre-preenche data errada).
+**Criticidade**: Media -- afeta a indicacao visual de "vencida" no card de pagamento do aluno, incluindo o bloco de alerta vermelho "Fatura vencida".
 
-**Acao**: Adicionar a tabela do Passo 8. Migrar ambas as extracoes para usar o timezone do perfil do utilizador.
+**Nota**: `PaymentOptionsCard.tsx` ja esta listado no plano para "1x `format()` sem timezone", mas este bug de **logica `isOverdue`** nao esta coberto.
+
+**Acao**: Adicionar nota ao item existente na tabela do Passo 8.
 
 ---
 
-## Gap 3: `src/components/FutureClassExceptionForm.tsx` -- Mesmo bug do ClassExceptionForm
+## Verificacoes Realizadas (Sem Novos Gaps Adicionais)
 
-**Linhas 67-69**: Codigo identico ao Gap 2.
-
-```typescript
-const startDate = new Date(originalClass.start);
-const dateStr = startDate.toISOString().split('T')[0];  // UTC date
-const timeStr = startDate.toTimeString().slice(0, 5);    // LOCAL time
-```
-
-**Criticidade**: Media -- mesmo impacto.
-
-**Acao**: Adicionar a tabela do Passo 8.
-
----
-
-## Verificacoes Realizadas (Sem Novos Gaps)
-
-- Todas as 17 edge functions: cobertas pelo plano
-- Todas as 7 RPCs: cobertas pelo plano
-- `MobileCalendarList.tsx`: ja listado no plano
-- `SecurityMonitoringDashboard.tsx`: corretamente excluido (pagina debug)
-- `DevValidation.tsx`: corretamente excluido
+- Todos os 34 componentes frontend: cobertos
+- Todas as 17 edge functions: cobertas (incluindo `automated-billing` com 4x `toLocaleDateString` + `toISOString().split`)
+- Todas as 7 RPCs: cobertas
+- `auto-verify-pending-invoices`: sem logica de data sensivel (confirmado)
+- `setup-billing-automation`: sem logica de data sensivel (confirmado)
+- `new Date().getFullYear()` em emails: apenas para copyright footer (sem impacto)
+- `DevValidation.tsx`, `SecurityMonitoringDashboard.tsx`: corretamente excluidos
 
 ---
 
 ## Alteracoes Propostas ao Documento
 
-### 1. Tabela do Passo 8 -- Adicionar 3 linhas
+### 1. Tabela do Passo 8 -- Atualizar 2 itens existentes
 
-| Arquivo | Problema |
-|---|---|
-| `src/components/StudentSubscriptionSelect.tsx` | 3x `format(new Date(), 'yyyy-MM-dd')` para default de `startsAt` -- usa timezone do browser em vez do perfil |
-| `src/components/ClassExceptionForm.tsx` | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) -- inconsistencia data/hora, pre-preenche dia errado |
-| `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
+**Atualizar `src/pages/Financeiro.tsx`**:
+De: "`formatDate` local sem timezone + calculo de `currentMonth` com `new Date().toISOString()` sem timezone..."
+Para: "`formatDate` local sem timezone + calculo de `currentMonth` com `new Date().toISOString()` sem timezone + funcao `isOverdue()` compara `due_date` (campo `date`) com data local sem timezone do perfil (pode marcar fatura como vencida 1 dia antes)"
 
-### 2. Secao 3 (Arquivos Impactados) -- Adicionar 3 linhas
+**Atualizar `src/components/PaymentOptionsCard.tsx`**:
+De: "1x `format()` sem timezone (datas de faturas)"
+Para: "1x `format()` sem timezone (datas de faturas) + `isOverdue` compara `due_date` com `new Date()` sem timezone (pode marcar fatura como vencida 1 dia antes)"
 
-| Arquivo | Tipo de Mudanca |
-|---|---|
-| `src/components/StudentSubscriptionSelect.tsx` | Migrar 3x `format(new Date())` para utilitario timezone-aware |
-| `src/components/ClassExceptionForm.tsx` | Migrar extracao de data/hora para utilitario timezone-aware |
-| `src/components/FutureClassExceptionForm.tsx` | Migrar extracao de data/hora para utilitario timezone-aware |
+### 2. Versao do documento
 
-### 3. Checklist item 7 -- Atualizar contagem
+Atualizar para **v3.1** (v3.0 + isOverdue logic em Financeiro.tsx e PaymentOptionsCard.tsx).
 
-De **31 componentes** para **34 componentes** (31 + 3 novos).
+### 3. Contagem de componentes
 
-### 4. Versao do documento
-
-Atualizar para **v3.0** (v2.9 + StudentSubscriptionSelect + ClassExceptionForm + FutureClassExceptionForm).
-
+Mantida em **34** (nao sao componentes novos, sao bugs adicionais em componentes ja listados).

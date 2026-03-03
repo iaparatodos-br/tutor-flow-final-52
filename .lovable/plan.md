@@ -1,169 +1,131 @@
 
 
-# Auditoria de Queries v3.1: 1 Gap de Calculo de `due_date` em Edge Functions
+# Auditoria Final de Queries v3.2: 2 Gaps Menores Encontrados
 
 ## Resumo
 
-Cruzamento das queries e calculos propostos no plano v3.1 com o codigo real. Encontrei **1 gap de logica de negocio** que afeta a escrita do campo `due_date` em 3 edge functions. Nao e um bug de formatacao visual -- e um bug de **dados gravados no banco**.
+Cruzamento completo de todas as queries e calculos propostos no plano v3.2 com o codigo real. O plano esta **substancialmente correto**. Encontrei **2 gaps menores** que nao alteram a arquitetura mas devem ser corrigidos no documento para evitar que sejam esquecidos na implementacao.
 
 ---
 
-## Gap Encontrado: `dueDate.toISOString().split('T')[0]` gera `due_date` errado em 3 edge functions
+## Gap 1: `automated-billing` tem 5 `toLocaleDateString`, nao 4
 
-### Onde aparece
+### Onde o plano diz
 
-1. **`automated-billing/index.ts`** (3 ocorrencias: linhas 499, 823, 961):
+Secao 3 (Arquivos Impactados), linha 618:
+> "4 `toLocaleDateString` internos"
 
-```typescript
-const now = new Date();
-const dueDate = new Date(now);
-dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
-// ...
-due_date: dueDate.toISOString().split('T')[0], // UTC!
-```
+### Ocorrencias reais no codigo
 
-2. **`process-orphan-cancellation-charges/index.ts`** (linha 252):
+| Linha | Codigo | Contexto |
+|---|---|---|
+| 412 | `new Date(classItem.class_date).toLocaleDateString('pt-BR')` | Descricao de aula concluida (billing tradicional) |
+| 472 | `now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })` | Descricao geral da fatura |
+| 696 | `cycleStart.toLocaleDateString('pt-BR')` | Descricao do ciclo de mensalidade |
+| 697 | `cycleEnd.toLocaleDateString('pt-BR')` | Descricao do ciclo de mensalidade |
+| **939** | `new Date(classInfo.class_date).toLocaleDateString('pt-BR')` | **Descricao de aula avulsa fora do ciclo (processMonthlySubscriptionBilling)** |
 
-```typescript
-const dueDate = new Date(now);
-dueDate.setDate(dueDate.getDate() + group.payment_due_days);
-p_due_date: dueDate.toISOString().split('T')[0], // UTC!
-```
-
-3. **`create-invoice/index.ts`** (linha 199):
-
-```typescript
-const dueDate = body.due_date || new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // UTC!
-```
-
-### Problema
-
-Apos a refatoracao para hourly sweeper (Passo 5), o billing roda quando e 01:00 **local** do professor. Para um professor em `Asia/Tokyo` (UTC+9):
-
-- 01:00 local = 16:00 UTC do dia **anterior**
-- `new Date().toISOString().split('T')[0]` = dia anterior em UTC
-- `dueDate` = dia anterior + `payment_due_days` = **1 dia a menos** do que o professor espera
-
-Exemplo concreto:
-- Professor em Tokyo, billing_day=15, payment_due_days=15
-- Billing roda as 01:00 local do dia 15/Jan = 16:00 UTC do dia 14/Jan
-- `dueDate` calculado: 14/Jan + 15 = **29/Jan** (deveria ser 30/Jan)
-- A fatura fica com `due_date` 1 dia antes do esperado
+A 5a ocorrencia (linha 939) esta dentro da funcao `processMonthlySubscriptionBilling`, na secao de aulas fora do ciclo de faturamento. Gera descricoes como "Aula avulsa (anterior a mensalidade) - Servico - 15/01/2026".
 
 ### Impacto
 
-- **Criticidade**: Alta -- afeta o campo `due_date` gravado no banco, que e usado por `check-overdue-invoices`, `isOverdue` no frontend, e envio de lembretes
-- **Cascata**: Se o `due_date` esta errado, toda a cadeia de overdue (Passo 5.2 + Gap 1 + Gap 2 da v3.1) herda o erro
+Baixo -- afeta apenas texto descritivo em faturas. Mas se nao for corrigido, a data na descricao pode mostrar o dia errado para professores em fusos positivos.
 
-### O que o plano v3.1 cobre vs o que falta
+### Acao
 
-| Edge Function | Plano cobre | Gap |
-|---|---|---|
-| `automated-billing` | `getBillingCycleDates` + 4x `toLocaleDateString` | 3x `dueDate.toISOString().split('T')[0]` para campo `due_date` |
-| `process-orphan-cancellation-charges` | Descricao de fatura (Passo 5.1.9) | `dueDate.toISOString().split('T')[0]` para campo `due_date` |
-| `create-invoice` | Descricao de item (Passo 5.1.10) | Fallback `dueDate` com `Date.now()` para campo `due_date` |
-
-### Correcao proposta
-
-Em cada edge function, apos obter o timezone do professor, calcular "hoje local" antes de adicionar `payment_due_days`:
-
-```typescript
-// Obter "hoje" no timezone do professor
-function getLocalToday(timezone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone,
-  }).format(new Date()); // Retorna 'YYYY-MM-DD'
-}
-
-// Calcular due_date corretamente
-const todayLocal = getLocalToday(teacherTimezone); // ex: '2026-01-15'
-const dueDate = new Date(todayLocal + 'T00:00:00'); // Parse como local midnight
-dueDate.setDate(dueDate.getDate() + payment_due_days);
-const dueDateStr = getLocalToday(teacherTimezone); // Ou formatar diretamente
-```
+Atualizar a contagem na Secao 3 de "4 `toLocaleDateString` internos" para "**5** `toLocaleDateString` internos" e mencionar explicitamente a ocorrencia na linha 939.
 
 ---
 
-## Verificacoes Realizadas (Queries do Plano Confirmadas Corretas)
+## Gap 2: `check-overdue-invoices` -- lembretes "proximos ao vencimento" tambem usam UTC
 
-### RPCs (Passo 5.3) -- Todas as queries propostas estao corretas
+### Onde o plano cobre
 
-| RPC | Query Atual | Proposta do Plano | Status |
-|---|---|---|---|
-| `count_completed_classes_in_month` | `EXTRACT(YEAR/MONTH FROM c.class_date)` sem AT TIME ZONE | Adicionar `p_timezone`, usar `AT TIME ZONE p_timezone` | Correto |
-| `get_student_subscription_details` (2-param) | `EXTRACT(YEAR/MONTH FROM CURRENT_DATE)` passado para `count_completed_classes_in_month` | JOIN com profiles para timezone, propagar `p_timezone` | Correto |
-| `get_student_subscription_details` (1-param, original migration) | Mesmo padrao de `CURRENT_DATE` | Mesmo fix + propagar p_timezone | Correto |
-| `get_subscription_assigned_students` | `EXTRACT(YEAR/MONTH FROM CURRENT_DATE)` passado para `count_completed_classes_in_month` | JOIN com profiles via subscription -> teacher, propagar `p_timezone` | Correto |
-| `get_student_active_subscription` | `sms.ends_at > CURRENT_DATE` | Adicionar `p_timezone`, comparar com `(NOW() AT TIME ZONE p_timezone)::DATE` | Correto |
-| `get_billing_cycle_dates` | Default `CURRENT_DATE` | Adicionar `p_timezone`, substituir default | Correto |
-| `count_completed_classes_in_billing_cycle` | `c.class_date::DATE` e chama `get_billing_cycle_dates` | Adicionar `p_timezone`, propagar, usar `AT TIME ZONE` | Correto |
-| `get_teacher_notifications` | `CURRENT_DATE - i.due_date` | Buscar timezone via `auth.uid()`, substituir `CURRENT_DATE` | Correto |
-
-### Arvore de dependencias de propagacao -- Confirmada correta
-
-```text
-get_student_subscription_details (1-param) -> count_completed_classes_in_month (p_timezone)
-get_student_subscription_details (2-param) -> count_completed_classes_in_month (p_timezone)
-get_subscription_assigned_students -> count_completed_classes_in_month (p_timezone)
-count_completed_classes_in_billing_cycle -> get_billing_cycle_dates (p_timezone)
+Passo 5.2 discute a comparacao de faturas **vencidas** (overdue):
+```typescript
+.lt("due_date", now.toISOString().split('T')[0])
 ```
 
-### Nova RPC `get_relationships_to_bill_now` (Passo 5) -- Query correta
+### O que falta
 
-A query proposta faz:
-- JOIN `profiles` para obter timezone
-- `EXTRACT(DAY FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo')))`
-- `EXTRACT(HOUR ...) = 1` para filtrar hora local
+A mesma funcao tambem calcula faturas **proximas ao vencimento** (linhas 115-116):
+```typescript
+const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+.gte("due_date", now.toISOString().split('T')[0])
+.lte("due_date", threeDaysFromNow.toISOString().split('T')[0])
+```
 
-Verificacao: A logica esta correta. O `COALESCE` garante fallback. O filtro por hora=1 garante que cada professor so e processado 1x por dia.
+`now` e `threeDaysFromNow` sao calculados em UTC. Para um professor em UTC+9 as 10:00 local do dia 15, `now.toISOString().split('T')[0]` = dia 15 (01:00 UTC). Mas para um professor em UTC-5 as 22:00 local do dia 15, `now.toISOString().split('T')[0]` = dia 16 (03:00 UTC). O lembrete de "proximo ao vencimento" pode ser enviado 1 dia antes ou depois do esperado.
 
-### Edge Functions de Notificacao (Passos 5.1.1 a 5.1.12) -- Cobertura confirmada
+### Impacto
 
-Todas as 12 sub-tarefas de notificacao estao corretamente identificadas. A acao de "buscar timezone via profiles" e substituir hardcoded `timeZone: "America/Sao_Paulo"` esta correta.
+Medio -- afeta o timing de lembretes de pagamento (pode enviar lembrete cedo demais ou tarde demais), mas nao afeta cobranca.
 
-### `check-overdue-invoices` (Passo 5.2) -- Leitura correta
+### Acao
 
-A comparacao `now.toISOString().split('T')[0]` para **leitura** de `due_date` esta coberta. O plano propoe comparacao timezone-aware.
+No Passo 5.2, alem da comparacao de overdue, adicionar nota sobre a comparacao de "upcoming" (3 dias) que precisa do mesmo tratamento timezone-aware.
 
-### Idempotencia (Passo 6) -- Logica correta
+---
 
-A verificacao de duplicatas em `automated-billing` (linhas 706-715) usa `cycleStart.toISOString()` e `cycleEnd.toISOString()`. Apos a refatoracao de `getBillingCycleDates` para timezone-aware, os limites do ciclo serao corretos e a idempotencia funciona.
+## Verificacoes Realizadas (Sem Gaps Adicionais)
+
+### Edge Functions -- Queries confirmadas corretas
+
+| Edge Function | Ocorrencias no plano | Verificacao |
+|---|---|---|
+| `send-class-reminders` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 168, 173) |
+| `send-class-confirmation-notification` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 110, 115) |
+| `send-cancellation-notification` | 1x `timeZone: 'America/Sao_Paulo'` | Confirmado (linha 161) |
+| `send-invoice-notification` | 1x `timeZone: "America/Sao_Paulo"` | Confirmado (linha 194) |
+| `send-class-request-notification` | 2x `timeZone: "America/Sao_Paulo"` | Confirmado (linhas 105, 110) |
+| `send-class-report-notification` | 2x sem timezone | Confirmado (linhas 174-175) |
+| `send-boleto-subscription-notification` | `formatDate` sem timezone | Confirmado (linhas 34-37) |
+| `process-cancellation` | 1x sem timezone | Confirmado (linha 470) |
+| `process-orphan-cancellation-charges` | 1x descricao + dueDate | Confirmado (linhas 233, 252) |
+| `create-invoice` | 1x descricao + dueDate fallback | Confirmado (linhas 352, 199) |
+| `generate-teacher-notifications` | `today` UTC | Confirmado (linha 192) |
+| `check-pending-boletos` | `tomorrow` UTC | Confirmado (linhas 179-186) |
+
+### `due_date` com `toISOString().split('T')[0]` -- 3 ocorrencias de negocio confirmadas
+
+| Arquivo | Linha | Contexto |
+|---|---|---|
+| `automated-billing` | 499 | Billing tradicional |
+| `automated-billing` | 823 | Mensalidade |
+| `automated-billing` | 961 | Aulas fora do ciclo |
+| `process-orphan-cancellation-charges` | 252 | Orphan charges |
+| `create-invoice` | 199 | Fallback manual |
+
+**Nota**: Linhas 700-702 e 774 do `automated-billing` tambem usam `toISOString().split('T')[0]` mas apenas em **log messages** (nao em dados gravados no banco). Nao precisam de correcao.
+
+### `validate-payment-routing` -- Confirmado sem impacto
+
+Linha 241 usa `toISOString().split('T')[0]` para um `due_date` de teste. E uma funcao de validacao/debug, nao de producao. Corretamente excluida do plano.
+
+### RPCs -- Todas confirmadas corretas
+
+As 7 RPCs listadas no Passo 5.3 cobrem todos os casos identificados. A arvore de propagacao de `p_timezone` esta correta.
+
+### RPC `get_relationships_to_bill_now` -- Query confirmada correta
+
+A query com `EXTRACT(DAY/HOUR FROM now() AT TIME ZONE tz)` e o filtro por hora=1 estao logicamente corretos.
 
 ---
 
 ## Alteracoes Propostas ao Documento
 
-### 1. Atualizar Passo 5 -- Adicionar `dueDate` na tabela de alteracoes
+### 1. Secao 3 (Arquivos Impactados) -- Corrigir contagem
 
-Na tabela de "Alteracoes na Edge Function" do Passo 5, adicionar:
+**Antes**: "4 `toLocaleDateString` internos"
+**Depois**: "**5** `toLocaleDateString` internos (inclui descricao de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939)"
 
-| Local | Mudanca |
-|---|---|
-| Calculo de `due_date` | Usar `Intl.DateTimeFormat` com timezone do professor para calcular "hoje local" antes de adicionar `payment_due_days` (3 ocorrencias: billing tradicional, mensalidade, aulas fora do ciclo) |
+### 2. Passo 5.2 -- Adicionar nota sobre lembretes "upcoming"
 
-### 2. Atualizar Passo 5.1.9 -- `process-orphan-cancellation-charges`
+Apos o bloco de codigo do Passo 5.2 (Opcao A/B), adicionar:
 
-Adicionar: "Alem da descricao, corrigir calculo de `dueDate` (linha 241-252) para usar timezone do professor"
+> **Nota**: A mesma funcao tambem calcula faturas proximas ao vencimento (3 dias) usando `threeDaysFromNow.toISOString().split('T')[0]` (linhas 115-116). Esta comparacao precisa do mesmo tratamento timezone-aware para que os lembretes sejam enviados no dia correto no fuso do professor.
 
-### 3. Atualizar Passo 5.1.10 -- `create-invoice`
+### 3. Versao do documento
 
-Adicionar: "Alem da descricao, corrigir fallback `dueDate` (linha 199) para usar timezone do professor"
-
-### 4. Atualizar tabela da Secao 3 (Arquivos Impactados)
-
-| Arquivo | Atualizar descricao |
-|---|---|
-| `automated-billing/index.ts` | Adicionar: "+ 3x calculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor" |
-| `process-orphan-cancellation-charges/index.ts` | Adicionar: "+ calculo de `due_date` deve usar timezone do professor" |
-| `create-invoice/index.ts` | Adicionar: "+ fallback `due_date` deve usar timezone do professor" |
-
-### 5. Versao do documento
-
-Atualizar para **v3.2** (v3.1 + due_date calculation fix em 3 edge functions).
-
-### 6. Tabela de Riscos -- Adicionar novo risco
-
-| Risco | Probabilidade | Impacto | Mitigacao |
-|---|---|---|---|
-| `due_date` gravado 1 dia antes para professores em fusos positivos (UTC+N) | Alta | Alto | Calcular "hoje local" com `Intl.DateTimeFormat` antes de adicionar `payment_due_days` |
+Manter em **v3.2** (sao correcoes de documentacao, nao novos gaps de arquitetura). Ou atualizar para **v3.2.1** se preferir rastreabilidade granular.
 

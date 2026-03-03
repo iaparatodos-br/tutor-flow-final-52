@@ -478,6 +478,8 @@ if (invoice.due_date < teacherLocalDate) {
 }
 ```
 
+> **Nota**: A mesma função também calcula faturas **próximas ao vencimento** (3 dias) usando `threeDaysFromNow.toISOString().split('T')[0]` (linhas 115-116 do `check-overdue-invoices`). Esta comparação precisa do mesmo tratamento timezone-aware para que os lembretes sejam enviados no dia correto no fuso do professor.
+
 ---
 
 ### Passo 6: Garantia de Idempotência (CRÍTICO)
@@ -615,7 +617,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Migration SQL (`profiles.timezone`) | Nova coluna |
 | RPC SQL `get_relationships_to_bill_now` | Nova função PostgreSQL + tipo customizado |
 | `supabase/functions/create-teacher/index.ts` | Aceitar campo timezone |
-| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + 4 `toLocaleDateString` internos + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor |
+| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + **5** `toLocaleDateString` internos (inclui descrição de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939) + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor |
 | `supabase/functions/check-overdue-invoices/index.ts` | Comparação de due_date timezone-aware |
 | `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do professor |
 | `supabase/functions/send-class-confirmation-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |

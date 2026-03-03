@@ -286,7 +286,7 @@ export default function Dashboard() {
               >
                 <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="font-medium">{t('dashboard:quickActions.policies.title')}</p>
-                <p className="text-sm text-muted-foregoing">{t('dashboard:quickActions.policies.description')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.policies.description')}</p>
               </div>
             </div>
           </CardContent>

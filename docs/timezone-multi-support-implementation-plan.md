@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.6 (v2.5 + 6 componentes frontend adicionais: MonthlySubscriptionsManager, PaymentOptionsCard, PlanDowngradeWarningModal, ArchivedDataViewer, DependentManager, ExpenseList)
+> **Versão**: 2.7 (v2.6 + Dashboard.tsx gap, nota StudentDashboard.tsx startOfMonth, propagação p_timezone em RPCs encadeadas, regra de timezone para exibição frontend)
 
 ---
 
@@ -361,6 +361,20 @@ if (dueDateNormalized.getTime() === tomorrow.getTime()) {
 
 Todas as RPCs abaixo usam `CURRENT_DATE` (que no Postgres com session timezone UTC equivale à data UTC) ou `EXTRACT` de `timestamptz` sem `AT TIME ZONE`. A correção é uniforme: adicionar parâmetro `p_timezone text DEFAULT 'America/Sao_Paulo'` e substituir `CURRENT_DATE` por `(NOW() AT TIME ZONE p_timezone)::DATE`.
 
+#### NOTA CRÍTICA: Propagação de `p_timezone` em RPCs Encadeadas
+
+Várias RPCs chamam outras internamente. É **obrigatório** propagar `p_timezone` em toda chamada interna, caso contrário o valor default `'America/Sao_Paulo'` será usado, anulando a correção da chamada externa.
+
+**Árvore de dependências**:
+
+```text
+get_student_subscription_details -> count_completed_classes_in_month (DEVE propagar p_timezone)
+get_subscription_assigned_students -> count_completed_classes_in_month (DEVE propagar p_timezone)
+count_completed_classes_in_billing_cycle -> get_billing_cycle_dates (DEVE propagar p_timezone)
+```
+
+---
+
 #### 5.3.1 `count_completed_classes_in_month(p_teacher_id, p_student_id, p_year, p_month)`
 
 Usa `EXTRACT(YEAR FROM c.class_date)` e `EXTRACT(MONTH FROM c.class_date)` sobre `timestamptz`. No Postgres, `EXTRACT` de um `timestamptz` usa a timezone da sessão (UTC por default no servidor).
@@ -566,7 +580,8 @@ export const formatDate = (
 | `src/pages/Recibo.tsx` | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) — documento oficial |
 | `src/pages/Faturas.tsx` | 2x `format()` sem timezone (created_at, due_date) — bug de dia anterior em `due_date` |
 | `src/pages/Historico.tsx` | `formatDateTime` sem timezone (class_date timestamptz) |
-| `src/pages/StudentDashboard.tsx` | 2x `format()` sem timezone (class_date, starts_at) |
+| `src/pages/Dashboard.tsx` | `startOfMonth` calculado com `new Date()` sem timezone — receita mensal pode incluir faturas do mês anterior para professores fora de BRT |
+| `src/pages/StudentDashboard.tsx` | 2x `format()` sem timezone (class_date, starts_at) + cálculo de `startOfMonth` com `new Date()` sem timezone (mesmo que não usado na query atual, deve ser corrigido preventivamente) |
 | `src/components/Inbox/NotificationItem.tsx` | 2x `format()` sem timezone (invoice_due_date, class_date) |
 | `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
 | `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
@@ -578,6 +593,8 @@ export const formatDate = (
 | `src/components/ExpenseList.tsx` | 1x `format()` sem timezone (`expense_date` tipo `date`) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
+
+**Regra de timezone para exibição**: Cada componente usa o timezone do **utilizador logado** (via `useAuth()`), independentemente de quem são os dados exibidos. O professor vê datas no seu fuso, o aluno vê no seu fuso. Para documentos oficiais como `Recibo.tsx`, aplica-se a mesma regra: se o professor acessa, vê no fuso do professor; se o aluno acessa, vê no fuso do aluno.
 
 **Nota importante**: Nenhum componente frontend atualmente importa as funções de `timezone.ts` (`formatDateBrazil`, etc.). Todos usam `format()` do date-fns ou `toLocaleDateString` diretamente. A migração dos componentes é **pré-requisito** para que a refatoração de `timezone.ts` (Passo 8) tenha efeito prático.
 
@@ -763,7 +780,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 28 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6)
+7. ⬜ Frontend: migrar 29 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)

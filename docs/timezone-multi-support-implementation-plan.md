@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 3.1 (v3.0 + isOverdue logic em Financeiro.tsx e PaymentOptionsCard.tsx)
+> **Versão**: 3.2 (v3.1 + due_date calculation fix em 3 edge functions)
 
 ---
 
@@ -181,6 +181,7 @@ $$;
 |---|---|
 | Query de billing day | Substituir `.eq('billing_day', today)` pela chamada à RPC |
 | `getBillingCycleDates` | Receber `timezone` como parâmetro e usar `Intl.DateTimeFormat` para calcular datas no fuso local |
+| Cálculo de `due_date` | Usar `Intl.DateTimeFormat` com timezone do professor para calcular "hoje local" antes de adicionar `payment_due_days` (3 ocorrências: billing tradicional, mensalidade, aulas fora do ciclo) |
 
 #### Detalhe: `getBillingCycleDates` com timezone (Deno)
 
@@ -303,7 +304,7 @@ description: `Cancelamento - ${service?.name || 'Aula'} - ${new Date(participant
 
 **Impacto**: Descrições de faturas órfãs com data potencialmente incorreta.
 
-**Ação**: Buscar timezone do professor e usar na formatação.
+**Ação**: Buscar timezone do professor e usar na formatação. Além da descrição, corrigir cálculo de `dueDate` (linha 241-252) para usar timezone do professor via `Intl.DateTimeFormat('en-CA', { timeZone })` em vez de `toISOString().split('T')[0]`.
 
 #### 5.1.10 `create-invoice/index.ts`
 
@@ -315,7 +316,7 @@ let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_d
 
 **Impacto**: Descrições de itens de fatura manual com data potencialmente incorreta.
 
-**Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação.
+**Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação. Além da descrição, corrigir fallback `dueDate` (linha 199) para usar timezone do professor via `Intl.DateTimeFormat('en-CA', { timeZone })` em vez de `new Date(Date.now() + ...).toISOString().split('T')[0]`.
 
 #### 5.1.11 `generate-teacher-notifications/index.ts`
 
@@ -614,7 +615,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Migration SQL (`profiles.timezone`) | Nova coluna |
 | RPC SQL `get_relationships_to_bill_now` | Nova função PostgreSQL + tipo customizado |
 | `supabase/functions/create-teacher/index.ts` | Aceitar campo timezone |
-| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + 4 `toLocaleDateString` internos |
+| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + 4 `toLocaleDateString` internos + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor |
 | `supabase/functions/check-overdue-invoices/index.ts` | Comparação de due_date timezone-aware |
 | `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do professor |
 | `supabase/functions/send-class-confirmation-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
@@ -624,8 +625,8 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `supabase/functions/send-class-report-notification/index.ts` | Adicionar timezone na formatação de data/hora (2 ocorrências) |
 | `supabase/functions/send-boleto-subscription-notification/index.ts` | Parametrizar `formatDate` com timezone |
 | `supabase/functions/process-cancellation/index.ts` | Usar timezone na descrição de fatura |
-| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descrição de fatura |
-| `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item |
+| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descrição de fatura + cálculo de `due_date` deve usar timezone do professor |
+| `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item + fallback `due_date` deve usar timezone do professor |
 | `supabase/functions/generate-teacher-notifications/index.ts` | Cálculo de "hoje" timezone-aware para faturas vencidas |
 | `supabase/functions/check-pending-boletos/index.ts` | Cálculo de "amanhã" timezone-aware para lembretes de boleto |
 | Migration SQL (refatorar 7 RPCs) | Adicionar `p_timezone` e `AT TIME ZONE` em `count_completed_classes_in_month`, `get_student_subscription_details` (2x), `get_subscription_assigned_students`, `get_student_active_subscription`, `get_billing_cycle_dates`, `count_completed_classes_in_billing_cycle`, `get_teacher_notifications` |
@@ -688,6 +689,7 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | Idempotência com janela UTC incorreta | Média | Alto | Calcular `cycleStart`/`cycleEnd` no timezone local antes de query |
 | Emails com horário errado para fusos não-BRT | Alta | Médio | `send-class-reminders` usar timezone do professor (Passo 5.1) |
 | RPCs com `CURRENT_DATE` calculam data UTC em vez de local | Alta | Alto | Adicionar `p_timezone` e usar `NOW() AT TIME ZONE` (Passo 5.3) |
+| `due_date` gravado 1 dia antes para professores em fusos positivos (UTC+N) | Alta | Alto | Calcular "hoje local" com `Intl.DateTimeFormat('en-CA', { timeZone })` antes de adicionar `payment_due_days` (3 edge functions: `automated-billing`, `process-orphan-cancellation-charges`, `create-invoice`) |
 
 ---
 

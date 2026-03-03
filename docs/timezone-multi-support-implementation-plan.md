@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.4 (v3.3 + revisão Gemini #2: input parsing com `zonedTimeToUtc`, sweeper auto-corretivo `>= 1` + `NOT EXISTS`, nota RRule/DST)
+> **Versão**: 3.4.1 (v3.4 + revisão final: adicionado `ExpenseModal.tsx` à tabela de migração, contagem atualizada para 38 componentes)
 
 ---
 
@@ -531,13 +531,13 @@ if (endDateLocal < teacherLocalDate) {
 
 A aritmética de `setDate(getDate() + 7)` em `manage-future-class-exceptions/index.ts` opera em **UTC puro** no Deno runtime. No UTC não há horário de verão — a soma de +7 dias é sempre correta em termos de instante absoluto.
 
-O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 37 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
+O risco real de DST (drift de 1h na hora exibida) afeta apenas a **apresentação no frontend**, que já está coberta pela migração dos 38 componentes no Passo 8. **Não requer refatoração** da edge function neste momento.
 
 ### Nota Técnica: RRule e DST no Frontend (v3.4)
 
 A biblioteca `rrule` no frontend (`ClassForm.tsx`, `Agenda.tsx`) opera sobre instantes `Date` do JavaScript. Quando o **input parsing** for corrigido (v3.4, ver seção abaixo), o `dtstart` passado ao `RRule` será o instante UTC correto derivado do timezone do perfil. O `RRule` então gera ocorrências futuras como instantes UTC — sem drift de DST no armazenamento.
 
-O risco de drift de 1h na **apresentação** das datas geradas já está coberto pela migração dos 37 componentes (Passo 8). **Não requer refatoração imediata** da biblioteca `rrule`.
+O risco de drift de 1h na **apresentação** das datas geradas já está coberto pela migração dos 38 componentes (Passo 8). **Não requer refatoração imediata** da biblioteca `rrule`.
 
 ### REGRA CRÍTICA: Input Parsing no Formulário de Aulas (v3.4)
 
@@ -712,6 +712,7 @@ export const formatDate = (
 | `src/components/ClassExceptionForm.tsx` | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) — inconsistência data/hora, pré-preenche dia errado |
 | `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
 | `src/components/Availability/AvailabilityManager.tsx` | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3) |
+| `src/components/ExpenseModal.tsx` | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil (v3.4) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -917,7 +918,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 37 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion)
+7. ⬜ Frontend: migrar 38 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0 + 1 v3.2 CalendarView + 1 v3.3 AvailabilityManager + 1 v3.3 StudentScheduleRequest working_hours conversion + 1 v3.4 ExpenseModal)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` com timezone do destinatário (Passo 5.1.1, v3.3)

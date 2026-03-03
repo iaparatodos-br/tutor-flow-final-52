@@ -74,15 +74,27 @@ serve(async (req) => {
         // #553: Buscar stripeAccount do Connect para este professor
         let stripeAccount: string | undefined = undefined;
         if (invoice.teacher_id) {
-          const { data: bp } = await supabaseClient
+          const { data: bp, error: bpError } = await supabaseClient
             .from("business_profiles")
             .select("stripe_connect_id")
             .eq("user_id", invoice.teacher_id)
             .maybeSingle();
+          
+          logStep("Business profile lookup", { 
+            teacherId: invoice.teacher_id, 
+            connectId: bp?.stripe_connect_id || null,
+            error: bpError?.message || null
+          });
+          
           if (bp?.stripe_connect_id) {
             stripeAccount = bp.stripe_connect_id;
           }
         }
+
+        logStep("Retrieving payment intent", { 
+          paymentIntentId: invoice.stripe_payment_intent_id, 
+          stripeAccount: stripeAccount || 'platform' 
+        });
 
         // Buscar status do payment intent no Stripe (com stripeAccount para Connect)
         const paymentIntent = await stripe.paymentIntents.retrieve(

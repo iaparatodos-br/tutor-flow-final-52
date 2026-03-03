@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-03  
-> **Versão**: 3.5 (v3.4.1 + revisão Gemini #3: adicionado `end-recurrence` ao Passo 5.1.13, `RecurringClassActionModal.tsx` ao Passo 8 (39 componentes), nota sobre `validate-monthly-subscriptions` no Passo 5.3, escape hatch de timezone em `ProfileSettings.tsx` no Passo 3)
+> **Versão**: 3.6 (v3.5 + revisão Gemini #4: regra arquitetural proibindo `startOfMonth`/`isToday` nativos do date-fns no Passo 8, regra sobre campos `date` nunca formatados com `timeZone` nos Passos 5.1 e 8)
 
 ---
 
@@ -230,6 +230,25 @@ function getBillingCycleDates(billingDay: number, timezone: string): { cycleStar
 ### Passo 5.1: Refatorar Edge Functions de Notificação (Timezone nos Emails)
 
 Todas as edge functions que formatam datas em emails usam `timeZone: "America/Sao_Paulo"` hardcoded. Cada uma precisa buscar o timezone do **destinatário** via JOIN em `profiles` antes de formatar.
+
+#### REGRA CRÍTICA: Campos `date` (sem hora) — NUNCA formatar com `timeZone` (v3.6)
+
+Campos do tipo `date` no Postgres (como `due_date`, `starts_at`, `expense_date`, `birth_date`) são strings `YYYY-MM-DD` sem componente de hora. Converter para `new Date('2026-03-10')` cria meia-noite UTC; formatar com `timeZone: 'America/Sao_Paulo'` (UTC-3) recua 3h e exibe **09/03/2026** — um bug off-by-one.
+
+**Diretriz obrigatória**: Campos `date` NUNCA devem ser convertidos para `Date` e formatados com opção `timeZone`. Devem ser:
+1. Parseados como string (`split('-')`) e montados localmente, ou
+2. Usar `parseISO` do date-fns (que trata como data local, sem offset UTC).
+
+```typescript
+// ❌ ERRADO — off-by-one em fusos negativos
+const formatted = new Date(invoice.due_date).toLocaleDateString("pt-BR", {
+  timeZone: recipientTimezone,
+});
+
+// ✅ CORRETO — parse como data local
+import { parseISO, format } from 'date-fns';
+const formatted = format(parseISO(invoice.due_date), 'dd/MM/yyyy');
+```
 
 #### REGRA CRÍTICA: Timezone do Destinatário (v3.3)
 
@@ -787,6 +806,34 @@ export const formatDate = (
 | `src/components/RecurringClassActionModal.tsx` | 1x `Intl.DateTimeFormat('pt-BR', {...}).format(date)` sem opção `timeZone` — formata no fuso do browser em vez do perfil (v3.5) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
+
+#### REGRA ARQUITETURAL: Proibir `date-fns` nativas para matemática de datas (v3.6)
+
+**Proibido** usar diretamente as seguintes funções do `date-fns` em componentes frontend:
+- `startOfMonth`, `endOfMonth`, `startOfDay`, `endOfDay`
+- `isToday`, `isSameDay`, `isSameMonth`
+
+Estas funções operam no timezone do browser, não do perfil. **Obrigatório** criar wrappers timezone-aware em `src/utils/timezone.ts` usando `toZonedTime` do `date-fns-tz`:
+
+```typescript
+import { toZonedTime } from 'date-fns-tz';
+import { startOfMonth as dfStartOfMonth } from 'date-fns';
+
+export const startOfMonthTz = (date: Date, timezone: string): Date => {
+  const zonedDate = toZonedTime(date, timezone);
+  return dfStartOfMonth(zonedDate);
+};
+
+export const isTodayTz = (date: Date, timezone: string): boolean => {
+  const zonedNow = toZonedTime(new Date(), timezone);
+  const zonedDate = toZonedTime(date, timezone);
+  return dfStartOfMonth(zonedNow).getTime() === dfStartOfMonth(zonedDate).getTime();
+};
+```
+
+#### REGRA ARQUITETURAL: Campos `date` (sem hora) no frontend (v3.6)
+
+Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_date`, `birth_date` NUNCA devem ser convertidos para `Date` e formatados com opção `timeZone`. Usar `parseISO` do date-fns ou `split('-')` para montar localmente.
 
 **Regra de timezone para exibição**: Cada componente usa o timezone do **utilizador logado** (via `useAuth()`), independentemente de quem são os dados exibidos. O professor vê datas no seu fuso, o aluno vê no seu fuso. Para documentos oficiais como `Recibo.tsx`, aplica-se a mesma regra: se o professor acessa, vê no fuso do professor; se o aluno acessa, vê no fuso do aluno.
 

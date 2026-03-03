@@ -1,64 +1,83 @@
 
 
-# Avaliacao dos 4 Pontos do Gemini vs. Plano v3.4.1
+# Avaliacao dos 5 Pontos do Gemini vs. Plano v3.5
 
-## Resultado: 3 gaps reais encontrados. 1 ponto e uma boa sugestao de UX.
+## Resultado: 2 pontos merecem notas arquiteturais. 3 pontos ja estao cobertos ou nao se aplicam.
 
 ---
 
-### Ponto 1: `end-recurrence` — GAP REAL
+### Ponto 1: Wrappers para `startOfMonth`/`isToday` do date-fns — PARCIALMENTE VALIDO
 
-O Gemini esta **correto**. A edge function `end-recurrence/index.ts` (linha 67) faz:
+O Gemini aponta que funcoes nativas do `date-fns` (`startOfMonth`, `isToday`, `startOfDay`) operam no timezone do browser. Os **componentes individuais** que usam esses padroes (Dashboard.tsx, Financeiro.tsx, StudentDashboard.tsx) ja estao na tabela de migracao do Passo 8 (linhas 769-771).
+
+O que **falta** e uma **regra arquitetural explicita** no Passo 8 que proiba o uso direto dessas funcoes e mande criar wrappers timezone-aware em `src/utils/timezone.ts`.
+
+**Acao**: Adicionar uma nota arquitetural ao Passo 8 com a diretriz: "Proibido usar `startOfMonth`, `startOfDay`, `endOfMonth`, `isToday`, `isSameDay` do date-fns diretamente. Criar wrappers em `src/utils/timezone.ts` usando `toZonedTime` do date-fns-tz para garantir que a matematica de datas ocorra no fuso do perfil."
+
+---
+
+### Ponto 2: `end-recurrence` — JA COBERTO
+
+O Gemini sugere adicionar `end-recurrence` ao plano. **Ja esta coberto** desde a v3.5:
+- Passo 5.1.13 (linhas 660+ do documento) detalha exatamente esta correcao
+- Linha 864 da tabela de arquivos impactados
+- Linha 896 na tabela de riscos
+- Item 14 da sequencia de execucao
+
+**Veredicto**: Nenhuma acao necessaria.
+
+---
+
+### Ponto 3: `process-expired-subscriptions` — NAO SE APLICA
+
+O Gemini assume que o campo e do tipo `DATE`. Confirmei no codigo (linha 42 do `process-expired-subscriptions/index.ts`):
 
 ```typescript
-.gte('class_date', endDate)  // endDate = 'YYYY-MM-DD'
+.lt('current_period_end', now.toISOString())
 ```
 
-Quando Postgres recebe `'2026-03-15'` para comparar com `timestamptz`, interpreta como `2026-03-15 00:00:00+00` (meia-noite UTC). Uma aula do dia 14 as 22h BRT (= `2026-03-15 01:00:00+00`) sera apagada incorretamente.
+O campo `current_period_end` e `timestamp with time zone` (timestamptz), **nao** `DATE`. E um instante absoluto definido pelo Stripe. A comparacao `.lt(timestamptz, timestamptz)` e imune a timezone.
 
-**Confirmei**: `end-recurrence` **nao aparece** em nenhuma secao do plano. E um gap real.
+A classificacao "Baixo - sem acao" (linha 933 do plano) esta **correta**.
 
-**Acao**: Adicionar `end-recurrence` ao Passo 5.1 (Edge Functions). A funcao deve buscar o timezone do professor via `profiles.timezone`, converter `endDate` para o instante UTC correto (inicio do dia no timezone do professor) antes de fazer `.gte('class_date', ...)`.
-
----
-
-### Ponto 2: `RecurringClassActionModal.tsx` — GAP REAL
-
-O Gemini esta **correto**. O componente usa `Intl.DateTimeFormat('pt-BR', {...}).format(date)` **sem** a opcao `timeZone`. Isto formata no fuso do browser, nao do perfil.
-
-**Confirmei**: `RecurringClassActionModal` **nao aparece** na tabela de migracao do Passo 8 (38 componentes).
-
-**Acao**: Adicionar `RecurringClassActionModal.tsx` a tabela do Passo 8. Atualizar contagem de 38 para **39 componentes**.
+**Veredicto**: Nenhuma acao necessaria.
 
 ---
 
-### Ponto 3: `validate-monthly-subscriptions` — GAP REAL (baixa prioridade)
+### Ponto 4: `DEFAULT CURRENT_DATE` no Schema — COBERTO INDIRETAMENTE
 
-O Gemini esta **correto**. A funcao usa `now.getFullYear()` e `now.getMonth() + 1` no Deno (UTC). Alem disso, quando a RPC `count_completed_classes_in_month` ganhar o parametro `p_timezone` (Passo 5.3.1), esta funcao quebrara se nao for atualizada.
+Encontrei 2 arquivos de migracao com `DEFAULT CURRENT_DATE`:
 
-**Confirmei**: `validate-monthly-subscriptions` **nao aparece** no plano.
+1. `starts_at DATE NOT NULL DEFAULT CURRENT_DATE` em `subscription_students` — o `useMonthlySubscriptions.ts` ja envia `starts_at` explicitamente (linha 781 do plano). Apos a migracao deste hook (item ja listado), o default nunca sera usado.
 
-**Acao**: Adicionar uma nota ao Passo 5.3 indicando que `validate-monthly-subscriptions` deve ser atualizado para: (a) buscar o timezone do professor, (b) calcular mes/ano local, (c) passar `p_timezone` a RPC. Impacto baixo — e um script de validacao interna, nao afeta utilizadores diretamente.
+2. `p_reference_date DATE DEFAULT CURRENT_DATE` nas RPCs `get_billing_cycle_dates` e `count_completed_classes_in_billing_cycle` — ambas ja estao cobertas no Passo 5.3 (receberao `p_timezone` e o caller passara a data explicita).
 
----
-
-### Ponto 4: Escape hatch (seletor manual de timezone em ProfileSettings) — BOA SUGESTAO
-
-O plano atual (Passo 3) usa `useTimezoneSync` com `sessionStorage` para nao repetir o toast. Se o utilizador recusar acidentalmente, fica "preso" ate a proxima sessao.
-
-O plano **nao menciona** um seletor manual de timezone nas Configuracoes.
-
-**Acao**: Adicionar ao Passo 3 uma nota sobre incluir um `<Select>` de timezone em `ProfileSettings.tsx` como escape hatch. Nao e critico, mas e uma boa pratica de UX para suporte tecnico.
+**Veredicto**: Os casos concretos ja sao resolvidos pelos passos existentes. Nao justifica um novo passo de auditoria.
 
 ---
 
-## Resumo de Alteracoes ao Plano v3.4.1
+### Ponto 5: Formatacao de campos `date` com timezone causa off-by-one — PARCIALMENTE VALIDO
 
-| Alteracao | Prioridade | Secao |
+O Gemini aponta: `new Date('2026-03-10')` cria meia-noite UTC; formatar com `timeZone: 'America/Sao_Paulo'` (UTC-3) recua 3h e exibe **09/03/2026**. Confirmei no codigo atual de `send-invoice-notification` (linha 190):
+
+```typescript
+const formattedDueDate = new Date(invoice.due_date).toLocaleDateString("pt-BR", {
+  timeZone: "America/Sao_Paulo", // BUG: recua 1 dia para fusos negativos
+});
+```
+
+O plano **reconhece** o problema (linha 811: "tratar `date` offset") mas **nao define uma regra explicita** de como tratar campos `date`. A memory `constraints/database-date-timezone-rendering` documenta o risco, mas o plano nao traduz isso numa diretriz concreta.
+
+**Acao**: Adicionar uma regra arquitetural ao Passo 8 e ao Passo 5.1: "Campos do tipo `date` (sem hora) como `due_date`, `starts_at`, `expense_date`, `birth_date` NUNCA devem ser convertidos para `Date` e formatados com `timeZone`. Devem ser parseados como string (`split('-')`) e montados localmente, ou usar `parseISO` do date-fns (que trata como data local, sem offset)."
+
+---
+
+## Resumo de Alteracoes ao Plano v3.5
+
+| Alteracao | Tipo | Secao |
 |---|---|---|
-| Adicionar `end-recurrence` ao inventario de edge functions (Passo 5.1) | Alta | Nova subsecao 5.1.13 |
-| Adicionar `RecurringClassActionModal.tsx` a tabela do Passo 8 | Media | Tabela de migracao |
-| Adicionar nota sobre `validate-monthly-subscriptions` no Passo 5.3 | Baixa | Nota tecnica |
-| Adicionar escape hatch (seletor timezone) no Passo 3 | Baixa | Nota de UX |
-| Atualizar contagem: 38 → **39 componentes** | — | Passos 7 e 8 |
+| Regra arquitetural: proibir `startOfMonth`/`isToday` nativos do date-fns; exigir wrappers timezone-aware | Nota tecnica | Passo 8 |
+| Regra arquitetural: campos `date` nunca formatados com `timeZone`; usar parse de string | Nota tecnica | Passos 5.1 e 8 |
+
+Nenhum novo componente, edge function ou RPC a adicionar. Apenas duas diretrizes de implementacao para guiar os desenvolvedores durante a migracao.
 

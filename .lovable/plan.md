@@ -1,79 +1,50 @@
 
 
-# Avaliação dos 5 Pontos do Gemini vs. Plano v3.6.1
+# Diagnóstico: Fatura Paga no Stripe mas Pendente no Sistema
 
-## Resultado: 2 gaps reais. 3 pontos já cobertos ou não se aplicam.
+## Evidências Coletadas
 
----
+1. **Fatura**: `c9366cc3` — status `pendente`, PI `pi_3T6AyBLTWEqZbfWr0FDiCDzM`, método `boleto`, criada via Connected Account `acct_1SlVXzLmXH1N0Xdo`
+2. **Aula vinculada**: `f2f44711` — status `aguardando_pagamento`
+3. **Webhook**: **Zero logs** para `webhook-stripe-connect` — o evento `payment_intent.succeeded` nunca chegou ao sistema
+4. **Auto-verify cron** (a cada 3h): Executou mas **TODAS 50 faturas falharam** com `"No such payment_intent"` — está buscando os PIs na conta plataforma em vez da conta conectada
 
-### Ponto 1: `process-expired-subscriptions` — NÃO SE APLICA (já refutado 2x)
+## Bug 1: Webhook Stripe Connect não está recebendo eventos
 
-O Gemini insiste que o campo é tipo `date`. Já confirmei no código (linha 41-43):
+O webhook nunca disparou. Possíveis causas (no painel do Stripe):
+- O endpoint webhook pode não estar configurado para "Listen to events on Connected accounts"
+- O endpoint URL pode estar incorreto
+- O webhook secret `STRIPE_WEBHOOK_SECRET_CONNECT` pode não corresponder
 
-```typescript
-.from('user_subscriptions')
-.select('id, user_id, plan_id, stripe_subscription_id, current_period_end')
-.lt('current_period_end', now.toISOString())
-```
+**Isso é uma configuração externa no Dashboard do Stripe**, não é um bug de código.
 
-`current_period_end` é `timestamp with time zone` (timestamptz), definido pelo Stripe como instante absoluto. A comparação `.lt(timestamptz, timestamptz)` é imune a timezone. Não existe campo `ends_at` nesta tabela/função.
+## Bug 2: `auto-verify-pending-invoices` — fallback quebrado
 
-**Veredicto**: Nenhuma ação necessária. Terceira vez que este ponto é levantado e refutado.
+Apesar de o código-fonte ter a lógica de `stripeAccount` (linhas 79-97), **todas as 50 faturas falharam** com "No such payment_intent". Isso indica que a função deployada pode estar desatualizada (antes do fix #553) ou há um bug sutil na passagem do parâmetro.
 
----
+O resultado é que o sistema de segurança (auto-verify a cada 3h) está completamente inoperante para faturas Connect.
 
-### Ponto 2: `CreateInvoiceModal.tsx` — GAP REAL (falta na tabela de migração)
+## Plano de Correção
 
-Confirmei que `CreateInvoiceModal.tsx` **não aparece** na tabela de migração do Passo 8 (39 componentes). O componente usa:
+### Passo 1: Corrigir imediatamente a fatura do Erik (dados manuais)
 
-- `format(date, 'yyyy-MM-dd')` e `parse(formData.due_date, 'yyyy-MM-dd', new Date())` do date-fns
-- `format(parse(...), "dd 'de' MMMM, yyyy", { locale: ptBR })` para exibição
+Atualizar diretamente no banco:
+- Fatura `c9366cc3`: status → `paga`, payment_origin → `automatic`
+- Aula `f2f44711` + participante: status → `confirmada`
 
-O risco real é baixo (o `format` extrai dia/mês/ano do Date local que o utilizador selecionou), mas o componente **infringe a regra arquitetural** do Passo 8 que proíbe uso direto do `date-fns` sem wrappers. Além disso, a linha 199 de `create-invoice/index.ts` calcula o default `dueDate` com:
+### Passo 2: Redeployar `auto-verify-pending-invoices`
 
-```typescript
-new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-```
+Forçar redeploy para garantir que o código com `stripeAccount` esteja ativo. Após deploy, invocar manualmente para confirmar que as faturas Connect são verificadas com sucesso.
 
-Isto grava a data UTC, que pode ser 1 dia antes para utilizadores em fusos positivos (ex: Ásia/Austrália). Deve usar o timezone do professor.
+### Passo 3: Orientar sobre configuração do Webhook no Stripe
 
-**Ação**: 
-1. Adicionar `CreateInvoiceModal.tsx` à tabela de migração do Passo 8 (componente 40).
-2. Adicionar nota sobre `create-invoice/index.ts` linha 199 ao Passo 5.1 (default `dueDate` deve usar timezone do professor).
+O webhook `webhook-stripe-connect` precisa estar configurado no Stripe Dashboard com:
+- URL: `https://nwgomximjevgczwuyqcx.supabase.co/functions/v1/webhook-stripe-connect`
+- "Listen to events on Connected accounts" ativado
+- Eventos: `payment_intent.succeeded`, `payment_intent.payment_failed`, `invoice.paid`, etc.
+- Secret correspondente ao `STRIPE_WEBHOOK_SECRET_CONNECT`
 
----
+### Passo 4 (se necessário): Adicionar logs de debug ao auto-verify
 
-### Ponto 3: `StudentScheduleRequest.tsx` — JÁ COBERTO
-
-O componente **já está** na tabela de migração (linha 776, 881) e tem tratamento especial no Passo 5.4 (conversão de `working_hours` do fuso do professor para o fuso do aluno). O submit (linha 272) envia `selectedTimeSlot` que é um ISO string gerado via `toISOString()` — o valor é um instante UTC absoluto derivado do slot já convertido. O plano já cobre a migração completa deste componente.
-
-**Veredicto**: Nenhuma ação necessária.
-
----
-
-### Ponto 4: Stripe API `due_date` Unix — NÃO SE APLICA
-
-Confirmei no `create-invoice/index.ts`: a função **não** envia `due_date` para a API do Stripe como Unix timestamp. Ela grava `due_date` como string `YYYY-MM-DD` na tabela `invoices` do Supabase (linha 214). A geração do boleto/PaymentIntent acontece em `generate-boleto-for-invoice` ou `create-payment-intent-connect`, que são funções separadas. O cenário descrito pelo Gemini não corresponde ao código real.
-
-Porém, o cálculo default do `dueDate` (linha 199) **tem** o bug UTC mencionado no Ponto 2 acima.
-
-**Veredicto**: O bug real já foi capturado no Ponto 2.
-
----
-
-### Ponto 5: CSV Import — NÃO SE APLICA
-
-Confirmei no `StudentImportDialog.tsx`: o import **não** processa datas. Os campos importados são: `name`, `email`, `phone`, `guardian_*`, `cpf`, `billing_day`, `tipo_cadastro`, `dependentes`. Não há `birth_date` nem qualquer campo de data no mapeamento (linhas 20-37).
-
-**Veredicto**: Nenhuma ação necessária. O cenário é hipotético.
-
----
-
-## Resumo de Alterações ao Plano v3.6.1
-
-| Alteração | Tipo | Secção |
-|---|---|---|
-| Adicionar `CreateInvoiceModal.tsx` à tabela do Passo 8 (componente 40) | Correção de gap | Tabela de migração |
-| Adicionar nota sobre `create-invoice/index.ts` linha 199 (default `dueDate` usa UTC) | Nota técnica | Passo 5.1 |
-| Atualizar contagem: 39 → **40 componentes** | Metadado | Passos 7 e 8 |
+Adicionar log explícito do `stripeAccount` resolvido antes do `retrieve` para confirmar se o lookup está funcionando.
 

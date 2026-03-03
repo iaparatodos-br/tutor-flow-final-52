@@ -640,7 +640,7 @@ import { zonedTimeToUtc } from 'date-fns-tz';
 const classDateTime = zonedTimeToUtc(`${formData.class_date}T${formData.time}`, profile.timezone);
 ```
 
-**Aplicar em**: `ClassForm.tsx` (linha 148), `Agenda.tsx` (linha 1424), `ClassExceptionForm.tsx`, `FutureClassExceptionForm.tsx`.
+**Aplicar em**: `ClassForm.tsx` (linha 148), `Agenda.tsx` (linha 1424), `ClassExceptionForm.tsx`, `FutureClassExceptionForm.tsx`, `AvailabilityManager.tsx` (linha 134 — `handleAddBlock`).
 
 ---
 

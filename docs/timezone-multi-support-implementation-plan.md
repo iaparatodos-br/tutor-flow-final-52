@@ -2,7 +2,7 @@
 
 > **Status**: Pendente de implementação  
 > **Data**: 2026-03-02  
-> **Versão**: 2.9 (v2.8 + Financeiro.tsx query logic + useMonthlySubscriptions.ts)
+> **Versão**: 3.0 (v2.9 + StudentSubscriptionSelect + ClassExceptionForm + FutureClassExceptionForm)
 
 ---
 
@@ -593,6 +593,9 @@ export const formatDate = (
 | `src/components/ExpenseList.tsx` | 1x `format()` sem timezone (`expense_date` tipo `date`) |
 | `src/pages/Legal.tsx` | 1x `format()` sem timezone (`published_at` timestamptz) |
 | `src/hooks/useMonthlySubscriptions.ts` | 6x `new Date().toISOString().split('T')[0]` para `starts_at`/`ends_at` — data escrita no banco pode ser dia anterior para utilizadores em fusos positivos |
+| `src/components/StudentSubscriptionSelect.tsx` | 3x `format(new Date(), 'yyyy-MM-dd')` para default de `startsAt` — usa timezone do browser em vez do perfil |
+| `src/components/ClassExceptionForm.tsx` | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) — inconsistência data/hora, pré-preenche dia errado |
+| `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
@@ -662,6 +665,9 @@ Estes ficheiros devem ser progressivamente migrados para usar as funções de `s
 | `src/components/ExpenseList.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
 | `src/pages/Legal.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
 | `src/hooks/useMonthlySubscriptions.ts` | Migrar 6x cálculo de data para utilitário timezone-aware |
+| `src/components/StudentSubscriptionSelect.tsx` | Migrar 3x `format(new Date())` para utilitário timezone-aware |
+| `src/components/ClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
+| `src/components/FutureClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
 | Cron job SQL | Alterar schedule para horário |
 | `package.json` | Adicionar `date-fns-tz` |
 
@@ -784,7 +790,7 @@ function getLocalDateParts(timezone: string): { year: number; month: number; day
 4. ⬜ Refatorar `src/utils/timezone.ts` (Passo 8) — aceitar timezone dinâmico
 5. ⬜ Frontend: capturar timezone no registo (Passo 2)
 6. ⬜ Frontend: hook `useTimezoneSync` (Passo 3)
-7. ⬜ Frontend: migrar 31 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9)
+7. ⬜ Frontend: migrar 34 componentes com datas hardcoded (Passo 8, tabela — 15 originais + 7 v2.5 + 6 v2.6 + 1 v2.7 + 1 v2.8 + 1 v2.9 + 3 v3.0)
 8. ⬜ Backend: criar RPC `get_relationships_to_bill_now` (Passo 5)
 9. ⬜ Backend: refatorar `automated-billing` (Passo 5)
 10. ⬜ Backend: refatorar `send-class-reminders` (Passo 5.1.1)

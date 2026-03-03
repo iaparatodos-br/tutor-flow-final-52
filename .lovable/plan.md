@@ -14,6 +14,8 @@ O que **falta** e uma **regra arquitetural explicita** no Passo 8 que proiba o u
 
 **Acao**: Adicionar uma nota arquitetural ao Passo 8 com a diretriz: "Proibido usar `startOfMonth`, `startOfDay`, `endOfMonth`, `isToday`, `isSameDay` do date-fns diretamente. Criar wrappers em `src/utils/timezone.ts` usando `toZonedTime` do date-fns-tz para garantir que a matematica de datas ocorra no fuso do perfil."
 
+**Status**: ✅ Aplicado no plano v3.6.
+
 ---
 
 ### Ponto 2: `end-recurrence` — JA COBERTO
@@ -70,14 +72,15 @@ O plano **reconhece** o problema (linha 811: "tratar `date` offset") mas **nao d
 
 **Acao**: Adicionar uma regra arquitetural ao Passo 8 e ao Passo 5.1: "Campos do tipo `date` (sem hora) como `due_date`, `starts_at`, `expense_date`, `birth_date` NUNCA devem ser convertidos para `Date` e formatados com `timeZone`. Devem ser parseados como string (`split('-')`) e montados localmente, ou usar `parseISO` do date-fns (que trata como data local, sem offset)."
 
+**Status**: ✅ Aplicado no plano v3.6.
+
 ---
 
-## Resumo de Alteracoes ao Plano v3.5
+## Resumo de Alteracoes ao Plano v3.5 → v3.6
 
-| Alteracao | Tipo | Secao |
-|---|---|---|
-| Regra arquitetural: proibir `startOfMonth`/`isToday` nativos do date-fns; exigir wrappers timezone-aware | Nota tecnica | Passo 8 |
-| Regra arquitetural: campos `date` nunca formatados com `timeZone`; usar parse de string | Nota tecnica | Passos 5.1 e 8 |
+| Alteracao | Tipo | Secao | Status |
+|---|---|---|---|
+| Regra arquitetural: proibir `startOfMonth`/`isToday` nativos do date-fns; exigir wrappers timezone-aware | Nota tecnica | Passo 8 | ✅ |
+| Regra arquitetural: campos `date` nunca formatados com `timeZone`; usar parse de string | Nota tecnica | Passos 5.1 e 8 | ✅ |
 
 Nenhum novo componente, edge function ou RPC a adicionar. Apenas duas diretrizes de implementacao para guiar os desenvolvedores durante a migracao.
-

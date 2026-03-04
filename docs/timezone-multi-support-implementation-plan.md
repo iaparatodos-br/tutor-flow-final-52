@@ -1,6 +1,6 @@
 # Plano de Implementação: Suporte a Múltiplos Fusos Horários
 
-> **Status**: Pendente de implementação  
+> **Status**: Concluído com sucesso (v3.6.3)
 > **Data**: 2026-03-03  
 > **Versão**: 3.6.3 (v3.6.2 + correção snippet `isTodayTz` startOfDay, nota `validate-payment-routing` dueDate, nota `Recibo.tsx` parseISO para campo date, contagem 39→40, correção "professor"→"aluno" em send-class-reminders)
 
@@ -13,6 +13,7 @@ O sistema **Tutor Flow** opera atualmente com fuso horário fixo de Brasília (`
 ### Objetivo
 
 Evoluir o sistema para suporte multi-timezone com:
+
 - **Detecção automática** no frontend (sem selects/dropdowns nesta fase).
 - **Hourly Sweeper** no backend para billing timezone-aware.
 - **Retrocompatibilidade** total com utilizadores existentes.
@@ -32,7 +33,7 @@ Evoluir o sistema para suporte multi-timezone com:
 Adicionar coluna `timezone` à tabela `profiles`:
 
 ```sql
-ALTER TABLE public.profiles 
+ALTER TABLE public.profiles
 ADD COLUMN timezone text NOT NULL DEFAULT 'America/Sao_Paulo';
 ```
 
@@ -54,11 +55,11 @@ const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Ame
 
 #### Arquivos a alterar
 
-| Arquivo | Mudança |
-|---|---|
+| Arquivo                                      | Mudança                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------ |
 | `supabase/functions/create-teacher/index.ts` | Aceitar campo `timezone` no body; preencher coluna ao criar perfil |
-| `src/contexts/AuthContext.tsx` | No `signUp`, capturar timezone do browser e enviar no payload |
-| `src/components/ProfileSetup.tsx` | Ao submeter profile setup, enviar timezone do browser |
+| `src/contexts/AuthContext.tsx`               | No `signUp`, capturar timezone do browser e enviar no payload      |
+| `src/components/ProfileSetup.tsx`            | Ao submeter profile setup, enviar timezone do browser              |
 
 #### Nota sobre `create-student`
 
@@ -93,6 +94,7 @@ Custom hook que:
 #### Escape Hatch: Seletor Manual de Timezone (v3.5)
 
 Mesmo com a detecção automática como fluxo principal, adicionar um `<Select>` de timezone em `src/components/Settings/ProfileSettings.tsx` (dentro de Configurações → Perfil). Funciona como "escape hatch" para:
+
 - Utilizadores que recusaram acidentalmente a atualização do toast.
 - Utilizadores usando VPN cujo `Intl` retorna timezone incorreto.
 - Casos de suporte técnico.
@@ -128,6 +130,7 @@ schedule: 0 * * * *  (a cada hora, minuto 0)
 #### Ação
 
 Executar SQL para:
+
 1. `SELECT cron.unschedule('automated-billing-daily');`
 2. `SELECT cron.schedule('automated-billing-hourly', '0 * * * *', ...);`
 
@@ -168,7 +171,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT 
+  SELECT
     tsr.id,
     tsr.teacher_id,
     tsr.student_id,
@@ -182,8 +185,8 @@ AS $$
     AND tsr.billing_day = EXTRACT(DAY FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo')))
     AND EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo'))) >= 1
     AND NOT EXISTS (
-      SELECT 1 FROM invoices i 
-      WHERE i.teacher_id = tsr.teacher_id 
+      SELECT 1 FROM invoices i
+      WHERE i.teacher_id = tsr.teacher_id
         AND i.student_id = tsr.student_id
         AND i.invoice_type = 'monthly'
         AND i.created_at >= ((now() AT TIME ZONE COALESCE(p.timezone, 'America/Sao_Paulo'))::date)::timestamptz
@@ -195,11 +198,11 @@ $$;
 
 #### Alterações na Edge Function
 
-| Local | Mudança |
-|---|---|
-| Query de billing day | Substituir `.eq('billing_day', today)` pela chamada à RPC |
-| `getBillingCycleDates` | Receber `timezone` como parâmetro e usar `Intl.DateTimeFormat` para calcular datas no fuso local |
-| Cálculo de `due_date` | Usar `Intl.DateTimeFormat` com timezone do professor para calcular "hoje local" antes de adicionar `payment_due_days` (3 ocorrências: billing tradicional, mensalidade, aulas fora do ciclo) |
+| Local                  | Mudança                                                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query de billing day   | Substituir `.eq('billing_day', today)` pela chamada à RPC                                                                                                                                    |
+| `getBillingCycleDates` | Receber `timezone` como parâmetro e usar `Intl.DateTimeFormat` para calcular datas no fuso local                                                                                             |
+| Cálculo de `due_date`  | Usar `Intl.DateTimeFormat` com timezone do professor para calcular "hoje local" antes de adicionar `payment_due_days` (3 ocorrências: billing tradicional, mensalidade, aulas fora do ciclo) |
 
 #### Detalhe: `getBillingCycleDates` com timezone (Deno)
 
@@ -217,7 +220,7 @@ function getBillingCycleDates(billingDay: number, timezone: string): { cycleStar
   const localYear = parseInt(parts.find(p => p.type === 'year')!.value);
   const localMonth = parseInt(parts.find(p => p.type === 'month')!.value);
   const localDay = parseInt(parts.find(p => p.type === 'day')!.value);
-  
+
   // Calcular cycleStart e cycleEnd baseado no dia local
   // ... lógica existente usando localYear, localMonth, localDay
 }
@@ -236,6 +239,7 @@ Todas as edge functions que formatam datas em emails usam `timeZone: "America/Sa
 Campos do tipo `date` no Postgres (como `due_date`, `starts_at`, `expense_date`, `birth_date`) são strings `YYYY-MM-DD` sem componente de hora. Converter para `new Date('2026-03-10')` cria meia-noite UTC; formatar com `timeZone: 'America/Sao_Paulo'` (UTC-3) recua 3h e exibe **09/03/2026** — um bug off-by-one.
 
 **Diretriz obrigatória**: Campos `date` NUNCA devem ser convertidos para `Date` e formatados com opção `timeZone`. Devem ser:
+
 1. Parseados como string (`split('-')`) e montados localmente, ou
 2. Usar `parseISO` do date-fns (que trata como data local, sem offset UTC).
 
@@ -310,8 +314,8 @@ const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
 
 ```typescript
 const formattedDate = classDate.toLocaleDateString('pt-BR');
-const formattedTime = classDate.toLocaleTimeString('pt-BR', { 
-  hour: '2-digit', minute: '2-digit' 
+const formattedTime = classDate.toLocaleTimeString('pt-BR', {
+  hour: '2-digit', minute: '2-digit'
 });
 ```
 
@@ -372,7 +376,6 @@ let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_d
 **Ação**: O `teacher_id` já está disponível no contexto. Buscar timezone e usar na formatação. Além da descrição, corrigir fallback `dueDate` (linha 199) para usar timezone do professor via `Intl.DateTimeFormat('en-CA', { timeZone })` em vez de `new Date(Date.now() + ...).toISOString().split('T')[0]`.
 
 > **Nota v3.6.3**: `validate-payment-routing/index.ts` (linha 241) também usa `new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]` para `due_date` de teste. Mesma vulnerabilidade, mas impacto baixo (validação interna, não persiste dados). Corrigir junto com o Passo 5.1.10.
-
 
 Linha 192 — calcula "hoje" em UTC para encontrar faturas vencidas:
 
@@ -538,6 +541,7 @@ p_month: now.getMonth() + 1  // UTC no Deno
 ```
 
 **Problema duplo**:
+
 1. `now.getFullYear()` e `now.getMonth()` no Deno calculam em UTC. Às 23:00 BRT do dia 31/Jan, para o Deno já é 01/Fev — testa o mês errado.
 2. Quando a RPC ganhar o parâmetro `p_timezone` (Passo 5.3.1), esta função **quebrará** se não passar o novo parâmetro.
 
@@ -574,10 +578,10 @@ Se um aluno em Lisboa (UTC+0) tenta agendar com um professor no Brasil (UTC-3), 
 
 #### Ação
 
-| Local | Mudança |
-|---|---|
-| `get-teacher-availability/index.ts` | Buscar `profiles.timezone` do professor e incluir campo `teacherTimezone` na resposta JSON |
-| `StudentScheduleRequest.tsx` | Converter `working_hours` do fuso do professor para o fuso do aluno antes de renderizar slots |
+| Local                                       | Mudança                                                                                         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `get-teacher-availability/index.ts`         | Buscar `profiles.timezone` do professor e incluir campo `teacherTimezone` na resposta JSON      |
+| `StudentScheduleRequest.tsx`                | Converter `working_hours` do fuso do professor para o fuso do aluno antes de renderizar slots   |
 | `supabase/functions/request-class/index.ts` | Validar que o horário solicitado cai dentro do expediente do professor no fuso **do professor** |
 
 ---
@@ -632,7 +636,7 @@ O risco de drift de 1h na **apresentação** das datas geradas já está coberto
 
 ### REGRA CRÍTICA: Input Parsing no Formulário de Aulas (v3.4)
 
-Ao submeter datas de formulários, o `new Date(\`${date}T${time}\`)` usa o timezone do browser. Se o utilizador estiver fisicamente num fuso diferente do perfil (ex: professor brasileiro viajando pela Europa que recusou a atualização do `useTimezoneSync`), a aula será gravada no horário errado.
+Ao submeter datas de formulários, o `new Date(\`${date}T${time}\`)`usa o timezone do browser. Se o utilizador estiver fisicamente num fuso diferente do perfil (ex: professor brasileiro viajando pela Europa que recusou a atualização do`useTimezoneSync`), a aula será gravada no horário errado.
 
 **Correção**: Usar `zonedTimeToUtc` do `date-fns-tz` para forçar o parse no timezone do perfil:
 
@@ -661,10 +665,12 @@ Compara `due_date` (campo `date`) com a data UTC do servidor. Para um professor 
 Duas abordagens possíveis:
 
 **Opção A (Recomendada)**: Converter para hourly sweeper similar ao billing:
+
 - Buscar faturas pendentes com JOIN em profiles para obter timezone.
 - Comparar `due_date` com a data local do professor.
 
 **Opção B**: Manter execução diária mas usar a data local:
+
 - Para cada fatura, buscar o timezone do professor.
 - Calcular a data local do professor antes de comparar.
 
@@ -723,6 +729,7 @@ bun add date-fns-tz
 ```
 
 Para uso no **frontend** em:
+
 - Componentes de calendário com formatação timezone-aware.
 - Conversões visuais de horários entre fusos.
 - Substituição progressiva do `moment.js`.
@@ -747,7 +754,7 @@ Refatorar para aceitar timezone dinâmico como parâmetro, mantendo retrocompati
 export const DEFAULT_TIMEZONE = 'America/Sao_Paulo';
 
 export const formatDate = (
-  date: Date | string, 
+  date: Date | string,
   timezone: string = DEFAULT_TIMEZONE,
   options?: Intl.DateTimeFormatOptions
 ): string => {
@@ -765,53 +772,54 @@ export const formatDate = (
 
 #### Arquivos frontend com datas hardcoded a migrar
 
-| Arquivo | Problema |
-|---|---|
-| `src/components/Calendar/SimpleCalendar.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone (várias instâncias) |
-| `src/components/Calendar/MobileCalendarList.tsx` | `.toLocaleTimeString()` sem timezone |
-| `src/components/Calendar/CalendarView.tsx` | ~5x `moment().format()` sem timezone explícito (HH:mm, dddd DD/MM/YYYY, ddd, etc.) — migrar para utilitário timezone-aware |
-| `src/components/CancellationModal.tsx` | `.toLocaleDateString()` e `.toLocaleTimeString()` sem timezone |
-| `src/components/ClassReportModal.tsx` | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone |
-| `src/components/ClassReportView.tsx` | `.toLocaleDateString()` e `.toLocaleString()` sem timezone |
-| `src/components/PendingBoletoModal.tsx` | `.toLocaleDateString()` sem timezone |
-| `src/components/StudentScheduleRequest.tsx` | `formatDate`/`formatTime` locais sem timezone (4+ ocorrências) + **converter `working_hours` do fuso do professor para fuso do aluno** (v3.3) |
-| `src/components/BusinessProfilesManager.tsx` | `.toLocaleDateString()` sem timezone |
-| `src/components/Settings/CancellationPolicySettings.tsx` | `.toLocaleDateString()` sem timezone (2 ocorrências) |
-| `src/pages/PainelNegocios.tsx` | `.toLocaleDateString('pt-BR')` sem timezone |
-| `src/pages/Materiais.tsx` | `.toLocaleDateString()` sem timezone |
-| `src/pages/MeusMateriais.tsx` | `.toLocaleDateString()` sem locale/timezone |
-| `src/pages/PerfilAluno.tsx` | ~8 chamadas (datas de aulas, cadastro, nascimento, vencimento) |
-| `src/pages/Financeiro.tsx` | `formatDate` local sem timezone + cálculo de `currentMonth` com `new Date().toISOString()` sem timezone (resumo de despesas pode mostrar mês errado) + função `isOverdue()` compara `due_date` (campo `date`) com data local sem timezone do perfil (pode marcar fatura como vencida 1 dia antes) |
-| `src/pages/Agenda.tsx` | `.toLocaleDateString()` para descrição de fatura |
-| `src/pages/Recibo.tsx` | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) — documento oficial |
-| `src/pages/Faturas.tsx` | 2x `format()` sem timezone (created_at, due_date) — bug de dia anterior em `due_date` |
-| `src/pages/Historico.tsx` | `formatDateTime` sem timezone (class_date timestamptz) |
-| `src/pages/Dashboard.tsx` | `startOfMonth` calculado com `new Date()` sem timezone — receita mensal pode incluir faturas do mês anterior para professores fora de BRT |
-| `src/pages/StudentDashboard.tsx` | 2x `format()` sem timezone (class_date, starts_at) + cálculo de `startOfMonth` com `new Date()` sem timezone (mesmo que não usado na query atual, deve ser corrigido preventivamente) |
-| `src/components/Inbox/NotificationItem.tsx` | 2x `format()` sem timezone (invoice_due_date, class_date) |
-| `src/pages/Subscription.tsx` | 3x `format()` sem timezone (datas do Stripe) |
-| `src/components/PlanDowngradeSelectionModal.tsx` | 1x `format()` sem timezone (created_at) |
-| `src/components/MonthlySubscriptionsManager.tsx` | 1x `format()` sem timezone (`starts_at` tipo `date` — bug de dia anterior) |
-| `src/components/PaymentOptionsCard.tsx` | 1x `format()` sem timezone (datas de faturas) + `isOverdue` compara `due_date` com `new Date()` sem timezone (pode marcar fatura como vencida 1 dia antes) |
-| `src/components/PlanDowngradeWarningModal.tsx` | 3x `format()` sem timezone (`subscriptionEndDate` timestamptz) |
-| `src/components/ArchivedDataViewer.tsx` | 2x `toLocaleString`/`toLocaleDateString` sem timezone (dados arquivados) |
-| `src/components/DependentManager.tsx` | 1x `format()` sem timezone (`birth_date` tipo `date`) |
-| `src/components/ExpenseList.tsx` | 1x `format()` sem timezone (`expense_date` tipo `date`) |
-| `src/pages/Legal.tsx` | 1x `format()` sem timezone (`published_at` timestamptz) |
-| `src/hooks/useMonthlySubscriptions.ts` | 6x `new Date().toISOString().split('T')[0]` para `starts_at`/`ends_at` — data escrita no banco pode ser dia anterior para utilizadores em fusos positivos |
-| `src/components/StudentSubscriptionSelect.tsx` | 3x `format(new Date(), 'yyyy-MM-dd')` para default de `startsAt` — usa timezone do browser em vez do perfil |
-| `src/components/ClassExceptionForm.tsx` | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) — inconsistência data/hora, pré-preenche dia errado |
-| `src/components/FutureClassExceptionForm.tsx` | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) |
-| `src/components/Availability/AvailabilityManager.tsx` | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3) |
-| `src/components/ExpenseModal.tsx` | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil (v3.4) |
-| `src/components/RecurringClassActionModal.tsx` | 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5) |
-| `src/components/CreateInvoiceModal.tsx` | `parse(formData.due_date, 'yyyy-MM-dd', new Date())` + `format(date, 'yyyy-MM-dd')` + `format(parse(...), "dd 'de' MMMM, yyyy")` — usar wrappers timezone-aware (v3.6.2) |
+| Arquivo                                                  | Problema                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/components/Calendar/SimpleCalendar.tsx`             | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone (várias instâncias)                                                                                                                                                                                                  |
+| `src/components/Calendar/MobileCalendarList.tsx`         | `.toLocaleTimeString()` sem timezone                                                                                                                                                                                                                                                              |
+| `src/components/Calendar/CalendarView.tsx`               | ~5x `moment().format()` sem timezone explícito (HH:mm, dddd DD/MM/YYYY, ddd, etc.) — migrar para utilitário timezone-aware                                                                                                                                                                        |
+| `src/components/CancellationModal.tsx`                   | `.toLocaleDateString()` e `.toLocaleTimeString()` sem timezone                                                                                                                                                                                                                                    |
+| `src/components/ClassReportModal.tsx`                    | `.toLocaleDateString('pt-BR')` e `.toLocaleTimeString('pt-BR')` sem timezone                                                                                                                                                                                                                      |
+| `src/components/ClassReportView.tsx`                     | `.toLocaleDateString()` e `.toLocaleString()` sem timezone                                                                                                                                                                                                                                        |
+| `src/components/PendingBoletoModal.tsx`                  | `.toLocaleDateString()` sem timezone                                                                                                                                                                                                                                                              |
+| `src/components/StudentScheduleRequest.tsx`              | `formatDate`/`formatTime` locais sem timezone (4+ ocorrências) + **converter `working_hours` do fuso do professor para fuso do aluno** (v3.3)                                                                                                                                                     |
+| `src/components/BusinessProfilesManager.tsx`             | `.toLocaleDateString()` sem timezone                                                                                                                                                                                                                                                              |
+| `src/components/Settings/CancellationPolicySettings.tsx` | `.toLocaleDateString()` sem timezone (2 ocorrências)                                                                                                                                                                                                                                              |
+| `src/pages/PainelNegocios.tsx`                           | `.toLocaleDateString('pt-BR')` sem timezone                                                                                                                                                                                                                                                       |
+| `src/pages/Materiais.tsx`                                | `.toLocaleDateString()` sem timezone                                                                                                                                                                                                                                                              |
+| `src/pages/MeusMateriais.tsx`                            | `.toLocaleDateString()` sem locale/timezone                                                                                                                                                                                                                                                       |
+| `src/pages/PerfilAluno.tsx`                              | ~8 chamadas (datas de aulas, cadastro, nascimento, vencimento)                                                                                                                                                                                                                                    |
+| `src/pages/Financeiro.tsx`                               | `formatDate` local sem timezone + cálculo de `currentMonth` com `new Date().toISOString()` sem timezone (resumo de despesas pode mostrar mês errado) + função `isOverdue()` compara `due_date` (campo `date`) com data local sem timezone do perfil (pode marcar fatura como vencida 1 dia antes) |
+| `src/pages/Agenda.tsx`                                   | `.toLocaleDateString()` para descrição de fatura                                                                                                                                                                                                                                                  |
+| `src/pages/Recibo.tsx`                                   | 4x `format()` sem timezone (created_at, due_date, updated_at, hora atual) — documento oficial                                                                                                                                                                                                     |
+| `src/pages/Faturas.tsx`                                  | 2x `format()` sem timezone (created_at, due_date) — bug de dia anterior em `due_date`                                                                                                                                                                                                             |
+| `src/pages/Historico.tsx`                                | `formatDateTime` sem timezone (class_date timestamptz)                                                                                                                                                                                                                                            |
+| `src/pages/Dashboard.tsx`                                | `startOfMonth` calculado com `new Date()` sem timezone — receita mensal pode incluir faturas do mês anterior para professores fora de BRT                                                                                                                                                         |
+| `src/pages/StudentDashboard.tsx`                         | 2x `format()` sem timezone (class_date, starts_at) + cálculo de `startOfMonth` com `new Date()` sem timezone (mesmo que não usado na query atual, deve ser corrigido preventivamente)                                                                                                             |
+| `src/components/Inbox/NotificationItem.tsx`              | 2x `format()` sem timezone (invoice_due_date, class_date)                                                                                                                                                                                                                                         |
+| `src/pages/Subscription.tsx`                             | 3x `format()` sem timezone (datas do Stripe)                                                                                                                                                                                                                                                      |
+| `src/components/PlanDowngradeSelectionModal.tsx`         | 1x `format()` sem timezone (created_at)                                                                                                                                                                                                                                                           |
+| `src/components/MonthlySubscriptionsManager.tsx`         | 1x `format()` sem timezone (`starts_at` tipo `date` — bug de dia anterior)                                                                                                                                                                                                                        |
+| `src/components/PaymentOptionsCard.tsx`                  | 1x `format()` sem timezone (datas de faturas) + `isOverdue` compara `due_date` com `new Date()` sem timezone (pode marcar fatura como vencida 1 dia antes)                                                                                                                                        |
+| `src/components/PlanDowngradeWarningModal.tsx`           | 3x `format()` sem timezone (`subscriptionEndDate` timestamptz)                                                                                                                                                                                                                                    |
+| `src/components/ArchivedDataViewer.tsx`                  | 2x `toLocaleString`/`toLocaleDateString` sem timezone (dados arquivados)                                                                                                                                                                                                                          |
+| `src/components/DependentManager.tsx`                    | 1x `format()` sem timezone (`birth_date` tipo `date`)                                                                                                                                                                                                                                             |
+| `src/components/ExpenseList.tsx`                         | 1x `format()` sem timezone (`expense_date` tipo `date`)                                                                                                                                                                                                                                           |
+| `src/pages/Legal.tsx`                                    | 1x `format()` sem timezone (`published_at` timestamptz)                                                                                                                                                                                                                                           |
+| `src/hooks/useMonthlySubscriptions.ts`                   | 6x `new Date().toISOString().split('T')[0]` para `starts_at`/`ends_at` — data escrita no banco pode ser dia anterior para utilizadores em fusos positivos                                                                                                                                         |
+| `src/components/StudentSubscriptionSelect.tsx`           | 3x `format(new Date(), 'yyyy-MM-dd')` para default de `startsAt` — usa timezone do browser em vez do perfil                                                                                                                                                                                       |
+| `src/components/ClassExceptionForm.tsx`                  | `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local) — inconsistência data/hora, pré-preenche dia errado                                                                                                                                                                                |
+| `src/components/FutureClassExceptionForm.tsx`            | Mesmo bug: `toISOString().split('T')[0]` (UTC) + `toTimeString()` (local)                                                                                                                                                                                                                         |
+| `src/components/Availability/AvailabilityManager.tsx`    | 1x `moment().format('DD/MM/YYYY HH:mm')` sem timezone explícito — migrar para utilitário timezone-aware (v3.3)                                                                                                                                                                                    |
+| `src/components/ExpenseModal.tsx`                        | 1x `formatDate(new Date(), 'yyyy-MM-dd')` — default de `expense_date` usa timezone do browser em vez do perfil (v3.4)                                                                                                                                                                             |
+| `src/components/RecurringClassActionModal.tsx`           | 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5)                                                                                                                                                                                                                     |
+| `src/components/CreateInvoiceModal.tsx`                  | `parse(formData.due_date, 'yyyy-MM-dd', new Date())` + `format(date, 'yyyy-MM-dd')` + `format(parse(...), "dd 'de' MMMM, yyyy")` — usar wrappers timezone-aware (v3.6.2)                                                                                                                          |
 
 Estes ficheiros devem ser progressivamente migrados para usar as funções de `src/utils/timezone.ts` com o timezone do utilizador (obtido via `useAuth()`).
 
 #### REGRA ARQUITETURAL: Proibir `date-fns` nativas para matemática de datas (v3.6)
 
 **Proibido** usar diretamente as seguintes funções do `date-fns` em componentes frontend:
+
 - `startOfMonth`, `endOfMonth`, `startOfDay`, `endOfDay`
 - `isToday`, `isSameDay`, `isSameMonth`
 
@@ -847,104 +855,104 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 
 ## 3. Arquivos Impactados (Completo)
 
-| Arquivo | Tipo de Mudança |
-|---|---|
-| Migration SQL (`profiles.timezone`) | Nova coluna |
-| RPC SQL `get_relationships_to_bill_now` | Nova função PostgreSQL + tipo customizado |
-| `supabase/functions/create-teacher/index.ts` | Aceitar campo timezone |
-| `supabase/functions/automated-billing/index.ts` | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + **5** `toLocaleDateString` internos (inclui descrição de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939) + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor |
-| `supabase/functions/check-overdue-invoices/index.ts` | Comparação de due_date timezone-aware |
-| `supabase/functions/send-class-reminders/index.ts` | Formatação de datas com timezone do destinatário (aluno) |
-| `supabase/functions/send-class-confirmation-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
-| `supabase/functions/send-cancellation-notification/index.ts` | Substituir 1x `timeZone: 'America/Sao_Paulo'` hardcoded |
-| `supabase/functions/send-invoice-notification/index.ts` | Substituir 1x `timeZone: "America/Sao_Paulo"` hardcoded + tratar `date` offset |
-| `supabase/functions/send-class-request-notification/index.ts` | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded |
-| `supabase/functions/send-class-report-notification/index.ts` | Adicionar timezone na formatação de data/hora (2 ocorrências) |
-| `supabase/functions/send-boleto-subscription-notification/index.ts` | Parametrizar `formatDate` com timezone |
-| `supabase/functions/process-cancellation/index.ts` | Usar timezone na descrição de fatura |
-| `supabase/functions/process-orphan-cancellation-charges/index.ts` | Usar timezone na descrição de fatura + cálculo de `due_date` deve usar timezone do professor |
-| `supabase/functions/create-invoice/index.ts` | Usar timezone na descrição de item + fallback `due_date` deve usar timezone do professor |
-| `supabase/functions/generate-teacher-notifications/index.ts` | Cálculo de "hoje" timezone-aware para faturas vencidas |
-| `supabase/functions/check-pending-boletos/index.ts` | Cálculo de "amanhã" timezone-aware para lembretes de boleto |
-| Migration SQL (refatorar 7 RPCs) | Adicionar `p_timezone` e `AT TIME ZONE` em `count_completed_classes_in_month`, `get_student_subscription_details` (2x), `get_subscription_assigned_students`, `get_student_active_subscription`, `get_billing_cycle_dates`, `count_completed_classes_in_billing_cycle`, `get_teacher_notifications` |
-| `src/contexts/AuthContext.tsx` | Interface Profile + signUp payload |
-| `src/contexts/ProfileContext.tsx` | Interface Profile com campo `timezone` |
-| `src/hooks/useTimezoneSync.ts` | **Novo** — hook de sincronização |
-| `src/utils/timezone.ts` | Refatorar funções para aceitar timezone dinâmico |
-| `src/components/Layout.tsx` | Integrar hook |
-| `src/components/ProfileSetup.tsx` | Enviar timezone no setup |
-| `src/components/Calendar/SimpleCalendar.tsx` | Migrar datas para utilitário |
-| `src/components/Calendar/MobileCalendarList.tsx` | Migrar datas para utilitário |
-| `src/components/Calendar/CalendarView.tsx` | Migrar ~5x `moment().format()` para utilitário timezone-aware |
-| `src/components/CancellationModal.tsx` | Migrar datas para utilitário |
-| `src/components/ClassReportModal.tsx` | Migrar datas para utilitário |
-| `src/components/ClassReportView.tsx` | Migrar datas para utilitário |
-| `src/components/PendingBoletoModal.tsx` | Migrar datas para utilitário |
-| `src/components/StudentScheduleRequest.tsx` | Migrar datas para utilitário |
-| `src/components/BusinessProfilesManager.tsx` | Migrar datas para utilitário |
-| `src/components/Settings/CancellationPolicySettings.tsx` | Migrar datas para utilitário |
-| `src/pages/PainelNegocios.tsx` | Migrar datas para utilitário |
-| `src/pages/Materiais.tsx` | Migrar datas para utilitário |
-| `src/pages/MeusMateriais.tsx` | Migrar datas para utilitário |
-| `src/pages/PerfilAluno.tsx` | Migrar ~8 chamadas de datas para utilitário |
-| `src/pages/Financeiro.tsx` | Migrar datas para utilitário |
-| `src/pages/Agenda.tsx` | Migrar datas para utilitário |
-| `src/pages/Recibo.tsx` | Migrar 4x `format()` para utilitário timezone-aware. **ATENÇÃO**: `due_date` é campo `date` — usar `parseISO(invoice.due_date)` em vez de `new Date(invoice.due_date)` para evitar off-by-one (regra v3.6) |
-| `src/pages/Faturas.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
-| `src/pages/Historico.tsx` | Migrar `formatDateTime` para utilitário timezone-aware |
-| `src/pages/StudentDashboard.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
-| `src/components/Inbox/NotificationItem.tsx` | Migrar 2x `format()` para utilitário timezone-aware |
-| `src/pages/Subscription.tsx` | Migrar 3x `format()` para utilitário timezone-aware |
-| `src/components/PlanDowngradeSelectionModal.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/components/MonthlySubscriptionsManager.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/components/PaymentOptionsCard.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/components/PlanDowngradeWarningModal.tsx` | Migrar 3x `format()` para utilitário timezone-aware |
-| `src/components/ArchivedDataViewer.tsx` | Migrar 2x `toLocaleString`/`toLocaleDateString` para utilitário timezone-aware |
-| `src/components/DependentManager.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/components/ExpenseList.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/pages/Legal.tsx` | Migrar 1x `format()` para utilitário timezone-aware |
-| `src/hooks/useMonthlySubscriptions.ts` | Migrar 6x cálculo de data para utilitário timezone-aware |
-| `src/components/StudentSubscriptionSelect.tsx` | Migrar 3x `format(new Date())` para utilitário timezone-aware |
-| `src/components/ClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
-| `src/components/FutureClassExceptionForm.tsx` | Migrar extração de data/hora para utilitário timezone-aware |
-| `src/components/Availability/AvailabilityManager.tsx` | Migrar 1x `moment().format()` para utilitário timezone-aware (v3.3) |
-| `src/components/ExpenseModal.tsx` | Migrar 1x `formatDate(new Date())` para utilitário timezone-aware (v3.4) |
-| `src/components/RecurringClassActionModal.tsx` | Migrar 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5) |
-| `src/components/CreateInvoiceModal.tsx` | Migrar `format`/`parse` do date-fns para wrappers timezone-aware (v3.6.2) |
-| `supabase/functions/end-recurrence/index.ts` | Converter `endDate` para UTC no fuso do professor antes de `.gte('class_date', ...)` (v3.5) |
-| `supabase/functions/validate-monthly-subscriptions/index.ts` | Passar `p_timezone` à RPC e calcular mês/ano local (v3.5) |
-| `supabase/functions/get-teacher-availability/index.ts` | Retornar `teacherTimezone` na resposta (v3.3) |
-| `supabase/functions/materialize-virtual-class/index.ts` | Comparação de expiração timezone-aware (v3.3) |
-| `supabase/functions/request-class/index.ts` | Validar horário no fuso do professor (v3.3) |
-| `src/components/Settings/ProfileSettings.tsx` | Adicionar `<Select>` de timezone como escape hatch (v3.5) |
-| Cron job SQL | Alterar schedule para horário |
-| `package.json` | Adicionar `date-fns-tz` |
+| Arquivo                                                             | Tipo de Mudança                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Migration SQL (`profiles.timezone`)                                 | Nova coluna                                                                                                                                                                                                                                                                                         |
+| RPC SQL `get_relationships_to_bill_now`                             | Nova função PostgreSQL + tipo customizado                                                                                                                                                                                                                                                           |
+| `supabase/functions/create-teacher/index.ts`                        | Aceitar campo timezone                                                                                                                                                                                                                                                                              |
+| `supabase/functions/automated-billing/index.ts`                     | Refatorar para hourly sweeper + timezone em `getBillingCycleDates` + **5** `toLocaleDateString` internos (inclui descrição de aulas fora do ciclo em `processMonthlySubscriptionBilling`, linha 939) + 3x cálculo de `due_date` com `toISOString().split('T')[0]` deve usar timezone do professor   |
+| `supabase/functions/check-overdue-invoices/index.ts`                | Comparação de due_date timezone-aware                                                                                                                                                                                                                                                               |
+| `supabase/functions/send-class-reminders/index.ts`                  | Formatação de datas com timezone do destinatário (aluno)                                                                                                                                                                                                                                            |
+| `supabase/functions/send-class-confirmation-notification/index.ts`  | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded                                                                                                                                                                                                                                             |
+| `supabase/functions/send-cancellation-notification/index.ts`        | Substituir 1x `timeZone: 'America/Sao_Paulo'` hardcoded                                                                                                                                                                                                                                             |
+| `supabase/functions/send-invoice-notification/index.ts`             | Substituir 1x `timeZone: "America/Sao_Paulo"` hardcoded + tratar `date` offset                                                                                                                                                                                                                      |
+| `supabase/functions/send-class-request-notification/index.ts`       | Substituir 2x `timeZone: "America/Sao_Paulo"` hardcoded                                                                                                                                                                                                                                             |
+| `supabase/functions/send-class-report-notification/index.ts`        | Adicionar timezone na formatação de data/hora (2 ocorrências)                                                                                                                                                                                                                                       |
+| `supabase/functions/send-boleto-subscription-notification/index.ts` | Parametrizar `formatDate` com timezone                                                                                                                                                                                                                                                              |
+| `supabase/functions/process-cancellation/index.ts`                  | Usar timezone na descrição de fatura                                                                                                                                                                                                                                                                |
+| `supabase/functions/process-orphan-cancellation-charges/index.ts`   | Usar timezone na descrição de fatura + cálculo de `due_date` deve usar timezone do professor                                                                                                                                                                                                        |
+| `supabase/functions/create-invoice/index.ts`                        | Usar timezone na descrição de item + fallback `due_date` deve usar timezone do professor                                                                                                                                                                                                            |
+| `supabase/functions/generate-teacher-notifications/index.ts`        | Cálculo de "hoje" timezone-aware para faturas vencidas                                                                                                                                                                                                                                              |
+| `supabase/functions/check-pending-boletos/index.ts`                 | Cálculo de "amanhã" timezone-aware para lembretes de boleto                                                                                                                                                                                                                                         |
+| Migration SQL (refatorar 7 RPCs)                                    | Adicionar `p_timezone` e `AT TIME ZONE` em `count_completed_classes_in_month`, `get_student_subscription_details` (2x), `get_subscription_assigned_students`, `get_student_active_subscription`, `get_billing_cycle_dates`, `count_completed_classes_in_billing_cycle`, `get_teacher_notifications` |
+| `src/contexts/AuthContext.tsx`                                      | Interface Profile + signUp payload                                                                                                                                                                                                                                                                  |
+| `src/contexts/ProfileContext.tsx`                                   | Interface Profile com campo `timezone`                                                                                                                                                                                                                                                              |
+| `src/hooks/useTimezoneSync.ts`                                      | **Novo** — hook de sincronização                                                                                                                                                                                                                                                                    |
+| `src/utils/timezone.ts`                                             | Refatorar funções para aceitar timezone dinâmico                                                                                                                                                                                                                                                    |
+| `src/components/Layout.tsx`                                         | Integrar hook                                                                                                                                                                                                                                                                                       |
+| `src/components/ProfileSetup.tsx`                                   | Enviar timezone no setup                                                                                                                                                                                                                                                                            |
+| `src/components/Calendar/SimpleCalendar.tsx`                        | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/Calendar/MobileCalendarList.tsx`                    | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/Calendar/CalendarView.tsx`                          | Migrar ~5x `moment().format()` para utilitário timezone-aware                                                                                                                                                                                                                                       |
+| `src/components/CancellationModal.tsx`                              | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/ClassReportModal.tsx`                               | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/ClassReportView.tsx`                                | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/PendingBoletoModal.tsx`                             | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/StudentScheduleRequest.tsx`                         | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/BusinessProfilesManager.tsx`                        | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/components/Settings/CancellationPolicySettings.tsx`            | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/PainelNegocios.tsx`                                      | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/Materiais.tsx`                                           | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/MeusMateriais.tsx`                                       | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/PerfilAluno.tsx`                                         | Migrar ~8 chamadas de datas para utilitário                                                                                                                                                                                                                                                         |
+| `src/pages/Financeiro.tsx`                                          | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/Agenda.tsx`                                              | Migrar datas para utilitário                                                                                                                                                                                                                                                                        |
+| `src/pages/Recibo.tsx`                                              | Migrar 4x `format()` para utilitário timezone-aware. **ATENÇÃO**: `due_date` é campo `date` — usar `parseISO(invoice.due_date)` em vez de `new Date(invoice.due_date)` para evitar off-by-one (regra v3.6)                                                                                          |
+| `src/pages/Faturas.tsx`                                             | Migrar 2x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/pages/Historico.tsx`                                           | Migrar `formatDateTime` para utilitário timezone-aware                                                                                                                                                                                                                                              |
+| `src/pages/StudentDashboard.tsx`                                    | Migrar 2x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/Inbox/NotificationItem.tsx`                         | Migrar 2x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/pages/Subscription.tsx`                                        | Migrar 3x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/PlanDowngradeSelectionModal.tsx`                    | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/MonthlySubscriptionsManager.tsx`                    | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/PaymentOptionsCard.tsx`                             | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/PlanDowngradeWarningModal.tsx`                      | Migrar 3x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/ArchivedDataViewer.tsx`                             | Migrar 2x `toLocaleString`/`toLocaleDateString` para utilitário timezone-aware                                                                                                                                                                                                                      |
+| `src/components/DependentManager.tsx`                               | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/components/ExpenseList.tsx`                                    | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/pages/Legal.tsx`                                               | Migrar 1x `format()` para utilitário timezone-aware                                                                                                                                                                                                                                                 |
+| `src/hooks/useMonthlySubscriptions.ts`                              | Migrar 6x cálculo de data para utilitário timezone-aware                                                                                                                                                                                                                                            |
+| `src/components/StudentSubscriptionSelect.tsx`                      | Migrar 3x `format(new Date())` para utilitário timezone-aware                                                                                                                                                                                                                                       |
+| `src/components/ClassExceptionForm.tsx`                             | Migrar extração de data/hora para utilitário timezone-aware                                                                                                                                                                                                                                         |
+| `src/components/FutureClassExceptionForm.tsx`                       | Migrar extração de data/hora para utilitário timezone-aware                                                                                                                                                                                                                                         |
+| `src/components/Availability/AvailabilityManager.tsx`               | Migrar 1x `moment().format()` para utilitário timezone-aware (v3.3)                                                                                                                                                                                                                                 |
+| `src/components/ExpenseModal.tsx`                                   | Migrar 1x `formatDate(new Date())` para utilitário timezone-aware (v3.4)                                                                                                                                                                                                                            |
+| `src/components/RecurringClassActionModal.tsx`                      | Migrar 1x `Intl.DateTimeFormat` sem `timeZone` para utilitário timezone-aware (v3.5)                                                                                                                                                                                                                |
+| `src/components/CreateInvoiceModal.tsx`                             | Migrar `format`/`parse` do date-fns para wrappers timezone-aware (v3.6.2)                                                                                                                                                                                                                           |
+| `supabase/functions/end-recurrence/index.ts`                        | Converter `endDate` para UTC no fuso do professor antes de `.gte('class_date', ...)` (v3.5)                                                                                                                                                                                                         |
+| `supabase/functions/validate-monthly-subscriptions/index.ts`        | Passar `p_timezone` à RPC e calcular mês/ano local (v3.5)                                                                                                                                                                                                                                           |
+| `supabase/functions/get-teacher-availability/index.ts`              | Retornar `teacherTimezone` na resposta (v3.3)                                                                                                                                                                                                                                                       |
+| `supabase/functions/materialize-virtual-class/index.ts`             | Comparação de expiração timezone-aware (v3.3)                                                                                                                                                                                                                                                       |
+| `supabase/functions/request-class/index.ts`                         | Validar horário no fuso do professor (v3.3)                                                                                                                                                                                                                                                         |
+| `src/components/Settings/ProfileSettings.tsx`                       | Adicionar `<Select>` de timezone como escape hatch (v3.5)                                                                                                                                                                                                                                           |
+| Cron job SQL                                                        | Alterar schedule para horário                                                                                                                                                                                                                                                                       |
+| `package.json`                                                      | Adicionar `date-fns-tz`                                                                                                                                                                                                                                                                             |
 
 ---
 
 ## 4. Riscos e Mitigações
 
-| Risco | Probabilidade | Impacto | Mitigação |
-|---|---|---|---|
-| Utilizadores existentes sem timezone | Nula | — | Default `'America/Sao_Paulo'` na coluna |
-| Cron horário = 24x mais invocações | Média | Baixo | RPC filtra no Postgres; maioria retorna 0 registros |
-| Billing cycle dates calculados em UTC vs local | Alta | Alto | Passar timezone para `getBillingCycleDates`; usar `Intl` no Deno |
-| `date-fns-tz` conflito com `moment.js` | Baixa | Baixo | São libs independentes, sem conflito |
-| Browser sem suporte a `Intl.DateTimeFormat` | Muito baixa | Baixo | Fallback silencioso para `'America/Sao_Paulo'` |
-| Toast de timezone incomodar utilizadores | Baixa | Baixo | `sessionStorage` limita a 1x por sessão |
-| Timezone do aluno criado pelo professor | Média | Baixo | Não copiar timezone do professor; `useTimezoneSync` atualiza no 1º login do aluno |
-| Faturas marcadas como vencidas prematuramente | Alta | Alto | `check-overdue-invoices` deve considerar timezone do professor (Passo 5.2) |
-| Idempotência com janela UTC incorreta | Média | Alto | Calcular `cycleStart`/`cycleEnd` no timezone local antes de query |
-| Emails com horário errado para fusos não-BRT | Alta | Médio | Usar timezone do **destinatário** (aluno ou professor) — não do professor fixo (Passo 5.1, v3.3) |
-| RPCs com `CURRENT_DATE` calculam data UTC em vez de local | Alta | Alto | Adicionar `p_timezone` e usar `NOW() AT TIME ZONE` (Passo 5.3) |
-| `due_date` gravado 1 dia antes para professores em fusos positivos (UTC+N) | Alta | Alto | Calcular "hoje local" com `Intl.DateTimeFormat('en-CA', { timeZone })` antes de adicionar `payment_due_days` (3 edge functions: `automated-billing`, `process-orphan-cancellation-charges`, `create-invoice`) |
-| Aluno agenda aula fora do expediente do professor (fusos diferentes) | Média | Alto | `get-teacher-availability` retorna `teacherTimezone`; frontend converte `working_hours` para fuso do aluno (v3.3) |
-| Email de lembrete com horário no fuso errado para aluno | Alta | Alto | Usar timezone do destinatário (aluno), não do professor (v3.3) |
-| Template expirado prematuramente em `materialize-virtual-class` | Baixa | Médio | Comparar com "agora" no fuso do professor (v3.3) |
-| Aula gravada no UTC do browser em vez do perfil | Média | Alto | `zonedTimeToUtc` no submit de formulários (v3.4) |
-| Cron billing falha e grupo de professores não cobrado | Baixa | Alto | Sweeper com `>= 1` + `NOT EXISTS` auto-corretivo (v3.4) |
-| `end-recurrence` apaga aulas do dia anterior ao comparar `'YYYY-MM-DD'` com `timestamptz` | Alta | Alto | Converter `endDate` para UTC no fuso do professor antes de `.gte()` (Passo 5.1.13, v3.5) |
-| `validate-monthly-subscriptions` testa mês errado em UTC | Baixa | Baixo | Calcular mês/ano local e passar `p_timezone` à RPC (v3.5) |
+| Risco                                                                                     | Probabilidade | Impacto | Mitigação                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------- | ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Utilizadores existentes sem timezone                                                      | Nula          | —       | Default `'America/Sao_Paulo'` na coluna                                                                                                                                                                       |
+| Cron horário = 24x mais invocações                                                        | Média         | Baixo   | RPC filtra no Postgres; maioria retorna 0 registros                                                                                                                                                           |
+| Billing cycle dates calculados em UTC vs local                                            | Alta          | Alto    | Passar timezone para `getBillingCycleDates`; usar `Intl` no Deno                                                                                                                                              |
+| `date-fns-tz` conflito com `moment.js`                                                    | Baixa         | Baixo   | São libs independentes, sem conflito                                                                                                                                                                          |
+| Browser sem suporte a `Intl.DateTimeFormat`                                               | Muito baixa   | Baixo   | Fallback silencioso para `'America/Sao_Paulo'`                                                                                                                                                                |
+| Toast de timezone incomodar utilizadores                                                  | Baixa         | Baixo   | `sessionStorage` limita a 1x por sessão                                                                                                                                                                       |
+| Timezone do aluno criado pelo professor                                                   | Média         | Baixo   | Não copiar timezone do professor; `useTimezoneSync` atualiza no 1º login do aluno                                                                                                                             |
+| Faturas marcadas como vencidas prematuramente                                             | Alta          | Alto    | `check-overdue-invoices` deve considerar timezone do professor (Passo 5.2)                                                                                                                                    |
+| Idempotência com janela UTC incorreta                                                     | Média         | Alto    | Calcular `cycleStart`/`cycleEnd` no timezone local antes de query                                                                                                                                             |
+| Emails com horário errado para fusos não-BRT                                              | Alta          | Médio   | Usar timezone do **destinatário** (aluno ou professor) — não do professor fixo (Passo 5.1, v3.3)                                                                                                              |
+| RPCs com `CURRENT_DATE` calculam data UTC em vez de local                                 | Alta          | Alto    | Adicionar `p_timezone` e usar `NOW() AT TIME ZONE` (Passo 5.3)                                                                                                                                                |
+| `due_date` gravado 1 dia antes para professores em fusos positivos (UTC+N)                | Alta          | Alto    | Calcular "hoje local" com `Intl.DateTimeFormat('en-CA', { timeZone })` antes de adicionar `payment_due_days` (3 edge functions: `automated-billing`, `process-orphan-cancellation-charges`, `create-invoice`) |
+| Aluno agenda aula fora do expediente do professor (fusos diferentes)                      | Média         | Alto    | `get-teacher-availability` retorna `teacherTimezone`; frontend converte `working_hours` para fuso do aluno (v3.3)                                                                                             |
+| Email de lembrete com horário no fuso errado para aluno                                   | Alta          | Alto    | Usar timezone do destinatário (aluno), não do professor (v3.3)                                                                                                                                                |
+| Template expirado prematuramente em `materialize-virtual-class`                           | Baixa         | Médio   | Comparar com "agora" no fuso do professor (v3.3)                                                                                                                                                              |
+| Aula gravada no UTC do browser em vez do perfil                                           | Média         | Alto    | `zonedTimeToUtc` no submit de formulários (v3.4)                                                                                                                                                              |
+| Cron billing falha e grupo de professores não cobrado                                     | Baixa         | Alto    | Sweeper com `>= 1` + `NOT EXISTS` auto-corretivo (v3.4)                                                                                                                                                       |
+| `end-recurrence` apaga aulas do dia anterior ao comparar `'YYYY-MM-DD'` com `timestamptz` | Alta          | Alto    | Converter `endDate` para UTC no fuso do professor antes de `.gte()` (Passo 5.1.13, v3.5)                                                                                                                      |
+| `validate-monthly-subscriptions` testa mês errado em UTC                                  | Baixa         | Baixo   | Calcular mês/ano local e passar `p_timezone` à RPC (v3.5)                                                                                                                                                     |
 
 ---
 
@@ -974,16 +982,16 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 
 ## 6. Inventário de Cron Jobs
 
-| Job | Schedule | Impacto Timezone | Ação |
-|---|---|---|---|
-| `automated-billing-daily` | `0 9 * * *` | **CRÍTICO** | Refatorar para hourly sweeper (Passo 4+5) |
-| `send-class-reminders-daily` | `0 12 * * *` | **MÉDIO** | Emails com timezone do professor (Passo 5.1) |
-| `check-overdue-invoices` | diário | **CRÍTICO** | Comparação timezone-aware (Passo 5.2) |
-| `auto-verify-pending-invoices` | `0 */3 * * *` | Baixo | Já é horário; verifica status Stripe (sem ação) |
-| `process-expired-subscriptions-daily` | `0 10 * * *` | Baixo | Compara datas absolutas (sem ação) |
-| `monthly-data-archiver` | `0 3 1 * *` | Nenhum | Archiving não é sensível a timezone |
-| `cleanup-orphaned-stripe-events` | `*/15 * * * *` | Nenhum | Limpeza temporal (sem ação) |
-| `process-orphan-cancellation-charges-weekly` | semanal | Baixo | Sem ação imediata |
+| Job                                          | Schedule       | Impacto Timezone | Ação                                            |
+| -------------------------------------------- | -------------- | ---------------- | ----------------------------------------------- |
+| `automated-billing-daily`                    | `0 9 * * *`    | **CRÍTICO**      | Refatorar para hourly sweeper (Passo 4+5)       |
+| `send-class-reminders-daily`                 | `0 12 * * *`   | **MÉDIO**        | Emails com timezone do professor (Passo 5.1)    |
+| `check-overdue-invoices`                     | diário         | **CRÍTICO**      | Comparação timezone-aware (Passo 5.2)           |
+| `auto-verify-pending-invoices`               | `0 */3 * * *`  | Baixo            | Já é horário; verifica status Stripe (sem ação) |
+| `process-expired-subscriptions-daily`        | `0 10 * * *`   | Baixo            | Compara datas absolutas (sem ação)              |
+| `monthly-data-archiver`                      | `0 3 1 * *`    | Nenhum           | Archiving não é sensível a timezone             |
+| `cleanup-orphaned-stripe-events`             | `*/15 * * * *` | Nenhum           | Limpeza temporal (sem ação)                     |
+| `process-orphan-cancellation-charges-weekly` | semanal        | Baixo            | Sem ação imediata                               |
 
 ---
 
@@ -994,6 +1002,7 @@ Mesma regra do Passo 5.1: campos `date` como `due_date`, `starts_at`, `expense_d
 **Decisão**: Usar `Intl.DateTimeFormat` nativo do Deno para operações de timezone nas Edge Functions, em vez de importar `date-fns-tz` via `esm.sh`.
 
 **Justificativa**:
+
 - `Intl.DateTimeFormat` já está disponível nativamente no Deno runtime.
 - Evita dependência externa e potenciais problemas de versão.
 - Performance superior (nativo vs importação HTTP).

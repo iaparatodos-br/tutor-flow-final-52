@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -96,7 +96,7 @@ export default function Legal() {
                     <Calendar className="h-4 w-4" />
                     <span>
                       {t("publishedOn")}{" "}
-                      {format(new Date(doc.published_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                      {format(parseISO(doc.published_at), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                     </span>
                   </div>
                 </div>

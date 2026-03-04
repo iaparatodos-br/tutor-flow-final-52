@@ -16,6 +16,7 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { formatDateTimeBrazil } from "@/utils/timezone";
 
 interface ArchivedClass {
   id: string;
@@ -191,7 +192,7 @@ export default function Historico() {
 
   const formatDateTime = (dateString: string) => {
     try {
-      return format(new Date(dateString), "dd/MM/yyyy HH:mm", { locale: ptBR });
+      return formatDateTimeBrazil(dateString, profile?.timezone);
     } catch {
       return dateString;
     }

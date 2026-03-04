@@ -334,7 +334,7 @@ export default function Materiais() {
                     )}
                     <div className="text-xs text-muted-foreground space-y-1">
                       <div>Tamanho: {formatFileSize(material.file_size)}</div>
-                      <div>Criado: {new Date(material.created_at).toLocaleDateString()}</div>
+                      <div>Criado: {formatDateBrazil(material.created_at, undefined, profile?.timezone)}</div>
                     </div>
                     <div className="flex gap-1">
                       <Button

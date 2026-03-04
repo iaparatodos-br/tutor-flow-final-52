@@ -296,7 +296,7 @@ export default function MeusMateriais() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    Compartilhado: {new Date(access.granted_at).toLocaleDateString()}
+                    Compartilhado: {formatDateBrazil(access.granted_at, undefined, profile?.timezone)}
                   </div>
                 </div>
                 <div className="flex gap-1">

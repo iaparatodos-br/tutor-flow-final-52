@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useProfile } from "@/contexts/ProfileContext";
-import { formatInTimezone, formatDateBrazil, DEFAULT_TIMEZONE } from "@/utils/timezone";
+import { formatInTimezone, formatDateBrazil, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface WorkingHour {
   id: string;
@@ -176,26 +176,31 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
     for (let day = 0; day < 7; day++) {
       const currentDate = new Date(weekStart);
       currentDate.setDate(weekStart.getDate() + day);
-      const dayOfWeek = currentDate.getDay();
+      
+      // Calculate date string in teacher's timezone to match working_hours day_of_week
+      const teacherDateStr = formatInTimezone(currentDate, 'yyyy-MM-dd', teacherTimezone);
+      const teacherDayOfWeek = parseInt(formatInTimezone(currentDate, 'e', teacherTimezone)) % 7; // date-fns 'e' is 1=Mon..7=Sun, convert
+      // Actually use 'i' for ISO day or calculate manually
+      const dayOfWeek = new Date(teacherDateStr + 'T12:00:00').getDay(); // safe: noon avoids DST edge
       
       // Find working hours for this day
       const dayWorkingHours = workingHours.filter(wh => wh.day_of_week === dayOfWeek);
       
       dayWorkingHours.forEach(workingHour => {
-        const startTime = new Date(currentDate);
+        // Interpret working_hours times in the TEACHER's timezone
         const [startHour, startMinute] = workingHour.start_time.split(':').map(Number);
-        startTime.setHours(startHour, startMinute, 0, 0);
-        
-        const endTime = new Date(currentDate);
         const [endHour, endMinute] = workingHour.end_time.split(':').map(Number);
-        endTime.setHours(endHour, endMinute, 0, 0);
+        
+        // Build UTC instants from teacher-local times
+        const startUTC = fromUserZonedTime(new Date(`${teacherDateStr}T${workingHour.start_time}`), teacherTimezone);
+        const endUTC = fromUserZonedTime(new Date(`${teacherDateStr}T${workingHour.end_time}`), teacherTimezone);
         
         // Generate 30-minute slots
-        const currentSlot = new Date(startTime);
-        while (currentSlot < endTime) {
+        const currentSlot = new Date(startUTC);
+        while (currentSlot < endUTC) {
           const slotEnd = new Date(currentSlot.getTime() + service.duration_minutes * 60000);
           
-          if (slotEnd <= endTime) {
+          if (slotEnd <= endUTC) {
             const isAvailable = checkSlotAvailability(currentSlot, service.duration_minutes);
             
             slots.push({

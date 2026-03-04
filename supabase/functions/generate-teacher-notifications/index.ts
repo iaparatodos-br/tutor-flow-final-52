@@ -189,14 +189,43 @@ Deno.serve(async (req) => {
       .gte('created_at', thirtyDaysAgoISO)
 
     // Query 2: Calculated overdue (pending invoices past due date)
-    const today = new Date().toISOString().split('T')[0]
-    const { data: overdueInvoices2, error: overdueError2 } = await supabase
+    // v3.3: Agrupar por professor e calcular "hoje" no fuso de cada um
+    // Primeiro buscar todas pendentes candidatas
+    const { data: pendingInvoices, error: pendingInvError } = await supabase
       .from('invoices')
-      .select('id, teacher_id')
+      .select('id, teacher_id, due_date')
       .eq('status', 'pendente')
-      .lt('due_date', today)
       .not('business_profile_id', 'is', null)
       .gte('created_at', thirtyDaysAgoISO)
+
+    // Buscar timezones dos professores envolvidos
+    const pendingTeacherIds = [...new Set((pendingInvoices || []).map(i => i.teacher_id))]
+    const teacherTimezoneMap = new Map<string, string>()
+    if (pendingTeacherIds.length > 0) {
+      const { data: tzProfiles } = await supabase
+        .from('profiles')
+        .select('id, timezone')
+        .in('id', pendingTeacherIds)
+      for (const p of (tzProfiles || [])) {
+        teacherTimezoneMap.set(p.id, p.timezone || 'America/Sao_Paulo')
+      }
+    }
+
+    // Filtrar faturas vencidas usando "hoje" no fuso do professor
+    const overdueInvoices2: { id: string; teacher_id: string }[] = []
+    for (const inv of (pendingInvoices || [])) {
+      const tz = teacherTimezoneMap.get(inv.teacher_id) || 'America/Sao_Paulo'
+      const todayInTz = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date())
+      if (inv.due_date < todayInTz) {
+        overdueInvoices2.push({ id: inv.id, teacher_id: inv.teacher_id })
+      }
+    }
+    const overdueError2 = pendingInvError
 
     if (overdueError1) {
       console.error('[generate-teacher-notifications] Error fetching overdue invoices (status):', overdueError1)

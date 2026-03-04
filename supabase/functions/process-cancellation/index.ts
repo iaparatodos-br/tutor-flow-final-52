@@ -467,7 +467,20 @@ serve(async (req) => {
       
       if (chargeAmount >= 5) { // Mínimo para boleto: R$ 5,00
         try {
-          const classDateFormatted = new Date(classData.class_date).toLocaleDateString('pt-BR');
+          // v3.3: Buscar timezone do professor para formatar data
+          const { data: teacherProfileTz } = await supabaseClient
+            .from('profiles')
+            .select('timezone')
+            .eq('id', classData.teacher_id)
+            .maybeSingle();
+          const teacherTz = teacherProfileTz?.timezone || 'America/Sao_Paulo';
+          
+          const classDateFormatted = new Intl.DateTimeFormat('pt-BR', {
+            timeZone: teacherTz,
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+          }).format(new Date(classData.class_date));
           const invoicePayload = {
             student_id: billingStudentId,
             dependent_id: dependent_id || undefined,

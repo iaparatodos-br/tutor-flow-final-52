@@ -38,6 +38,7 @@
 | 2.4 | Cenário 2.3 concluído | Navegar para outra página e voltar | Toast **não** reaparece na mesma sessão |
 | 2.5 | Cenário 2.3 concluído | Fechar o separador e abrir nova sessão | Toast reaparece (sessionStorage limpo) |
 | 2.6 | Professor com `timezone = 'America/New_York'`; browser em `America/New_York` | Fazer login | Nenhum toast aparece (fusos iguais) |
+| 2.7 | **Mudança Definitiva de Fuso**: Professor com `timezone = 'America/Sao_Paulo'` tem aulas agendadas no futuro (ex: 15/03 às 14:00 BRT = 17:00 UTC) | Alterar perfil via **Configurações → Perfil** para `Europe/Lisbon`. Recarregar a agenda. | A aula aparece às **17:00 WET** (mesmo UTC). O `class_date` no banco **não** sofre mutação — continua `2026-03-15T17:00:00Z`. Apenas a exibição muda. |
 
 ### Passo a passo — Teste 2.1
 
@@ -77,6 +78,7 @@
 | 3.1.8 | `ArchivedDataViewer` | Dados arquivados | Abrir visualizador | Timestamps no fuso do perfil |
 | 3.1.9 | `CancellationModal` | Cancelar aula | Abrir modal | Data/hora da aula no fuso do perfil |
 | 3.1.10 | `ClassReportModal` | Criar relatório | Abrir modal | Data da aula no fuso do perfil |
+| 3.1.11 | **`StudentDashboard` (Perspectiva do Aluno)** | Aluno com `timezone = 'Europe/Lisbon'`; Professor em BRT criou aula às 14:00 BRT (17:00 UTC) | Login como aluno → abrir painel do aluno | Aula exibida às **17:00 WET** (não 14:00). Métricas de "aulas este mês" usam `startOfMonthTz` com o fuso do aluno. |
 
 ### 3.2 Campos do tipo `date` (sem hora)
 
@@ -123,6 +125,8 @@
 | 4.5 | `AvailabilityManager` (bloqueios) | Professor em NY | Criar bloqueio de 09:00 a 12:00 no dia 20/03 | `start_datetime` e `end_datetime` gravados em UTC com offset de NY |
 | 4.6 | `StudentScheduleRequest` | Aluno em Lisboa; professor em BRT | Solicitar aula às 15:00 | Timestamp gravado reflete 15:00 no fuso de Lisboa (15:00 UTC+0 = 15:00Z em março) |
 | 4.7 | `ClassForm` (Hora Inexistente - DST Spring Forward) | Professor em `America/New_York`; dia da virada DST (2º domingo de março) | Criar aula às 02:30 AM | `date-fns-tz` (`fromZonedTime`) faz shift automático para 03:30 AM local (07:30 UTC). O sistema **não** deve gravar 02:30 (hora que não existe). Verificar no banco que o UTC gravado corresponde a 03:30 EDT. |
+| 4.8 | `ClassForm` (Hora Sobreposta - DST Fall Back) | Professor em `America/New_York`; dia da virada "Fall Back" (1º domingo de novembro, ex: 01/11/2026). | Criar aula às **01:30 AM** | `fromZonedTime` do `date-fns-tz` assume a **primeira ocorrência** (EDT, UTC-4), gravando `05:30 UTC`. A segunda ocorrência (EST, UTC-5) seria `06:30 UTC`. Verificar no banco que o UTC gravado é `05:30Z` (EDT). **Nota**: Este é comportamento documentado da lib — não há como o utilizador escolher a segunda ocorrência via UI. |
+| 4.9 | **Round-trip de campos `date` com browser em fuso extremo** | Browser configurado em `Asia/Tokyo` (UTC+9) **ou** `Pacific/Honolulu` (UTC-10). | Preencher campo `birth_date` (dependente) ou `expense_date` (despesa) com **15/03/2026** e submeter. | No PostgreSQL, o valor gravado é estritamente `'2026-03-15'` — sem shift de ±1 dia. Repetir com o outro fuso extremo. **Falha se**: Tokyo grava `2026-03-14` ou Honolulu grava `2026-03-16`. |
 
 ### Passo a passo — Teste 4.7 (Hora Inexistente durante DST)
 
@@ -163,6 +167,7 @@
 | 5.1.1 | Professor A em `America/Sao_Paulo` (03:00 local); Professor B em `America/New_York` (01:00 local) | Cron dispara às 06:00 UTC | Ambos retornados pela RPC (hora local ≥ 01:00) |
 | 5.1.2 | Professor C em `Pacific/Auckland` (19:00 local do dia anterior) | Cron dispara às 06:00 UTC | Professor C **não** retornado (hora local < 01:00 do dia seguinte) |
 | 5.1.3 | Professor A já faturado hoje | Cron dispara novamente às 07:00 UTC | Professor A **não** retornado (idempotência via `NOT EXISTS`) |
+| 5.1.4 | **Fuso Fracionado**: Professor D em `Asia/Kolkata` (UTC+5:30). | Cron dispara às 06:00 UTC (11:30 local em Kolkata) | Professor D **retornado** pela RPC (hora local 11:30 ≥ 01:00). A lógica `AT TIME ZONE` do PostgreSQL suporta offsets fracionados nativamente. |
 
 ### 5.2 `getDueDateString`
 
@@ -230,6 +235,7 @@
 | 6.8 | `send-material-shared-notification` | Aluno em `Europe/Berlin` | Material compartilhado | Timestamp no e-mail em CET/CEST |
 | 6.9 | `send-student-invitation` | Aluno novo | Convite enviado | E-mail sem horários específicos (apenas boas-vindas) — sem risco de shift |
 | 6.10 | `generate-teacher-notifications` | Professor em NY | Notificações geradas | Datas no inbox usam fuso do professor |
+| 6.11 | **Timing UTC-based dos Lembretes** | Aula às 15:00 BRT (18:00 UTC). Cron de lembretes roda às 17:00 UTC. | Verificar que a query `send-class-reminders` identifica esta aula | A query usa `.gte("class_date", now).lte("class_date", tomorrow)` — comparação **puramente UTC**, independente do timezone do professor ou aluno. O disparo do lembrete é determinado pelo instante UTC absoluto, não pela hora local. **Nota documental**: Isso é by-design — lembretes são relativos ao instante da aula, não ao "relógio de parede" do destinatário. |
 
 ### Passo a passo — Teste 6.3
 
@@ -412,6 +418,12 @@ Antes de cada release, executar estes testes mínimos:
 - [ ] **DST materialização**: Aulas virtuais mantêm hora local após cruzar fronteira do DST
 - [ ] **end-recurrence**: Não apaga aulas do dia anterior no fuso local (mesmo que UTC já seja "hoje")
 - [ ] **materialize-virtual-class**: Expiração de template avaliada no fuso do professor
+- [ ] **Fall Back DST**: Aula criada na hora sobreposta (01:30 AM) grava UTC da primeira ocorrência (EDT)
+- [ ] **Fuso fracionado**: Professor em `Asia/Kolkata` (UTC+5:30) faturado corretamente pelo hourly sweeper
+- [ ] **Visão do aluno**: StudentDashboard exibe aulas no fuso do aluno, não do professor
+- [ ] **Mudança de fuso**: Alterar perfil de BRT→WET não muta `class_date` no banco
+- [ ] **Round-trip de `date`**: Campo `birth_date`/`expense_date` não sofre ±1 dia em fusos extremos (Tokyo/Honolulu)
+- [ ] **Lembretes**: Disparo baseado em UTC absoluto, independente de timezone
 
 ---
 

@@ -18,11 +18,10 @@ const SESSION_STORAGE_KEY = 'tz-sync-dismissed';
 export function useTimezoneSync() {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const hasChecked = useRef(false);
+  const lastCheckedTimezone = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!profile?.id || hasChecked.current) return;
-    hasChecked.current = true;
+    if (!profile?.id) return;
 
     const browserTimezone =
       Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TIMEZONE;
@@ -31,7 +30,11 @@ export function useTimezoneSync() {
     // Se já são iguais, nada a fazer
     if (browserTimezone === profileTimezone) return;
 
-    // Se já recusou nesta sessão, não perguntar de novo
+    // Evitar re-checagem para o mesmo par (profile tz) já verificado neste ciclo de vida
+    if (lastCheckedTimezone.current === profileTimezone) return;
+    lastCheckedTimezone.current = profileTimezone;
+
+    // Se já recusou nesta sessão para este timezone do browser, não perguntar de novo
     const dismissed = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (dismissed === browserTimezone) return;
 

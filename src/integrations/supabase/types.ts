@@ -2174,24 +2174,46 @@ export type Database = {
         }
         Returns: boolean
       }
-      count_completed_classes_in_billing_cycle: {
-        Args: {
-          p_billing_day: number
-          p_reference_date?: string
-          p_student_id: string
-          p_teacher_id: string
-        }
-        Returns: number
-      }
-      count_completed_classes_in_month: {
-        Args: {
-          p_month: number
-          p_student_id: string
-          p_teacher_id: string
-          p_year: number
-        }
-        Returns: number
-      }
+      count_completed_classes_in_billing_cycle:
+        | {
+            Args: {
+              p_billing_day: number
+              p_reference_date?: string
+              p_student_id: string
+              p_teacher_id: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_billing_day: number
+              p_reference_date?: string
+              p_student_id: string
+              p_teacher_id: string
+              p_timezone?: string
+            }
+            Returns: number
+          }
+      count_completed_classes_in_month:
+        | {
+            Args: {
+              p_month: number
+              p_student_id: string
+              p_teacher_id: string
+              p_year: number
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_month: number
+              p_student_id: string
+              p_teacher_id: string
+              p_timezone?: string
+              p_year: number
+            }
+            Returns: number
+          }
       count_teacher_students_and_dependents: {
         Args: { p_teacher_id: string }
         Returns: {
@@ -2208,13 +2230,25 @@ export type Database = {
         Args: { event_data: Json }
         Returns: string
       }
-      get_billing_cycle_dates: {
-        Args: { p_billing_day: number; p_reference_date?: string }
-        Returns: {
-          cycle_end: string
-          cycle_start: string
-        }[]
-      }
+      get_billing_cycle_dates:
+        | {
+            Args: { p_billing_day: number; p_reference_date?: string }
+            Returns: {
+              cycle_end: string
+              cycle_start: string
+            }[]
+          }
+        | {
+            Args: {
+              p_billing_day: number
+              p_reference_date?: string
+              p_timezone?: string
+            }
+            Returns: {
+              cycle_end: string
+              cycle_start: string
+            }[]
+          }
       get_calendar_events: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
         Returns: {
@@ -2292,16 +2326,27 @@ export type Database = {
           classmate_id: string
         }[]
       }
-      get_student_active_subscription: {
-        Args: { p_relationship_id: string }
-        Returns: {
-          price: number
-          starts_at: string
-          student_subscription_id: string
-          subscription_id: string
-          subscription_name: string
-        }[]
-      }
+      get_student_active_subscription:
+        | {
+            Args: { p_relationship_id: string }
+            Returns: {
+              price: number
+              starts_at: string
+              student_subscription_id: string
+              subscription_id: string
+              subscription_name: string
+            }[]
+          }
+        | {
+            Args: { p_relationship_id: string; p_timezone?: string }
+            Returns: {
+              price: number
+              starts_at: string
+              student_subscription_id: string
+              subscription_id: string
+              subscription_name: string
+            }[]
+          }
       get_student_subscription_details:
         | {
             Args: { p_student_id: string }
@@ -2329,6 +2374,34 @@ export type Database = {
               teacher_name: string
             }[]
           }
+        | {
+            Args: {
+              p_student_id: string
+              p_teacher_id: string
+              p_timezone?: string
+            }
+            Returns: {
+              classes_used: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
+        | {
+            Args: { p_student_id: string; p_timezone?: string }
+            Returns: {
+              classes_used: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {
@@ -2340,20 +2413,35 @@ export type Database = {
           teacher_name: string
         }[]
       }
-      get_subscription_assigned_students: {
-        Args: { p_subscription_id: string }
-        Returns: {
-          classes_used: number
-          ends_at: string
-          is_active: boolean
-          relationship_id: string
-          starts_at: string
-          student_email: string
-          student_id: string
-          student_name: string
-          student_subscription_id: string
-        }[]
-      }
+      get_subscription_assigned_students:
+        | {
+            Args: { p_subscription_id: string }
+            Returns: {
+              classes_used: number
+              ends_at: string
+              is_active: boolean
+              relationship_id: string
+              starts_at: string
+              student_email: string
+              student_id: string
+              student_name: string
+              student_subscription_id: string
+            }[]
+          }
+        | {
+            Args: { p_subscription_id: string; p_timezone?: string }
+            Returns: {
+              classes_used: number
+              ends_at: string
+              is_active: boolean
+              relationship_id: string
+              starts_at: string
+              student_email: string
+              student_id: string
+              student_name: string
+              student_subscription_id: string
+            }[]
+          }
       get_subscription_students_count: {
         Args: { p_subscription_id: string }
         Returns: number
@@ -2394,36 +2482,68 @@ export type Database = {
           saved_count: number
         }[]
       }
-      get_teacher_notifications: {
-        Args: {
-          p_category?: string
-          p_is_read?: boolean
-          p_limit?: number
-          p_offset?: number
-          p_status?: string
-        }
-        Returns: {
-          category: string
-          class_date: string
-          class_status: string
-          created_at: string
-          days_overdue: number
-          id: string
-          invoice_amount: number
-          invoice_due_date: string
-          invoice_status: string
-          is_read: boolean
-          read_at: string
-          service_name: string
-          source_id: string
-          source_type: string
-          status: string
-          status_changed_at: string
-          student_email: string
-          student_name: string
-          teacher_id: string
-        }[]
-      }
+      get_teacher_notifications:
+        | {
+            Args: {
+              p_category?: string
+              p_is_read?: boolean
+              p_limit?: number
+              p_offset?: number
+              p_status?: string
+            }
+            Returns: {
+              category: string
+              class_date: string
+              class_status: string
+              created_at: string
+              days_overdue: number
+              id: string
+              invoice_amount: number
+              invoice_due_date: string
+              invoice_status: string
+              is_read: boolean
+              read_at: string
+              service_name: string
+              source_id: string
+              source_type: string
+              status: string
+              status_changed_at: string
+              student_email: string
+              student_name: string
+              teacher_id: string
+            }[]
+          }
+        | {
+            Args: {
+              p_category?: string
+              p_is_read?: boolean
+              p_limit?: number
+              p_offset?: number
+              p_status?: string
+              p_timezone?: string
+            }
+            Returns: {
+              category: string
+              class_date: string
+              class_status: string
+              created_at: string
+              days_overdue: number
+              id: string
+              invoice_amount: number
+              invoice_due_date: string
+              invoice_status: string
+              is_read: boolean
+              read_at: string
+              service_name: string
+              source_id: string
+              source_type: string
+              status: string
+              status_changed_at: string
+              student_email: string
+              student_name: string
+              teacher_id: string
+            }[]
+          }
       get_teacher_students: {
         Args: { teacher_user_id: string }
         Returns: {

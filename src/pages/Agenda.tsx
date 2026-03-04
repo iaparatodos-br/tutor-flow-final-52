@@ -1020,6 +1020,15 @@ export default function Agenda() {
       const calendarEvents: CalendarClass[] = allClasses
         .filter(cls => !cls.is_template) // Não mostrar templates na agenda
         .filter(cls => {
+          // Guard: skip classes with invalid/missing class_date
+          const d = new Date(cls.class_date);
+          if (!cls.class_date || isNaN(d.getTime())) {
+            console.warn('Agenda: skipping class with invalid class_date', cls.id, cls.class_date);
+            return false;
+          }
+          return true;
+        })
+        .filter(cls => {
           // For students, show only classes with active participation
           if (!isProfessor) {
             const myStatus = myParticipationByClassId.get(cls.id)?.status;

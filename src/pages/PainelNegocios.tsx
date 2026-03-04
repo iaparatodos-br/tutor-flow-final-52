@@ -489,7 +489,7 @@ export default function PainelNegocios() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Calendar className="h-4 w-4" />
-                            Criado em {formatDateBrazil(profile.created_at, undefined, userProfile?.timezone)}
+                            Criado em {formatDateBrazil(profile.created_at, undefined, (window as any).__profile?.timezone)}
                           </div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-yellow-600">

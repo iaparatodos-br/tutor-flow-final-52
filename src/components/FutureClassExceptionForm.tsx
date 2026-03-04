@@ -20,6 +20,8 @@ import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { formatInTimezone, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface ClassService {
   id: string;
@@ -51,6 +53,8 @@ export function FutureClassExceptionForm({
   onSuccess
 }: FutureClassExceptionFormProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     new_start_date: '',
@@ -65,8 +69,8 @@ export function FutureClassExceptionForm({
   useEffect(() => {
     if (originalClass && open) {
       const startDate = new Date(originalClass.start);
-      const dateStr = startDate.toISOString().split('T')[0];
-      const timeStr = startDate.toTimeString().slice(0, 5);
+      const dateStr = formatInTimezone(startDate, 'yyyy-MM-dd', userTimezone);
+      const timeStr = formatInTimezone(startDate, 'HH:mm', userTimezone);
       
       setFormData({
         new_start_date: dateStr,
@@ -78,7 +82,7 @@ export function FutureClassExceptionForm({
         apply_until_enabled: false
       });
     }
-  }, [originalClass, open]);
+  }, [originalClass, open, userTimezone]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +99,7 @@ export function FutureClassExceptionForm({
         originalClassId = originalClass.id.split('_virtual_')[0];
       }
 
-      const newStartDateTime = new Date(`${formData.new_start_date}T${formData.new_start_time}:00`);
+      const newStartDateTime = fromUserZonedTime(new Date(`${formData.new_start_date}T${formData.new_start_time}:00`), userTimezone);
       const newEndDateTime = new Date(newStartDateTime.getTime() + (formData.new_duration_minutes * 60 * 1000));
 
       const requestBody: any = {
@@ -113,7 +117,7 @@ export function FutureClassExceptionForm({
 
       // Add end date if specified
       if (formData.apply_until_enabled && formData.apply_until_date) {
-        requestBody.end_date = new Date(`${formData.apply_until_date}T23:59:59`).toISOString();
+        requestBody.end_date = fromUserZonedTime(new Date(`${formData.apply_until_date}T23:59:59`), userTimezone).toISOString();
       }
 
       const { data, error } = await supabase.functions.invoke('manage-future-class-exceptions', {
@@ -159,7 +163,7 @@ export function FutureClassExceptionForm({
 
       // Add end date if specified
       if (formData.apply_until_enabled && formData.apply_until_date) {
-        requestBody.end_date = new Date(`${formData.apply_until_date}T23:59:59`).toISOString();
+        requestBody.end_date = fromUserZonedTime(new Date(`${formData.apply_until_date}T23:59:59`), userTimezone).toISOString();
       }
 
       const { data, error } = await supabase.functions.invoke('manage-future-class-exceptions', {

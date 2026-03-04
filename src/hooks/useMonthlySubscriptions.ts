@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { todayDateString, DEFAULT_TIMEZONE } from '@/utils/timezone';
 import type { 
   MonthlySubscriptionWithCount,
   MonthlySubscriptionFormData,
@@ -111,7 +112,7 @@ export function useAvailableStudentsForSubscription(subscriptionId: string | nul
  */
 export function useCreateMonthlySubscription() {
   const { t } = useTranslation('monthlySubscriptions');
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -138,7 +139,7 @@ export function useCreateMonthlySubscription() {
         const assignments = formData.selectedStudents.map(relationshipId => ({
           subscription_id: subscription.id,
           relationship_id: relationshipId,
-          starts_at: new Date().toISOString().split('T')[0],
+          starts_at: todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
           is_active: true,
         }));
 
@@ -168,6 +169,7 @@ export function useCreateMonthlySubscription() {
  */
 export function useUpdateMonthlySubscription() {
   const { t } = useTranslation('monthlySubscriptions');
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -198,7 +200,7 @@ export function useUpdateMonthlySubscription() {
       if (formData.is_active === false) {
         await supabase
           .from('student_monthly_subscriptions')
-          .update({ is_active: false, ends_at: new Date().toISOString().split('T')[0] })
+          .update({ is_active: false, ends_at: todayDateString(profile?.timezone || DEFAULT_TIMEZONE) })
           .eq('subscription_id', id)
           .eq('is_active', true);
       }
@@ -258,6 +260,7 @@ export function useToggleMonthlySubscription() {
  */
 export function useAssignStudentToSubscription() {
   const { t } = useTranslation('monthlySubscriptions');
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -286,7 +289,7 @@ export function useAssignStudentToSubscription() {
         .insert({
           subscription_id: subscriptionId,
           relationship_id: relationshipId,
-          starts_at: startsAt || new Date().toISOString().split('T')[0],
+          starts_at: startsAt || todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
           is_active: true,
         })
         .select()
@@ -317,6 +320,7 @@ export function useAssignStudentToSubscription() {
  */
 export function useRemoveStudentFromSubscription() {
   const { t } = useTranslation('monthlySubscriptions');
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -329,7 +333,7 @@ export function useRemoveStudentFromSubscription() {
         .from('student_monthly_subscriptions')
         .update({ 
           is_active: false,
-          ends_at: new Date().toISOString().split('T')[0],
+          ends_at: todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
         })
         .eq('id', assignmentId)
         .select()
@@ -356,6 +360,7 @@ export function useRemoveStudentFromSubscription() {
  */
 export function useBulkAssignStudents() {
   const { t } = useTranslation('monthlySubscriptions');
+  const { profile } = useAuth();
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -376,7 +381,7 @@ export function useBulkAssignStudents() {
           .from('student_monthly_subscriptions')
           .update({ 
             is_active: false,
-            ends_at: new Date().toISOString().split('T')[0],
+            ends_at: todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
           })
           .in('id', toRemove);
 
@@ -388,7 +393,7 @@ export function useBulkAssignStudents() {
         const assignments = toAdd.map(relationshipId => ({
           subscription_id: subscriptionId,
           relationship_id: relationshipId,
-          starts_at: startsAt || new Date().toISOString().split('T')[0],
+          starts_at: startsAt || todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
           is_active: true,
         }));
 

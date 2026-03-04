@@ -23,6 +23,8 @@ import { Loader2, UserPlus, CalendarIcon } from "lucide-react";
 import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { todayDateString, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface AvailableStudent {
   relationship_id: string;
@@ -49,19 +51,21 @@ export function StudentSubscriptionSelect({
   isAssigning
 }: StudentSubscriptionSelectProps) {
   const { t } = useTranslation('monthlySubscriptions');
+  const { profile } = useAuth();
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [selectedRelationshipId, setSelectedRelationshipId] = useState<string>("");
-  const [startsAt, setStartsAt] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [startsAt, setStartsAt] = useState<string>(todayDateString(userTimezone));
 
   const handleAssign = async () => {
     if (!selectedRelationshipId) return;
     await onAssign(selectedRelationshipId, startsAt);
     setSelectedRelationshipId("");
-    setStartsAt(format(new Date(), 'yyyy-MM-dd'));
+    setStartsAt(todayDateString(userTimezone));
   };
 
   const handleClose = () => {
     setSelectedRelationshipId("");
-    setStartsAt(format(new Date(), 'yyyy-MM-dd'));
+    setStartsAt(todayDateString(userTimezone));
     onClose();
   };
 

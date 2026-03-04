@@ -60,6 +60,7 @@ export const useTeacherNotifications = ({
         p_category: filters.category ?? null,
         p_limit: limit,
         p_offset: offset,
+        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       
       if (error) {
@@ -97,6 +98,7 @@ export const useTeacherNotificationsInfinite = ({
         p_category: filters.category ?? null,
         p_limit: pageSize,
         p_offset: pageParam,
+        p_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       });
       
       if (error) {

@@ -35,6 +35,7 @@ interface PendingBusinessProfile {
 
 export function BusinessProfilesManager() {
   const { profile } = useProfile();
+  const userTimezone = profile?.timezone || 'America/Sao_Paulo';
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [businessName, setBusinessName] = useState("");
@@ -336,7 +337,7 @@ export function BusinessProfilesManager() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Calendar className="h-4 w-4" />
-                      Criado em {formatInTimezone(profile.created_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
+                      Criado em {formatInTimezone(profile.created_at, 'dd/MM/yyyy', userTimezone)}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-yellow-600">
@@ -405,7 +406,7 @@ export function BusinessProfilesManager() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Conectado em {formatInTimezone(bp.created_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
+                    Conectado em {formatInTimezone(bp.created_at, 'dd/MM/yyyy', userTimezone)}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2">

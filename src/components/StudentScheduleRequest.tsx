@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useProfile } from "@/contexts/ProfileContext";
+import { formatInTimezone, formatDateBrazil, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface WorkingHour {
   id: string;
@@ -61,6 +62,8 @@ const DAYS_OF_WEEK = [
 export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProps) {
   const { toast } = useToast();
   const { profile } = useProfile();
+  const studentTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+  const [teacherTimezone, setTeacherTimezone] = useState<string>(DEFAULT_TIMEZONE);
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [existingClasses, setExistingClasses] = useState<ExistingClass[]>([]);
@@ -142,6 +145,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setAvailabilityBlocks(data?.availabilityBlocks || []);
       setExistingClasses(data?.existingClasses || []);
       setServices(data?.services || []);
+      setTeacherTimezone(data?.timezone || DEFAULT_TIMEZONE);
       
       if (data?.services && data.services.length > 0) {
         const defaultService = data.services[0];
@@ -313,18 +317,11 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    return formatInTimezone(date, 'dd/MM/yyyy', studentTimezone);
   };
 
   const formatTime = (datetime: string) => {
-    return new Date(datetime).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatInTimezone(new Date(datetime), 'HH:mm', studentTimezone);
   };
 
   const groupSlotsByDate = () => {
@@ -457,11 +454,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
             Object.entries(groupedSlots).map(([dateStr, slots]) => (
               <div key={dateStr} className="space-y-2">
                 <h4 className="font-medium text-sm">
-                  {new Date(dateStr).toLocaleDateString('pt-BR', {
-                    weekday: 'long',
-                    day: '2-digit',
-                    month: '2-digit'
-                  })}
+                  {formatInTimezone(new Date(dateStr), "EEEE, dd/MM", studentTimezone)}
                 </h4>
                 <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                   {slots.map((slot, index) => (
@@ -504,12 +497,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                            <div>
                              <Label>Data e Horário</Label>
                              <p className="text-sm text-muted-foreground">
-                               {new Date(selectedTimeSlot).toLocaleDateString('pt-BR', {
-                                 weekday: 'long',
-                                 day: '2-digit',
-                                 month: '2-digit',
-                                 year: 'numeric'
-                               })} às {formatTime(selectedTimeSlot)} <span className="text-xs">(Horário de Brasília)</span>
+                               {formatInTimezone(new Date(selectedTimeSlot), "EEEE, dd/MM/yyyy", studentTimezone)} às {formatTime(selectedTimeSlot)} <span className="text-xs">(Seu fuso horário)</span>
                              </p>
                            </div>
                           

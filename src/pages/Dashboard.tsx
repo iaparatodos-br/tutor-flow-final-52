@@ -9,6 +9,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
+import { nowInTimezone, startOfMonthTz, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface DashboardStats {
   totalStudents: number;
@@ -31,6 +32,8 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
 
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+
   useEffect(() => {
     if (!authLoading && profile?.id) {
       if (isProfessor) {
@@ -50,7 +53,8 @@ export default function Dashboard() {
         .rpc('count_teacher_students_and_dependents', { p_teacher_id: profile.id });
       const studentsCount = countData?.[0]?.total_students || 0;
 
-      // Buscar aulas futuras
+      // Buscar aulas futuras — usar "agora" no fuso do utilizador
+      const now = nowInTimezone(userTimezone);
       const { count: classesCount } = await supabase
         .from('classes')
         .select('*', { count: 'exact', head: true })
@@ -60,27 +64,23 @@ export default function Dashboard() {
       let invoicesCount = 0;
       let monthlyRevenue = 0;
 
-      // Only load financial data if user has financial module
       const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
       if (hasFinancialAccess) {
-        // Buscar faturas pendentes
         const { count: pendingInvoicesCount } = await supabase
           .from('invoices')
           .select('*', { count: 'exact', head: true })
           .eq('teacher_id', profile.id)
           .eq('status', 'pendente');
 
-        // Buscar receita do mês
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+        // Início do mês no fuso do utilizador
+        const monthStart = startOfMonthTz(new Date(), userTimezone);
         
         const { data: paidInvoices } = await supabase
           .from('invoices')
           .select('amount')
           .eq('teacher_id', profile.id)
           .eq('status', 'paga')
-          .gte('updated_at', startOfMonth.toISOString());
+          .gte('updated_at', monthStart.toISOString());
 
         invoicesCount = pendingInvoicesCount || 0;
         monthlyRevenue = paidInvoices?.reduce((sum, invoice) => sum + Number(invoice.amount), 0) || 0;

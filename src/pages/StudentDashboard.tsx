@@ -12,8 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Download, FileText, Clock, AlertCircle, Calendar, BookOpen, User, Mail, GraduationCap, Baby, Package } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { formatInTimezone, startOfMonthTz, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface TeacherPolicyData {
   id: string;
@@ -290,9 +289,8 @@ export default function StudentDashboard() {
           .single();
 
         // Count classes used this month (simplified - would need proper billing cycle logic)
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
+        const userTz = profile?.timezone || DEFAULT_TIMEZONE;
+        const startOfMonth = startOfMonthTz(new Date(), userTz);
 
         const { count: classesUsed } = await supabase
           .from('class_participants')
@@ -751,7 +749,7 @@ export default function StudentDashboard() {
                 <div>
                   <p className="font-medium">{cls.service_name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {format(new Date(cls.class_date), "dd 'de' MMMM, HH:mm", { locale: ptBR })}
+                    {formatInTimezone(cls.class_date, "dd 'de' MMMM, HH:mm", profile?.timezone || DEFAULT_TIMEZONE)}
                   </p>
                   {cls.notes && (
                     <p className="text-xs text-muted-foreground mt-1">{cls.notes}</p>
@@ -936,7 +934,8 @@ export default function StudentDashboard() {
           </div>
 
           <div className="pt-2 border-t text-xs text-muted-foreground">
-            {t('monthlySubscriptions:studentView.since')} {format(new Date(activeSubscription.starts_at), "dd/MM/yyyy")}
+            {/* starts_at é date-only — split manual */}
+            {t('monthlySubscriptions:studentView.since')} {activeSubscription.starts_at.split('-').reverse().join('/')}
           </div>
         </CardContent>
       </Card>

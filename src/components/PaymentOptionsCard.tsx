@@ -16,10 +16,10 @@ import {
   RefreshCw,
   AlertTriangle
 } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useProfile } from "@/contexts/ProfileContext";
+import { todayDateString, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface Invoice {
   id: string;
@@ -40,12 +40,15 @@ interface PaymentOptionsCardProps {
 
 export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptionsCardProps) {
   const { toast } = useToast();
+  const { profile } = useProfile();
   const [loading, setLoading] = useState(false);
   const [generatedBoleto, setGeneratedBoleto] = useState<{
     url: string;
     linha_digitavel?: string;
   } | null>(null);
   const [popupBlocked, setPopupBlocked] = useState(false);
+
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
 
   const formatCurrency = (amount: string) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -54,8 +57,16 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     }).format(parseFloat(amount));
   };
 
+  /**
+   * Formata campo date-only (YYYY-MM-DD) para dd/MM/yyyy.
+   * REGRA v3.6: NUNCA usar timeZone para campos date.
+   */
   const formatDate = (dateString: string) => {
-    return format(new Date(dateString), "dd/MM/yyyy", { locale: ptBR });
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
   };
 
   const getStatusBadge = (status: string) => {
@@ -176,7 +187,8 @@ export function PaymentOptionsCard({ invoice, onPaymentSuccess }: PaymentOptions
     }
   };
 
-  const isOverdue = new Date(invoice.due_date) < new Date();
+  // Comparação de vencimento usando date-only string vs todayDateString
+  const isOverdue = invoice.due_date < todayDateString(userTimezone);
   const isPaid = invoice.status === 'paga';
   const isBelowMinimum = parseFloat(invoice.amount) < MINIMUM_BOLETO_AMOUNT;
 

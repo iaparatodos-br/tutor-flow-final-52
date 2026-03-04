@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { InvoiceTypeBadge } from '@/components/InvoiceTypeBadge';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTeacherContext } from '@/contexts/TeacherContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -20,6 +18,8 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { openExternalUrl, onBrowserClosed } from '@/utils/browser';
 import { cn } from '@/lib/utils';
+import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface Invoice {
   id: string;
@@ -47,10 +47,13 @@ interface Invoice {
 export default function Faturas() {
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
   const { user } = useAuth();
+  const { profile } = useProfile();
   const navigate = useNavigate();
   const { t } = useTranslation('financial');
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
 
   // Deep-linking support from Inbox
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,7 +82,6 @@ export default function Faturas() {
     enabled: !!user?.id && !!selectedTeacherId
   });
 
-  // Query principal de faturas (próprias + dependentes)
   const { data: invoices, isLoading, error, refetch } = useQuery({
     queryKey: ['studentInvoices', selectedTeacherId, user?.id, dependentIds],
     queryFn: async () => {
@@ -139,7 +141,19 @@ export default function Faturas() {
     return invoice.student_id !== user?.id;
   };
 
-  // Deep-linking: Process URL parameters from Inbox navigation
+  /**
+   * Formata campo date-only (YYYY-MM-DD) sem conversão de timezone.
+   * REGRA v3.6: parseISO ou split manual para campos date.
+   */
+  const formatDateOnly = (dateString: string): string => {
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
+  };
+
+  // Deep-linking
   useEffect(() => {
     const highlightParam = searchParams.get('highlight');
 
@@ -174,7 +188,6 @@ export default function Faturas() {
           </Card>
         </div>
       </Layout>);
-
   }
 
   if (!selectedTeacherId) {
@@ -192,7 +205,6 @@ export default function Faturas() {
           </Alert>
         </div>
       </Layout>);
-
   }
 
   return (
@@ -243,7 +255,8 @@ export default function Faturas() {
                   )}>
 
                       <TableCell>
-                        {format(new Date(invoice.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                        {/* created_at é timestamptz — usar formatInTimezone */}
+                        {formatInTimezone(invoice.created_at, 'dd/MM/yyyy', userTimezone)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -257,10 +270,8 @@ export default function Faturas() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {invoice.due_date ?
-                    format(new Date(invoice.due_date), 'dd/MM/yyyy', { locale: ptBR }) :
-                    '-'
-                    }
+                        {/* due_date é date-only — NUNCA usar timeZone */}
+                        {invoice.due_date ? formatDateOnly(invoice.due_date) : '-'}
                       </TableCell>
                       <TableCell>{formatCurrency(invoice.amount)}</TableCell>
                       <TableCell>
@@ -269,12 +280,10 @@ export default function Faturas() {
                           <InvoiceStatusBadge
                         status={invoice.status}
                         paymentOrigin={invoice.payment_origin} />
-
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          {/* Faturas pendentes/vencidas */}
                           {(invoice.status === 'open' ||
                       invoice.status === 'overdue' ||
                       invoice.status === 'pendente' ||
@@ -285,10 +294,8 @@ export default function Faturas() {
                         <Button
                           onClick={() => handlePayNow(invoice)}
                           size="sm">
-
                                   {t('studentInvoices.payNow')}
                                 </Button> :
-
                         <span className="text-sm text-muted-foreground">
                                   Sem boleto
                                 </span>
@@ -296,13 +303,11 @@ export default function Faturas() {
                             </>
                       }
 
-                          {/* Faturas pagas */}
                           {(invoice.status === 'paid' || invoice.status === 'paga') &&
                       <Button
                         onClick={() => handleViewReceipt(invoice.id)}
                         size="sm"
                         variant="outline">
-
                               <FileText className="h-4 w-4 mr-2" />
                               {t('studentInvoices.viewReceipt')}
                             </Button>
@@ -318,5 +323,4 @@ export default function Faturas() {
         </Card>
       </div>
     </Layout>);
-
 }

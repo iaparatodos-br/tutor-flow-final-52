@@ -82,7 +82,12 @@ export const formatInTimezone = (
   pattern: string,
   timezone: string = DEFAULT_TIMEZONE,
 ): string => {
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const dateObj = typeof date === 'string' ? new Date(date) : (typeof date === 'number' ? new Date(date) : date);
+  // Guard against invalid dates to prevent RangeError crashes
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+    console.warn('formatInTimezone: received invalid date', date);
+    return '--';
+  }
   return formatTz(toZonedTime(dateObj, timezone), pattern, { timeZone: timezone });
 };
 

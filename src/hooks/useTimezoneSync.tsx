@@ -5,6 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 const SESSION_STORAGE_KEY = 'tz-sync-dismissed';
+const getDismissKey = (browserTimezone: string, profileTimezone: string) =>
+  `${browserTimezone}::${profileTimezone}`;
 
 /**
  * Hook que sincroniza o fuso horário do browser com o perfil do utilizador.
@@ -34,9 +36,10 @@ export function useTimezoneSync() {
     if (lastCheckedTimezone.current === profileTimezone) return;
     lastCheckedTimezone.current = profileTimezone;
 
-    // Se já recusou nesta sessão para este timezone do browser, não perguntar de novo
+    // Se já recusou nesta sessão para este par browser/profile, não perguntar de novo
+    const dismissKey = getDismissKey(browserTimezone, profileTimezone);
     const dismissed = sessionStorage.getItem(SESSION_STORAGE_KEY);
-    if (dismissed === browserTimezone) return;
+    if (dismissed === dismissKey) return;
 
     // Mostrar toast com ação
     const { dismiss } = toast({
@@ -78,7 +81,7 @@ export function useTimezoneSync() {
           <button
             className="rounded border border-input px-3 py-1 text-xs font-medium hover:bg-accent"
             onClick={() => {
-              sessionStorage.setItem(SESSION_STORAGE_KEY, browserTimezone);
+              sessionStorage.setItem(SESSION_STORAGE_KEY, dismissKey);
               dismiss();
             }}
           >

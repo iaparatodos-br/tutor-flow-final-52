@@ -93,7 +93,7 @@ export function ProfileSettings() {
       });
 
       // Clear session storage so useTimezoneSync doesn't suppress future checks
-      sessionStorage.removeItem('timezone_sync_dismissed');
+      sessionStorage.removeItem('tz-sync-dismissed');
     } catch (error: any) {
       console.error('Erro ao atualizar timezone:', error);
       toast({

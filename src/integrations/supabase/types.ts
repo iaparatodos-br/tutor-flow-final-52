@@ -2326,6 +2326,16 @@ export type Database = {
           classmate_id: string
         }[]
       }
+      get_relationships_to_bill_now: {
+        Args: never
+        Returns: Database["public"]["CompositeTypes"]["billing_relationship_with_tz"][]
+        SetofOptions: {
+          from: "*"
+          to: "billing_relationship_with_tz"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_student_active_subscription:
         | {
             Args: { p_relationship_id: string }
@@ -2719,7 +2729,14 @@ export type Database = {
       processing_status_enum: "processing" | "completed" | "failed" | "timeout"
     }
     CompositeTypes: {
-      [_ in never]: never
+      billing_relationship_with_tz: {
+        relationship_id: string | null
+        student_id: string | null
+        teacher_id: string | null
+        billing_day: number | null
+        business_profile_id: string | null
+        teacher_timezone: string | null
+      }
     }
   }
 }

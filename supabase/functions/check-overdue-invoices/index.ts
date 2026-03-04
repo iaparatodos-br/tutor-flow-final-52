@@ -6,6 +6,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Get "today" date string (YYYY-MM-DD) in a specific timezone
+function getTodayInTimezone(timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(new Date());
+}
+
+// Get date N days from now in a specific timezone (YYYY-MM-DD)
+function getDateOffsetInTimezone(timezone: string, daysOffset: number): string {
+  const now = new Date();
+  const future = new Date(now.getTime() + daysOffset * 24 * 60 * 60 * 1000);
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(future);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -18,34 +42,48 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    console.log("⚠️ Verificando faturas vencidas e próximas ao vencimento...");
+    console.log("⚠️ Verificando faturas vencidas e próximas ao vencimento (timezone-aware)...");
 
-    const now = new Date();
-    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-
-    // 1. Buscar faturas pendentes vencidas
-    const { data: overdueInvoices, error: overdueError } = await supabase
+    // 1. Buscar faturas pendentes com o fuso do professor
+    const { data: pendingInvoices, error: fetchError } = await supabase
       .from("invoices")
-      .select("id, due_date, student_id, teacher_id")
-      .eq("status", "pendente")
-      .lt("due_date", now.toISOString().split('T')[0]);
+      .select("id, due_date, student_id, teacher_id, status")
+      .in("status", ["pendente"]);
 
-    if (overdueError) {
-      console.error("Erro ao buscar faturas vencidas:", overdueError);
-      throw overdueError;
+    if (fetchError) {
+      console.error("Erro ao buscar faturas:", fetchError);
+      throw fetchError;
     }
 
-    console.log(`📋 Encontradas ${overdueInvoices?.length || 0} faturas vencidas`);
+    if (!pendingInvoices || pendingInvoices.length === 0) {
+      console.log("📋 Nenhuma fatura pendente encontrada");
+      return new Response(
+        JSON.stringify({ success: true, overdue_processed: 0, reminders_sent: 0 }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    // Fetch teacher timezones in batch
+    const teacherIds = [...new Set(pendingInvoices.map(inv => inv.teacher_id))];
+    const { data: teacherProfiles } = await supabase
+      .from("profiles")
+      .select("id, timezone")
+      .in("id", teacherIds);
+
+    const tzMap = new Map((teacherProfiles || []).map(p => [p.id, p.timezone || 'America/Sao_Paulo']));
 
     let overdueProcessed = 0;
+    let remindersProcessed = 0;
 
-    // Processar faturas vencidas
-    if (overdueInvoices && overdueInvoices.length > 0) {
-      for (const invoice of overdueInvoices) {
-        try {
-          // FIX #360/#556: Use teacher_notifications instead of class_notifications
-          // class_notifications.class_id has FK to classes.id — storing invoice.id there
-          // would violate FK constraint and is semantically wrong
+    for (const invoice of pendingInvoices) {
+      try {
+        const teacherTz = tzMap.get(invoice.teacher_id) || 'America/Sao_Paulo';
+        const todayLocal = getTodayInTimezone(teacherTz);
+        const threeDaysFromNowLocal = getDateOffsetInTimezone(teacherTz, 3);
+
+        // Check if overdue: due_date < today (in teacher's local timezone)
+        if (invoice.due_date < todayLocal) {
+          // Check for existing notification
           const { data: existingNotification } = await supabase
             .from("teacher_notifications")
             .select("id")
@@ -55,7 +93,7 @@ serve(async (req) => {
             .maybeSingle();
 
           if (!existingNotification) {
-            // Guard: só atualizar faturas que ainda estão pendentes (não reverter paga/cancelada)
+            // Guard: only update if still pendente
             const { data: currentInvoice } = await supabase
               .from("invoices")
               .select("status")
@@ -68,15 +106,14 @@ serve(async (req) => {
               continue;
             }
 
-            // Atualizar status da fatura apenas se ainda pendente
+            // Mark as overdue
             await supabase
               .from("invoices")
               .update({ status: "vencida" })
               .eq("id", invoice.id)
-              .eq("status", "pendente"); // Guard clause no UPDATE
+              .eq("status", "pendente");
 
-            // FIX #361: INSERT tracking record into teacher_notifications
-            // This prevents spam on subsequent cron runs
+            // Insert tracking notification
             await supabase
               .from("teacher_notifications")
               .insert({
@@ -88,47 +125,19 @@ serve(async (req) => {
                 is_read: false,
               });
 
-            // Enviar notificação por email
+            // Send email notification
             await supabase.functions.invoke('send-invoice-notification', {
-              body: {
-                invoice_id: invoice.id,
-                notification_type: 'invoice_overdue'
-              }
+              body: { invoice_id: invoice.id, notification_type: 'invoice_overdue' }
             });
 
             overdueProcessed++;
-            console.log(`✅ Notificação de vencimento enviada para fatura ${invoice.id}`);
+            console.log(`✅ Fatura ${invoice.id} marcada como vencida (tz: ${teacherTz}, today: ${todayLocal}, due: ${invoice.due_date})`);
           } else {
             console.log(`⏭️ Notificação já existe para fatura ${invoice.id}, pulando`);
           }
-        } catch (error) {
-          console.error(`Erro ao processar fatura vencida ${invoice.id}:`, error);
         }
-      }
-    }
-
-    // 2. Buscar faturas próximas ao vencimento (3 dias)
-    const { data: upcomingInvoices, error: upcomingError } = await supabase
-      .from("invoices")
-      .select("id, due_date, student_id, teacher_id")
-      .eq("status", "pendente")
-      .gte("due_date", now.toISOString().split('T')[0])
-      .lte("due_date", threeDaysFromNow.toISOString().split('T')[0]);
-
-    if (upcomingError) {
-      console.error("Erro ao buscar faturas próximas:", upcomingError);
-      throw upcomingError;
-    }
-
-    console.log(`📋 Encontradas ${upcomingInvoices?.length || 0} faturas próximas ao vencimento`);
-
-    let remindersProcessed = 0;
-
-    // Processar lembretes
-    if (upcomingInvoices && upcomingInvoices.length > 0) {
-      for (const invoice of upcomingInvoices) {
-        try {
-          // FIX #360/#556: Use teacher_notifications for dedup instead of class_notifications
+        // Check if due within 3 days: today <= due_date <= today+3
+        else if (invoice.due_date >= todayLocal && invoice.due_date <= threeDaysFromNowLocal) {
           const { data: existingReminder } = await supabase
             .from("teacher_notifications")
             .select("id")
@@ -138,7 +147,6 @@ serve(async (req) => {
             .maybeSingle();
 
           if (!existingReminder) {
-            // FIX #361: INSERT tracking record to prevent spam
             await supabase
               .from("teacher_notifications")
               .insert({
@@ -150,50 +158,40 @@ serve(async (req) => {
                 is_read: false,
               });
 
-            // Enviar lembrete por email
             await supabase.functions.invoke('send-invoice-notification', {
-              body: {
-                invoice_id: invoice.id,
-                notification_type: 'invoice_payment_reminder'
-              }
+              body: { invoice_id: invoice.id, notification_type: 'invoice_payment_reminder' }
             });
 
             remindersProcessed++;
-            console.log(`✅ Lembrete de pagamento enviado para fatura ${invoice.id}`);
+            console.log(`✅ Lembrete enviado para fatura ${invoice.id} (tz: ${teacherTz}, today: ${todayLocal}, due: ${invoice.due_date})`);
           } else {
             console.log(`⏭️ Lembrete já existe para fatura ${invoice.id}, pulando`);
           }
-        } catch (error) {
-          console.error(`Erro ao processar lembrete da fatura ${invoice.id}:`, error);
         }
+      } catch (error) {
+        console.error(`Erro ao processar fatura ${invoice.id}:`, error);
       }
     }
 
     console.log(`✅ Processo concluído: ${overdueProcessed} vencidas, ${remindersProcessed} lembretes`);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         overdue_processed: overdueProcessed,
         reminders_sent: remindersProcessed
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );
 
   } catch (error) {
     console.error("❌ Erro ao verificar faturas:", error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error instanceof Error ? error.message : "Unknown error",
-        success: false 
+        success: false
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500,
-      }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
     );
   }
 });

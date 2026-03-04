@@ -53,6 +53,8 @@ export function ClassExceptionForm({
   onSuccess
 }: ClassExceptionFormProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     new_start_date: '',
@@ -93,7 +95,7 @@ export function ClassExceptionForm({
         originalClassId = originalClass.id.split('_virtual_')[0];
       }
 
-      const newStartDateTime = new Date(`${formData.new_start_date}T${formData.new_start_time}:00`);
+      const newStartDateTime = fromUserZonedTime(new Date(`${formData.new_start_date}T${formData.new_start_time}:00`), userTimezone);
       const newEndDateTime = new Date(newStartDateTime.getTime() + (formData.new_duration_minutes * 60 * 1000));
 
       const { data, error } = await supabase.functions.invoke('manage-class-exception', {

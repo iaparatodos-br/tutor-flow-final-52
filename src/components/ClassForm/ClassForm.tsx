@@ -26,6 +26,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { RRule, Frequency } from 'rrule';
+import { fromUserZonedTime, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 interface Student {
   id: string;
@@ -96,6 +97,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
   const { hasFeature, currentPlan } = useSubscription();
   const { profile } = useProfile();
   const { t } = useTranslation('classes');
+  const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
   const [chargeTiming, setChargeTiming] = useState<'prepaid' | 'postpaid' | null>(null);
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
@@ -145,7 +147,7 @@ export function ClassForm({ open, onOpenChange, students, dependents = [], servi
       return;
     }
 
-    const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+    const classDateTime = fromUserZonedTime(new Date(`${formData.class_date}T${formData.time}`), userTimezone);
 
     // Get duration from selected service or use form value for unpaid classes
     let duration = !formData.is_paid_class && !formData.service_id

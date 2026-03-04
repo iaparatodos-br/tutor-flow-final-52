@@ -22,7 +22,7 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
+import { fromUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface ClassWithParticipants {
   id: string;
   class_date: string;
@@ -1564,7 +1564,7 @@ export default function Agenda() {
 
           if (servicePrice > 0 && insertedClasses?.[0]) {
             const classId = insertedClasses[0].id;
-            const classDateStr = new Date(classDateTime).toLocaleDateString('pt-BR');
+            const classDateStr = formatInTimezone(classDateTime, 'dd/MM/yyyy', profile?.timezone || DEFAULT_TIMEZONE);
 
             // Fire-and-forget: gerar faturas em paralelo sem bloquear o modal
             const invoicePromises = participantsToInsert.map((participant: any) =>

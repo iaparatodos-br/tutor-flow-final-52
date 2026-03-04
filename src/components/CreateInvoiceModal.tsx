@@ -13,10 +13,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DollarSign, AlertTriangle, AlertCircle, Baby, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { calculateBoletoFees, formatCurrency, validateBoletoAmount, MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
-import { format, parse } from "date-fns";
+import { parse, format as dfFormat } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { useProfile } from "@/contexts/ProfileContext";
+import { todayDateString, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface Student {
   id: string;
   name: string;
@@ -41,6 +43,7 @@ export function CreateInvoiceModal({
   const {
     t
   } = useTranslation('financial');
+  const { profile } = useProfile();
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -261,7 +264,7 @@ export function CreateInvoiceModal({
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
                     {formData.due_date
-                      ? format(parse(formData.due_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      ? dfFormat(parse(formData.due_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
                       : "Selecione a data"}
                   </Button>
                 </PopoverTrigger>
@@ -270,7 +273,7 @@ export function CreateInvoiceModal({
                     mode="single"
                     selected={formData.due_date ? parse(formData.due_date, 'yyyy-MM-dd', new Date()) : undefined}
                     onSelect={(date) => {
-                      if (date) setFormData(prev => ({ ...prev, due_date: format(date, 'yyyy-MM-dd') }));
+                      if (date) setFormData(prev => ({ ...prev, due_date: dfFormat(date, 'yyyy-MM-dd') }));
                     }}
                     locale={ptBR}
                     initialFocus

@@ -184,7 +184,10 @@ function getDueDateString(paymentDueDays: number, timezone: string): string {
   const { year, month, day } = getLocalDateParts(timezone);
   const localDate = new Date(year, month - 1, day);
   localDate.setDate(localDate.getDate() + paymentDueDays);
-  return localDate.toISOString().split('T')[0];
+  const y = localDate.getFullYear();
+  const m = String(localDate.getMonth() + 1).padStart(2, '0');
+  const d = String(localDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 serve(async (req) => {
@@ -469,7 +472,7 @@ serve(async (req) => {
         for (const classItem of unbilledClasses) {
           const service = classItem.class_services;
           const amount = service?.price || defaultServicePrice || 100;
-          let description = `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`;
+          let description = `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR', { timeZone: studentInfo.teacher_timezone })}`;
           if (classItem.dependent_name) description = `[${classItem.dependent_name}] ${description}`;
           invoiceItems.push({
             class_id: classItem.id,
@@ -815,7 +818,7 @@ async function processMonthlySubscriptionBilling(
             participant_id: classInfo.participant_id,
             item_type: 'completed_class',
             amount: servicePrice,
-            description: `Aula avulsa (anterior à mensalidade) - ${classInfo.class_services?.name || 'Serviço'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`,
+            description: `Aula avulsa (anterior à mensalidade) - ${classInfo.class_services?.name || 'Serviço'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR', { timeZone: tz })}`,
             cancellation_policy_id: null,
             charge_percentage: null,
             dependent_id: classInfo.dependent_id || null

@@ -85,7 +85,7 @@ export const formatInTimezone = (
   const dateObj = typeof date === 'string' ? new Date(date) : (typeof date === 'number' ? new Date(date) : date);
   // Guard against invalid dates to prevent RangeError crashes
   if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
-    console.warn('formatInTimezone: received invalid date', date);
+    console.warn('formatInTimezone: received invalid date', String(date));
     return '--';
   }
   return formatTz(toZonedTime(dateObj, timezone), pattern, { timeZone: timezone });

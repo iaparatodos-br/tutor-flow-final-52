@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { parseISO, format } from "date-fns";
 import {
   Dialog,
   DialogContent,
@@ -47,11 +48,12 @@ export function PendingBoletoModal({
 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return t("pendingBoleto.dateUndefined", "Data não definida");
-    return new Date(dateStr).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+    // dueDate é campo 'date' (YYYY-MM-DD) — parse estrito sem offset
+    try {
+      return format(parseISO(dateStr), 'dd/MM/yyyy');
+    } catch {
+      return dateStr;
+    }
   };
 
   const formatCurrency = (value?: number) => {

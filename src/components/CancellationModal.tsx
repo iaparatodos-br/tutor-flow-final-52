@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { AlertTriangle, Clock, DollarSign, Baby, Beaker } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { formatDateBrazil, formatTimeBrazil } from "@/utils/timezone";
 
 interface VirtualClassData {
   teacher_id: string;
@@ -384,7 +385,7 @@ export function CancellationModal({
             )}
           </DialogTitle>
           <DialogDescription>
-            {className} - {new Date(classDate).toLocaleDateString()} {t('at')} {new Date(classDate).toLocaleTimeString()} {t('timezone')}
+            {className} - {formatDateBrazil(classDate, undefined, profile?.timezone)} {t('at')} {formatTimeBrazil(classDate, profile?.timezone)} {t('timezone')}
           </DialogDescription>
         </DialogHeader>
         

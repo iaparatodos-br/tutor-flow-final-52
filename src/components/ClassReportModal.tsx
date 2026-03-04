@@ -12,6 +12,7 @@ import { CalendarClass } from '@/components/Calendar/CalendarView';
 import { useProfile } from '@/contexts/ProfileContext';
 import { BookOpen, FileText, Link, MessageSquare, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { formatDateBrazil, formatTimeBrazil } from '@/utils/timezone';
 import { 
   ClassReportPhotoUpload, 
   uploadReportPhotos, 
@@ -458,18 +459,12 @@ export function ClassReportModal({
               </div>
               <div>
                 <strong>{t('modal.classInfo.date')}</strong>{' '}
-                {new Date(classData.start).toLocaleDateString('pt-BR')}
+                {formatDateBrazil(classData.start, undefined, profile?.timezone)}
               </div>
               <div>
                 <strong>{t('modal.classInfo.time')}</strong>{' '}
-                {new Date(classData.start).toLocaleTimeString('pt-BR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })} -{' '}
-                {new Date(classData.end).toLocaleTimeString('pt-BR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })} <span className="text-xs text-muted-foreground">{t('modal.classInfo.timezone')}</span>
+                {formatTimeBrazil(classData.start, profile?.timezone)} -{' '}
+                {formatTimeBrazil(classData.end, profile?.timezone)} <span className="text-xs text-muted-foreground">{t('modal.classInfo.timezone')}</span>
               </div>
             </CardContent>
           </Card>

@@ -17,7 +17,7 @@ import { Baby, Calendar, Edit2, Plus, Trash2, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useDependents, Dependent, DependentFormData } from "@/hooks/useDependents";
 import { DependentFormModal } from "@/components/DependentFormModal";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 
 interface DependentManagerProps {
@@ -124,7 +124,8 @@ export function DependentManager({
   const formatBirthDate = (dateStr: string | null) => {
     if (!dateStr) return null;
     try {
-      return format(new Date(dateStr), 'dd/MM/yyyy', { locale: dateLocale });
+      // birth_date é campo 'date' (YYYY-MM-DD) — parseISO sem offset
+      return format(parseISO(dateStr), 'dd/MM/yyyy', { locale: dateLocale });
     } catch {
       return dateStr;
     }

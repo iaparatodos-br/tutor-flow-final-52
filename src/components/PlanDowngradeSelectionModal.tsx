@@ -9,7 +9,7 @@ import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2, Check, TrendingU
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProgressModal } from './ProgressModal';
 import { useSubscription } from '@/contexts/SubscriptionContext';
@@ -540,7 +540,7 @@ export function PlanDowngradeSelectionModal({
                         <p className="text-sm text-muted-foreground">Responsável: {entity.responsibleName}</p>
                       )}
                       <p className="text-xs text-muted-foreground">
-                        {entity.type === 'student' ? 'Aluno' : 'Cadastrado'} desde {format(new Date(entity.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                        {entity.type === 'student' ? 'Aluno' : 'Cadastrado'} desde {format(parseISO(entity.created_at), 'dd/MM/yyyy', { locale: ptBR })}
                       </p>
                     </div>
                     {isSelected && (

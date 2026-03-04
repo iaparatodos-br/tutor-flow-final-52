@@ -86,22 +86,25 @@ export function ProfileSettings() {
 
       if (error) throw error;
 
-      setSelectedTimezone(newTimezone);
+      // Clear session storage so useTimezoneSync doesn't suppress future checks
+      sessionStorage.removeItem('tz-sync-dismissed');
+
       toast({
         title: t('profile.title'),
         description: `Fuso horário atualizado para ${TIMEZONE_OPTIONS.find(tz => tz.value === newTimezone)?.label || newTimezone}`,
       });
 
-      // Clear session storage so useTimezoneSync doesn't suppress future checks
-      sessionStorage.removeItem('tz-sync-dismissed');
-    } catch (error: any) {
+      // Reload para limpar cache do AuthContext e reinicializar todos os componentes
+      // com o novo timezone (mesma abordagem do botão "Atualizar" no useTimezoneSync)
+      window.location.reload();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Não foi possível atualizar o fuso horário.";
       console.error('Erro ao atualizar timezone:', error);
       toast({
         title: "Erro",
-        description: error.message || "Não foi possível atualizar o fuso horário.",
+        description: message,
         variant: "destructive",
       });
-    } finally {
       setSavingTimezone(false);
     }
   };

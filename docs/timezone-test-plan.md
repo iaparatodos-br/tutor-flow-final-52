@@ -122,6 +122,20 @@
 | 4.4 | `FutureClassExceptionForm` | Mesmo cenário | Criar exceção futura | Idem |
 | 4.5 | `AvailabilityManager` (bloqueios) | Professor em NY | Criar bloqueio de 09:00 a 12:00 no dia 20/03 | `start_datetime` e `end_datetime` gravados em UTC com offset de NY |
 | 4.6 | `StudentScheduleRequest` | Aluno em Lisboa; professor em BRT | Solicitar aula às 15:00 | Timestamp gravado reflete 15:00 no fuso de Lisboa (15:00 UTC+0 = 15:00Z em março) |
+| 4.7 | `ClassForm` (Hora Inexistente - DST Spring Forward) | Professor em `America/New_York`; dia da virada DST (2º domingo de março) | Criar aula às 02:30 AM | `date-fns-tz` (`fromZonedTime`) faz shift automático para 03:30 AM local (07:30 UTC). O sistema **não** deve gravar 02:30 (hora que não existe). Verificar no banco que o UTC gravado corresponde a 03:30 EDT. |
+
+### Passo a passo — Teste 4.7 (Hora Inexistente durante DST)
+
+1. No Supabase, definir `profiles.timezone = 'America/New_York'` para o professor.
+2. Identificar a data do "Spring Forward" (2º domingo de março, ex: 08/03/2026).
+3. Fazer login e criar uma aula para esse dia às **02:30 AM**.
+4. Submeter o formulário.
+5. No Supabase, verificar o `class_date`:
+   ```sql
+   SELECT class_date FROM classes WHERE teacher_id = '<id>' ORDER BY created_at DESC LIMIT 1;
+   ```
+6. **Esperado**: O timestamp UTC corresponde a **03:30 EDT** (07:30 UTC), pois `fromZonedTime` avança automaticamente a hora inexistente.
+7. **Falha se**: O UTC gravado corresponder a 02:30 EST (07:30 UTC — coincidência numérica neste caso, mas verificar que o frontend não exibe "02:30" ao reabrir).
 
 ### Passo a passo — Teste 4.1 (Cenário Crítico: Professor Viajando)
 
@@ -155,7 +169,7 @@
 | # | Pré-condição | Ação | Resultado Esperado |
 |---|---|---|---|
 | 5.2.1 | Professor com `payment_due_days = 7`, timezone `America/New_York`; cron roda às 05:00 UTC (01:00 NY) do dia 10/03 | Gerar `due_date` | `due_date = '2026-03-17'` (hoje em NY é 10/03 + 7 dias) |
-| 5.2.2 | Mesmo cenário mas cron roda às 03:00 UTC (00:00 NY, ainda dia 09/03 em NY) | Gerar `due_date` | `due_date = '2026-03-16'` (hoje em NY é 09/03 + 7 dias) |
+| 5.2.2 | Mesmo cenário mas cron roda às 03:00 UTC (23:00 NY do dia 09/03, ainda dia 09/03 em NY) | Gerar `due_date` | `due_date = '2026-03-16'` (hoje em NY é 09/03 + 7 dias) |
 
 ### 5.3 Idempotência
 
@@ -163,6 +177,26 @@
 |---|---|---|---|
 | 5.3.1 | Cron rodou às 06:00 UTC e faturou Professor A | Cron roda novamente às 07:00 UTC | Zero faturas duplicadas para Professor A |
 | 5.3.2 | Cron falhou às 06:00 UTC (timeout) | Cron roda às 07:00 UTC | Professor A é faturado normalmente (recuperação) |
+
+### 5.4 Marcação de Faturas Vencidas (`check-overdue-invoices`)
+
+> **Regra**: O "hoje" é calculado no fuso do professor via `getTodayInTimezone(teacherTz)`. Faturas só são marcadas como vencidas quando o dia local do professor ultrapassou o `due_date`.
+
+| # | Pré-condição | Ação | Resultado Esperado |
+|---|---|---|---|
+| 5.4.1 | Fatura pendente com `due_date = '2026-03-10'`; Professor em `America/New_York` | Cron diário roda às 02:00 UTC do dia 11/03 (22:00 NY do dia 10/03) | Fatura **não** é marcada como `vencida` (para o professor, ainda é dia 10 e o cliente ainda tem 2 horas para pagar) |
+| 5.4.2 | Mesmo cenário | Cron roda às 05:00 UTC do dia 11/03 (01:00 NY do dia 11/03) | Fatura **é** marcada como `vencida` |
+| 5.4.3 | Fatura pendente com `due_date = '2026-03-10'`; Professor em `Pacific/Auckland` (UTC+13) | Cron roda às 10:00 UTC do dia 10/03 (23:00 NZ do dia 10/03) | Fatura **não** é marcada como `vencida` |
+| 5.4.4 | Mesmo cenário NZ | Cron roda às 11:00 UTC do dia 10/03 (00:00 NZ do dia 11/03) | Fatura **é** marcada como `vencida` |
+
+### Passo a passo — Teste 5.4.1
+
+1. No Supabase, criar uma fatura com `due_date = '2026-03-10'` e `status = 'pendente'` para o professor de teste.
+2. Configurar `profiles.timezone = 'America/New_York'` para o professor.
+3. Invocar `check-overdue-invoices` manualmente simulando o horário de 02:00 UTC do dia 11/03.
+4. Verificar que o `status` da fatura permanece `pendente`.
+5. Invocar novamente simulando 05:00 UTC do dia 11/03.
+6. Verificar que o `status` mudou para `vencida`.
 
 ### Passo a passo — Teste 5.2.1
 
@@ -225,6 +259,26 @@
 | 7.4 | `get_teacher_notifications` | `p_timezone = 'Europe/London'` | Notificações do "hoje" calculadas no fuso de Londres |
 | 7.5 | `get_student_active_subscription` | `p_timezone = 'Asia/Tokyo'` | Datas de expiração avaliadas no fuso de Tokyo |
 
+### 7.6 Agregações do Dashboard (`startOfMonthTz`)
+
+> **Regra**: O Dashboard calcula receita mensal, despesas e pendências usando `startOfMonthTz(date, userTimezone)` para determinar o início/fim do mês no fuso do perfil.
+
+| # | Pré-condição | Ação | Resultado Esperado |
+|---|---|---|---|
+| 7.6.1 | Pagamento registado em `2026-03-31T23:00:00Z`; Professor em `America/Sao_Paulo` (BRT = 20:00 do dia 31/03) | Abrir Dashboard → Resumo de Março | Pagamento **incluído** na receita de março |
+| 7.6.2 | Mesmo pagamento; Professor com `timezone = 'Europe/Lisbon'` (WET = 00:00 do dia 01/04) | Abrir Dashboard → Resumo de Março | Pagamento **não** incluído em março; aparece em abril |
+| 7.6.3 | Despesa com `expense_date = '2026-03-01'`; `created_at = '2026-03-01T02:00:00Z'`; Professor em `America/New_York` (22:00 do dia 28/02) | Abrir Dashboard → Resumo de Março | Despesa incluída em março (campo `expense_date` é tipo `date`, sem shift) |
+
+### Passo a passo — Teste 7.6.2
+
+1. No Supabase, inserir uma fatura paga com `created_at = '2026-03-31T23:00:00Z'` e `status = 'pago'`.
+2. Definir `profiles.timezone = 'Europe/Lisbon'` para o professor.
+3. Fazer login e abrir o Dashboard.
+4. Verificar que a receita de **março** não inclui esse pagamento.
+5. Navegar para **abril** — confirmar que o pagamento aparece lá.
+6. Alterar `profiles.timezone = 'America/Sao_Paulo'` e recarregar.
+7. Verificar que agora o pagamento aparece em **março**.
+
 ### Passo a passo — Teste 7.1 (Caso Crítico: Aula na Fronteira de Mês)
 
 1. Criar uma aula completada com `class_date = '2026-03-01T04:30:00+00:00'`.
@@ -269,6 +323,17 @@
 |---|---|---|---|
 | 8.2.1 | Aula recorrente semanal às 14:00 NY; DST inicia em 08/03 | Verificar aula de 15/03 | Continua às 14:00 NY (agora 18:00 UTC em vez de 19:00 UTC) |
 | 8.2.2 | Professor em `America/Sao_Paulo`; DST do Brasil (se aplicável) | Verificar aulas durante transição | Horários locais mantidos |
+| 8.2.3 | **DST na Materialização de Aulas Virtuais**: Professor em `America/New_York` cria aula recorrente semanal às 14:00 com início em 01/03 (antes do Spring Forward) e fim em 30/03 (depois) | Visualizar calendário no dia 15/03 (após DST) | Aula materializada exibida às **14:00 NY**. Internamente, o UTC gravado/calculado deve ter mudado de `19:00 UTC` (pré-DST, EST) para `18:00 UTC` (pós-DST, EDT) para manter a hora local |
+
+### Passo a passo — Teste 8.2.3 (DST na Materialização)
+
+1. Definir `profiles.timezone = 'America/New_York'` para o professor.
+2. Criar uma aula recorrente semanal às **14:00** com data de início **01/03/2026** e fim **30/03/2026**.
+3. Verificar a aula gerada para **08/03** (último dia antes do DST):
+   - Deve estar às 14:00 NY = **19:00 UTC** (EST, UTC-5).
+4. Verificar a aula gerada para **15/03** (primeiro após DST):
+   - Deve estar às 14:00 NY = **18:00 UTC** (EDT, UTC-4).
+5. **Falha se**: A aula de 15/03 aparece às **15:00 NY** (significaria que o sistema somou 7 dias ao UTC sem compensar o DST).
 
 ### 8.3 Disponibilidade Cross-Timezone
 
@@ -276,6 +341,18 @@
 |---|---|---|---|
 | 8.3.1 | Professor em BRT com horário 08:00-18:00; aluno em `Europe/Lisbon` | Aluno abre solicitação de aula | Slots exibidos como 11:00-21:00 (UTC+0 → BRT+3) no fuso de Lisboa |
 | 8.3.2 | Professor em `America/New_York` com horário 09:00-17:00; aluno em BRT | Aluno abre solicitação | Slots convertidos para o fuso BRT do aluno |
+| 8.3.3 | **Backend Constraint (Soft Check)**: Professor em `America/New_York` (Expediente 09:00-17:00 local). | Aluno (via UI ou API) envia request para uma aula às 12:00 UTC (08:00 NY — fora do expediente) | A edge function `request-class` **loga um aviso** (soft check) indicando que o horário está fora do expediente do professor, mas **não bloqueia** o request. Verificar nos logs da função que o aviso aparece. |
+
+### Passo a passo — Teste 8.3.3
+
+1. Configurar professor com `timezone = 'America/New_York'` e `working_hours` de 09:00-17:00.
+2. Fazer login como aluno e solicitar uma aula para as **12:00 UTC** (08:00 NY).
+3. Verificar nos logs da edge function `request-class`:
+   ```
+   supabase functions logs request-class --tail
+   ```
+4. **Esperado**: Log de aviso contendo "outside working hours" ou similar.
+5. **Confirmar**: O request foi criado com sucesso (comportamento atual: soft check, não hard block).
 
 ### 8.4 Campos `date` Nunca Sofrem Shift
 
@@ -284,6 +361,36 @@
 | 8.4.1 | `due_date = '2026-01-01'`; professor em `Pacific/Auckland` (UTC+13) | Visualizar fatura | Exibe **01/01/2026**, não 31/12/2025 ou 02/01/2026 |
 | 8.4.2 | `birth_date = '2000-12-31'`; qualquer fuso | Visualizar dependente | Exibe **31/12/2000** |
 | 8.4.3 | Criar fatura manual com vencimento 15/03 | Professor em `Pacific/Honolulu` (UTC-10) | `due_date` gravado como `'2026-03-15'` (string, sem conversão UTC) |
+
+### 8.5 Motor de Aulas Recorrentes (`end-recurrence` e `materialize-virtual-class`)
+
+> **Regra**: Ambas as Edge Functions utilizam o fuso do professor para determinar fronteiras de data. `end-recurrence` usa `localDateToUtcMidnight` para converter a data de término. `materialize-virtual-class` usa `getNowInTimezone` para avaliar expiração de templates.
+
+| # | Cenário | Ação | Resultado Esperado |
+|---|---|---|---|
+| 8.5.1 | **`end-recurrence` (Fronteira de Data)**: Aula ocorreu ontem às 22:00 BRT (`01:00 UTC de hoje`). Professor em BRT encerra a recorrência com `endDate` = "hoje". | Clicar em "Encerrar Recorrência" | A aula das 22:00 de ontem **não** é apagada (mesmo que no UTC dessa aula já fosse "hoje"). Apenas aulas estritamente futuras no fuso local são limpas. |
+| 8.5.2 | **`materialize-virtual-class` (Expiração Prematura)**: Template com `recurrence_end_date = '2026-03-15'`. Professor em `Pacific/Honolulu` (UTC-10). Hoje é dia 15 em UTC, mas dia 14 no Hawaii. | Aluno visualiza calendário ou sistema tenta materializar aula do dia 15. | O template **ainda gera instâncias virtuais**, pois para o professor a data limite ainda não expirou. |
+| 8.5.3 | Mesmo cenário 8.5.2, mas agora é dia 15 no Hawaii (dia 16 em UTC). | Sistema tenta materializar aula do dia 16. | O template **não** gera instâncias — a data limite expirou no fuso do professor. |
+
+### Passo a passo — Teste 8.5.1
+
+1. No Supabase, configurar professor com `timezone = 'America/Sao_Paulo'`.
+2. Criar uma aula template recorrente com uma instância materializada para ontem às 22:00 BRT (`class_date = 'ontem T 01:00:00Z'` — que em UTC já é "hoje").
+3. Na UI, clicar em "Encerrar Recorrência" e definir `endDate` = data de hoje.
+4. Verificar no banco:
+   ```sql
+   SELECT id, class_date, status FROM classes
+   WHERE class_template_id = '<template_id>' ORDER BY class_date;
+   ```
+5. **Esperado**: A aula de ontem às 22:00 BRT ainda existe. Apenas aulas com data local futura foram removidas.
+
+### Passo a passo — Teste 8.5.2
+
+1. No Supabase, criar um template com `recurrence_end_date = '2026-03-15'` para professor com `timezone = 'Pacific/Honolulu'`.
+2. Invocar `materialize-virtual-class` simulando a data atual como `2026-03-15T08:00:00Z` (que em Honolulu = 14/03 22:00).
+3. **Esperado**: A materialização ocorre normalmente (template ainda válido no fuso do professor).
+4. Invocar novamente com data `2026-03-16T10:00:00Z` (que em Honolulu = 16/03 00:00).
+5. **Esperado**: Template expirado, nenhuma instância gerada.
 
 ---
 
@@ -295,10 +402,16 @@ Antes de cada release, executar estes testes mínimos:
 - [ ] **Toast de sync**: Login com browser em fuso diferente → toast aparece
 - [ ] **Calendário**: Aula exibida no fuso do perfil (não do browser)
 - [ ] **Criar aula**: Horário gravado em UTC com offset do perfil
+- [ ] **Hora inexistente (DST)**: Aula criada às 02:30 durante Spring Forward → shift automático para 03:30
 - [ ] **Fatura due_date**: Campo `date` sem shift em qualquer fuso
 - [ ] **Billing automático**: `getDueDateString` retorna data no fuso do professor
+- [ ] **Faturas vencidas**: `check-overdue-invoices` respeita o "hoje" no fuso do professor
 - [ ] **E-mail de cancelamento**: Destinatário vê horário no seu fuso
 - [ ] **RPC de contagem mensal**: `p_timezone` altera corretamente a contagem na fronteira de mês
+- [ ] **Dashboard agregações**: Receita mensal calculada com `startOfMonthTz` no fuso do perfil
+- [ ] **DST materialização**: Aulas virtuais mantêm hora local após cruzar fronteira do DST
+- [ ] **end-recurrence**: Não apaga aulas do dia anterior no fuso local (mesmo que UTC já seja "hoje")
+- [ ] **materialize-virtual-class**: Expiração de template avaliada no fuso do professor
 
 ---
 

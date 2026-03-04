@@ -19,8 +19,8 @@ import { Clock, Plus, Settings, X, Calendar, Edit, Trash2, Info, CalendarIcon } 
 import { cn } from '@/lib/utils';
 import { format, parse } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import moment from 'moment';
 import { useTranslation } from 'react-i18next';
+import { formatInTimezone, fromUserZonedTime, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 interface AvailabilityBlock {
   id: string;
@@ -46,6 +46,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('availability');
+  const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
   
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -131,8 +132,9 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     }
 
     try {
-      const startDateTime = new Date(`${newBlock.start_date}T${newBlock.start_time}`);
-      const endDateTime = new Date(`${newBlock.end_date}T${newBlock.end_time}`);
+      // Usar fromUserZonedTime para interpretar a data/hora no fuso do perfil
+      const startDateTime = fromUserZonedTime(new Date(`${newBlock.start_date}T${newBlock.start_time}`), userTimezone);
+      const endDateTime = fromUserZonedTime(new Date(`${newBlock.end_date}T${newBlock.end_time}`), userTimezone);
 
       if (endDateTime <= startDateTime) {
         toast({
@@ -255,7 +257,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
   };
 
   const formatDateTime = (dateTime: string) => {
-    return moment(dateTime).format('DD/MM/YYYY HH:mm');
+    return formatInTimezone(new Date(dateTime), 'dd/MM/yyyy HH:mm', userTimezone);
   };
 
   const getWorkingHoursForDay = (dayOfWeek: number) => {

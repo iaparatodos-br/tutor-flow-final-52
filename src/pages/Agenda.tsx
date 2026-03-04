@@ -22,6 +22,7 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface ClassWithParticipants {
   id: string;
   class_date: string;
@@ -1421,7 +1422,9 @@ export default function Agenda() {
     if (!profile?.id || submitting) return;
     setSubmitting(true);
     try {
-      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+      // Usar fromUserZonedTime para interpretar a data/hora no fuso do perfil do professor
+      const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+      const classDateTime = fromUserZonedTime(new Date(`${formData.class_date}T${formData.time}`), userTimezone);
 
       // Permitir cadastro de aulas no passado (para registros retroativos)
 

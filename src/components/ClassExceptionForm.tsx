@@ -20,6 +20,8 @@ import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import { formatInTimezone, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface ClassService {
   id: string;

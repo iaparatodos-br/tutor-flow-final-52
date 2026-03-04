@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { toast } from "sonner";
+import { formatDateBrazil } from "@/utils/timezone";
 import { Search, FileText, Download, Calendar, User, Baby } from "lucide-react";
 import { useCapacitor } from "@/hooks/useCapacitor";
 

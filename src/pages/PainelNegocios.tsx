@@ -49,6 +49,7 @@ interface StudentBusinessLink {
 
 export default function PainelNegocios() {
   const { isProfessor, profile } = useProfile();
+  const userTimezone = profile?.timezone;
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -489,7 +490,7 @@ export default function PainelNegocios() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Calendar className="h-4 w-4" />
-                            Criado em {formatDateBrazil(bp.created_at, undefined, profile?.timezone)}
+                            Criado em {formatDateBrazil(profile.created_at, undefined, userTimezone)}
                           </div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-yellow-600">
@@ -558,7 +559,7 @@ export default function PainelNegocios() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="h-4 w-4" />
-                          Conectado em {formatDateBrazil(bp.created_at, undefined, profile?.timezone)}
+                          Conectado em {formatDateBrazil(profile.created_at, undefined, userTimezone)}
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-2">
@@ -639,7 +640,7 @@ export default function PainelNegocios() {
                           </p>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {formatDateBrazil(link.created_at, undefined, profile?.timezone)}
+                          {formatDateBrazil(link.created_at, undefined, userTimezone)}
                         </div>
                       </div>
                     ))}

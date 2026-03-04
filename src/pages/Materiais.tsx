@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
+import { formatDateBrazil } from "@/utils/timezone";
 import { Upload, Search, FileText, Download, Share, MoreVertical, Trash2, Settings } from "lucide-react";
 import { MaterialUploadModal } from "@/components/MaterialUploadModal";
 import { MaterialCategoryManager } from "@/components/MaterialCategoryManager";

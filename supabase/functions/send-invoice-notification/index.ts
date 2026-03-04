@@ -12,7 +12,6 @@ interface InvoiceNotificationPayload {
   notification_type: 'invoice_created' | 'invoice_payment_reminder' | 'invoice_paid' | 'invoice_overdue';
 }
 
-// Interface for monthly subscription details
 interface MonthlySubscriptionDetails {
   name: string;
   price: number;
@@ -52,23 +51,13 @@ serve(async (req) => {
     const payload: InvoiceNotificationPayload = await req.json();
     console.log("💰 Processing invoice notification:", payload);
 
-    // 1. Buscar dados da fatura (incluindo invoice_type e monthly_subscription_id)
+    // 1. Buscar dados da fatura
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
       .select(`
-        id,
-        amount,
-        due_date,
-        status,
-        description,
-        student_id,
-        teacher_id,
-        stripe_hosted_invoice_url,
-        boleto_url,
-        pix_qr_code,
-        pix_copy_paste,
-        invoice_type,
-        monthly_subscription_id
+        id, amount, due_date, status, description, student_id, teacher_id,
+        stripe_hosted_invoice_url, boleto_url, pix_qr_code, pix_copy_paste,
+        invoice_type, monthly_subscription_id
       `)
       .eq("id", payload.invoice_id)
       .maybeSingle();
@@ -78,10 +67,10 @@ serve(async (req) => {
       throw new Error("Invoice not found");
     }
 
-    // 2. Buscar dados do aluno/responsável e preferências
+    // 2. Buscar dados do aluno/responsável (DESTINATÁRIO) incluindo timezone e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
-      .select("name, email, notification_preferences")
+      .select("name, email, notification_preferences, timezone")
       .eq("id", invoice.student_id)
       .maybeSingle();
 
@@ -108,6 +97,9 @@ serve(async (req) => {
       );
     }
 
+    // v3.3: Timezone do DESTINATÁRIO (aluno/responsável)
+    const recipientTimezone = student.timezone || 'America/Sao_Paulo';
+
     // 3. Buscar dados do professor
     const { data: teacher, error: teacherError } = await supabase
       .from("profiles")
@@ -131,13 +123,12 @@ serve(async (req) => {
     const recipientEmail = relationship?.student_guardian_email || student.email;
     const recipientName = relationship?.student_guardian_name || student.name;
 
-    // 5. Buscar itens da fatura para identificar dependentes e detalhes
+    // 5. Buscar itens da fatura para identificar dependentes
     const { data: invoiceItems } = await supabase
       .from("invoice_classes")
       .select("description, amount, item_type, participant_id")
       .eq("invoice_id", payload.invoice_id);
 
-    // Extrair nomes de dependentes das descrições (formato: [NomeDependente] Descrição)
     const dependentNames: string[] = [];
     if (invoiceItems && invoiceItems.length > 0) {
       for (const item of invoiceItems) {
@@ -151,22 +142,12 @@ serve(async (req) => {
     }
 
     const hasDependents = dependentNames.length > 0;
-    console.log("📚 Invoice items analysis:", {
-      itemCount: invoiceItems?.length || 0,
-      dependentNames,
-      hasDependents,
-      invoiceType: invoice.invoice_type
-    });
 
-    // ===== FASE 6: LÓGICA ESPECIAL PARA MENSALIDADES (Tarefas 6.6-6.8) =====
+    // LÓGICA ESPECIAL PARA MENSALIDADES
     const isMonthlySubscription = invoice.invoice_type === 'monthly_subscription';
     let subscriptionDetails: MonthlySubscriptionDetails | null = null;
-    let monthlySubscriptionInfo = {
-      name: '',
-    };
 
     if (isMonthlySubscription && invoice.monthly_subscription_id) {
-      // Buscar detalhes da mensalidade (Tarefa 6.7)
       const { data: subscription, error: subError } = await supabase
         .from("monthly_subscriptions")
         .select("name, price")
@@ -175,9 +156,6 @@ serve(async (req) => {
 
       if (!subError && subscription) {
         subscriptionDetails = subscription;
-        monthlySubscriptionInfo.name = subscription.name;
-
-        console.log("📦 Monthly subscription details:", subscriptionDetails);
       }
     }
 
@@ -187,12 +165,11 @@ serve(async (req) => {
       currency: 'BRL'
     }).format(Number(invoice.amount));
 
-    const formattedDueDate = new Date(invoice.due_date).toLocaleDateString("pt-BR", {
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-      timeZone: "America/Sao_Paulo",
-    });
+    // v3.6: due_date é campo date-only → tratar como string local, sem conversão timezone
+    const dueDateParts = invoice.due_date.split('-');
+    const formattedDueDate = dueDateParts.length === 3
+      ? `${dueDateParts[2]}/${dueDateParts[1]}/${dueDateParts[0]}`
+      : invoice.due_date;
 
     // 7. Construir conteúdo do email baseado no tipo
     let subject = "";
@@ -202,7 +179,6 @@ serve(async (req) => {
     let mainMessage = "";
     let ctaButton = "";
 
-    // Construir sufixo para subject
     let subjectSuffix = '';
     if (isMonthlySubscription && subscriptionDetails) {
       subjectSuffix = ` - ${subscriptionDetails.name}`;
@@ -214,7 +190,7 @@ serve(async (req) => {
       case 'invoice_created':
         if (isMonthlySubscription && subscriptionDetails) {
           subject = `📦 Mensalidade ${subscriptionDetails.name} - ${teacher.name}`;
-          headerColor = "#7c3aed"; // Purple for subscriptions
+          headerColor = "#7c3aed";
           icon = "📦";
           title = "Fatura de Mensalidade";
           mainMessage = `Sua fatura de mensalidade <strong>${subscriptionDetails.name}</strong> do professor <strong>${teacher.name}</strong> foi gerada.`;
@@ -298,7 +274,7 @@ serve(async (req) => {
       `;
     }
 
-    // ===== SEÇÃO ESPECIAL PARA MENSALIDADES (Tarefa 6.8) =====
+    // Seção especial para mensalidades
     let subscriptionSection = '';
     if (isMonthlySubscription && subscriptionDetails) {
       const formattedBasePrice = new Intl.NumberFormat('pt-BR', {
@@ -405,13 +381,13 @@ serve(async (req) => {
       throw new Error(emailResult.error);
     }
 
-    console.log("✅ Email sent successfully:", emailResult.messageId);
+    console.log(`✅ Email sent successfully [TZ: ${recipientTimezone}]:`, emailResult.messageId);
 
     // 11. Registrar notificação
     const { error: notificationError } = await supabase
       .from("class_notifications")
       .insert({
-        class_id: invoice.id, // Usando invoice_id como class_id para aproveitar a estrutura
+        class_id: invoice.id,
         student_id: invoice.student_id,
         notification_type: payload.notification_type,
         status: "sent",

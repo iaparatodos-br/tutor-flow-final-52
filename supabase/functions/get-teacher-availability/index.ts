@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-// Deploy timestamp: 2025-10-14T02:35:00Z - Force redeploy to fix SQL order syntax cache issue
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -27,7 +25,6 @@ serve(async (req) => {
     console.log('🔍 Auth header present:', !!authHeader);
     if (!authHeader) throw new Error("No authorization header provided");
 
-    // Auth client with ANON_KEY + user's auth header for proper session validation
     const authClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -40,7 +37,6 @@ serve(async (req) => {
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
     const user = userData.user;
 
-    // Service role client for data queries (bypasses RLS)
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -76,6 +72,15 @@ serve(async (req) => {
     if (relationshipError) throw relationshipError;
     if (!relationship) throw new Error("Student is not assigned to this teacher");
 
+    // Buscar timezone do professor para retornar na resposta
+    const { data: teacherProfile } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('id', teacherId)
+      .maybeSingle();
+
+    const teacherTimezone = teacherProfile?.timezone || 'America/Sao_Paulo';
+
     const nowIso = new Date().toISOString();
 
     const [workingHoursRes, blocksRes, classesRes, servicesRes] = await Promise.all([
@@ -90,7 +95,6 @@ serve(async (req) => {
         .eq('teacher_id', teacherId)
         .gte('end_datetime', nowIso)
         .order('start_datetime', { ascending: true }),
-      // Sequential approach: first get classes, then participants (Etapa 0.6)
       supabase
         .from('classes')
         .select('id, class_date, duration_minutes, teacher_id')
@@ -118,7 +122,8 @@ serve(async (req) => {
           class_date: c.class_date, 
           duration_minutes: c.duration_minutes 
         })),
-        services: (servicesRes as any).data ?? []
+        services: (servicesRes as any).data ?? [],
+        teacherTimezone, // v3.3: Retornar timezone do professor
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );

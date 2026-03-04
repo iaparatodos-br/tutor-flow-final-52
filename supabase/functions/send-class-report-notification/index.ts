@@ -42,7 +42,7 @@ serve(async (req) => {
     
     console.log(`Processing notification for class ${classId} and report ${reportId}`);
 
-    // Get class information with participants (including dependent_id)
+    // Get class information
     const { data: classData, error: classError } = await supabase
       .from('classes')
       .select(`
@@ -118,10 +118,10 @@ serve(async (req) => {
     // Send email to each participant
     for (const participant of participants) {
       try {
-        // Get student profile
+        // Get student profile (DESTINATÁRIO) including timezone
         const { data: student } = await supabase
           .from('profiles')
-          .select('id, name, email, notification_preferences')
+          .select('id, name, email, notification_preferences, timezone')
           .eq('id', participant.student_id)
           .maybeSingle();
 
@@ -137,7 +137,10 @@ serve(async (req) => {
           continue;
         }
 
-        // NEW: Buscar dados do dependente se aplicável
+        // v3.3: Timezone do DESTINATÁRIO (aluno/responsável)
+        const recipientTimezone = student.timezone || 'America/Sao_Paulo';
+
+        // Buscar dados do dependente se aplicável
         let dependentName: string | null = null;
         if (participant.dependent_id) {
           const { data: dependent } = await supabase
@@ -169,12 +172,19 @@ serve(async (req) => {
           (participant.dependent_id ? f.dependent_id === participant.dependent_id : !f.dependent_id)
         );
         
-        // Format class date
+        // Format class date NO FUSO DO DESTINATÁRIO com timeZoneName: 'short'
         const classDate = new Date(classData.class_date);
-        const formattedDate = classDate.toLocaleDateString('pt-BR');
+        const formattedDate = classDate.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          timeZone: recipientTimezone,
+        });
         const formattedTime = classDate.toLocaleTimeString('pt-BR', { 
           hour: '2-digit', 
-          minute: '2-digit' 
+          minute: '2-digit',
+          timeZone: recipientTimezone,
+          timeZoneName: 'short',
         });
 
         // Prepare email content
@@ -262,7 +272,7 @@ serve(async (req) => {
           });
 
           if (emailResult.success) {
-            console.log(`✅ Email sent to: ${recipientEmail}${dependentName ? ` (for ${dependentName})` : ''}`);
+            console.log(`✅ Email sent to: ${recipientEmail}${dependentName ? ` (for ${dependentName})` : ''} [TZ: ${recipientTimezone}]`);
             notifiedCount++;
           } else {
             console.error(`Failed to send email to: ${recipientEmail}`, emailResult.error);
@@ -281,7 +291,6 @@ serve(async (req) => {
 
       } catch (error) {
         console.error(`Error sending email to participant ${participant.student_id}:`, error);
-        // Continue with next participant even if one fails
       }
     }
 

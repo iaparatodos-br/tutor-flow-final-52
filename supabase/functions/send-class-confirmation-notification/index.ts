@@ -11,7 +11,7 @@ interface ConfirmationNotificationPayload {
   class_id: string;
   teacher_id: string;
   student_id: string;
-  dependent_id?: string; // NEW: Support for dependent
+  dependent_id?: string;
   service_name: string;
   class_date: string;
   duration_minutes: number;
@@ -52,10 +52,10 @@ serve(async (req) => {
     const payload: ConfirmationNotificationPayload = await req.json();
     console.log("📬 Processing class confirmation notification:", payload);
 
-    // 1. Buscar dados do aluno/responsável e preferências
+    // 1. Buscar dados do aluno/responsável (DESTINATÁRIO) incluindo timezone e preferências
     const { data: student, error: studentError } = await supabase
       .from("profiles")
-      .select("name, email, notification_preferences")
+      .select("name, email, notification_preferences, timezone")
       .eq("id", payload.student_id)
       .single();
 
@@ -74,7 +74,10 @@ serve(async (req) => {
       );
     }
 
-    // 2. NEW: Buscar dados do dependente se aplicável
+    // v3.3: Timezone do DESTINATÁRIO (aluno/responsável)
+    const recipientTimezone = student.timezone || 'America/Sao_Paulo';
+
+    // 2. Buscar dados do dependente se aplicável
     let dependentName: string | null = null;
     if (payload.dependent_id) {
       const { data: dependent } = await supabase
@@ -101,18 +104,19 @@ serve(async (req) => {
     const recipientEmail = relationship?.student_guardian_email || student.email;
     const recipientName = relationship?.student_guardian_name || student.name;
 
-    // 4. Formatar data e hora
+    // 4. Formatar data e hora NO FUSO DO DESTINATÁRIO com timeZoneName: 'short'
     const classDateTime = new Date(payload.class_date);
     const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "long",
       year: "numeric",
-      timeZone: "America/Sao_Paulo",
+      timeZone: recipientTimezone,
     });
     const formattedTime = classDateTime.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: "America/Sao_Paulo",
+      timeZone: recipientTimezone,
+      timeZoneName: "short",
     });
 
     // 5. Construir email
@@ -191,7 +195,7 @@ serve(async (req) => {
       throw new Error(emailResult.error);
     }
 
-    console.log("✅ Email sent successfully:", emailResult.messageId);
+    console.log(`✅ Email sent successfully [TZ: ${recipientTimezone}]:`, emailResult.messageId);
 
     // 7. Registrar notificação no histórico
     const { error: notificationError } = await supabase

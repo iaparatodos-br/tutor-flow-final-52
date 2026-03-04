@@ -31,12 +31,13 @@ const formatCurrency = (value: number): string => {
   }).format(value / 100);
 };
 
+// v3.6: due_date é campo date-only → tratar como string local
 const formatDate = (dateStr: string): string => {
-  return new Date(dateStr).toLocaleDateString('pt-BR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
 };
 
 const getEmailTemplate = (type: NotificationType, data: any): { subject: string; html: string } => {
@@ -109,43 +110,27 @@ const getEmailTemplate = (type: NotificationType, data: any): { subject: string;
         html: `
           <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
           <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
             <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 30px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 24px;">⚠️ Lembrete de Vencimento</h1>
               </div>
               <div style="padding: 30px;">
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Olá <strong>${data.userName}</strong>,
-                </p>
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Seu boleto para o plano <strong>${data.planName}</strong> vence <strong>amanhã (${data.dueDate})</strong>.
-                </p>
-                
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Olá <strong>${data.userName}</strong>,</p>
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Seu boleto para o plano <strong>${data.planName}</strong> vence <strong>amanhã (${data.dueDate})</strong>.</p>
                 <div style="background-color: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 20px; margin: 20px 0;">
                   <h3 style="color: #92400e; margin: 0 0 15px 0;">Detalhes</h3>
                   <p style="margin: 5px 0; color: #374151;"><strong>Valor:</strong> ${data.amount}</p>
                   <p style="margin: 5px 0; color: #374151;"><strong>Vencimento:</strong> ${data.dueDate}</p>
                 </div>
-
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="${data.boletoUrl}" style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                    📄 Baixar Boleto
-                  </a>
+                  <a href="${data.boletoUrl}" style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">📄 Baixar Boleto</a>
                 </div>
-
-                <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">
-                  Se você já realizou o pagamento, por favor desconsidere este email.
-                </p>
+                <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">Se você já realizou o pagamento, por favor desconsidere este email.</p>
               </div>
               <div style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                  © ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.
-                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.</p>
               </div>
             </div>
           </body>
@@ -159,39 +144,24 @@ const getEmailTemplate = (type: NotificationType, data: any): { subject: string;
         html: `
           <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
           <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
             <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 24px;">✅ Pagamento Confirmado!</h1>
               </div>
               <div style="padding: 30px;">
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Olá <strong>${data.userName}</strong>,
-                </p>
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Seu pagamento via boleto foi compensado com sucesso! Sua assinatura do plano <strong>${data.planName}</strong> está ativa.
-                </p>
-                
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Olá <strong>${data.userName}</strong>,</p>
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Seu pagamento via boleto foi compensado com sucesso! Sua assinatura do plano <strong>${data.planName}</strong> está ativa.</p>
                 <div style="background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-                  <p style="color: #166534; margin: 0; font-size: 18px; font-weight: 600;">
-                    🎉 Obrigado por assinar o Tutor Flow!
-                  </p>
+                  <p style="color: #166534; margin: 0; font-size: 18px; font-weight: 600;">🎉 Obrigado por assinar o Tutor Flow!</p>
                 </div>
-
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="${siteUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                    Acessar Dashboard
-                  </a>
+                  <a href="${siteUrl}/dashboard" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Acessar Dashboard</a>
                 </div>
               </div>
               <div style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                  © ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.
-                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.</p>
               </div>
             </div>
           </body>
@@ -205,39 +175,24 @@ const getEmailTemplate = (type: NotificationType, data: any): { subject: string;
         html: `
           <!DOCTYPE html>
           <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
+          <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
           <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
             <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
               <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 30px; text-align: center;">
                 <h1 style="color: #ffffff; margin: 0; font-size: 24px;">❌ Boleto Vencido</h1>
               </div>
               <div style="padding: 30px;">
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Olá <strong>${data.userName}</strong>,
-                </p>
-                <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-                  Infelizmente seu boleto para o plano <strong>${data.planName}</strong> venceu sem pagamento.
-                </p>
-                
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Olá <strong>${data.userName}</strong>,</p>
+                <p style="color: #374151; font-size: 16px; line-height: 1.6;">Infelizmente seu boleto para o plano <strong>${data.planName}</strong> venceu sem pagamento.</p>
                 <div style="background-color: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                  <p style="color: #991b1b; margin: 0; font-size: 14px;">
-                    Sua assinatura foi movida para o plano gratuito. Para continuar usando as funcionalidades premium, você pode realizar uma nova assinatura.
-                  </p>
+                  <p style="color: #991b1b; margin: 0; font-size: 14px;">Sua assinatura foi movida para o plano gratuito. Para continuar usando as funcionalidades premium, você pode realizar uma nova assinatura.</p>
                 </div>
-
                 <div style="text-align: center; margin: 30px 0;">
-                  <a href="${siteUrl}/planos" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                    Ver Planos
-                  </a>
+                  <a href="${siteUrl}/planos" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Ver Planos</a>
                 </div>
               </div>
               <div style="background-color: #f9fafb; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
-                <p style="color: #9ca3af; font-size: 12px; margin: 0;">
-                  © ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.
-                </p>
+                <p style="color: #9ca3af; font-size: 12px; margin: 0;">© ${new Date().getFullYear()} Tutor Flow. Todos os direitos reservados.</p>
               </div>
             </div>
           </body>
@@ -293,7 +248,7 @@ serve(async (req) => {
     const body: BoletoNotificationRequest = await req.json();
     log("Request received", { type: body.notification_type, userId: body.user_id });
 
-    // Get user profile
+    // Get user profile (no datetime formatting needed for boleto notifications - only date-only fields)
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("name, email")

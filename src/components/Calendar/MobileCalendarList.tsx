@@ -7,18 +7,20 @@ import { cn } from '@/lib/utils';
 import { CalendarClass, AvailabilityBlock } from './CalendarView';
 import { useTranslation } from 'react-i18next';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { useAuth } from '@/contexts/AuthContext';
+import { 
+  formatInTimezone,
+  isTodayTz,
+  isSameDayTz,
+  startOfMonthTz,
+  endOfMonthTz,
+  startOfDayTz,
+  DEFAULT_TIMEZONE
+} from '@/utils/timezone';
 import { 
   format, 
-  startOfMonth, 
-  endOfMonth, 
   eachDayOfInterval, 
-  isToday, 
-  isSameMonth,
-  addMonths,
-  subMonths,
   isBefore,
-  isAfter,
-  startOfDay
 } from 'date-fns';
 import { ptBR, enUS } from 'date-fns/locale';
 
@@ -49,6 +51,8 @@ export function MobileCalendarList({
 }: MobileCalendarListProps) {
   const { t, i18n } = useTranslation('classes');
   const locale = i18n.language === 'pt' ? ptBR : enUS;
+  const { profile } = useAuth();
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
 
   // Agrupar eventos por data
   const eventsByDate = useMemo(() => {
@@ -58,7 +62,7 @@ export function MobileCalendarList({
     }>();
     
     classes.forEach(event => {
-      const key = format(event.start, 'yyyy-MM-dd');
+      const key = formatInTimezone(event.start, 'yyyy-MM-dd', userTimezone);
       if (!map.has(key)) {
         map.set(key, { events: [], blocks: [] });
       }
@@ -66,7 +70,7 @@ export function MobileCalendarList({
     });
     
     availabilityBlocks.forEach(block => {
-      const key = format(block.start, 'yyyy-MM-dd');
+      const key = formatInTimezone(block.start, 'yyyy-MM-dd', userTimezone);
       if (!map.has(key)) {
         map.set(key, { events: [], blocks: [] });
       }
@@ -74,7 +78,7 @@ export function MobileCalendarList({
     });
     
     return map;
-  }, [classes, availabilityBlocks]);
+  }, [classes, availabilityBlocks, userTimezone]);
 
   // Detect days with time conflicts
   const conflictDays = useMemo(() => {
@@ -102,30 +106,35 @@ export function MobileCalendarList({
   }, [eventsByDate]);
   // Obter dias do mês com eventos
   const daysWithEvents = useMemo(() => {
-    const monthStart = startOfMonth(currentDate);
-    const monthEnd = endOfMonth(currentDate);
-    const today = startOfDay(new Date());
+    const monthStart = startOfMonthTz(currentDate, userTimezone);
+    const monthEnd = endOfMonthTz(currentDate, userTimezone);
+    const today = startOfDayTz(new Date(), userTimezone);
     
     // Pegar todos os dias do mês
     const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
     
     // Filtrar apenas dias com eventos ou a partir de hoje
     const relevantDays = allDays.filter(day => {
-      const key = format(day, 'yyyy-MM-dd');
+      const key = formatInTimezone(day, 'yyyy-MM-dd', userTimezone);
       const hasEvents = eventsByDate.has(key);
       const isTodayOrFuture = !isBefore(day, today);
       
       // Mostrar dia se tem eventos OU se é hoje/futuro
-      return hasEvents || (isTodayOrFuture && isToday(day));
+      return hasEvents || (isTodayOrFuture && isTodayTz(day, userTimezone));
     });
 
     // Se não há eventos relevantes, retornar pelo menos hoje se estiver no mês
-    if (relevantDays.length === 0 && isSameMonth(today, currentDate)) {
-      return [today];
+    if (relevantDays.length === 0 && isSameDayTz(today, startOfMonthTz(currentDate, userTimezone), userTimezone) || relevantDays.length === 0) {
+      // Check if today is in the same month
+      const todayKey = formatInTimezone(new Date(), 'yyyy-MM', userTimezone);
+      const monthKey = formatInTimezone(currentDate, 'yyyy-MM', userTimezone);
+      if (todayKey === monthKey) {
+        return [today];
+      }
     }
 
     return relevantDays.sort((a, b) => a.getTime() - b.getTime());
-  }, [currentDate, eventsByDate]);
+  }, [currentDate, eventsByDate, userTimezone]);
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -173,20 +182,17 @@ export function MobileCalendarList({
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    return formatInTimezone(date, 'HH:mm', userTimezone);
   };
 
   const formatDayHeader = (date: Date) => {
-    if (isToday(date)) {
+    if (isTodayTz(date, userTimezone)) {
       return i18n.language === 'pt' ? 'HOJE' : 'TODAY';
     }
     
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    if (format(date, 'yyyy-MM-dd') === format(tomorrow, 'yyyy-MM-dd')) {
+    if (isSameDayTz(date, tomorrow, userTimezone)) {
       return i18n.language === 'pt' ? 'AMANHÃ' : 'TOMORROW';
     }
     
@@ -284,13 +290,13 @@ export function MobileCalendarList({
           </Card>
         ) : (
           daysWithEvents.map(day => {
-            const key = format(day, 'yyyy-MM-dd');
+            const key = formatInTimezone(day, 'yyyy-MM-dd', userTimezone);
             const dayData = eventsByDate.get(key);
             const events = dayData?.events || [];
             const blocks = dayData?.blocks || [];
 
             // Se não tem eventos nem blocos, pular
-            if (events.length === 0 && blocks.length === 0 && !isToday(day)) {
+            if (events.length === 0 && blocks.length === 0 && !isTodayTz(day, userTimezone)) {
               return null;
             }
 
@@ -299,11 +305,11 @@ export function MobileCalendarList({
                 {/* Day Header */}
                 <div className={cn(
                   "flex items-center gap-2 px-2 py-1.5 rounded-lg",
-                  isToday(day) && "bg-primary/10"
+                  isTodayTz(day, userTimezone) && "bg-primary/10"
                 )}>
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg",
-                    isToday(day) 
+                    isTodayTz(day, userTimezone) 
                       ? "bg-primary text-primary-foreground" 
                       : "bg-muted text-muted-foreground"
                   )}>
@@ -312,7 +318,7 @@ export function MobileCalendarList({
                   <div className="flex-1">
                     <div className={cn(
                       "text-xs font-semibold uppercase tracking-wide",
-                      isToday(day) ? "text-primary" : "text-muted-foreground"
+                      isTodayTz(day, userTimezone) ? "text-primary" : "text-muted-foreground"
                     )}>
                       {formatDayHeader(day)}
                     </div>
@@ -397,7 +403,7 @@ export function MobileCalendarList({
                       );
                     })}
                   </div>
-                ) : isToday(day) ? (
+                ) : isTodayTz(day, userTimezone) ? (
                   <div className="pl-2">
                     <Card className="shadow-sm bg-muted/30">
                       <CardContent className="p-3 text-center">

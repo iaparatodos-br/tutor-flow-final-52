@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { formatDateBrazil, formatDateTimeBrazil } from "@/utils/timezone";
 
 interface ArchivedClass {
   id: string;
@@ -41,7 +42,7 @@ interface ArchivedData {
 }
 
 export function ArchivedDataViewer() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('archive');
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -101,13 +102,11 @@ export function ArchivedDataViewer() {
   };
 
   const formatDateTime = (dateString: string) => {
-    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-    return new Date(dateString).toLocaleString(locale) + ' (Horário de Brasília)';
+    return formatDateTimeBrazil(dateString, profile?.timezone);
   };
 
   const formatDate = (dateString: string) => {
-    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-    return new Date(dateString).toLocaleDateString(locale);
+    return formatDateBrazil(dateString, undefined, profile?.timezone);
   };
 
   const getStatusBadge = (status: string) => {

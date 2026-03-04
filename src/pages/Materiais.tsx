@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
+import { formatDateBrazil } from "@/utils/timezone";
 import { Upload, Search, FileText, Download, Share, MoreVertical, Trash2, Settings } from "lucide-react";
 import { MaterialUploadModal } from "@/components/MaterialUploadModal";
 import { MaterialCategoryManager } from "@/components/MaterialCategoryManager";
@@ -334,7 +335,7 @@ export default function Materiais() {
                     )}
                     <div className="text-xs text-muted-foreground space-y-1">
                       <div>Tamanho: {formatFileSize(material.file_size)}</div>
-                      <div>Criado: {new Date(material.created_at).toLocaleDateString()}</div>
+                      <div>Criado: {formatDateBrazil(material.created_at, undefined, profile?.timezone)}</div>
                     </div>
                     <div className="flex gap-1">
                       <Button

@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
 import { toast } from "sonner";
+import { formatDateBrazil } from "@/utils/timezone";
 import { Search, FileText, Download, Calendar, User, Baby } from "lucide-react";
 import { useCapacitor } from "@/hooks/useCapacitor";
 
@@ -296,7 +297,7 @@ export default function MeusMateriais() {
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    Compartilhado: {new Date(access.granted_at).toLocaleDateString()}
+                    Compartilhado: {formatDateBrazil(access.granted_at, undefined, profile?.timezone)}
                   </div>
                 </div>
                 <div className="flex gap-1">

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Package, UserMinus, UserPlus, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 import { MonthlySubscriptionCard } from "./MonthlySubscriptionCard";
@@ -294,7 +294,7 @@ export function MonthlySubscriptionsManager() {
                       <TableCell>
                         <div className="flex items-center gap-1 text-sm text-muted-foreground">
                           <Calendar className="h-3 w-3" />
-                          {format(new Date(student.starts_at), 'dd/MM/yyyy', { locale: ptBR })}
+                          {format(parseISO(student.starts_at), 'dd/MM/yyyy', { locale: ptBR })}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">

@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Building2, Plus, ExternalLink, Calendar, CreditCard, Users, BarChart3, Trash2, AlertTriangle, UserCheck, Baby, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { formatDateBrazil } from "@/utils/timezone";
 import { PaymentRoutingTest } from "@/components/PaymentRoutingTest";
 import { ConfirmationDialog } from "@/components/ui/alert-confirmation";
 import { SystemHealthAlert } from "@/components/SystemHealthAlert";
@@ -48,6 +49,7 @@ interface StudentBusinessLink {
 
 export default function PainelNegocios() {
   const { isProfessor, profile } = useProfile();
+  const userTimezone = profile?.timezone;
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -488,7 +490,7 @@ export default function PainelNegocios() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Calendar className="h-4 w-4" />
-                            Criado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
+                            Criado em {formatDateBrazil(profile.created_at, undefined, userTimezone)}
                           </div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-yellow-600">
@@ -557,7 +559,7 @@ export default function PainelNegocios() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="h-4 w-4" />
-                          Conectado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
+                          Conectado em {formatDateBrazil(profile.created_at, undefined, userTimezone)}
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-2">
@@ -638,7 +640,7 @@ export default function PainelNegocios() {
                           </p>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {new Date(link.created_at).toLocaleDateString('pt-BR')}
+                          {formatDateBrazil(link.created_at, undefined, userTimezone)}
                         </div>
                       </div>
                     ))}

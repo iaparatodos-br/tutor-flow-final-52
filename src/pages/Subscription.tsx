@@ -9,8 +9,9 @@ import { useSubscription } from '@/contexts/SubscriptionContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR, enUS } from 'date-fns/locale';
+import { formatDateBrazil } from '@/utils/timezone';
 import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,7 +36,8 @@ export default function Subscription() {
     loading
   } = useSubscription();
   const {
-    signOut
+    signOut,
+    profile
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -330,7 +332,7 @@ export default function Subscription() {
                       <p className="text-muted-foreground">{t('nextBilling')}</p>
                       <p className="font-semibold">
                         {subscription.current_period_end 
-                          ? format(new Date(subscription.current_period_end), 'dd/MM/yyyy', { locale: dateLocale }) 
+                          ? formatDateBrazil(subscription.current_period_end, undefined, profile?.timezone) 
                           : 'N/A'}
                       </p>
                     </div>
@@ -357,7 +359,7 @@ export default function Subscription() {
                         <AlertDescription>
                           {t('cancellationMessage')}{' '}
                           {subscription.current_period_end 
-                            ? format(new Date(subscription.current_period_end), 'dd/MM/yyyy', { locale: dateLocale }) 
+                            ? formatDateBrazil(subscription.current_period_end, undefined, profile?.timezone) 
                             : t('dateUndefined')}.
                         </AlertDescription>
                       </Alert>
@@ -448,7 +450,7 @@ export default function Subscription() {
                   {invoices.map(invoice => (
                     <TableRow key={invoice.id}>
                       <TableCell>
-                        {format(new Date(invoice.created * 1000), 'dd/MM/yyyy', { locale: dateLocale })}
+                        {formatDateBrazil(new Date(invoice.created * 1000), undefined, profile?.timezone)}
                       </TableCell>
                       <TableCell>
                         {invoice.number || '-'}

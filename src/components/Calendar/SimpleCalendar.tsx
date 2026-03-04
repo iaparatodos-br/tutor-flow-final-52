@@ -867,7 +867,7 @@ export function SimpleCalendar({
           <DrawerContent className="max-h-[85vh]">
             <DrawerHeader className="pb-2">
               <DrawerTitle>
-                {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+                {t('calendar.eventsOf')} {formatInTimezone(selectedDayEvents?.date, 'dd/MM/yyyy', userTimezone)}
               </DrawerTitle>
             </DrawerHeader>
             <ScrollArea className="px-4 pb-6 max-h-[70vh]">
@@ -960,7 +960,7 @@ export function SimpleCalendar({
           <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
-                {t('calendar.eventsOf')} {selectedDayEvents?.date.toLocaleDateString('pt-BR')}
+                {t('calendar.eventsOf')} {formatInTimezone(selectedDayEvents?.date, 'dd/MM/yyyy', userTimezone)}
               </DialogTitle>
             </DialogHeader>
             

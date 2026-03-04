@@ -260,7 +260,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                 monthHeaderFormat: 'MMMM YYYY',
                 dayHeaderFormat: 'dddd, DD/MM',
                 dayRangeHeaderFormat: ({ start, end }) =>
-                  `${moment(start).format('DD/MM')} - ${moment(end).format('DD/MM')}`
+                  `${formatInTimezone(start, 'dd/MM', userTimezone)} - ${formatInTimezone(end, 'dd/MM', userTimezone)}`
               }}
             />
           </div>

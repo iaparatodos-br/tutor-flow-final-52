@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { formatDateBrazil, formatDateTimeBrazil } from '@/utils/timezone';
 import { 
   BookOpen, 
   FileText, 
@@ -275,7 +276,7 @@ export function ClassReportView({
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {new Date(report.created_at).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'pt-BR')}
+                {formatDateBrazil(report.created_at, undefined, profile?.timezone)}
               </Badge>
               {showEditButton && isProfessor && onEditReport && (
                 <Button
@@ -333,7 +334,7 @@ export function ClassReportView({
           {report.updated_at !== report.created_at && (
             <div className="text-xs text-muted-foreground">
               {t('view.updatedAt', { 
-                date: new Date(report.updated_at).toLocaleString(i18n.language === 'en' ? 'en-US' : 'pt-BR') 
+                date: formatDateTimeBrazil(report.updated_at, profile?.timezone) 
               })}
             </div>
           )}

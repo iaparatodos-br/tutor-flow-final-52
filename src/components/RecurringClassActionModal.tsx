@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { formatDateTimeBrazil, DEFAULT_TIMEZONE } from "@/utils/timezone";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +31,7 @@ export function RecurringClassActionModal({
   mode,
   classDate
 }: RecurringClassActionModalProps) {
+  const { profile } = useAuth();
   const [selectedAction, setSelectedAction] = useState<RecurringActionType>('this_only');
 
   const handleContinue = () => {
@@ -37,14 +40,7 @@ export function RecurringClassActionModal({
   };
 
   const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('pt-BR', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
+    return formatDateTimeBrazil(date, profile?.timezone || DEFAULT_TIMEZONE);
   };
 
   const actionText = mode === 'edit' ? 'modificar' : 'cancelar';

@@ -13,7 +13,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DollarSign, AlertTriangle, AlertCircle, Baby, CalendarIcon } from "lucide-react";
 import { toast } from "sonner";
 import { calculateBoletoFees, formatCurrency, validateBoletoAmount, MINIMUM_BOLETO_AMOUNT } from "@/utils/stripe-fees";
-import { parse, format as dfFormat } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -264,16 +263,26 @@ export function CreateInvoiceModal({
                   >
                     <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
                     {formData.due_date
-                      ? dfFormat(parse(formData.due_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      ? (() => {
+                          // Parse puro de string YYYY-MM-DD sem conversão de fuso
+                          const [y, m, d] = formData.due_date.split('-').map(Number);
+                          const dateObj = new Date(y, m - 1, d); // local, sem UTC shift
+                          return dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+                        })()
                       : "Selecione a data"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
                   <Calendar
                     mode="single"
-                    selected={formData.due_date ? parse(formData.due_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    selected={formData.due_date ? (() => { const [y,m,d] = formData.due_date.split('-').map(Number); return new Date(y, m-1, d); })() : undefined}
                     onSelect={(date) => {
-                      if (date) setFormData(prev => ({ ...prev, due_date: dfFormat(date, 'yyyy-MM-dd') }));
+                      if (date) {
+                        const yyyy = date.getFullYear();
+                        const mm = String(date.getMonth() + 1).padStart(2, '0');
+                        const dd = String(date.getDate()).padStart(2, '0');
+                        setFormData(prev => ({ ...prev, due_date: `${yyyy}-${mm}-${dd}` }));
+                      }
                     }}
                     locale={ptBR}
                     initialFocus

@@ -238,7 +238,7 @@ serve(async (req) => {
         student_id: student_id,
         business_profile_id: studentRelation.business_profile_id,
         amount: 1.00,
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        due_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
       };
 
       // Validação sem INSERT: verificar se todos os campos obrigatórios estão preenchidos

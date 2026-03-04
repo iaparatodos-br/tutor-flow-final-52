@@ -489,7 +489,7 @@ export default function PainelNegocios() {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <Calendar className="h-4 w-4" />
-                            Criado em {formatDateBrazil(profile.created_at, undefined, (window as any).__profile?.timezone)}
+                            Criado em {formatDateBrazil(bp.created_at, undefined, profile?.timezone)}
                           </div>
                             <div className="flex items-center gap-2">
                               <span className="text-sm text-yellow-600">
@@ -558,7 +558,7 @@ export default function PainelNegocios() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="h-4 w-4" />
-                          Conectado em {formatDateBrazil(profile.created_at, undefined, userProfile?.timezone)}
+                          Conectado em {formatDateBrazil(bp.created_at, undefined, profile?.timezone)}
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-2">
@@ -639,7 +639,7 @@ export default function PainelNegocios() {
                           </p>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {formatDateBrazil(link.created_at, undefined, userProfile?.timezone)}
+                          {formatDateBrazil(link.created_at, undefined, profile?.timezone)}
                         </div>
                       </div>
                     ))}

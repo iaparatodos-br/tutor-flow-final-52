@@ -42,7 +42,7 @@ interface ArchivedData {
 }
 
 export function ArchivedDataViewer() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('archive');
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");

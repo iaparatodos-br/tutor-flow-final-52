@@ -1,35 +1,45 @@
 
 
-# Plano: Documento de Testes de Validação do Timezone Multi-Support
+# Auditoria das Sugestões do Gemini para o Plano de Testes
 
-Criar o ficheiro `docs/timezone-test-plan.md` com cobertura completa dos cenários de teste, organizados por área funcional.
+## Verificação Ponto a Ponto
 
-## Estrutura do Documento
+### Sugestões VÁLIDAS (a incorporar)
 
-O documento cobrirá **7 áreas de teste** com passo-a-passo detalhado:
+**1. Erro matemático no item 5.2.2** — CONFIRMADO.
+Em março, NY está em EDT (UTC-4). Às 03:00 UTC = 23:00 NY do dia anterior, não 00:00 NY. A descrição atual está errada.
 
-1. **Registo e Detecção Automática** — Validar captura do timezone no signup (professor e aluno), fallback para `America/Sao_Paulo`, e persistência na coluna `profiles.timezone`.
+**2. `check-overdue-invoices` (Seção 5.4)** — VÁLIDO.
+O código em `check-overdue-invoices/index.ts` (L80-85) já usa `getTodayInTimezone(teacherTz)` para comparar com `due_date`. Testar a fronteira de dia é importante para garantir que faturas não são marcadas como vencidas prematuramente.
 
-2. **Sincronização de Timezone (useTimezoneSync)** — Testar o toast de atualização quando o browser muda de fuso, o comportamento do botão "Manter" com sessionStorage, e o seletor manual em Configurações > Perfil.
+**3. `end-recurrence` e `materialize-virtual-class` (Seção 8.5)** — VÁLIDO.
+Ambas as Edge Functions já têm lógica timezone-aware (`localDateToUtcMidnight` em end-recurrence L19-54, `getNowInTimezone` em materialize L20-54). Testar estes cenários de fronteira é importante.
 
-3. **Exibição de Datas no Frontend (40 componentes)** — Verificar que datas de aulas, faturas, recibos, calendário, inbox, histórico e materiais usam o fuso do perfil. Testar com professor em `America/New_York` e confirmar que horários refletem o fuso correto.
+**4. Backend constraint em `request-class` (Seção 8.3.3)** — PARCIALMENTE VÁLIDO.
+O código em `request-class/index.ts` (L177-189) valida working_hours no fuso do professor mas apenas loga um aviso, não bloqueia. O teste deve refletir este comportamento real (soft check, não hard block).
 
-4. **Input Parsing de Formulários** — Validar que `ClassForm`, `Agenda`, `ClassExceptionForm`, `FutureClassExceptionForm` e `AvailabilityManager` gravam datas UTC corretas usando `fromUserZonedTime` do perfil (não do browser).
+**5. DST na materialização de aulas recorrentes (8.2.3)** — VÁLIDO.
+O plano atual cobre DST superficialmente. Adicionar um teste explícito para verificar que aulas virtuais geradas pelo frontend mantêm a hora local após cruzar a fronteira do DST.
 
-5. **Billing Automatizado (Hourly Sweeper)** — Testar a RPC `get_relationships_to_bill_now` com professores em fusos diferentes, validar idempotência (cron roda 2x na mesma hora), validar `getDueDateString` e `getBillingCycleDates` com timezone dinâmico.
+**6. Hora inexistente durante DST (4.7)** — VÁLIDO.
+`fromZonedTime` do `date-fns-tz` faz o shift automaticamente, mas vale documentar o comportamento esperado.
 
-6. **Edge Functions de Notificação** — Verificar que emails de lembrete, confirmação, cancelamento, relatório, fatura e boleto formatam datas no fuso do **destinatário** (aluno ou professor). Validar inclusão do acrónimo do fuso (ex: "BRT").
+### Sugestões PARCIALMENTE VÁLIDAS (já cobertas pelo código)
 
-7. **RPCs PostgreSQL** — Validar que `count_completed_classes_in_month`, `get_student_subscription_details`, `get_billing_cycle_dates`, `get_teacher_notifications` e `get_student_active_subscription` retornam resultados corretos quando `p_timezone` é passado com fusos não-BRT.
+**7. Dashboard financeiro** — O `Dashboard.tsx` (L76) já usa `startOfMonthTz(new Date(), userTimezone)` para calcular receita mensal. O código está correto, mas adicionar um teste documental é útil.
 
-## Cenários Transversais
+**8. Stripe webhooks** — BAIXO VALOR. Timestamps UNIX são inerentemente UTC. Os webhooks processam eventos sem conversão de fuso — atualizam status de faturas que já foram criadas com datas corretas. Não há risco real aqui.
 
-- **Campos `date` (due_date, birth_date, expense_date)**: Nunca sofrem shift — o dia exibido é sempre o dia armazenado.
-- **Professor viajando**: Timezone do perfil difere do browser — formulários devem usar o timezone do perfil.
-- **DST**: Aulas recorrentes mantêm a hora local correta após mudança de horário de verão.
-- **Disponibilidade cross-timezone**: Aluno em Lisboa vê slots do professor BRT convertidos para seu fuso.
+## Plano de Alteração
 
-## Implementação
+Atualizar `docs/timezone-test-plan.md` com:
 
-Um único ficheiro markdown com ~300 linhas, organizado em secções com tabelas de "Pré-condição / Ação / Resultado Esperado" para cada teste.
+1. **Corrigir 5.2.2**: `03:00 UTC (23:00 NY, ainda dia 09/03)` e `due_date = '2026-03-16'`
+2. **Adicionar 5.4**: Testes de `check-overdue-invoices` com fronteira de dia timezone-aware
+3. **Adicionar 4.7**: Teste de hora inexistente durante DST (Spring Forward)
+4. **Adicionar 7.6**: Teste de agregações do Dashboard com `startOfMonthTz`
+5. **Expandir 8.2** com item 8.2.3: DST na materialização de aulas virtuais
+6. **Adicionar 8.3.3**: Validação cross-timezone de working_hours no backend
+7. **Adicionar 8.5**: Testes de `end-recurrence` e `materialize-virtual-class`
+8. **Atualizar checklist** (Seção 9) com os novos cenários
 

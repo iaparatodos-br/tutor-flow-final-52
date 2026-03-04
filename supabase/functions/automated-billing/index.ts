@@ -26,6 +26,7 @@ interface StudentBillingInfo {
   teacher_name: string;
   business_profile_id: string;
   relationship_id: string;
+  teacher_timezone: string;
 }
 
 interface UnbilledParticipant {
@@ -46,7 +47,6 @@ interface UnbilledParticipant {
   } | null;
 }
 
-// Interface for active subscription from RPC
 interface ActiveSubscription {
   subscription_id: string;
   subscription_name: string;
@@ -55,95 +55,214 @@ interface ActiveSubscription {
   student_subscription_id: string;
 }
 
+// ===== HELPER: Get "today" date string in a given timezone using Intl =====
+function getTodayInTimezone(timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(new Date()); // Returns YYYY-MM-DD
+}
+
+// ===== HELPER: Get current local date parts in a timezone =====
+function getLocalDateParts(timezone: string, date: Date = new Date()): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(date);
+
+  const year = parseInt(parts.find(p => p.type === 'year')!.value);
+  const month = parseInt(parts.find(p => p.type === 'month')!.value);
+  const day = parseInt(parts.find(p => p.type === 'day')!.value);
+  return { year, month, day };
+}
+
+// ===== HELPER: Convert a local date in a timezone to a UTC Date =====
+function localDateToUTC(year: number, month: number, day: number, hour: number, timezone: string): Date {
+  // Create a reference date string in the target timezone, then find the UTC equivalent
+  // Use a binary-search-like approach for precision
+  const target = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
+  
+  // Get the offset by checking what time it is in the timezone at our target UTC
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', hour12: false,
+  });
+  
+  // Estimate: try target as UTC, check local, adjust
+  const localAtTarget = formatter.formatToParts(target);
+  const localHour = parseInt(localAtTarget.find(p => p.type === 'hour')!.value);
+  const localDay = parseInt(localAtTarget.find(p => p.type === 'day')!.value);
+  const localMonth = parseInt(localAtTarget.find(p => p.type === 'month')!.value);
+  
+  // Calculate rough offset in hours
+  let offsetHours = localHour - hour;
+  if (localDay !== day || localMonth !== month) {
+    // Day boundary crossed
+    if (localDay > day || localMonth > month) offsetHours += 24;
+    else offsetHours -= 24;
+  }
+  
+  // The UTC time we want = target UTC - offset
+  return new Date(target.getTime() - offsetHours * 3600000);
+}
+
+// ===== HELPER: Billing cycle dates in teacher's local timezone =====
+function getBillingCycleDates(billingDay: number, timezone: string): { cycleStart: string; cycleEnd: string; cycleStartUTC: Date; cycleEndUTC: Date } {
+  const { year, month, day } = getLocalDateParts(timezone);
+
+  const adjustDayForMonth = (y: number, m: number, targetDay: number): number => {
+    const lastDay = new Date(y, m, 0).getDate(); // m is 1-indexed here, Date(y,m,0) = last day of month m-1... 
+    // Actually: new Date(year, month, 0).getDate() gives last day of previous month
+    // For month m (1-indexed), last day = new Date(y, m, 0).getDate()
+    const lastDayOfMonth = new Date(y, m, 0).getDate();
+    return Math.min(targetDay, lastDayOfMonth);
+  };
+
+  let startYear: number, startMonth: number, startDay: number;
+  let endYear: number, endMonth: number, endDay: number;
+
+  if (day > billingDay) {
+    // After billing day this month — cycle started this month
+    startMonth = month;
+    startYear = year;
+    startDay = adjustDayForMonth(startYear, startMonth, billingDay);
+
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+    endDay = adjustDayForMonth(nextYear, nextMonth, billingDay) - 1;
+    if (endDay < 1) {
+      // Go to last day of current month
+      endDay = new Date(year, month, 0).getDate();
+      endMonth = month;
+      endYear = year;
+    } else {
+      endMonth = nextMonth;
+      endYear = nextYear;
+    }
+  } else {
+    // day <= billingDay: Close PREVIOUS cycle
+    let prevMonth = month - 1;
+    let prevYear = year;
+    if (prevMonth < 1) { prevMonth = 12; prevYear--; }
+    startDay = adjustDayForMonth(prevYear, prevMonth, billingDay);
+    startMonth = prevMonth;
+    startYear = prevYear;
+
+    endDay = adjustDayForMonth(year, month, billingDay) - 1;
+    if (endDay < 1) {
+      endDay = new Date(prevYear, prevMonth, 0).getDate();
+      endMonth = prevMonth;
+      endYear = prevYear;
+    } else {
+      endMonth = month;
+      endYear = year;
+    }
+  }
+
+  const cycleStartStr = `${startYear}-${String(startMonth).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`;
+  const cycleEndStr = `${endYear}-${String(endMonth).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`;
+
+  // Convert to UTC for created_at comparisons
+  const cycleStartUTC = localDateToUTC(startYear, startMonth, startDay, 0, timezone);
+  const cycleEndUTC = localDateToUTC(endYear, endMonth, endDay, 23, timezone);
+  // Add buffer to end to cover the full day
+  cycleEndUTC.setMinutes(59);
+  cycleEndUTC.setSeconds(59);
+
+  return { cycleStart: cycleStartStr, cycleEnd: cycleEndStr, cycleStartUTC, cycleEndUTC };
+}
+
+// ===== HELPER: Get due_date string in teacher's local timezone =====
+function getDueDateString(paymentDueDays: number, timezone: string): string {
+  const { year, month, day } = getLocalDateParts(timezone);
+  const localDate = new Date(year, month - 1, day);
+  localDate.setDate(localDate.getDate() + paymentDueDays);
+  return localDate.toISOString().split('T')[0];
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    logStep("Starting automated billing process");
-    const today = new Date().getDate();
+    logStep("Starting automated billing process (hourly sweeper)");
 
-    // 1. Encontrar todos os relacionamentos professor-aluno que devem ser cobrados hoje
-    // Sequential queries to avoid FK join syntax (Etapa 0.6)
-    const { data: relationshipsRaw, error: relationshipsError } = await supabaseAdmin
-      .from('teacher_student_relationships')
-      .select('id, student_id, teacher_id, billing_day, business_profile_id')
-      .eq('billing_day', today);
+    // ===== PHASE 5: Use RPC get_relationships_to_bill_now() instead of .eq('billing_day', today) =====
+    const { data: relationshipsRaw, error: rpcError } = await supabaseAdmin
+      .rpc('get_relationships_to_bill_now') as { data: any[] | null, error: any };
 
-    if (relationshipsError) {
-      logStep("Error fetching relationships", relationshipsError);
-      throw relationshipsError;
+    if (rpcError) {
+      logStep("Error calling get_relationships_to_bill_now RPC", rpcError);
+      throw rpcError;
     }
 
-    // Enrich with teacher and student profiles sequentially
-    const relationshipsToBill: any[] = [];
-    if (relationshipsRaw && relationshipsRaw.length > 0) {
-      const teacherIds = [...new Set(relationshipsRaw.map(r => r.teacher_id))];
-      const studentIds = [...new Set(relationshipsRaw.map(r => r.student_id))];
-
-      const { data: teachers } = await supabaseAdmin
-        .from('profiles')
-        .select('id, name, email, payment_due_days')
-        .in('id', teacherIds);
-
-      const { data: students } = await supabaseAdmin
-        .from('profiles')
-        .select('id, name, email')
-        .in('id', studentIds);
-
-      const teacherMap = new Map((teachers || []).map(t => [t.id, t]));
-      const studentMap = new Map((students || []).map(s => [s.id, s]));
-
-      for (const rel of relationshipsRaw) {
-        relationshipsToBill.push({
-          ...rel,
-          teacher: teacherMap.get(rel.teacher_id) || null,
-          student: studentMap.get(rel.student_id) || null,
-        });
-      }
-    }
-
-    if (relationshipsError) {
-      logStep("Error fetching relationships", relationshipsError);
-      throw relationshipsError;
-    }
-
-    if (!relationshipsToBill || relationshipsToBill.length === 0) {
-      logStep('No relationships to bill today');
-      return new Response(JSON.stringify({ message: 'Nenhum relacionamento para cobrar hoje.' }), {
+    if (!relationshipsRaw || relationshipsRaw.length === 0) {
+      logStep('No relationships to bill right now (hourly sweep)');
+      return new Response(JSON.stringify({ message: 'Nenhum relacionamento para cobrar neste momento.' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 200,
       });
     }
 
-    logStep(`Found ${relationshipsToBill.length} relationships to bill today`);
+    logStep(`RPC returned ${relationshipsRaw.length} relationships to bill now`);
+
+    // Enrich with teacher and student profiles sequentially
+    const teacherIds = [...new Set(relationshipsRaw.map(r => r.teacher_id))];
+    const studentIds = [...new Set(relationshipsRaw.map(r => r.student_id))];
+
+    const { data: teachers } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, email, payment_due_days')
+      .in('id', teacherIds);
+
+    const { data: students } = await supabaseAdmin
+      .from('profiles')
+      .select('id, name, email')
+      .in('id', studentIds);
+
+    const teacherMap = new Map((teachers || []).map(t => [t.id, t]));
+    const studentMap = new Map((students || []).map(s => [s.id, s]));
+
+    const relationshipsToBill = relationshipsRaw.map(rel => ({
+      ...rel,
+      teacher: teacherMap.get(rel.teacher_id) || null,
+      student: studentMap.get(rel.student_id) || null,
+    }));
+
+    logStep(`Found ${relationshipsToBill.length} relationships to bill`);
 
     let processedCount = 0;
     let errorCount = 0;
 
-    // Processar cada relacionamento
     for (const relationship of relationshipsToBill) {
       try {
-        const teacher = Array.isArray(relationship.teacher) ? relationship.teacher[0] : relationship.teacher;
-        const student = Array.isArray(relationship.student) ? relationship.student[0] : relationship.student;
+        const teacher = relationship.teacher;
+        const student = relationship.student;
+        const teacherTimezone = relationship.teacher_timezone || 'America/Sao_Paulo';
 
-        logStep(`Processing billing for: ${teacher?.name} -> ${student?.name}`);
+        logStep(`Processing billing for: ${teacher?.name} -> ${student?.name} (tz: ${teacherTimezone})`);
 
-        // Validar se o professor pode cobrar (tem assinatura ativa com módulo financeiro)
+        // Validar se o professor pode cobrar
         const canBill = await validateTeacherCanBill(teacher);
         if (!canBill) {
           logStep(`Skipping ${teacher?.name} -> ${student?.name} - no financial module access`);
           continue;
         }
 
-        // Validar se há business_profile_id definido
         if (!relationship.business_profile_id) {
           logStep(`Skipping student ${student?.name}: no business profile defined for payment routing`);
           continue;
         }
 
-        // Validar se o business_profile está ativo
+        // Validar business_profile
         const { data: businessProfile, error: businessError } = await supabaseAdmin
           .from('business_profiles')
           .select('id, business_name, auto_generate_boleto')
@@ -152,7 +271,7 @@ serve(async (req) => {
           .maybeSingle();
 
         if (businessError || !businessProfile) {
-          logStep(`Skipping student ${student?.name}: business profile not found or not active`, businessError);
+          logStep(`Skipping student ${student?.name}: business profile not found`, businessError);
           continue;
         }
 
@@ -164,11 +283,11 @@ serve(async (req) => {
           student_name: student?.name || '',
           teacher_name: teacher?.name || '',
           business_profile_id: relationship.business_profile_id,
-          relationship_id: relationship.id,
+          relationship_id: relationship.relationship_id,
+          teacher_timezone: teacherTimezone,
         };
 
-        // ===== FASE 6: VERIFICAR MENSALIDADE ATIVA (Tarefas 6.1-6.5) =====
-        // IMPORTANTE: A RPC retorna um ARRAY (RETURNS TABLE), não um objeto único
+        // ===== CHECK MONTHLY SUBSCRIPTION =====
         const { data: activeSubscriptionData, error: subError } = await supabaseAdmin
           .rpc('get_student_active_subscription', {
             p_relationship_id: studentInfo.relationship_id
@@ -176,16 +295,14 @@ serve(async (req) => {
 
         if (subError) {
           logStep(`Error checking active subscription for ${studentInfo.student_name}`, subError);
-          // Continue with traditional billing
         }
 
-        // Extrair primeiro elemento do array (se existir)
-        const activeSubscription = activeSubscriptionData && activeSubscriptionData.length > 0 
-          ? activeSubscriptionData[0] 
+        const activeSubscription = activeSubscriptionData && activeSubscriptionData.length > 0
+          ? activeSubscriptionData[0]
           : null;
 
         const hasActiveSubscription = activeSubscription && activeSubscription.subscription_id;
-        
+
         if (hasActiveSubscription) {
           logStep(`📦 Active monthly subscription found for ${studentInfo.student_name}`, {
             subscriptionName: activeSubscription.subscription_name,
@@ -193,11 +310,7 @@ serve(async (req) => {
             startsAt: activeSubscription.starts_at
           });
 
-          // Processar faturamento de mensalidade
-          const subscriptionResult = await processMonthlySubscriptionBilling(
-            studentInfo,
-            activeSubscription
-          );
+          const subscriptionResult = await processMonthlySubscriptionBilling(studentInfo, activeSubscription);
 
           if (subscriptionResult.success) {
             processedCount++;
@@ -206,24 +319,16 @@ serve(async (req) => {
             errorCount++;
             logStep(`❌ Monthly subscription billing failed for ${studentInfo.student_name}`, subscriptionResult.error);
           }
-
-          // Continuar para próximo relacionamento - mensalidade processa separadamente
           continue;
         }
 
-        // ===== FLUXO TRADICIONAL (SEM MENSALIDADE) =====
+        // ===== TRADITIONAL PER-CLASS BILLING =====
         logStep(`📚 No active subscription - using traditional per-class billing for ${studentInfo.student_name}`);
 
-        // 2. Encontrar todas as aulas concluídas e não faturadas usando get_unbilled_participants_v2
-        // Esta versão inclui dependentes e retorna o responsible_id para consolidação
-        logStep(`Looking for completed and unbilled classes for ${studentInfo.student_name} (teacher: ${studentInfo.teacher_name}) including dependents`);
-        
-        // 2.0. ALERTA: Verificar aulas confirmadas antigas que não foram marcadas como concluídas
+        // Alert: old confirmed participations not marked as completed
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        
-        // Sequential queries to avoid FK join (Etapa 0.6)
-        // First get participant IDs, then filter by class data
+
         const { data: confirmedParticipations, error: cpError } = await supabaseAdmin
           .from('class_participants')
           .select('id, class_id')
@@ -231,7 +336,6 @@ serve(async (req) => {
           .eq('status', 'confirmada');
 
         let oldConfirmedParticipations: any[] = [];
-        let oldClassesError = cpError;
         if (!cpError && confirmedParticipations && confirmedParticipations.length > 0) {
           const classIds = confirmedParticipations.map(p => p.class_id);
           const { data: oldClasses } = await supabaseAdmin
@@ -240,41 +344,28 @@ serve(async (req) => {
             .in('id', classIds)
             .eq('teacher_id', studentInfo.teacher_id)
             .lt('class_date', thirtyDaysAgo.toISOString());
-          
+
           const oldClassIds = new Set((oldClasses || []).map(c => c.id));
           oldConfirmedParticipations = confirmedParticipations
             .filter(p => oldClassIds.has(p.class_id))
             .map(p => ({ ...p, classes: oldClasses?.find(c => c.id === p.class_id) }));
         }
-        
-        if (!oldClassesError && oldConfirmedParticipations && oldConfirmedParticipations.length > 0) {
+
+        if (oldConfirmedParticipations.length > 0) {
           logStep(`⚠️ ALERTA: ${oldConfirmedParticipations.length} aulas confirmadas com mais de 30 dias não foram marcadas como concluídas`, {
             student: studentInfo.student_name,
             teacher: studentInfo.teacher_name,
-            oldClassCount: oldConfirmedParticipations.length,
-            oldestClass: oldConfirmedParticipations[0]?.classes?.class_date
           });
         }
-        
-        // NOVA LÓGICA: Usar get_unbilled_participants_v2 que inclui dependentes
-        // Esta RPC retorna tanto participações do aluno quanto de seus dependentes
+
+        // Get unbilled completed participations
         const { data: completedParticipations, error: classesError } = await supabaseAdmin
           .rpc('get_unbilled_participants_v2', {
             p_teacher_id: studentInfo.teacher_id,
             p_student_id: studentInfo.student_id,
             p_status: 'concluida'
           }) as { data: UnbilledParticipant[] | null, error: any };
-        
-        logStep(`Query result - Unbilled participations (including dependents): ${completedParticipations?.length || 0}, Error: ${classesError ? JSON.stringify(classesError) : 'none'}`);
 
-        // Contabilizar dependentes encontrados
-        const dependentParticipations = completedParticipations?.filter(p => p.dependent_id !== null) || [];
-        if (dependentParticipations.length > 0) {
-          const dependentNames = [...new Set(dependentParticipations.map(p => p.dependent_name))];
-          logStep(`Found ${dependentParticipations.length} unbilled participations for dependents: ${dependentNames.join(', ')}`);
-        }
-
-        // Transform to match expected structure, mantendo dependent_id e dependent_name
         const classesToInvoice = completedParticipations?.map(cp => ({
           id: cp.class_id,
           participant_id: cp.participant_id,
@@ -292,15 +383,14 @@ serve(async (req) => {
           continue;
         }
 
-        // 2.1. Encontrar cancelamentos com cobrança pendente usando get_unbilled_participants_v2
+        // Get unbilled cancelled participations with charge
         const { data: cancelledParticipations, error: cancelledError } = await supabaseAdmin
           .rpc('get_unbilled_participants_v2', {
             p_teacher_id: studentInfo.teacher_id,
             p_student_id: studentInfo.student_id,
             p_status: 'cancelada'
           }) as { data: UnbilledParticipant[] | null, error: any };
-        
-        // Filtrar apenas os que têm charge_applied
+
         const cancelledClassesWithCharge = (cancelledParticipations || [])
           .filter(cp => cp.charge_applied)
           .map(cp => ({
@@ -315,31 +405,26 @@ serve(async (req) => {
             dependent_name: cp.dependent_name
           }));
 
-        logStep(`Query result - Cancelled with charge (including dependents): ${cancelledClassesWithCharge?.length || 0}, Error: ${cancelledError ? JSON.stringify(cancelledError) : 'none'}`);
-
         if (cancelledError) {
-          logStep(`Error fetching cancelled classes with charge for ${studentInfo.student_name}`, cancelledError);
-          // Continue without cancellation charges
+          logStep(`Error fetching cancelled classes for ${studentInfo.student_name}`, cancelledError);
         }
 
-        // Consolidar participações concluídas e canceladas com cobrança
         const unbilledClasses = classesToInvoice;
         const cancelledChargeable = cancelledClassesWithCharge;
-        
+
         if (unbilledClasses.length === 0 && cancelledChargeable.length === 0) {
           logStep(`No unbilled classes or cancellation charges found for ${studentInfo.student_name}`);
           continue;
         }
 
-        logStep(`Found ${unbilledClasses.length} unbilled participations and ${cancelledChargeable.length} cancellation charges to invoice for ${studentInfo.student_name}`);
+        logStep(`Found ${unbilledClasses.length} unbilled participations and ${cancelledChargeable.length} cancellation charges for ${studentInfo.student_name}`);
 
-        // 3. Calcular valor total e criar fatura e marcar classes como faturadas atomicamente
+        // Calculate total amount
         let totalAmount = 0;
         let completedClassesCount = 0;
         let cancellationChargesCount = 0;
         let dependentClassesCount = 0;
-        
-        // Buscar serviço padrão do professor caso alguma aula não tenha serviço associado
+
         let defaultServicePrice: number | null = null;
         const { data: defaultService } = await supabaseAdmin
           .from('class_services')
@@ -348,161 +433,114 @@ serve(async (req) => {
           .eq('is_default', true)
           .eq('is_active', true)
           .maybeSingle();
-        
-        if (defaultService) {
-          defaultServicePrice = defaultService.price;
-        }
-        
-        // Somar aulas concluídas
+
+        if (defaultService) defaultServicePrice = defaultService.price;
+
         for (const classItem of unbilledClasses) {
-          const service = classItem.class_services;
-          const amount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
+          const amount = classItem.class_services?.price || defaultServicePrice || 100;
           totalAmount += amount;
           completedClassesCount++;
-          if (classItem.dependent_id) {
-            dependentClassesCount++;
-          }
+          if (classItem.dependent_id) dependentClassesCount++;
         }
-        
-        // Somar cobranças de cancelamento
+
         for (const cancelledClass of cancelledChargeable) {
-          const service = cancelledClass.class_services;
-          const baseAmount = service?.price || defaultServicePrice || 100; // Usar serviço padrão ou R$100 como último recurso
-          
-          // Buscar política de cancelamento para calcular porcentagem
+          const baseAmount = cancelledClass.class_services?.price || defaultServicePrice || 100;
           const { data: policy } = await supabaseAdmin
             .from('cancellation_policies')
             .select('charge_percentage')
             .eq('teacher_id', studentInfo.teacher_id)
             .eq('is_active', true)
             .maybeSingle();
-          
           const chargePercentage = policy?.charge_percentage || 50;
-          const chargeAmount = (baseAmount * chargePercentage) / 100;
-          totalAmount += chargeAmount;
+          totalAmount += (baseAmount * chargePercentage) / 100;
           cancellationChargesCount++;
-          if (cancelledClass.dependent_id) {
-            dependentClassesCount++;
-          }
+          if (cancelledClass.dependent_id) dependentClassesCount++;
         }
 
-        logStep(`Total amount calculated`, { 
-          totalAmount, 
-          completedClassesCount, 
-          cancellationChargesCount,
-          dependentClassesCount 
-        });
-
-        // Validate minimum boleto amount (Stripe requirement: R$ 5.00)
         const MINIMUM_BOLETO_AMOUNT = 5.00;
         const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
-        const now = new Date();
-        const dueDate = new Date(now);
-        dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
+        
+        // ===== TIMEZONE-AWARE: Use teacher's timezone for due_date =====
+        const dueDateStr = getDueDateString(studentInfo.payment_due_days, studentInfo.teacher_timezone);
 
-        // Preparar itens detalhados para invoice_classes com dependent_id para auditoria
+        // Build invoice items
         const invoiceItems = [];
 
-        // Adicionar aulas concluídas
         for (const classItem of unbilledClasses) {
           const service = classItem.class_services;
           const amount = service?.price || defaultServicePrice || 100;
-          
-          // Descrição inclui nome do dependente se aplicável
           let description = `Aula de ${service?.name || 'serviço padrão'} - ${new Date(classItem.class_date).toLocaleDateString('pt-BR')}`;
-          if (classItem.dependent_name) {
-            description = `[${classItem.dependent_name}] ${description}`;
-          }
-          
+          if (classItem.dependent_name) description = `[${classItem.dependent_name}] ${description}`;
           invoiceItems.push({
             class_id: classItem.id,
             participant_id: classItem.participant_id,
             item_type: 'completed_class',
-            amount: amount,
-            description: description,
+            amount,
+            description,
             cancellation_policy_id: null,
             charge_percentage: null,
-            dependent_id: classItem.dependent_id // Para auditoria
+            dependent_id: classItem.dependent_id
           });
         }
 
-        // Adicionar cobranças de cancelamento
         for (const cancelledClass of cancelledChargeable) {
           const service = cancelledClass.class_services;
           const baseAmount = service?.price || defaultServicePrice || 100;
-          
-          // Buscar política de cancelamento
           const { data: policy } = await supabaseAdmin
             .from('cancellation_policies')
             .select('id, charge_percentage')
             .eq('teacher_id', studentInfo.teacher_id)
             .eq('is_active', true)
             .maybeSingle();
-          
           const chargePercentage = policy?.charge_percentage || 50;
           const chargeAmount = (baseAmount * chargePercentage) / 100;
-          
-          // Descrição inclui nome do dependente se aplicável
           let description = `Cancelamento - ${service?.name || 'serviço padrão'} (${chargePercentage}%)`;
-          if (cancelledClass.dependent_name) {
-            description = `[${cancelledClass.dependent_name}] ${description}`;
-          }
-          
+          if (cancelledClass.dependent_name) description = `[${cancelledClass.dependent_name}] ${description}`;
           invoiceItems.push({
             class_id: cancelledClass.id,
             participant_id: cancelledClass.participant_id,
             item_type: 'cancellation_charge',
             amount: chargeAmount,
-            description: description,
+            description,
             cancellation_policy_id: policy?.id || null,
             charge_percentage: chargePercentage,
-            dependent_id: cancelledClass.dependent_id // Para auditoria
+            dependent_id: cancelledClass.dependent_id
           });
         }
-        
-        // Criar descrição detalhada incluindo dependentes
-        let descriptionParts = [];
-        if (completedClassesCount > 0) {
-          descriptionParts.push(`${completedClassesCount} aula${completedClassesCount > 1 ? 's' : ''}`);
-        }
-        if (cancellationChargesCount > 0) {
-          descriptionParts.push(`${cancellationChargesCount} cancelamento${cancellationChargesCount > 1 ? 's' : ''}`);
-        }
-        
-        let description = `Faturamento automático - ${now.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })} (${descriptionParts.join(' + ')})`;
-        
-        // Adicionar nota sobre dependentes se houver
+
+        // Build description
+        const descriptionParts = [];
+        if (completedClassesCount > 0) descriptionParts.push(`${completedClassesCount} aula${completedClassesCount > 1 ? 's' : ''}`);
+        if (cancellationChargesCount > 0) descriptionParts.push(`${cancellationChargesCount} cancelamento${cancellationChargesCount > 1 ? 's' : ''}`);
+
+        // Use teacher's local date for the description month
+        const { year: localYear, month: localMonth } = getLocalDateParts(studentInfo.teacher_timezone);
+        const monthNames = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+        let description = `Faturamento automático - ${monthNames[localMonth - 1]} de ${localYear} (${descriptionParts.join(' + ')})`;
+
         if (dependentClassesCount > 0) {
           const dependentNames = [...new Set([
             ...unbilledClasses.filter(c => c.dependent_name).map(c => c.dependent_name),
             ...cancelledChargeable.filter(c => c.dependent_name).map(c => c.dependent_name)
           ])];
-          if (dependentNames.length > 0) {
-            description += ` - Inclui aulas de: ${dependentNames.join(', ')}`;
-          }
+          if (dependentNames.length > 0) description += ` - Inclui aulas de: ${dependentNames.join(', ')}`;
         }
 
-        // Adicionar nota se valor abaixo do mínimo para boleto
         if (skipBoletoGeneration) {
           description += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
-          logStep(`Invoice amount ${totalAmount} is below minimum ${MINIMUM_BOLETO_AMOUNT} for boleto - will skip boleto generation`, {
-            student: studentInfo.student_name,
-            amount: totalAmount
-          });
         }
 
         const invoiceData = {
-          student_id: studentInfo.student_id, // Responsável recebe a fatura
+          student_id: studentInfo.student_id,
           teacher_id: studentInfo.teacher_id,
           amount: totalAmount,
-          description: description,
-          due_date: dueDate.toISOString().split('T')[0],
+          description,
+          due_date: dueDateStr,
           status: 'pendente' as const,
           invoice_type: 'automated',
           business_profile_id: studentInfo.business_profile_id,
         };
 
-        // Usar função atômica para criar fatura e marcar classes (agora com itens detalhados)
         const { data: transactionResult, error: transactionError } = await supabaseAdmin
           .rpc('create_invoice_and_mark_classes_billed', {
             p_invoice_data: invoiceData,
@@ -510,89 +548,39 @@ serve(async (req) => {
           });
 
         if (transactionError || !transactionResult?.success) {
-          logStep(`Error in atomic transaction for ${studentInfo.student_name}`, {
-            error: transactionError,
-            result: transactionResult
-          });
+          logStep(`Error in atomic transaction for ${studentInfo.student_name}`, { error: transactionError, result: transactionResult });
           errorCount++;
           continue;
         }
 
         const invoiceId = transactionResult.invoice_id;
-        
-        logStep(`Invoice created atomically with invoice_classes`, { 
-          invoiceId,
-          amount: totalAmount,
-          businessProfileId: studentInfo.business_profile_id,
-          itemsCreated: transactionResult.items_created,
-          classesMarked: transactionResult.classes_updated,
-          participantsMarked: transactionResult.participants_updated,
-          dependentItemsIncluded: dependentClassesCount
-        });
 
-        // 4. Gerar URL de pagamento usando create-payment-intent-connect (mesmo fluxo da função manual)
-        // PULAR se valor abaixo do mínimo para boleto OU se professor desativou geração automática
+        // Generate boleto
         const teacherDisabledBoleto = businessProfile?.auto_generate_boleto === false;
-        
-        if (teacherDisabledBoleto) {
-          logStep(`Skipping boleto generation for invoice ${invoiceId} - teacher disabled auto_generate_boleto`, {
-            invoiceId,
-            amount: totalAmount,
-            student: studentInfo.student_name
-          });
-        } else if (skipBoletoGeneration) {
-          logStep(`Skipping boleto generation for invoice ${invoiceId} - amount ${totalAmount} below minimum ${MINIMUM_BOLETO_AMOUNT}`, {
-            invoiceId,
-            amount: totalAmount,
-            student: studentInfo.student_name
-          });
-        } else {
-          logStep(`Generating payment URL for invoice ${invoiceId}`);
+        if (!teacherDisabledBoleto && !skipBoletoGeneration) {
           try {
             const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
               'create-payment-intent-connect',
-              {
-                body: {
-                  invoice_id: invoiceId,
-                  payment_method: 'boleto' // Default to boleto for automated billing
-                }
-              }
+              { body: { invoice_id: invoiceId, payment_method: 'boleto' } }
             );
-
             if (!paymentError && paymentResult?.boleto_url) {
-              // Atualizar fatura com URL de pagamento gerada
-              const { error: updateError } = await supabaseAdmin
+              await supabaseAdmin
                 .from('invoices')
-                .update({ 
+                .update({
                   stripe_hosted_invoice_url: paymentResult.boleto_url,
                   boleto_url: paymentResult.boleto_url,
                   linha_digitavel: paymentResult.linha_digitavel,
                   stripe_payment_intent_id: paymentResult.payment_intent_id
                 })
                 .eq('id', invoiceId);
-
-              if (!updateError) {
-                logStep(`Payment URL generated and saved`, { 
-                  invoiceId,
-                  paymentUrl: paymentResult.boleto_url 
-                });
-              } else {
-                logStep(`Warning: Could not update invoice with payment URL`, updateError);
-              }
-            } else {
-              logStep(`Warning: Could not generate payment URL`, paymentError);
+              logStep(`Payment URL generated`, { invoiceId });
             }
           } catch (paymentGenerationError) {
             logStep(`Warning: Failed to generate payment URL`, paymentGenerationError);
-            // Continue without failing the invoice creation
           }
         }
 
-        logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`, {
-          totalItems: completedClassesCount + cancellationChargesCount,
-          dependentItems: dependentClassesCount,
-          boletoSkipped: skipBoletoGeneration
-        });
+        logStep(`Invoice ${invoiceId} created successfully for ${studentInfo.student_name}`);
         processedCount++;
 
       } catch (relationshipError) {
@@ -605,7 +593,7 @@ serve(async (req) => {
     const message = `Automated billing completed. Processed: ${processedCount}, Errors: ${errorCount}`;
     logStep("Billing process completed", { processedCount, errorCount });
 
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: true,
       message,
       processed_relationships: processedCount,
@@ -617,10 +605,9 @@ serve(async (req) => {
 
   } catch (error) {
     logStep('General error in billing function', error);
-    // Return 200 to prevent cron job retry storms
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Erro desconhecido',
-      success: false 
+      success: false
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
@@ -628,81 +615,32 @@ serve(async (req) => {
   }
 });
 
-// ===== HELPER: Calcular datas do ciclo de faturamento baseado em billing_day =====
-// IMPORTANTE: No dia de faturamento, queremos fechar o ciclo que ACABOU, não o ciclo que começa
-function getBillingCycleDates(billingDay: number, referenceDate: Date = new Date()): { cycleStart: Date; cycleEnd: Date } {
-  const currentDay = referenceDate.getDate();
-  const currentMonth = referenceDate.getMonth();
-  const currentYear = referenceDate.getFullYear();
-
-  // Helper para ajustar dia para meses com menos dias
-  const adjustDayForMonth = (year: number, month: number, targetDay: number): number => {
-    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-    return Math.min(targetDay, lastDayOfMonth);
-  };
-
-  let cycleStart: Date;
-  let cycleEnd: Date;
-
-  // No dia de faturamento (currentDay == billingDay), queremos FECHAR o ciclo anterior
-  // Exemplo: billing_day=7, hoje=07/01/2026
-  // Ciclo a faturar: 07/12/2025 a 06/01/2026 (o ciclo que terminou ontem)
-  
-  if (currentDay > billingDay) {
-    // Estamos APÓS o billing_day deste mês, então o ciclo atual começou este mês
-    // Este caso NÃO deveria acontecer para faturamento automático (que roda no billing_day exato)
-    // Mas manteremos para casos de execução manual atrasada
-    const adjustedStartDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
-    cycleStart = new Date(currentYear, currentMonth, adjustedStartDay);
-    
-    const nextMonth = currentMonth + 1;
-    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
-    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
-    const adjustedEndDay = adjustDayForMonth(nextYear, normalizedNextMonth, billingDay);
-    cycleEnd = new Date(nextYear, normalizedNextMonth, adjustedEndDay);
-    cycleEnd.setDate(cycleEnd.getDate() - 1);
-  } else {
-    // currentDay <= billingDay: Fechar ciclo ANTERIOR (mês passado até ontem)
-    // Ciclo começou no mês anterior no billing_day
-    const prevMonth = currentMonth - 1;
-    const prevYear = prevMonth < 0 ? currentYear - 1 : currentYear;
-    const normalizedPrevMonth = prevMonth < 0 ? 11 : prevMonth;
-    const adjustedStartDay = adjustDayForMonth(prevYear, normalizedPrevMonth, billingDay);
-    cycleStart = new Date(prevYear, normalizedPrevMonth, adjustedStartDay);
-    
-    // Fim do ciclo é um dia ANTES do billing_day deste mês
-    const adjustedEndDay = adjustDayForMonth(currentYear, currentMonth, billingDay);
-    cycleEnd = new Date(currentYear, currentMonth, adjustedEndDay);
-    cycleEnd.setDate(cycleEnd.getDate() - 1); // Um dia antes (dia 6 se billing_day=7)
-  }
-
-  return { cycleStart, cycleEnd };
-}
-
-// ===== NOVA FUNÇÃO: Processar faturamento de mensalidade (Tarefas 6.1-6.5) =====
+// ===== MONTHLY SUBSCRIPTION BILLING =====
 async function processMonthlySubscriptionBilling(
   studentInfo: StudentBillingInfo,
   subscription: ActiveSubscription
-): Promise<{ success: boolean; invoiceId?: string; error?: string }> {
+): Promise<{ success: boolean; invoiceId?: string; outsideCycleInvoiceId?: string; error?: string }> {
   try {
-    const now = new Date();
     const startsAt = new Date(subscription.starts_at);
     const MINIMUM_BOLETO_AMOUNT = 5.00;
+    const tz = studentInfo.teacher_timezone;
 
-    // ===== CALCULAR CICLO DE FATURAMENTO BASEADO EM BILLING_DAY =====
-    const { cycleStart, cycleEnd } = getBillingCycleDates(studentInfo.billing_day, now);
-    
-    // Formatar datas para exibição
-    const cycleStartStr = cycleStart.toLocaleDateString('pt-BR');
-    const cycleEndStr = cycleEnd.toLocaleDateString('pt-BR');
-    
-    logStep(`📅 Billing cycle calculated based on billing_day=${studentInfo.billing_day}`, {
-      cycleStart: cycleStart.toISOString().split('T')[0],
-      cycleEnd: cycleEnd.toISOString().split('T')[0],
-      startsAt: startsAt.toISOString().split('T')[0]
+    // ===== TIMEZONE-AWARE billing cycle =====
+    const { cycleStart, cycleEnd, cycleStartUTC, cycleEndUTC } = getBillingCycleDates(studentInfo.billing_day, tz);
+
+    logStep(`📅 Billing cycle (tz: ${tz})`, {
+      cycleStart,
+      cycleEnd,
+      cycleStartUTC: cycleStartUTC.toISOString(),
+      cycleEndUTC: cycleEndUTC.toISOString(),
     });
 
-    // #364 FIX: Idempotência — verificar se já existe fatura de mensalidade para este ciclo
+    // ===== IDEMPOTENCY: Check existing invoice using UTC window derived from teacher's local day =====
+    // Convert "today midnight local" to UTC for the created_at comparison
+    const { year: todayY, month: todayM, day: todayD } = getLocalDateParts(tz);
+    const todayStartUTC = localDateToUTC(todayY, todayM, todayD, 0, tz);
+    const todayEndUTC = localDateToUTC(todayY, todayM, todayD + 1, 0, tz); // Next day midnight local → UTC
+
     const { data: existingMonthlyInvoice } = await supabaseAdmin
       .from('invoices')
       .select('id, status')
@@ -710,21 +648,20 @@ async function processMonthlySubscriptionBilling(
       .eq('student_id', studentInfo.student_id)
       .eq('invoice_type', 'monthly_subscription')
       .eq('monthly_subscription_id', subscription.subscription_id)
-      .gte('created_at', cycleStart.toISOString())
-      .lte('created_at', new Date(cycleEnd.getTime() + 86400000).toISOString()) // +1 day buffer
+      .gte('created_at', todayStartUTC.toISOString())
+      .lt('created_at', todayEndUTC.toISOString())
       .maybeSingle();
 
     if (existingMonthlyInvoice) {
-      logStep(`⚠️ IDEMPOTENCY: Monthly subscription invoice already exists for this cycle`, {
+      logStep(`⚠️ IDEMPOTENCY: Monthly subscription invoice already exists for today (local)`, {
         existingInvoiceId: existingMonthlyInvoice.id,
         status: existingMonthlyInvoice.status,
-        cycle: `${cycleStartStr} - ${cycleEndStr}`,
         student: studentInfo.student_name
       });
       return { success: true, invoiceId: existingMonthlyInvoice.id };
     }
 
-    // Buscar aulas concluídas do período
+    // Get unbilled completed participations
     const { data: completedParticipations, error: classesError } = await supabaseAdmin
       .rpc('get_unbilled_participants_v2', {
         p_teacher_id: studentInfo.teacher_id,
@@ -737,97 +674,73 @@ async function processMonthlySubscriptionBilling(
     }
 
     const allClasses = completedParticipations || [];
-    
-    // DEBUG: Log do retorno da RPC
-    logStep(`🔍 RPC returned classes`, {
-      count: allClasses.length,
-      teacher_id: studentInfo.teacher_id,
-      student_id: studentInfo.student_id,
-      firstClassDate: allClasses[0]?.class_date || 'none',
-      lastClassDate: allClasses[allClasses.length - 1]?.class_date || 'none'
-    });
-    // ===== FILTRAR AULAS PELO CICLO DE FATURAMENTO =====
-    // Usar o maior entre cycleStart e startsAt para primeiro mês do aluno
-    const effectiveCycleStart = startsAt > cycleStart ? startsAt : cycleStart;
-    
-    // Helper para normalizar data (remover horário para comparação correta)
-    const normalizeDate = (date: Date): number => {
-      return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    };
-    
+
+    // Filter classes by billing cycle
+    const effectiveCycleStart = startsAt > new Date(cycleStart + 'T00:00:00') ? startsAt : new Date(cycleStart + 'T00:00:00');
+    const cycleEndDate = new Date(cycleEnd + 'T23:59:59');
+
+    const normalizeDate = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
     const effectiveStartNorm = normalizeDate(effectiveCycleStart);
-    const cycleEndNorm = normalizeDate(cycleEnd);
-    
-    // Aulas DENTRO do ciclo de faturamento (após effectiveCycleStart e até cycleEnd)
+    const cycleEndNorm = normalizeDate(cycleEndDate);
+
     const classesInBillingCycle = allClasses.filter(c => {
       const classDateNorm = normalizeDate(new Date(c.class_date));
       return classDateNorm >= effectiveStartNorm && classDateNorm <= cycleEndNorm;
     });
-    
-    // Aulas FORA do ciclo (antes do effectiveCycleStart) = cobrança avulsa tradicional
+
     const classesOutsideCycle = allClasses.filter(c => {
       const classDateNorm = normalizeDate(new Date(c.class_date));
       return classDateNorm < effectiveStartNorm;
     });
 
-    logStep(`📊 Classes filtered by billing cycle (${cycleStartStr} - ${cycleEndStr})`, {
-      effectiveCycleStart: effectiveCycleStart.toISOString().split('T')[0],
+    logStep(`📊 Classes filtered by billing cycle (${cycleStart} - ${cycleEnd})`, {
       inCycle: classesInBillingCycle.length,
       outsideCycle: classesOutsideCycle.length,
       total: allClasses.length
     });
 
-    // Se há aulas fora do ciclo, registrar alerta
-    if (classesOutsideCycle.length > 0) {
-      logStep(`⚠️ ${classesOutsideCycle.length} classes outside billing cycle will be billed separately (traditional per-class)`);
-    }
-
-    // Calcular itens da fatura de mensalidade
+    // Build invoice items
     const invoiceItems: any[] = [];
     let totalAmount = 0;
 
-    // Item 1: Valor base da mensalidade (Tarefa 6.3)
+    // Monthly base
+    const cycleStartFormatted = cycleStart.split('-').reverse().join('/');
+    const cycleEndFormatted = cycleEnd.split('-').reverse().join('/');
+
     invoiceItems.push({
       class_id: null,
       participant_id: null,
       item_type: 'monthly_base',
       amount: subscription.price,
-      description: `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartStr} a ${cycleEndStr}`,
+      description: `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartFormatted} a ${cycleEndFormatted}`,
       cancellation_policy_id: null,
       charge_percentage: null,
       dependent_id: null
     });
     totalAmount += subscription.price;
 
-    const classesUsed = classesInBillingCycle.length;
-
-    // Verificar mínimo para boleto
     const skipBoletoGeneration = totalAmount < MINIMUM_BOLETO_AMOUNT;
 
-    // Criar descrição da fatura com período do ciclo
-    let description = `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartStr} a ${cycleEndStr}`;
+    let description = `Mensalidade ${subscription.subscription_name} - Ciclo ${cycleStartFormatted} a ${cycleEndFormatted}`;
     if (skipBoletoGeneration) {
       description += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
     }
 
-    // Calcular data de vencimento
-    const dueDate = new Date(now);
-    dueDate.setDate(dueDate.getDate() + studentInfo.payment_due_days);
+    const dueDateStr = getDueDateString(studentInfo.payment_due_days, tz);
 
-    // Dados da fatura com invoice_type = 'monthly_subscription' (Tarefa 6.3) e monthly_subscription_id (Tarefa 6.5)
     const invoiceData = {
       student_id: studentInfo.student_id,
       teacher_id: studentInfo.teacher_id,
       amount: totalAmount,
-      description: description,
-      due_date: dueDate.toISOString().split('T')[0],
+      description,
+      due_date: dueDateStr,
       status: 'pendente',
-      invoice_type: 'monthly_subscription', // Tarefa 6.3
+      invoice_type: 'monthly_subscription',
       business_profile_id: studentInfo.business_profile_id,
-      monthly_subscription_id: subscription.subscription_id // Tarefa 6.5
+      monthly_subscription_id: subscription.subscription_id
     };
 
-    // Criar fatura usando RPC (adapta-se a itens com class_id/participant_id NULL - Tarefa 6.9)
     const { data: transactionResult, error: transactionError } = await supabaseAdmin
       .rpc('create_invoice_and_mark_classes_billed', {
         p_invoice_data: invoiceData,
@@ -835,98 +748,64 @@ async function processMonthlySubscriptionBilling(
       });
 
     if (transactionError || !transactionResult?.success) {
-      return { 
-        success: false, 
-        error: transactionError?.message || transactionResult?.error || 'Transaction failed' 
-      };
+      return { success: false, error: transactionError?.message || transactionResult?.error || 'Transaction failed' };
     }
 
     const invoiceId = transactionResult.invoice_id;
 
-    // Atualizar fatura com monthly_subscription_id (a RPC pode não suportar este campo)
     await supabaseAdmin
       .from('invoices')
       .update({ monthly_subscription_id: subscription.subscription_id })
       .eq('id', invoiceId);
 
-    logStep(`📦 Monthly subscription invoice created`, {
-      invoiceId,
-      subscriptionName: subscription.subscription_name,
-      basePrice: subscription.price,
-      classesUsed,
-      totalAmount
-    });
+    logStep(`📦 Monthly subscription invoice created`, { invoiceId, totalAmount });
 
-    // Gerar boleto se valor >= mínimo E professor não desativou geração automática
-    // Buscar configuração do professor
+    // Generate boleto
     const { data: bpConfig } = await supabaseAdmin
       .from('business_profiles')
       .select('auto_generate_boleto')
       .eq('id', studentInfo.business_profile_id)
       .maybeSingle();
-    
+
     const teacherDisabledBoleto = bpConfig?.auto_generate_boleto === false;
-    
-    if (teacherDisabledBoleto) {
-      logStep(`Skipping boleto generation for monthly subscription invoice ${invoiceId} - teacher disabled auto_generate_boleto`);
-    } else if (!skipBoletoGeneration) {
+
+    if (!teacherDisabledBoleto && !skipBoletoGeneration) {
       try {
         const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
           'create-payment-intent-connect',
-          {
-            body: {
-              invoice_id: invoiceId,
-              payment_method: 'boleto'
-            }
-          }
+          { body: { invoice_id: invoiceId, payment_method: 'boleto' } }
         );
-
         if (!paymentError && paymentResult?.boleto_url) {
-          await supabaseAdmin
-            .from('invoices')
-            .update({
-              stripe_hosted_invoice_url: paymentResult.boleto_url,
-              boleto_url: paymentResult.boleto_url,
-              linha_digitavel: paymentResult.linha_digitavel,
-              stripe_payment_intent_id: paymentResult.payment_intent_id
-            })
-            .eq('id', invoiceId);
-
-          logStep(`💳 Boleto generated for monthly subscription invoice`, {
-            invoiceId,
-            boletoUrl: paymentResult.boleto_url
-          });
+          await supabaseAdmin.from('invoices').update({
+            stripe_hosted_invoice_url: paymentResult.boleto_url,
+            boleto_url: paymentResult.boleto_url,
+            linha_digitavel: paymentResult.linha_digitavel,
+            stripe_payment_intent_id: paymentResult.payment_intent_id
+          }).eq('id', invoiceId);
         }
       } catch (paymentError) {
         logStep(`⚠️ Failed to generate boleto for monthly subscription`, paymentError);
-        // Continue without failing
       }
     }
 
-    // Enviar notificação de fatura
+    // Send notification
     try {
       await supabaseAdmin.functions.invoke('send-invoice-notification', {
-        body: {
-          invoice_id: invoiceId,
-          notification_type: 'invoice_created'
-        }
+        body: { invoice_id: invoiceId, notification_type: 'invoice_created' }
       });
-      logStep(`📧 Invoice notification sent for monthly subscription`, { invoiceId });
     } catch (notifError) {
       logStep(`⚠️ Failed to send notification`, notifError);
     }
 
-    // ===== PROCESSAR AULAS FORA DO CICLO (ANTES de starts_at) =====
-    // Estas aulas devem ser cobradas como faturamento tradicional (por aula)
+    // ===== PROCESS CLASSES OUTSIDE CYCLE =====
     let outsideCycleInvoiceId: string | null = null;
-    
+
     if (classesOutsideCycle.length > 0) {
-      logStep(`📦 Processing ${classesOutsideCycle.length} classes outside billing cycle as traditional per-class billing`);
-      
-      // Calcular itens para fatura tradicional
+      logStep(`📦 Processing ${classesOutsideCycle.length} classes outside billing cycle`);
+
       const traditionalItems: any[] = [];
       let traditionalTotal = 0;
-      
+
       for (const classInfo of classesOutsideCycle) {
         const servicePrice = classInfo.class_services?.price || 0;
         if (servicePrice > 0) {
@@ -943,89 +822,58 @@ async function processMonthlySubscriptionBilling(
           });
         }
       }
-      
-      // Criar fatura tradicional se houver valor
+
       if (traditionalTotal > 0 && traditionalItems.length > 0) {
         const skipTraditionalBoleto = traditionalTotal < MINIMUM_BOLETO_AMOUNT;
-        
         let traditionalDescription = `Aulas avulsas anteriores à mensalidade - ${traditionalItems.length} aula${traditionalItems.length > 1 ? 's' : ''}`;
         if (skipTraditionalBoleto) {
           traditionalDescription += ` [Valor abaixo do mínimo R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')} - sem boleto gerado]`;
         }
-        
+
         const traditionalInvoiceData = {
           student_id: studentInfo.student_id,
           teacher_id: studentInfo.teacher_id,
           amount: traditionalTotal,
           description: traditionalDescription,
-          due_date: dueDate.toISOString().split('T')[0],
+          due_date: dueDateStr,
           status: 'pendente',
-          invoice_type: 'automated', // Fatura tradicional
+          invoice_type: 'automated',
           business_profile_id: studentInfo.business_profile_id,
-          monthly_subscription_id: null // Não vinculada à mensalidade
+          monthly_subscription_id: null
         };
-        
+
         const { data: traditionalResult, error: traditionalError } = await supabaseAdmin
           .rpc('create_invoice_and_mark_classes_billed', {
             p_invoice_data: traditionalInvoiceData,
             p_class_items: traditionalItems
           });
-        
-        if (traditionalError || !traditionalResult?.success) {
-          logStep(`⚠️ Failed to create traditional invoice for classes outside cycle`, {
-            error: traditionalError?.message || traditionalResult?.error
-          });
-        } else {
+
+        if (!traditionalError && traditionalResult?.success) {
           outsideCycleInvoiceId = traditionalResult.invoice_id;
-          logStep(`📦 Traditional invoice created for classes outside billing cycle`, {
-            invoiceId: outsideCycleInvoiceId,
-            classCount: traditionalItems.length,
-            totalAmount: traditionalTotal
-          });
-          
-          // Gerar boleto para fatura tradicional se valor >= mínimo e professor não desativou
+
           if (!skipTraditionalBoleto && !teacherDisabledBoleto) {
             try {
               const { data: paymentResult, error: paymentError } = await supabaseAdmin.functions.invoke(
                 'create-payment-intent-connect',
-                {
-                  body: {
-                    invoice_id: outsideCycleInvoiceId,
-                    payment_method: 'boleto'
-                  }
-                }
+                { body: { invoice_id: outsideCycleInvoiceId, payment_method: 'boleto' } }
               );
-
               if (!paymentError && paymentResult?.boleto_url) {
-                await supabaseAdmin
-                  .from('invoices')
-                  .update({
-                    stripe_hosted_invoice_url: paymentResult.boleto_url,
-                    boleto_url: paymentResult.boleto_url,
-                    linha_digitavel: paymentResult.linha_digitavel,
-                    stripe_payment_intent_id: paymentResult.payment_intent_id
-                  })
-                  .eq('id', outsideCycleInvoiceId);
-
-                logStep(`💳 Boleto generated for traditional invoice (outside cycle)`, {
-                  invoiceId: outsideCycleInvoiceId,
-                  boletoUrl: paymentResult.boleto_url
-                });
+                await supabaseAdmin.from('invoices').update({
+                  stripe_hosted_invoice_url: paymentResult.boleto_url,
+                  boleto_url: paymentResult.boleto_url,
+                  linha_digitavel: paymentResult.linha_digitavel,
+                  stripe_payment_intent_id: paymentResult.payment_intent_id
+                }).eq('id', outsideCycleInvoiceId);
               }
             } catch (paymentError) {
               logStep(`⚠️ Failed to generate boleto for traditional invoice`, paymentError);
             }
           }
-          
-          // Enviar notificação para fatura tradicional
+
           try {
             await supabaseAdmin.functions.invoke('send-invoice-notification', {
-              body: {
-                invoice_id: outsideCycleInvoiceId,
-                notification_type: 'invoice_created'
-              }
+              body: { invoice_id: outsideCycleInvoiceId, notification_type: 'invoice_created' }
             });
-            logStep(`📧 Invoice notification sent for traditional invoice (outside cycle)`, { invoiceId: outsideCycleInvoiceId });
           } catch (notifError) {
             logStep(`⚠️ Failed to send notification for traditional invoice`, notifError);
           }
@@ -1033,24 +881,16 @@ async function processMonthlySubscriptionBilling(
       }
     }
 
-    return { 
-      success: true, 
-      invoiceId,
-      outsideCycleInvoiceId // Retornar também o ID da fatura de aulas fora do ciclo
-    };
+    return { success: true, invoiceId, outsideCycleInvoiceId: outsideCycleInvoiceId ?? undefined };
 
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
 // Validation function to check if teacher can bill
 async function validateTeacherCanBill(teacher: any): Promise<boolean> {
   try {
-    // Get teacher's subscription separately (sequential — Etapa 0.6)
     const { data: subscription, error: subError } = await supabaseAdmin
       .from('user_subscriptions')
       .select('status, plan_id')
@@ -1058,20 +898,15 @@ async function validateTeacherCanBill(teacher: any): Promise<boolean> {
       .eq('status', 'active')
       .maybeSingle();
 
-    if (subError || !subscription) {
-      return false;
-    }
+    if (subError || !subscription) return false;
 
-    // Fetch plan details separately to check financial_module
     const { data: plan } = await supabaseAdmin
       .from('subscription_plans')
       .select('features')
       .eq('id', subscription.plan_id)
       .maybeSingle();
 
-    const hasFinancialModule = plan?.features?.financial_module === true;
-    
-    return hasFinancialModule;
+    return plan?.features?.financial_module === true;
   } catch (error) {
     console.error('Error validating teacher billing permissions:', error);
     return false;

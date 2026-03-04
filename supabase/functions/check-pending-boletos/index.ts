@@ -12,6 +12,18 @@ const log = (step: string, details?: any) => {
   console.log(`[CHECK-PENDING-BOLETOS] ${step}${d}`);
 };
 
+// Get "tomorrow" date string (YYYY-MM-DD) in a specific timezone
+function getTomorrowInTimezone(timezone: string): string {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(tomorrow);
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -31,14 +43,14 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     const supabase = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } });
 
-    // #113: Get all subscriptions with pending_boleto status (sequential queries, no FK join)
+    // Get all subscriptions with pending_boleto status
     const { data: pendingBoletosRaw, error: fetchError } = await supabase
       .from("user_subscriptions")
       .select("*")
       .eq("status", "pending_boleto")
       .eq("pending_payment_method", "boleto");
 
-    // Enrich with plan names via sequential query
+    // Enrich with plan names
     let pendingBoletos: any[] | null = null;
     if (!fetchError && pendingBoletosRaw && pendingBoletosRaw.length > 0) {
       const planIds = [...new Set(pendingBoletosRaw.map(s => s.plan_id).filter(Boolean))];
@@ -61,6 +73,14 @@ serve(async (req) => {
 
     log("Found pending boletos", { count: pendingBoletos?.length || 0 });
 
+    // Fetch user timezones in batch
+    const userIds = [...new Set((pendingBoletos || []).map(s => s.user_id))];
+    const { data: userProfiles } = await supabase
+      .from("profiles")
+      .select("id, timezone")
+      .in("id", userIds);
+    const tzMap = new Map((userProfiles || []).map(p => [p.id, p.timezone || 'America/Sao_Paulo']));
+
     const results = {
       processed: 0,
       paid: 0,
@@ -71,9 +91,12 @@ serve(async (req) => {
 
     for (const subscription of pendingBoletos || []) {
       try {
-        log("Processing subscription", { 
-          userId: subscription.user_id, 
-          stripeSubId: subscription.stripe_subscription_id 
+        const userTz = tzMap.get(subscription.user_id) || 'America/Sao_Paulo';
+
+        log("Processing subscription", {
+          userId: subscription.user_id,
+          stripeSubId: subscription.stripe_subscription_id,
+          timezone: userTz
         });
 
         if (!subscription.stripe_subscription_id) {
@@ -81,15 +104,13 @@ serve(async (req) => {
           continue;
         }
 
-        // Get Stripe subscription status
         const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
         log("Stripe subscription status", { status: stripeSubscription.status });
 
-        // Check if boleto was paid (subscription became active)
+        // Check if boleto was paid
         if (stripeSubscription.status === 'active') {
           log("Boleto was paid - updating subscription to active");
-          
-          // Update subscription to active
+
           await supabase
             .from("user_subscriptions")
             .update({
@@ -102,7 +123,6 @@ serve(async (req) => {
             })
             .eq("id", subscription.id);
 
-          // Update profile
           await supabase
             .from("profiles")
             .update({
@@ -111,7 +131,6 @@ serve(async (req) => {
             })
             .eq("id", subscription.user_id);
 
-          // Send confirmation email
           await supabase.functions.invoke("send-boleto-subscription-notification", {
             body: {
               user_id: subscription.user_id,
@@ -125,18 +144,16 @@ serve(async (req) => {
           continue;
         }
 
-        // Check if boleto expired (subscription was cancelled or incomplete_expired)
+        // Check if boleto expired
         if (stripeSubscription.status === 'canceled' || stripeSubscription.status === 'incomplete_expired') {
           log("Boleto expired - downgrading to free plan");
-          
-          // Get free plan
+
           const { data: freePlan } = await supabase
             .from("subscription_plans")
             .select("id")
             .eq("slug", "free")
             .single();
 
-          // Update subscription to expired
           await supabase
             .from("user_subscriptions")
             .update({
@@ -149,7 +166,6 @@ serve(async (req) => {
             })
             .eq("id", subscription.id);
 
-          // Update profile to free plan
           await supabase
             .from("profiles")
             .update({
@@ -159,7 +175,6 @@ serve(async (req) => {
             })
             .eq("id", subscription.user_id);
 
-          // Send expiration email
           await supabase.functions.invoke("send-boleto-subscription-notification", {
             body: {
               user_id: subscription.user_id,
@@ -173,20 +188,15 @@ serve(async (req) => {
           continue;
         }
 
-        // Check if boleto is due tomorrow (send reminder)
+        // ===== TIMEZONE-AWARE: Check if boleto is due tomorrow in user's local timezone =====
         if (subscription.boleto_due_date) {
-          const dueDate = new Date(subscription.boleto_due_date);
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          tomorrow.setHours(0, 0, 0, 0);
-          
-          const dueDateNormalized = new Date(dueDate);
-          dueDateNormalized.setHours(0, 0, 0, 0);
+          const tomorrowLocal = getTomorrowInTimezone(userTz);
+          // boleto_due_date is a date string (YYYY-MM-DD) — compare directly
+          const boletoDueDate = subscription.boleto_due_date.substring(0, 10); // Ensure YYYY-MM-DD
 
-          if (dueDateNormalized.getTime() === tomorrow.getTime()) {
-            log("Boleto due tomorrow - sending reminder");
-            
-            // Get latest invoice for boleto details
+          if (boletoDueDate === tomorrowLocal) {
+            log("Boleto due tomorrow (local timezone) - sending reminder", { userTz, tomorrowLocal, boletoDueDate });
+
             let boletoUrl = subscription.boleto_url;
             let amount = 0;
 
@@ -199,7 +209,7 @@ serve(async (req) => {
               if (invoices.data.length > 0) {
                 const invoice = invoices.data[0];
                 amount = invoice.amount_due;
-                
+
                 if (invoice.payment_intent) {
                   const pi = await stripe.paymentIntents.retrieve(invoice.payment_intent as string);
                   if (pi.next_action?.boleto_display_details?.hosted_voucher_url) {
@@ -211,7 +221,6 @@ serve(async (req) => {
               log("Error fetching invoice details", { error: (e as Error).message });
             }
 
-            // Send reminder email
             await supabase.functions.invoke("send-boleto-subscription-notification", {
               body: {
                 user_id: subscription.user_id,
@@ -229,9 +238,9 @@ serve(async (req) => {
 
         results.processed++;
       } catch (subError) {
-        log("Error processing subscription", { 
-          userId: subscription.user_id, 
-          error: (subError as Error).message 
+        log("Error processing subscription", {
+          userId: subscription.user_id,
+          error: (subError as Error).message
         });
         results.errors++;
       }

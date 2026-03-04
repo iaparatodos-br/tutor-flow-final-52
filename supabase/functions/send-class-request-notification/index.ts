@@ -11,7 +11,7 @@ interface RequestNotificationPayload {
   class_id: string;
   teacher_id: string;
   student_id: string;
-  dependent_id?: string; // NEW: Support for dependent
+  dependent_id?: string;
   service_name: string;
   class_date: string;
   duration_minutes: number;
@@ -52,10 +52,10 @@ serve(async (req) => {
     const payload: RequestNotificationPayload = await req.json();
     console.log("📬 Processing class request notification:", payload);
 
-    // 1. Buscar dados do professor
+    // 1. Buscar dados do professor (DESTINATÁRIO) incluindo timezone
     const { data: teacher, error: teacherError } = await supabase
       .from("profiles")
-      .select("name, email")
+      .select("name, email, timezone")
       .eq("id", payload.teacher_id)
       .single();
 
@@ -63,6 +63,9 @@ serve(async (req) => {
       console.error("Teacher not found or no email:", teacherError);
       throw new Error("Teacher not found or no email");
     }
+
+    // v3.3: Timezone do DESTINATÁRIO (professor)
+    const recipientTimezone = teacher.timezone || 'America/Sao_Paulo';
 
     // 2. Buscar dados do aluno/responsável
     const { data: student, error: studentError } = await supabase
@@ -76,7 +79,7 @@ serve(async (req) => {
       throw new Error("Student not found");
     }
 
-    // 3. NEW: Buscar dados do dependente se aplicável
+    // 3. Buscar dados do dependente se aplicável
     let dependentName: string | null = null;
     if (payload.dependent_id) {
       const { data: dependent } = await supabase
@@ -96,18 +99,19 @@ serve(async (req) => {
       ? `${dependentName} (dependente de ${student.name})`
       : student.name;
 
-    // 4. Formatar data e hora
+    // 4. Formatar data e hora NO FUSO DO DESTINATÁRIO (professor) com timeZoneName: 'short'
     const classDateTime = new Date(payload.class_date);
     const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "long",
       year: "numeric",
-      timeZone: "America/Sao_Paulo",
+      timeZone: recipientTimezone,
     });
     const formattedTime = classDateTime.toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: "America/Sao_Paulo",
+      timeZone: recipientTimezone,
+      timeZoneName: "short",
     });
 
     // 5. Construir email
@@ -189,7 +193,7 @@ serve(async (req) => {
       throw new Error(emailResult.error);
     }
 
-    console.log("✅ Email sent successfully:", emailResult.messageId);
+    console.log(`✅ Email sent successfully [TZ: ${recipientTimezone}]:`, emailResult.messageId);
 
     // 7. Registrar notificação no histórico
     const { error: notificationError } = await supabase

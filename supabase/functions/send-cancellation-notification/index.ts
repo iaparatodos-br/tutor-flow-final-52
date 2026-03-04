@@ -15,15 +15,24 @@ interface NotificationRequest {
   is_group_class?: boolean;
   notification_target?: 'teacher' | 'students';
   removed_student_id?: string;
-  removed_dependent_id?: string; // NEW: Support for dependent
+  removed_dependent_id?: string;
   participants?: Array<{
     student_id: string;
-    dependent_id?: string; // NEW: Support for dependent
+    dependent_id?: string;
     profile: {
       name: string;
       email: string;
     };
   }>;
+}
+
+// Helper: format class datetime in a given timezone with timeZoneName: 'short'
+function formatClassDateTime(classDate: string, timezone: string): string {
+  return new Date(classDate).toLocaleString('pt-BR', {
+    dateStyle: 'long',
+    timeStyle: 'short',
+    timeZone: timezone,
+  }) + ` (${new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, timeZoneName: 'short' }).formatToParts(new Date(classDate)).find(p => p.type === 'timeZoneName')?.value || timezone})`;
 }
 
 serve(async (req) => {
@@ -34,7 +43,6 @@ serve(async (req) => {
   try {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     
-    // AUTH: Validate caller is service role or authenticated user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "No authorization header", success: false }), {
@@ -59,6 +67,7 @@ serve(async (req) => {
       }
       console.log('[send-cancellation-notification] Authenticated user:', userData.user.id);
     }
+
     const { 
       class_id, 
       cancelled_by_type, 
@@ -84,16 +93,18 @@ serve(async (req) => {
       throw new Error(`Aula não encontrada: ${classError?.message || 'ID inválido'}`);
     }
 
-    // 2. Buscar professor separadamente
+    // 2. Buscar professor separadamente (incluindo timezone)
     const { data: teacher, error: teacherError } = await supabaseClient
       .from('profiles')
-      .select('id, name, email')
+      .select('id, name, email, timezone')
       .eq('id', classData.teacher_id)
       .maybeSingle();
 
     if (teacherError) {
       console.error('Erro ao buscar professor:', teacherError);
     }
+
+    const teacherTimezone = teacher?.timezone || 'America/Sao_Paulo';
 
     // 3. Buscar serviço separadamente (se existir)
     let service = null;
@@ -151,15 +162,8 @@ serve(async (req) => {
       }
     }
 
-    // Buscar student do primeiro participante (para compatibilidade com lógica existente)
     const firstParticipant = class_participants?.[0];
     const student = firstParticipant?.profiles;
-
-    const classDateFormatted = new Date(classData.class_date).toLocaleString('pt-BR', {
-      dateStyle: 'long',
-      timeStyle: 'short',
-      timeZone: 'America/Sao_Paulo'
-    });
 
     // NEW: Buscar nome do dependente removido (se aplicável)
     let removedDependentName: string | null = null;
@@ -188,7 +192,6 @@ serve(async (req) => {
       student: student?.email
     });
 
-    // Preparar conteúdo do email
     const classTypeLabel = is_group_class ? 'aula em grupo' : 'aula';
     const emailsToSend: Array<{ to: string; subject: string; html: string; student_id?: string }> = [];
 
@@ -216,9 +219,10 @@ serve(async (req) => {
         });
       }
 
+      // v3.3: DESTINATÁRIO é o professor → usar timezone do professor
+      const classDateFormatted = formatClassDateTime(classData.class_date, teacherTimezone);
       const recipientEmail = teacher?.email || '';
       
-      // Determinar nome do aluno (dependente ou normal)
       const studentDisplayName = removedDependentName 
         ? `${removedDependentName} (dependente de ${removedStudent?.name})`
         : removedStudent?.name;
@@ -288,11 +292,12 @@ serve(async (req) => {
         });
       }
 
-      // Determinar nome do aluno (pode ser dependente)
+      // v3.3: DESTINATÁRIO é o professor → usar timezone do professor
+      const classDateFormatted = formatClassDateTime(classData.class_date, teacherTimezone);
+
       const firstParticipantDep = participants[0];
       let cancellerDisplayName = student?.name || 'Aluno';
       
-      // Verificar se há dependente no primeiro participante da request
       if (firstParticipantDep?.dependent_id) {
         const { data: depData } = await supabaseClient
           .from('dependents')
@@ -304,7 +309,6 @@ serve(async (req) => {
         }
       }
 
-      // Notificar professor que aluno cancelou
       const recipientEmail = teacher?.email || '';
       const subject = `${is_group_class ? 'Aula em Grupo' : 'Aula'} Cancelada - ${cancellerDisplayName}`;
       
@@ -356,7 +360,6 @@ serve(async (req) => {
       }
     } else {
       // Notificar aluno(s) que professor cancelou
-      // SEMPRE priorizar participants da request (para todos os tipos de aula)
       const studentsToNotify = participants.length > 0
         ? participants
         : class_participants.map(p => ({
@@ -378,7 +381,7 @@ serve(async (req) => {
         // Verificar preferências do aluno/responsável
         const { data: studentPrefs } = await supabaseClient
           .from('profiles')
-          .select('notification_preferences')
+          .select('notification_preferences, timezone')
           .eq('id', participantData.student_id)
           .maybeSingle();
 
@@ -388,7 +391,11 @@ serve(async (req) => {
           continue;
         }
 
-        // NEW: Buscar nome do dependente se aplicável
+        // v3.3: DESTINATÁRIO é o aluno → usar timezone do aluno
+        const studentTimezone = studentPrefs?.timezone || 'America/Sao_Paulo';
+        const classDateFormatted = formatClassDateTime(classData.class_date, studentTimezone);
+
+        // Buscar nome do dependente se aplicável
         let dependentName: string | null = null;
         if (participantData.dependent_id) {
           const { data: depData } = await supabaseClient
@@ -475,7 +482,6 @@ serve(async (req) => {
           console.log(`✅ Email enviado com sucesso para ${emailData.to}`);
           emailResults.push({ email: emailData.to, success: true });
           
-          // Registrar notificação no banco
           await supabaseClient
             .from('class_notifications')
             .insert({

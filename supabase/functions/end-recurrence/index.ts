@@ -8,7 +8,49 @@ const corsHeaders = {
 
 interface EndRecurrenceRequest {
   templateId: string;
-  endDate: string; // ISO date string
+  endDate: string; // YYYY-MM-DD date string
+}
+
+/**
+ * Converts a local date string (YYYY-MM-DD) to the UTC instant representing
+ * midnight (00:00) in the given timezone.
+ * E.g., "2026-03-15" in "America/Sao_Paulo" (UTC-3) → 2026-03-15T03:00:00.000Z
+ */
+function localDateToUtcMidnight(dateStr: string, timezone: string): string {
+  // Parse date parts
+  const [year, month, day] = dateStr.split('-').map(Number);
+  
+  // Create a formatter that outputs the UTC offset for this timezone at this date
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZoneName: 'longOffset',
+  });
+  
+  // We need to find what UTC offset applies for the given timezone on the given date
+  // Create a rough UTC date for the target date
+  const roughDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0)); // noon UTC to avoid edge cases
+  const parts = formatter.formatToParts(roughDate);
+  const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '+00:00';
+  
+  // Parse offset like "GMT-03:00" or "GMT+05:30"
+  const offsetMatch = tzPart.match(/GMT([+-])(\d{2}):(\d{2})/);
+  let offsetMinutes = 0;
+  if (offsetMatch) {
+    const sign = offsetMatch[1] === '+' ? 1 : -1;
+    offsetMinutes = sign * (parseInt(offsetMatch[2]) * 60 + parseInt(offsetMatch[3]));
+  }
+  
+  // Midnight local = midnight UTC minus the offset
+  // If timezone is UTC-3, midnight local = 03:00 UTC
+  const utcMs = Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60 * 1000;
+  return new Date(utcMs).toISOString();
 }
 
 serve(async (req) => {
@@ -53,7 +95,17 @@ serve(async (req) => {
       throw new Error('Template not found or unauthorized');
     }
 
-    // 2. Atualizar template com data de término
+    // 2. Buscar timezone do professor
+    const { data: teacherProfile } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const teacherTimezone = teacherProfile?.timezone || 'America/Sao_Paulo';
+    console.log(`[end-recurrence] Teacher timezone: ${teacherTimezone}`);
+
+    // 3. Atualizar template com data de término
     const { error: updateError } = await supabase
       .from('classes')
       .update({ recurrence_end_date: endDate })
@@ -63,12 +115,16 @@ serve(async (req) => {
       throw new Error(`Failed to update template: ${updateError.message}`);
     }
 
-    // 3. Identify future classes to delete
+    // 4. Converter endDate (YYYY-MM-DD) para instante UTC de meia-noite no fuso do professor
+    const endDateUtc = localDateToUtcMidnight(endDate, teacherTimezone);
+    console.log(`[end-recurrence] endDate ${endDate} → UTC midnight: ${endDateUtc}`);
+
+    // 5. Identify future classes to delete (usando instante UTC correto)
     const { data: futuresToDelete, error: fetchFuturesError } = await supabase
       .from('classes')
       .select('id')
       .eq('class_template_id', templateId)
-      .gte('class_date', endDate)
+      .gte('class_date', endDateUtc)
       .neq('status', 'concluida');
 
     if (fetchFuturesError) {
@@ -80,7 +136,7 @@ serve(async (req) => {
     let deletedCount = futureClassIds.length;
 
     if (futureClassIds.length > 0) {
-      // 3a. Get participant IDs to clean invoice_classes first (FK RESTRICT)
+      // 5a. Get participant IDs to clean invoice_classes first (FK RESTRICT)
       const { data: futureParticipants } = await supabase
         .from('class_participants')
         .select('id')
@@ -88,21 +144,21 @@ serve(async (req) => {
       
       const futureParticipantIds = (futureParticipants || []).map(p => p.id);
 
-      // 3b. Delete invoice_classes referencing these participants
+      // 5b. Delete invoice_classes referencing these participants
       if (futureParticipantIds.length > 0) {
         await supabase.from('invoice_classes').delete().in('participant_id', futureParticipantIds);
       }
 
-      // 3c. Delete class_exceptions for these classes
+      // 5c. Delete class_exceptions for these classes
       await supabase.from('class_exceptions').delete().in('original_class_id', futureClassIds);
 
-      // 3d. Delete class_notifications for these classes
+      // 5d. Delete class_notifications for these classes
       await supabase.from('class_notifications').delete().in('class_id', futureClassIds);
 
-      // 3e. Delete class_participants
+      // 5e. Delete class_participants
       await supabase.from('class_participants').delete().in('class_id', futureClassIds);
 
-      // 3f. Now safe to delete the classes
+      // 5f. Now safe to delete the classes
       const { error: deleteError } = await supabase
         .from('classes')
         .delete()
@@ -114,23 +170,19 @@ serve(async (req) => {
       }
     }
 
-    const deletedClasses = futuresToDelete;
+    console.log(`[end-recurrence] Deleted ${deletedCount} future classes`);
 
-    console.log(`[end-recurrence] Deleted ${deletedClasses?.length || 0} future classes`);
-
-    // 4. NEW: Notify participants (including responsibles for dependents) about recurrence ending
+    // 6. Notify participants about recurrence ending
     const { data: participants } = await supabase
       .from('class_participants')
       .select('student_id, dependent_id')
       .eq('class_id', templateId);
 
     if (participants && participants.length > 0) {
-      // Collect unique responsible parties to notify
       const notifyUserIds = new Set<string>();
       
       for (const p of participants) {
         if (p.dependent_id) {
-          // Get the responsible for this dependent
           const { data: dependent } = await supabase
             .from('dependents')
             .select('responsible_id, name')
@@ -147,14 +199,13 @@ serve(async (req) => {
       }
 
       console.log(`[end-recurrence] ${notifyUserIds.size} unique users to notify about recurrence end`);
-      // Note: Actual notification sending can be added here if needed
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         message: 'Recurrence ended successfully',
-        deletedCount: deletedClasses?.length || 0,
+        deletedCount,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

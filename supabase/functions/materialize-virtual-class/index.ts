@@ -10,11 +10,50 @@ interface MaterializeRequest {
   template_id: string;
   class_date: string;
   cancellation_reason?: string;
-  dependent_id?: string; // NEW: Optional dependent_id for responsible requesting for dependent
+  dependent_id?: string;
+}
+
+/**
+ * Get the current date/time as seen in a specific timezone.
+ * Returns a Date object representing "now" in UTC, useful for comparison with timestamptz.
+ */
+function getNowInTimezone(timezone: string): Date {
+  // We just need to compare the recurrence_end_date (which is stored as a date/timestamptz)
+  // against "now" interpreted in the teacher's timezone.
+  // Since recurrence_end_date is stored as timestamptz, we can compare it against Date.now() directly.
+  // But for date-only fields, we need the local "today" in the teacher's timezone.
+  const now = new Date();
+  const localDateStr = new Intl.DateTimeFormat('en-CA', { // en-CA gives YYYY-MM-DD
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  
+  // Return end-of-day in the teacher's local timezone as a UTC instant
+  // Parse the local date
+  const [year, month, day] = localDateStr.split('-').map(Number);
+  
+  // Get timezone offset for this date
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    timeZoneName: 'longOffset',
+  });
+  const parts = formatter.formatToParts(now);
+  const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '+00:00';
+  const offsetMatch = tzPart.match(/GMT([+-])(\d{2}):(\d{2})/);
+  let offsetMinutes = 0;
+  if (offsetMatch) {
+    const sign = offsetMatch[1] === '+' ? 1 : -1;
+    offsetMinutes = sign * (parseInt(offsetMatch[2]) * 60 + parseInt(offsetMatch[3]));
+  }
+  
+  // End of today local = start of tomorrow local in UTC
+  const endOfDayUtcMs = Date.UTC(year, month - 1, day + 1, 0, 0, 0) - offsetMinutes * 60 * 1000;
+  return new Date(endOfDayUtcMs);
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -22,7 +61,6 @@ serve(async (req) => {
   try {
     console.log('🔍 [materialize-virtual-class] Request received');
 
-    // Initialize Supabase client with service role key for RLS bypass
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
@@ -108,7 +146,7 @@ serve(async (req) => {
 
     console.log('✅ Template found:', template.id);
 
-    // NEW: Validate dependent if provided
+    // Validate dependent if provided
     let validatedDependentId: string | null = null;
     if (dependent_id && profile.role === 'aluno') {
       console.log('🔍 Validating dependent for responsible:', dependent_id);
@@ -127,7 +165,6 @@ serve(async (req) => {
         );
       }
       
-      // Validate user is the responsible
       if (dependent.responsible_id !== user.id) {
         console.error('❌ User is not responsible for dependent');
         return new Response(
@@ -136,7 +173,6 @@ serve(async (req) => {
         );
       }
       
-      // Validate dependent belongs to template's teacher
       if (dependent.teacher_id !== template.teacher_id) {
         console.error('❌ Dependent does not belong to template teacher');
         return new Response(
@@ -151,7 +187,6 @@ serve(async (req) => {
 
     // Authorization check based on user role
     if (profile.role === 'aluno') {
-      // Students must be participants of the template (or responsible for a dependent participant)
       const { data: participationRows, error: participationError } = await supabaseClient
         .from('class_participants')
         .select('id, student_id, dependent_id')
@@ -169,7 +204,6 @@ serve(async (req) => {
         );
       }
 
-      // If dependent_id provided, check if that specific dependent is a participant
       if (validatedDependentId) {
         const { data: dependentParticipation } = await supabaseClient
           .from('class_participants')
@@ -198,12 +232,8 @@ serve(async (req) => {
       console.log('✅ Student/responsible participation verified');
       
     } else if (profile.role === 'professor') {
-      // Professors must be the owner of the template
       if (template.teacher_id !== user.id) {
-        console.error('❌ Professor does not own this template:', {
-          template_teacher_id: template.teacher_id,
-          user_id: user.id
-        });
+        console.error('❌ Professor does not own this template');
         return new Response(
           JSON.stringify({ error: 'You can only materialize your own classes' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -220,9 +250,21 @@ serve(async (req) => {
       );
     }
 
-    // Check if template has expired
+    // Check if template has expired — using teacher's timezone
     if (template.recurrence_end_date) {
+      // Buscar timezone do professor dono do template
+      const { data: teacherProfile } = await supabaseClient
+        .from('profiles')
+        .select('timezone')
+        .eq('id', template.teacher_id)
+        .maybeSingle();
+      
+      const teacherTimezone = teacherProfile?.timezone || 'America/Sao_Paulo';
+      const endOfTodayLocal = getNowInTimezone(teacherTimezone);
       const endDate = new Date(template.recurrence_end_date);
+      
+      console.log(`🔍 Expiration check: endDate=${endDate.toISOString()}, endOfTodayLocal=${endOfTodayLocal.toISOString()}, tz=${teacherTimezone}`);
+      
       if (endDate < new Date()) {
         console.error('❌ Template has expired:', template.recurrence_end_date);
         return new Response(
@@ -232,7 +274,7 @@ serve(async (req) => {
       }
     }
 
-    // Get all participants from the template (including dependent_id)
+    // Get all participants from the template
     const { data: templateParticipants, error: participantsError } = await supabaseClient
       .from('class_participants')
       .select('student_id, status, dependent_id')
@@ -248,17 +290,17 @@ serve(async (req) => {
 
     console.log('✅ Found template participants:', templateParticipants.length);
 
-    // Insert materialized class (using service role to bypass RLS)
+    // Insert materialized class
     const { data: materializedClass, error: insertError } = await supabaseClient
       .from('classes')
       .insert({
-      teacher_id: template.teacher_id,
+        teacher_id: template.teacher_id,
         class_date: class_date,
         duration_minutes: template.duration_minutes,
-        status: template.status, // Herdar status do template original
+        status: template.status,
         is_experimental: template.is_experimental,
         is_group_class: template.is_group_class,
-        is_paid_class: template.is_paid_class, // FASE 4: Herdar is_paid_class do template
+        is_paid_class: template.is_paid_class,
         service_id: template.service_id,
         is_template: false,
         class_template_id: template_id,
@@ -277,18 +319,7 @@ serve(async (req) => {
 
     console.log('✅ Materialized class created:', materializedClass.id);
 
-    // Log inherited statuses for debugging
-    console.log('🔍 Materializing with inherited status:', {
-      template_status: template.status,
-      materialized_status: template.status,
-      participants_statuses: templateParticipants.map(p => ({ 
-        student_id: p.student_id,
-        dependent_id: p.dependent_id,
-        status: p.status 
-      }))
-    });
-
-    // Copy all participants to the materialized class (preserving their status AND dependent_id)
+    // Copy all participants to the materialized class
     const participantsToInsert = templateParticipants.map(p => {
       const participant: {
         class_id: string;
@@ -298,10 +329,9 @@ serve(async (req) => {
       } = {
         class_id: materializedClass.id,
         student_id: p.student_id,
-        status: p.status, // Preservar status original de cada participante
+        status: p.status,
       };
       
-      // NEW: Preserve dependent_id if exists
       if (p.dependent_id) {
         participant.dependent_id = p.dependent_id;
       }
@@ -315,7 +345,6 @@ serve(async (req) => {
 
     if (participantInsertError) {
       console.error('❌ Error copying participants:', participantInsertError);
-      // Rollback: delete the materialized class
       await supabaseClient.from('classes').delete().eq('id', materializedClass.id);
       return new Response(
         JSON.stringify({ error: 'Failed to copy participants', details: participantInsertError }),
@@ -325,7 +354,7 @@ serve(async (req) => {
 
     console.log('✅ Copied participants (with dependents):', participantsToInsert.length);
 
-    // Buscar perfis dos participantes e dependentes para passar no retorno
+    // Buscar perfis dos participantes e dependentes para retorno
     const participantsWithProfiles = [];
     for (const p of templateParticipants) {
       const { data: studentProfile } = await supabaseClient

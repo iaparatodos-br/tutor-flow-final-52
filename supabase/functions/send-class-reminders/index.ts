@@ -119,10 +119,10 @@ serve(async (req) => {
               }
             }
 
-            // Buscar preferências de notificação do aluno/responsável
+            // Buscar preferências de notificação e timezone do aluno/responsável (DESTINATÁRIO)
             const { data: studentProfile } = await supabase
               .from("profiles")
-              .select("notification_preferences")
+              .select("notification_preferences, timezone")
               .eq("id", participant.student_id)
               .maybeSingle();
 
@@ -132,6 +132,9 @@ serve(async (req) => {
               console.log(`⏭️ Aluno/Responsável ${participant.student_id} desabilitou lembretes de aula`);
               continue;
             }
+
+            // v3.3: Timezone do DESTINATÁRIO (aluno/responsável)
+            const recipientTimezone = studentProfile?.timezone || 'America/Sao_Paulo';
 
             // Verificar se já enviou lembrete para este aluno nesta aula
             const { data: existingNotification } = await supabase
@@ -159,18 +162,19 @@ serve(async (req) => {
             const recipientEmail = relationship?.student_guardian_email || student.email;
             const recipientName = relationship?.student_guardian_name || student.name;
 
-            // Formatar data e hora
+            // Formatar data e hora NO FUSO DO DESTINATÁRIO com timeZoneName: 'short'
             const classDateTime = new Date(classData.class_date);
             const formattedDate = classDateTime.toLocaleDateString("pt-BR", {
               day: "2-digit",
               month: "long",
               year: "numeric",
-              timeZone: "America/Sao_Paulo",
+              timeZone: recipientTimezone,
             });
             const formattedTime = classDateTime.toLocaleTimeString("pt-BR", {
               hour: "2-digit",
               minute: "2-digit",
-              timeZone: "America/Sao_Paulo",
+              timeZone: recipientTimezone,
+              timeZoneName: "short",
             });
 
             // Calcular tempo até a aula
@@ -273,7 +277,7 @@ serve(async (req) => {
             }
 
             remindersSent++;
-            console.log(`✅ Lembrete enviado para ${recipientName} (${recipientEmail})${dependentName ? ` - Dependente: ${dependentName}` : ''}`);
+            console.log(`✅ Lembrete enviado para ${recipientName} (${recipientEmail})${dependentName ? ` - Dependente: ${dependentName}` : ''} [TZ: ${recipientTimezone}]`);
 
           } catch (participantError) {
             console.error(`Erro ao processar participante:`, participantError);

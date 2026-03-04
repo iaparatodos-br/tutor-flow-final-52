@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { formatInTimezone } from "@/utils/timezone";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -383,10 +384,10 @@ export function CancellationPolicySettings() {
             {policy && (
               <div className="mt-4 pt-4 border-t space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Criado em:</strong> {new Date(policy.created_at).toLocaleDateString('pt-BR')}
+                  <strong>Criado em:</strong> {formatInTimezone(policy.created_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  <strong>Atualizado em:</strong> {new Date(policy.updated_at).toLocaleDateString('pt-BR')}
+                  <strong>Atualizado em:</strong> {formatInTimezone(policy.updated_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
                 </p>
                 <p className="text-xs">
                   <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${

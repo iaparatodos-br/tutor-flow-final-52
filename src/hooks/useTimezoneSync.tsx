@@ -17,7 +17,7 @@ const SESSION_STORAGE_KEY = 'tz-sync-dismissed';
  */
 export function useTimezoneSync() {
   const { profile } = useAuth();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const hasChecked = useRef(false);
 
   useEffect(() => {

@@ -2492,68 +2492,37 @@ export type Database = {
           saved_count: number
         }[]
       }
-      get_teacher_notifications:
-        | {
-            Args: {
-              p_category?: string
-              p_is_read?: boolean
-              p_limit?: number
-              p_offset?: number
-              p_status?: string
-            }
-            Returns: {
-              category: string
-              class_date: string
-              class_status: string
-              created_at: string
-              days_overdue: number
-              id: string
-              invoice_amount: number
-              invoice_due_date: string
-              invoice_status: string
-              is_read: boolean
-              read_at: string
-              service_name: string
-              source_id: string
-              source_type: string
-              status: string
-              status_changed_at: string
-              student_email: string
-              student_name: string
-              teacher_id: string
-            }[]
-          }
-        | {
-            Args: {
-              p_category?: string
-              p_is_read?: boolean
-              p_limit?: number
-              p_offset?: number
-              p_status?: string
-              p_timezone?: string
-            }
-            Returns: {
-              category: string
-              class_date: string
-              class_status: string
-              created_at: string
-              days_overdue: number
-              id: string
-              invoice_amount: number
-              invoice_due_date: string
-              invoice_status: string
-              is_read: boolean
-              read_at: string
-              service_name: string
-              source_id: string
-              source_type: string
-              status: string
-              status_changed_at: string
-              student_email: string
-              student_name: string
-              teacher_id: string
-            }[]
-          }
+      get_teacher_notifications: {
+        Args: {
+          p_category?: string
+          p_is_read?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_status?: string
+          p_timezone?: string
+        }
+        Returns: {
+          category: string
+          class_date: string
+          class_status: string
+          created_at: string
+          days_overdue: number
+          id: string
+          invoice_amount: number
+          invoice_due_date: string
+          invoice_status: string
+          is_read: boolean
+          read_at: string
+          service_name: string
+          source_id: string
+          source_type: string
+          status: string
+          status_changed_at: string
+          student_email: string
+          student_name: string
+          teacher_id: string
+        }[]
+      }
       get_teacher_students: {
         Args: { teacher_user_id: string }
         Returns: {

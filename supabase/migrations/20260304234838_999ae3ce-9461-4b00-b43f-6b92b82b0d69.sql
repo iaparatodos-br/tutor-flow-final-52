@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.get_teacher_notifications(text, boolean, text, integer, integer);

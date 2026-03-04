@@ -6,6 +6,7 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
 import { NotificationBell } from "@/components/NotificationBell";
+import { useTimezoneSync } from "@/hooks/useTimezoneSync";
 interface LayoutProps {
   children: ReactNode;
   requireAuth?: boolean;
@@ -24,6 +25,9 @@ export function Layout({
     isOpen,
     toggle
   } = useSidebarState();
+
+  // Sincroniza timezone do browser com o perfil após login
+  useTimezoneSync();
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-gradient-subtle">
         <div className="text-center">

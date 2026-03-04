@@ -16,7 +16,8 @@ serve(async (req) => {
   }
 
   try {
-    const { email, password, name, termsMetadata } = await req.json();
+    const { email, password, name, termsMetadata, timezone } = await req.json();
+    const userTimezone = timezone || 'America/Sao_Paulo';
 
     // Validate required fields
     if (!email || !password || !name) {
@@ -52,6 +53,7 @@ serve(async (req) => {
       user_metadata: {
         name,
         role: 'professor',
+        timezone: userTimezone,
         ...(termsMetadata || {})
       }
     });

@@ -76,13 +76,17 @@ export function ProfileSetup() {
     setLoading(true);
 
     try {
+      // Detectar timezone do browser e incluir no update do perfil
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
+
       const updateData = {
         cpf: formData.cpf.replace(/\D/g, ''),
         address_street: formData.address_street,
         address_city: formData.address_city,
         address_state: formData.address_state,
         address_postal_code: formData.address_postal_code.replace(/\D/g, ''),
-        address_complete: true
+        address_complete: true,
+        timezone: detectedTimezone,
       };
       
       console.log('ProfileSetup: Updating profile with data:', updateData);

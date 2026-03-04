@@ -15,6 +15,7 @@ export interface Profile {
   address_state?: string | null;
   address_postal_code?: string | null;
   address_complete?: boolean;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -149,7 +150,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address_city: existingProfile.address_city,
           address_state: existingProfile.address_state,
           address_postal_code: existingProfile.address_postal_code,
-          address_complete: existingProfile.address_complete
+          address_complete: existingProfile.address_complete,
+          timezone: existingProfile.timezone,
         };
       } else {
         // Criar perfil se não existir
@@ -188,7 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address_city: createdProfile.address_city,
           address_state: createdProfile.address_state,
           address_postal_code: createdProfile.address_postal_code,
-          address_complete: createdProfile.address_complete
+          address_complete: createdProfile.address_complete,
+          timezone: createdProfile.timezone,
         };
 
         console.log('AuthProvider: Perfil criado com sucesso');
@@ -355,12 +358,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Use edge function to create user (sends email via AWS SES)
+      // Detectar timezone do browser para enviar ao backend
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
+
       const { data, error } = await supabase.functions.invoke('create-teacher', {
         body: { 
           email, 
           password, 
           name, 
-          termsMetadata 
+          termsMetadata,
+          timezone: detectedTimezone,
         }
       });
 

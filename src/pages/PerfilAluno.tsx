@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
+import { formatInTimezone, formatDateTimeBrazil } from "@/utils/timezone";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
@@ -452,8 +453,12 @@ export default function PerfilAluno() {
 
   const formatBirthDate = (date: string | null) => {
     if (!date) return null;
-    return new Date(date).toLocaleDateString('pt-BR');
+    // birth_date is a date-only field (YYYY-MM-DD) — use string split to avoid off-by-one
+    const parts = date.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
   };
+
+  const userTimezone = profile?.timezone || 'America/Sao_Paulo';
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -623,7 +628,7 @@ export default function PerfilAluno() {
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">
-                    Cadastrado em {new Date(student.created_at).toLocaleDateString('pt-BR')}
+                    Cadastrado em {formatInTimezone(student.created_at, 'dd/MM/yyyy', userTimezone)}
                   </span>
                 </div>
               </CardContent>
@@ -751,13 +756,7 @@ export default function PerfilAluno() {
                                         <div className="flex items-center gap-2">
                                           {getStatusIcon(cls.status)}
                                           <span className="text-sm">
-                                            {new Date(cls.class_date).toLocaleDateString('pt-BR', {
-                                              day: '2-digit',
-                                              month: '2-digit',
-                                              year: 'numeric',
-                                              hour: '2-digit',
-                                              minute: '2-digit'
-                                            })}
+                                            {formatDateTimeBrazil(cls.class_date, userTimezone)}
                                           </span>
                                           <span className="text-xs text-muted-foreground">
                                             ({cls.duration_minutes} min)
@@ -771,7 +770,7 @@ export default function PerfilAluno() {
                                 
                                 {stats?.last_class_date && (
                                   <p className="text-xs text-muted-foreground mt-2">
-                                    {t('dependents.lastClass', 'Última aula')}: {new Date(stats.last_class_date).toLocaleDateString('pt-BR')}
+                                    {t('dependents.lastClass', 'Última aula')}: {formatInTimezone(stats.last_class_date, 'dd/MM/yyyy', userTimezone)}
                                   </p>
                                 )}
                               </div>
@@ -811,13 +810,7 @@ export default function PerfilAluno() {
                           {getStatusIcon(classRecord.status)}
                           <div className="flex-1">
                             <p className="font-medium">
-                              {new Date(classRecord.class_date).toLocaleDateString('pt-BR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {formatDateTimeBrazil(classRecord.class_date, userTimezone)}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               {classRecord.duration_minutes} minutos
@@ -876,7 +869,7 @@ export default function PerfilAluno() {
                           <div className="min-w-0">
                             <p className="font-medium">R$ {Number(invoice.amount).toFixed(2)}</p>
                             <p className="text-sm text-muted-foreground">
-                              Vencimento: {new Date(invoice.due_date).toLocaleDateString('pt-BR')}
+                              Vencimento: {(() => { const p = invoice.due_date.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : invoice.due_date; })()}
                             </p>
                             {invoice.description && (
                               <p className="text-sm text-muted-foreground">

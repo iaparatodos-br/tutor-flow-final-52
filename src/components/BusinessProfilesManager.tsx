@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatInTimezone } from "@/utils/timezone";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useProfile } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -335,7 +336,7 @@ export function BusinessProfilesManager() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Calendar className="h-4 w-4" />
-                      Criado em {new Date(profile.created_at).toLocaleDateString('pt-BR')}
+                      Criado em {formatInTimezone(profile.created_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-yellow-600">
@@ -404,7 +405,7 @@ export function BusinessProfilesManager() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    Conectado em {new Date(bp.created_at).toLocaleDateString('pt-BR')}
+                    Conectado em {formatInTimezone(bp.created_at, 'dd/MM/yyyy', profile?.timezone || 'America/Sao_Paulo')}
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-2">

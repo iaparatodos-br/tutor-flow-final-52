@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useProfile } from '@/contexts/ProfileContext';
+import { formatInTimezone } from '@/utils/timezone';
 import { 
   Clock, 
   Gift, 
@@ -45,10 +47,12 @@ interface NotificationItemProps {
 export function NotificationItem({ notification }: NotificationItemProps) {
   const { t, i18n } = useTranslation('inbox');
   const navigate = useNavigate();
+  const { profile } = useProfile();
   const updateStatus = useUpdateNotificationStatus();
   const markRead = useMarkNotificationRead();
   const deleteNotification = useDeleteNotification();
 
+  const userTimezone = profile?.timezone || 'America/Sao_Paulo';
   const urgency = getUrgencyLevel(notification);
   const urgencyStyles = URGENCY_STYLES[urgency];
   const readStyles = notification.is_read ? READ_STYLES.read : READ_STYLES.unread;
@@ -90,14 +94,15 @@ export function NotificationItem({ notification }: NotificationItemProps) {
   const getDescription = () => {
     if (notification.source_type === 'invoice') {
       const amount = notification.invoice_amount?.toFixed(2) ?? '0.00';
-      const dueDate = notification.invoice_due_date 
-        ? format(new Date(notification.invoice_due_date), 'dd/MM/yyyy', { locale })
+      // invoice_due_date is date-only (YYYY-MM-DD) — avoid timezone offset
+      const dueDate = notification.invoice_due_date
+        ? (() => { const p = notification.invoice_due_date.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : notification.invoice_due_date; })()
         : '';
       return `R$ ${amount} • ${dueDate}`;
     }
 
     if (notification.class_date) {
-      return format(new Date(notification.class_date), "dd/MM/yyyy 'às' HH:mm", { locale });
+      return formatInTimezone(notification.class_date, "dd/MM/yyyy 'às' HH:mm", userTimezone);
     }
 
     return '';

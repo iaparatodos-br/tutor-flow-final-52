@@ -15,6 +15,7 @@ import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, 
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
 import { useTranslation } from 'react-i18next';
+import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 // Configure moment to Portuguese
 moment.locale('pt-br');
@@ -96,6 +97,7 @@ interface CalendarViewProps {
 export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const { t } = useTranslation('classes');
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
@@ -182,7 +184,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
   };
 
   const formatEventTime = (start: Date, end: Date) => {
-    return `${moment(start).format('HH:mm')} - ${moment(end).format('HH:mm')}`;
+    return `${formatInTimezone(start, 'HH:mm', userTimezone)} - ${formatInTimezone(end, 'HH:mm', userTimezone)}`;
   };
 
   const getStatusBadge = (status: string) => {
@@ -299,7 +301,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                      <span>{formatInTimezone(selectedEvent.start, 'EEEE, dd/MM/yyyy', userTimezone)}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -343,7 +345,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                      <span>{formatInTimezone(selectedEvent.start, 'EEEE, dd/MM/yyyy', userTimezone)}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">

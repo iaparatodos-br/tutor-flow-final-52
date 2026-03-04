@@ -67,8 +67,8 @@ export function ClassExceptionForm({
   useEffect(() => {
     if (originalClass && open) {
       const startDate = new Date(originalClass.start);
-      const dateStr = startDate.toISOString().split('T')[0];
-      const timeStr = startDate.toTimeString().slice(0, 5);
+      const dateStr = formatInTimezone(startDate, 'yyyy-MM-dd', userTimezone);
+      const timeStr = formatInTimezone(startDate, 'HH:mm', userTimezone);
       
       setFormData({
         new_start_date: dateStr,
@@ -78,7 +78,7 @@ export function ClassExceptionForm({
         new_description: originalClass.notes || ''
       });
     }
-  }, [originalClass, open]);
+  }, [originalClass, open, userTimezone]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

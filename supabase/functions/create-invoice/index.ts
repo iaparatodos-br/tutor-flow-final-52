@@ -196,7 +196,22 @@ serve(async (req) => {
       }
       logStep("Using payment_due_days", { paymentDueDays });
     }
-    const dueDate = body.due_date || new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // v3.3: Calcular due_date no timezone do professor
+    let teacherTimezone = 'America/Sao_Paulo';
+    {
+      const { data: tzProfile } = await supabaseClient
+        .from('profiles')
+        .select('timezone')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (tzProfile?.timezone) teacherTimezone = tzProfile.timezone;
+    }
+    const dueDate = body.due_date || new Intl.DateTimeFormat('en-CA', {
+      timeZone: teacherTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(Date.now() + paymentDueDays * 24 * 60 * 60 * 1000));
 
     // Criar descrição com nome do dependente se aplicável
     let invoiceDescription = body.description || 'Fatura manual';
@@ -349,7 +364,8 @@ serve(async (req) => {
         calculatedTotal += itemAmount;
         
         // Descrição com nome do dependente se aplicável
-        let itemDescription = `${service?.name || 'Aula'} - ${new Date(classInfo.class_date).toLocaleDateString('pt-BR')}`;
+        // v3.3: Formatar data no timezone do professor
+        let itemDescription = `${service?.name || 'Aula'} - ${new Intl.DateTimeFormat('pt-BR', { timeZone: teacherTimezone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(classInfo.class_date))}`;
         if (cp.dependent_id && dependentNamesMap[cp.dependent_id]) {
           itemDescription = `[${dependentNamesMap[cp.dependent_id]}] ${itemDescription}`;
         }

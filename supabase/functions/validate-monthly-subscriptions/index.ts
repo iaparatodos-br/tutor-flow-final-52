@@ -135,23 +135,33 @@ serve(async (req) => {
     // ========== V05: Função count_completed_classes_in_month ==========
     console.log("V05: Testing count function...");
     try {
-      const now = new Date();
       // Buscar um professor real para testar
       const { data: teacher } = await supabaseClient
         .from('profiles')
-        .select('id')
+        .select('id, timezone')
         .eq('role', 'professor')
         .limit(1)
         .maybeSingle();
 
       if (teacher) {
+        // v3.3: Calcular ano/mês no timezone do professor
+        const teacherTz = teacher.timezone || 'America/Sao_Paulo';
+        const nowParts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: teacherTz,
+          year: 'numeric',
+          month: '2-digit',
+        }).formatToParts(new Date());
+        const tzYear = parseInt(nowParts.find(p => p.type === 'year')!.value);
+        const tzMonth = parseInt(nowParts.find(p => p.type === 'month')!.value);
+        
         const { data: countResult, error: countError } = await supabaseClient.rpc(
           'count_completed_classes_in_month',
           {
             p_teacher_id: teacher.id,
             p_student_id: teacher.id,
-            p_year: now.getFullYear(),
-            p_month: now.getMonth() + 1
+            p_year: tzYear,
+            p_month: tzMonth,
+            p_timezone: teacherTz
           }
         );
 

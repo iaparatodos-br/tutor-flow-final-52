@@ -120,6 +120,15 @@ serve(async (req) => {
       console.log("✅ Dependent validated:", { id: validatedDependentId, name: dependentName });
     }
 
+    // v3.3: Buscar timezone do professor para validação de working_hours
+    const { data: teacherProfileTz } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('id', teacherId)
+      .maybeSingle();
+    const teacherTimezone = teacherProfileTz?.timezone || 'America/Sao_Paulo';
+    console.log("🕐 Teacher timezone:", teacherTimezone);
+
     // Load service to get duration and name
     const { data: service, error: serviceError } = await supabase
       .from('class_services')
@@ -131,6 +140,54 @@ serve(async (req) => {
 
     if (serviceError) throw serviceError;
     if (!service) throw new Error("Serviço inválido");
+
+    // v3.3: Validar que o horário solicitado cai dentro de working_hours no fuso do professor
+    const requestedDate = new Date(datetime);
+    const dayOfWeekInTeacherTz = parseInt(
+      new Intl.DateTimeFormat('en-US', { timeZone: teacherTimezone, weekday: 'narrow' })
+        .formatToParts(requestedDate)
+        .find(p => p.type === 'weekday')?.value || '0'
+    );
+    // Intl weekday narrow doesn't give us a number directly, let's use a proper approach
+    const teacherLocalDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: teacherTimezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(requestedDate);
+    const teacherLocalDate = new Date(teacherLocalDateStr + 'T00:00:00');
+    const dayOfWeek = teacherLocalDate.getDay(); // 0=Sunday, 6=Saturday
+
+    const teacherLocalTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone: teacherTimezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(requestedDate); // "HH:MM:SS"
+
+    // Buscar working_hours do professor para este dia da semana
+    const { data: workingHours } = await supabase
+      .from('working_hours')
+      .select('start_time, end_time')
+      .eq('teacher_id', teacherId)
+      .eq('day_of_week', dayOfWeek)
+      .eq('is_active', true);
+
+    if (workingHours && workingHours.length > 0) {
+      const requestTime = teacherLocalTime; // "HH:MM:SS"
+      const isWithinAnySlot = workingHours.some(wh => {
+        return requestTime >= wh.start_time && requestTime < wh.end_time;
+      });
+      if (!isWithinAnySlot) {
+        console.log("⚠️ Requested time outside working hours:", {
+          dayOfWeek,
+          requestTime,
+          slots: workingHours.map(wh => `${wh.start_time}-${wh.end_time}`),
+        });
+        // Não bloqueia, apenas loga — o professor pode aprovar manualmente
+      }
+    }
 
     const { data: newClass, error: insertError } = await supabase
       .from('classes')

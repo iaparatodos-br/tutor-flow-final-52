@@ -165,6 +165,14 @@ serve(async (req) => {
         continue;
       }
 
+      // v3.3: Buscar timezone do professor
+      const { data: teacherTzData } = await supabaseAdmin
+        .from('profiles')
+        .select('timezone')
+        .eq('id', classData.teacher_id)
+        .maybeSingle();
+      const teacherTimezone = teacherTzData?.timezone || 'America/Sao_Paulo';
+
       const key = `${classData.teacher_id}-${participant.student_id}`;
       
       if (!groupedCharges.has(key)) {
@@ -176,6 +184,7 @@ serve(async (req) => {
           student_email: student?.email || '',
           payment_due_days: teacherData?.payment_due_days || 15,
           business_profile_id: relationshipData?.business_profile_id,
+          teacherTimezone,
           participants: []
         });
       }
@@ -230,7 +239,7 @@ serve(async (req) => {
             participant_id: participant.id,
             item_type: 'cancellation_charge',
             amount: chargeAmount,
-            description: `Cancelamento - ${service?.name || 'Aula'} - ${new Date(participant.classData.class_date).toLocaleDateString('pt-BR')}`,
+            description: `Cancelamento - ${service?.name || 'Aula'} - ${new Intl.DateTimeFormat('pt-BR', { timeZone: teacherTimezone, day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(participant.classData.class_date))}`,
             cancellation_policy_id: policy?.id || null,
             charge_percentage: chargePercentage
           });
@@ -242,6 +251,14 @@ serve(async (req) => {
         const dueDate = new Date(now);
         dueDate.setDate(dueDate.getDate() + group.payment_due_days);
 
+        // v3.3: Calcular due_date no timezone do professor
+        const dueDateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: group.teacherTimezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(dueDate);
+
         // Usar a RPC para criar fatura e marcar como faturado atomicamente
         const { data: rpcResult, error: rpcError } = await supabaseAdmin
           .rpc('create_invoice_and_mark_classes_billed', {
@@ -249,7 +266,7 @@ serve(async (req) => {
             p_teacher_id: group.teacher_id,
             p_amount: totalAmount,
             p_description: `Cobrança de cancelamentos pendentes - ${group.participants.length} cancelamento${group.participants.length > 1 ? 's' : ''}`,
-            p_due_date: dueDate.toISOString().split('T')[0],
+            p_due_date: dueDateStr,
             p_invoice_type: 'orphan_charges',
             p_business_profile_id: group.business_profile_id,
             p_class_items: invoiceItems

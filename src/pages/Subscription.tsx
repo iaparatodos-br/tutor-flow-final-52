@@ -36,7 +36,8 @@ export default function Subscription() {
     loading
   } = useSubscription();
   const {
-    signOut
+    signOut,
+    profile
   } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();

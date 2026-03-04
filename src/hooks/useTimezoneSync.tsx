@@ -36,7 +36,7 @@ export function useTimezoneSync() {
     if (dismissed === browserTimezone) return;
 
     // Mostrar toast com ação
-    toast({
+    const { dismiss } = toast({
       title: 'Fuso horário diferente detectado',
       description: `Seu navegador está em "${browserTimezone}", mas seu perfil usa "${profileTimezone}". Deseja atualizar?`,
       duration: 15000,
@@ -53,12 +53,12 @@ export function useTimezoneSync() {
 
                 if (error) throw error;
 
+                dismiss();
                 toast({
                   title: 'Fuso horário atualizado',
                   description: `Seu perfil agora usa "${browserTimezone}".`,
                 });
 
-                // Recarregar para aplicar mudança no contexto
                 window.location.reload();
               } catch (err) {
                 console.error('useTimezoneSync: erro ao atualizar timezone', err);
@@ -76,6 +76,7 @@ export function useTimezoneSync() {
             className="rounded border border-input px-3 py-1 text-xs font-medium hover:bg-accent"
             onClick={() => {
               sessionStorage.setItem(SESSION_STORAGE_KEY, browserTimezone);
+              dismiss();
             }}
           >
             Manter

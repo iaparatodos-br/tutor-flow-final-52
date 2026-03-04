@@ -32,6 +32,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileCalendarList } from './MobileCalendarList';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { useAuth } from '@/contexts/AuthContext';
+import { isTodayTz, formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 interface SimpleCalendarProps {
   classes: CalendarClass[];
@@ -72,6 +74,8 @@ export function SimpleCalendar({
 }: SimpleCalendarProps) {
   const { t } = useTranslation('classes');
   const isMobile = useIsMobile();
+  const { profile } = useAuth();
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [currentDate, setCurrentDate] = useState(initialDate ?? new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
   const [selectedDayEvents, setSelectedDayEvents] = useState<{
@@ -165,9 +169,9 @@ export function SimpleCalendar({
       blocks: AvailabilityBlock[] 
     }>();
     
-    // Pré-processar eventos
+    // Pré-processar eventos usando timezone do utilizador
     classes.forEach(event => {
-      const key = new Date(event.start).toDateString();
+      const key = formatInTimezone(event.start, 'yyyy-MM-dd', userTimezone);
       if (!map.has(key)) {
         map.set(key, { events: [], blocks: [] });
       }
@@ -176,7 +180,7 @@ export function SimpleCalendar({
     
     // Pré-processar blocos
     availabilityBlocks.forEach(block => {
-      const key = new Date(block.start).toDateString();
+      const key = formatInTimezone(block.start, 'yyyy-MM-dd', userTimezone);
       if (!map.has(key)) {
         map.set(key, { events: [], blocks: [] });
       }
@@ -184,7 +188,7 @@ export function SimpleCalendar({
     });
     
     return map;
-  }, [classes, availabilityBlocks]);
+  }, [classes, availabilityBlocks, userTimezone]);
 
   // Gerar os dias do mês atual
   const calendarData = useMemo(() => {
@@ -204,7 +208,7 @@ export function SimpleCalendar({
     const current = new Date(startDate);
     
     for (let i = 0; i < 42; i++) {
-      const key = current.toDateString();
+      const key = formatInTimezone(current, 'yyyy-MM-dd', userTimezone);
       const dayData = eventsByDate.get(key) || { events: [], blocks: [] };
       
       days.push({
@@ -212,14 +216,14 @@ export function SimpleCalendar({
         events: dayData.events,
         blocks: dayData.blocks,
         isCurrentMonth: current.getMonth() === month,
-        isToday: current.toDateString() === new Date().toDateString()
+        isToday: isTodayTz(current, userTimezone)
       });
       
       current.setDate(current.getDate() + 1);
     }
     
     return days;
-  }, [currentDate, eventsByDate]);
+  }, [currentDate, eventsByDate, userTimezone]);
 
   // Detect days with time conflicts (2+ active classes overlapping)
   const conflictDays = useMemo(() => {
@@ -273,10 +277,7 @@ export function SimpleCalendar({
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
+    return formatInTimezone(date, 'HH:mm', userTimezone);
   };
 
   const getStatusColor = (status: string) => {
@@ -332,7 +333,7 @@ export function SimpleCalendar({
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span>{selectedEvent.start.toLocaleDateString('pt-BR')}</span>
+                <span>{formatInTimezone(selectedEvent.start, 'dd/MM/yyyy', userTimezone)}</span>
               </div>
               
               <div className="flex items-center gap-2">
@@ -380,7 +381,7 @@ export function SimpleCalendar({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                <span>{(selectedEvent as CalendarClass).start.toLocaleDateString('pt-BR')}</span>
+                <span>{formatInTimezone((selectedEvent as CalendarClass).start, 'dd/MM/yyyy', userTimezone)}</span>
               </div>
               
               <div className="flex items-center gap-2">

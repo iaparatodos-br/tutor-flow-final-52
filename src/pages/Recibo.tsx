@@ -4,13 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { ArrowLeft, Printer, FileText, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InvoiceStatusBadge } from '@/components/InvoiceStatusBadge';
 import { useTranslation } from 'react-i18next';
+import { useProfile } from '@/contexts/ProfileContext';
+import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 import './recibo.css';
 interface Invoice {
   id: string;
@@ -37,7 +37,6 @@ interface Invoice {
     business_name: string;
     cnpj: string | null;
   } | null;
-  // Guardian data from teacher_student_relationships
   guardian_name: string | null;
   guardian_email: string | null;
 }
@@ -64,7 +63,6 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
     `).eq('id', invoiceId).single();
   if (error) throw new Error(error.message);
 
-  // Fetch guardian data from teacher_student_relationships
   let guardianName: string | null = null;
   let guardianEmail: string | null = null;
 
@@ -90,24 +88,40 @@ const fetchInvoiceDetails = async (invoiceId: string) => {
   } as Invoice;
 };
 export default function Recibo() {
-  const {
-    invoiceId
-  } = useParams<{
-    invoiceId: string;
-  }>();
+  const { invoiceId } = useParams<{ invoiceId: string }>();
   const navigate = useNavigate();
-  const {
-    t
-  } = useTranslation('financial');
-  const {
-    data: invoice,
-    isLoading,
-    error
-  } = useQuery({
+  const { t } = useTranslation('financial');
+  const { profile } = useProfile();
+  
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+
+  const { data: invoice, isLoading, error } = useQuery({
     queryKey: ['invoice-details', invoiceId],
     queryFn: () => fetchInvoiceDetails(invoiceId!),
     enabled: !!invoiceId
   });
+
+  /**
+   * Formata campo date-only (YYYY-MM-DD) sem conversão de timezone.
+   * REGRA v3.6: NUNCA usar timeZone para campos date.
+   */
+  const formatDateOnly = (dateString: string, longFormat: boolean = false): string => {
+    const parts = dateString.split('-');
+    if (parts.length !== 3) return dateString;
+    
+    if (longFormat) {
+      const months = [
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+      const day = parseInt(parts[2], 10);
+      const month = months[parseInt(parts[1], 10) - 1];
+      const year = parts[0];
+      return `${String(day).padStart(2, '0')} de ${month} de ${year}`;
+    }
+    
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  };
   const getPaymentOriginLabel = (origin: string | null) => {
     switch (origin) {
       case 'manual':
@@ -242,17 +256,13 @@ export default function Recibo() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Data de Emissão:</span>
                   <span className="font-medium">
-                    {format(new Date(invoice.created_at), "dd 'de' MMMM 'de' yyyy", {
-                    locale: ptBR
-                  })}
+                    {formatInTimezone(invoice.created_at, "dd 'de' MMMM 'de' yyyy", userTimezone)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Vencimento:</span>
                   <span className="font-medium">
-                    {format(new Date(invoice.due_date), "dd 'de' MMMM 'de' yyyy", {
-                    locale: ptBR
-                  })}
+                    {formatDateOnly(invoice.due_date, true)}
                   </span>
                 </div>
                 {invoice.description && <div className="flex justify-between">
@@ -283,9 +293,7 @@ export default function Recibo() {
                 {(invoice.status === 'paid' || invoice.status === 'paga') && <div className="flex justify-between">
                     <span className="text-muted-foreground">Data de Pagamento:</span>
                     <span className="font-medium">
-                      {format(new Date(invoice.updated_at), "dd 'de' MMMM 'de' yyyy", {
-                    locale: ptBR
-                  })}
+                      {formatInTimezone(invoice.updated_at, "dd 'de' MMMM 'de' yyyy", userTimezone)}
                     </span>
                   </div>}
                 {invoice.manual_payment_notes && <div className="bg-muted p-3 rounded">
@@ -311,9 +319,7 @@ export default function Recibo() {
             <div className="text-center text-sm text-muted-foreground pt-4 border-t">
               <p>Este é um recibo digital gerado automaticamente.</p>
               <p className="mt-1">
-                Recibo gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", {
-                locale: ptBR
-              })}
+                Recibo gerado em {formatInTimezone(new Date(), "dd/MM/yyyy 'às' HH:mm", userTimezone)}
               </p>
             </div>
           </CardContent>

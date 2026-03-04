@@ -12,10 +12,11 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, Image, X, Plus, Settings, CalendarIcon } from "lucide-react";
-import { format, formatDate, parse } from "date-fns";
+import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { todayDateString, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -43,10 +44,13 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   const { t } = useTranslation('expenses');
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+
   const [formData, setFormData] = useState({
     description: "",
     amount: "",
-    expense_date: formatDate(new Date(), 'yyyy-MM-dd'),
+    expense_date: todayDateString(userTimezone),
     category: "",
   });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -83,7 +87,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
 
       if (error) throw error;
       
-      console.log('Categories loaded:', data); // Debug log
+      console.log('Categories loaded:', data);
       setCategories(data || []);
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -94,7 +98,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
     setFormData({
       description: "",
       amount: "",
-      expense_date: formatDate(new Date(), 'yyyy-MM-dd'),
+      expense_date: todayDateString(userTimezone),
       category: "",
     });
     setReceiptFile(null);
@@ -104,7 +108,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         toast({
           title: t('validation.fileSizeLimit'),
           description: t('validation.fileSizeLimit'),
@@ -151,7 +155,6 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
       throw error;
     }
 
-    // Return the file path instead of public URL since the bucket is private
     return fileName;
   };
 

@@ -26,6 +26,8 @@ import { BusinessProfilesManager } from "@/components/BusinessProfilesManager";
 import { DollarSign, User, Calendar, CreditCard, Receipt, TrendingUp, CheckCircle, AlertTriangle, AlertCircle, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useTranslation } from "react-i18next";
+import { parseISO } from "date-fns";
+import { todayDateString, startOfMonthTz, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 // Helper function to get invoice type badge - DRY principle
 const getInvoiceTypeBadge = (invoiceType: string | undefined, t: (key: string) => string) => {
@@ -46,6 +48,7 @@ const getInvoiceTypeBadge = (invoiceType: string | undefined, t: (key: string) =
       return <Badge variant="outline">{t('financial:invoiceTypes.regular')}</Badge>;
   }
 };
+
 interface InvoiceWithStudent {
   id: string;
   amount: number;
@@ -73,10 +76,12 @@ interface InvoiceWithStudent {
     amnesty_granted?: boolean;
   };
 }
+
 interface ExpenseSummary {
   total: number;
   count: number;
 }
+
 export default function Financeiro() {
   const { t } = useTranslation('financial');
   const {
@@ -115,6 +120,8 @@ export default function Financeiro() {
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [showFeeAlert, setShowFeeAlert] = useState(true);
   
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+  
   // Deep-linking support
   const [searchParams, setSearchParams] = useSearchParams();
   const [highlightedInvoiceId, setHighlightedInvoiceId] = useState<string | null>(null);
@@ -125,11 +132,8 @@ export default function Financeiro() {
     const highlightId = searchParams.get('highlight');
     if (highlightId) {
       setHighlightedInvoiceId(highlightId);
-      // Clear the URL parameter after reading
       searchParams.delete('highlight');
       setSearchParams(searchParams, { replace: true });
-      
-      // Clear highlight after animation
       setTimeout(() => {
         setHighlightedInvoiceId(null);
       }, 3000);
@@ -146,20 +150,14 @@ export default function Financeiro() {
     }
   }, [highlightedInvoiceId, loading]);
 
-  // Verifica se a fatura está vencida
+  // Verifica se a fatura está vencida (due_date é campo date-only YYYY-MM-DD)
   const isOverdue = (dueDate: string, status: string): boolean => {
-    // Não considerar vencida se já foi paga ou cancelada
     if (['paga', 'paid', 'void', 'cancelada'].includes(status)) {
       return false;
     }
-    
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Zerar horas para comparar apenas datas
-    
-    const due = new Date(dueDate);
-    due.setHours(0, 0, 0, 0);
-    
-    return due < today;
+    // Comparação segura de campos date-only: string vs string
+    const todayStr = todayDateString(userTimezone);
+    return dueDate < todayStr;
   };
 
   useEffect(() => {
@@ -173,12 +171,12 @@ export default function Financeiro() {
     }
   }, [profile, isProfessor]);
 
-  // Reload invoices when selectedTeacherId changes (for students)
   useEffect(() => {
     if (isAluno && selectedTeacherId && profile?.id) {
       loadInvoices();
     }
   }, [selectedTeacherId, isAluno]);
+
   const loadStudents = async () => {
     if (!profile?.id) return;
     try {
@@ -221,13 +219,24 @@ export default function Financeiro() {
       console.error('Error loading dependents:', error);
     }
   };
+
   const loadExpenseSummary = async () => {
     try {
-      const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM format
+      // Usar startOfMonthTz para calcular limites do mês no fuso do utilizador
+      const now = new Date();
+      const monthStart = startOfMonthTz(now, userTimezone);
+      const nextMonthStart = startOfMonthTz(
+        new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1),
+        userTimezone
+      );
+      // expense_date é date-only, usar formato YYYY-MM-DD
+      const startStr = `${monthStart.getFullYear()}-${String(monthStart.getMonth() + 1).padStart(2, '0')}-01`;
+      const endStr = `${nextMonthStart.getFullYear()}-${String(nextMonthStart.getMonth() + 1).padStart(2, '0')}-01`;
+      
       const {
         data,
         error
-      } = await supabase.from('expenses').select('amount').eq('teacher_id', profile!.id).gte('expense_date', currentMonth + '-01').lt('expense_date', new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString().slice(0, 10));
+      } = await supabase.from('expenses').select('amount').eq('teacher_id', profile!.id).gte('expense_date', startStr).lt('expense_date', endStr);
       if (error) throw error;
       const total = data?.reduce((sum, expense) => sum + Number(expense.amount), 0) || 0;
       setExpenseSummary({
@@ -238,6 +247,7 @@ export default function Financeiro() {
       console.error('Error loading expense summary:', error);
     }
   };
+
   const loadInvoices = async () => {
     if (!profile?.id) return;
     try {
@@ -262,7 +272,6 @@ export default function Financeiro() {
         query = query.eq('teacher_id', profile.id);
       } else {
         query = query.eq('student_id', profile.id);
-        // Filter by selected teacher if specified
         if (selectedTeacherId) {
           query = query.eq('teacher_id', selectedTeacherId);
         }
@@ -270,7 +279,7 @@ export default function Financeiro() {
       const {
         data,
         error
-} = await query.order('created_at', {
+      } = await query.order('created_at', {
         ascending: false
       });
       if (error) throw error;
@@ -306,7 +315,6 @@ export default function Financeiro() {
     if (!invoiceToMarkPaid) return;
     setIsMarkingPaid(true);
     try {
-      // Call edge function to cancel payment intent on Stripe
       const {
         data,
         error: functionError
@@ -342,45 +350,20 @@ export default function Financeiro() {
       setIsMarkingPaid(false);
     }
   };
+
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pendente: {
-        label: "Pendente",
-        variant: "secondary" as const
-      },
-      open: {
-        label: "Em Aberto",
-        variant: "secondary" as const
-      },
-      paga: {
-        label: "Paga",
-        variant: "default" as const
-      },
-      paid: {
-        label: "Paga",
-        variant: "default" as const
-      },
-      vencida: {
-        label: "Vencida",
-        variant: "destructive" as const
-      },
-      overdue: {
-        label: "Vencida",
-        variant: "destructive" as const
-      },
-      cancelada: {
-        label: "Cancelada",
-        variant: "outline" as const
-      },
-      void: {
-        label: "Cancelada",
-        variant: "outline" as const
-      }
+      pendente: { label: "Pendente", variant: "secondary" as const },
+      open: { label: "Em Aberto", variant: "secondary" as const },
+      paga: { label: "Paga", variant: "default" as const },
+      paid: { label: "Paga", variant: "default" as const },
+      vencida: { label: "Vencida", variant: "destructive" as const },
+      overdue: { label: "Vencida", variant: "destructive" as const },
+      cancelada: { label: "Cancelada", variant: "outline" as const },
+      void: { label: "Cancelada", variant: "outline" as const }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
-    return <Badge variant={config.variant}>
-        {config.label}
-      </Badge>;
+    return <Badge variant={config.variant}>{config.label}</Badge>;
   };
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -388,14 +371,24 @@ export default function Financeiro() {
       currency: 'BRL'
     }).format(amount);
   };
+
+  /**
+   * Formata um campo date-only (YYYY-MM-DD) para exibição dd/MM/yyyy.
+   * REGRA v3.6: NUNCA usar timeZone para campos date-only — parseISO é seguro.
+   */
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
   };
+
   const totalPendente = invoices.filter(invoice => ['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status)).reduce((sum, invoice) => sum + Number(invoice.amount), 0);
   const paidInvoices = invoices.filter(invoice => ['paga', 'paid'].includes(invoice.status));
   const totalPago = paidInvoices.reduce((sum, invoice) => sum + Number(invoice.amount), 0);
-  // Calculate net profit (only for professors): Revenue - Expenses
   const netProfit = isProfessor ? totalPago - expenseSummary.total : 0;
+
   return <Layout>
       <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6">
         {/* Header */}
@@ -519,9 +512,6 @@ export default function Financeiro() {
                       Faturas Emitidas ({invoices.length})
                     </CardTitle>
             {students.filter(s => {
-                        // Find the full student data to check business_profile_id
-                        const fullStudent = invoices.find(inv => inv.student?.email === s.email)?.student;
-                        // For now, allow all students - we'll validate in the modal/function
                         return true;
                       }).length > 0 && <CreateInvoiceModal students={students} dependents={dependents} onInvoiceCreated={loadInvoices} />}
                   </div>
@@ -600,10 +590,8 @@ export default function Financeiro() {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                {/* Amnesty button for professors on cancellation invoices */}
                                 {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} onAmnestyGranted={loadInvoices} />}
                                 
-                                {/* Mark as Paid button for unpaid invoices */}
                                 {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && <AlertDialog>
                                       <TooltipProvider>
                                         <Tooltip>
@@ -635,7 +623,6 @@ export default function Financeiro() {
                                                     evitando assim pagamento duplicado.
                                                   </AlertDescription>
                                                 </Alert>
-                                                
                                               </div>
                                             </AlertDialogDescription>
                                           </AlertDialogHeader>
@@ -739,7 +726,6 @@ export default function Financeiro() {
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
-                            {/* Payment button for students */}
                             {invoice.status === 'pendente' && <Button size="sm" onClick={() => openPayment(invoice)} className="bg-gradient-success shadow-success hover:bg-success">
                                 <CreditCard className="h-4 w-4 mr-1" />
                                 Pagar
@@ -791,22 +777,21 @@ export default function Financeiro() {
                 <label htmlFor="payment-notes" className="text-sm font-medium">
                   Observações (opcional)
                 </label>
-                <Textarea id="payment-notes" placeholder="Ex: Pagamento recebido via PIX, Transferência bancária confirmada, etc." value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} rows={3} disabled={isMarkingPaid} />
+                <Textarea
+                  id="payment-notes"
+                  placeholder="Ex: Pagamento recebido via Pix em 15/03..."
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setMarkAsPaidDialogOpen(false)} disabled={isMarkingPaid}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleMarkAsPaid} disabled={isMarkingPaid}>
-                  {isMarkingPaid ? <>
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2"></div>
-                      Processando...
-                    </> : <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Confirmar Pagamento
-                    </>}
-                </Button>
-              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setMarkAsPaidDialogOpen(false)} disabled={isMarkingPaid}>
+                Cancelar
+              </Button>
+              <Button onClick={handleMarkAsPaid} disabled={isMarkingPaid}>
+                {isMarkingPaid ? "Processando..." : "Confirmar Pagamento"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

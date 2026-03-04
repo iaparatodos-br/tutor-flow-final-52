@@ -1,42 +1,35 @@
 
 
-# Diagnóstico: Fatura Paga no Stripe mas Pendente no Sistema
+# Plano: Documento de Testes de Validação do Timezone Multi-Support
 
-## Status: Passo 1 ✅ | Passo 2 ✅ | Passo 3 ⚠️ Requer ação do usuário
+Criar o ficheiro `docs/timezone-test-plan.md` com cobertura completa dos cenários de teste, organizados por área funcional.
 
-## Passo 1 ✅ — Fatura do Erik corrigida
+## Estrutura do Documento
 
-- Fatura `c9366cc3`: `pendente` → `paga` ✅
-- Participante `71728d68`: `aguardando_pagamento` → `confirmada` ✅
-- Aula `f2f44711`: trigger automático atualizou para `confirmada` ✅
+O documento cobrirá **7 áreas de teste** com passo-a-passo detalhado:
 
-## Passo 2 ✅ — auto-verify-pending-invoices redeployada com logs de debug
+1. **Registo e Detecção Automática** — Validar captura do timezone no signup (professor e aluno), fallback para `America/Sao_Paulo`, e persistência na coluna `profiles.timezone`.
 
-O redeploy confirmou que o código com `stripeAccount` **está funcionando corretamente**:
-- Lookup do business_profile: ✅ resolve `acct_1SlVXzLmXH1N0Xdo`
-- Passagem do `stripeAccount` ao `retrieve`: ✅ confirmada nos logs
+2. **Sincronização de Timezone (useTimezoneSync)** — Testar o toast de atualização quando o browser muda de fuso, o comportamento do botão "Manter" com sessionStorage, e o seletor manual em Configurações > Perfil.
 
-### Descoberta crítica: o erro NÃO é de código
+3. **Exibição de Datas no Frontend (40 componentes)** — Verificar que datas de aulas, faturas, recibos, calendário, inbox, histórico e materiais usam o fuso do perfil. Testar com professor em `America/New_York` e confirmar que horários refletem o fuso correto.
 
-O erro "No such payment_intent" persiste **mesmo** com o `stripeAccount` correto. Isso descarta bug de código. As causas possíveis são:
+4. **Input Parsing de Formulários** — Validar que `ClassForm`, `Agenda`, `ClassExceptionForm`, `FutureClassExceptionForm` e `AvailabilityManager` gravam datas UTC corretas usando `fromUserZonedTime` do perfil (não do browser).
 
-1. **`STRIPE_SECRET_KEY` incompatível**: a chave secreta no Supabase pode pertencer a uma conta/ambiente Stripe diferente (ex: test vs live, ou outra conta) da que foi usada para criar os PIs via `create-payment-intent-connect`
-2. **Conta Connect desconectada/recriada**: o `acct_1SlVXzLmXH1N0Xdo` pode ter sido desconectado da plataforma
-3. **Chave rotacionada**: se a STRIPE_SECRET_KEY foi trocada após a criação dos PIs
+5. **Billing Automatizado (Hourly Sweeper)** — Testar a RPC `get_relationships_to_bill_now` com professores em fusos diferentes, validar idempotência (cron roda 2x na mesma hora), validar `getDueDateString` e `getBillingCycleDates` com timezone dinâmico.
 
-## Passo 3 ⚠️ — Ações necessárias no Dashboard do Stripe
+6. **Edge Functions de Notificação** — Verificar que emails de lembrete, confirmação, cancelamento, relatório, fatura e boleto formatam datas no fuso do **destinatário** (aluno ou professor). Validar inclusão do acrónimo do fuso (ex: "BRT").
 
-### 3.1: Verificar a STRIPE_SECRET_KEY
-- Ir em https://dashboard.stripe.com/apikeys
-- Confirmar que a chave `sk_live_...` ou `sk_test_...` é a mesma configurada no Supabase Edge Functions Secrets
-- Se houver divergência, atualizar o secret no Supabase
+7. **RPCs PostgreSQL** — Validar que `count_completed_classes_in_month`, `get_student_subscription_details`, `get_billing_cycle_dates`, `get_teacher_notifications` e `get_student_active_subscription` retornam resultados corretos quando `p_timezone` é passado com fusos não-BRT.
 
-### 3.2: Verificar se a conta Connect está ativa
-- Ir em https://dashboard.stripe.com/connect/accounts
-- Verificar se `acct_1SlVXzLmXH1N0Xdo` está ativo e conectado
+## Cenários Transversais
 
-### 3.3: Configurar webhook para Connected accounts
-- URL: `https://nwgomximjevgczwuyqcx.supabase.co/functions/v1/webhook-stripe-connect`
-- Marcar "Listen to events on Connected accounts"
-- Eventos: `payment_intent.succeeded`, `payment_intent.payment_failed`, `charge.succeeded`
-- Secret deve corresponder ao `STRIPE_WEBHOOK_SECRET_CONNECT`
+- **Campos `date` (due_date, birth_date, expense_date)**: Nunca sofrem shift — o dia exibido é sempre o dia armazenado.
+- **Professor viajando**: Timezone do perfil difere do browser — formulários devem usar o timezone do perfil.
+- **DST**: Aulas recorrentes mantêm a hora local correta após mudança de horário de verão.
+- **Disponibilidade cross-timezone**: Aluno em Lisboa vê slots do professor BRT convertidos para seu fuso.
+
+## Implementação
+
+Um único ficheiro markdown com ~300 linhas, organizado em secções com tabelas de "Pré-condição / Ação / Resultado Esperado" para cada teste.
+

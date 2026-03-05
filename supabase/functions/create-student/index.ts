@@ -403,6 +403,30 @@ serve(async (req) => {
               );
             }
             
+            // Check if overage function returned success:false (now returns 200 with error in body)
+            if (billingData && billingData.success === false) {
+              console.error('[BILLING REJECTED - BLOCKING STUDENT CREATION]', {
+                teacherId: body.teacher_id,
+                studentEmail: body.email,
+                extraStudents,
+                reason: billingData.error
+              });
+              
+              if (isNewStudent) {
+                console.log('[ROLLBACK] Deleting newly created student due to billing rejection');
+                await supabaseAdmin.auth.admin.deleteUser(studentId);
+              }
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: billingData.error || `Não foi possível processar o pagamento adicional. Verifique seu método de pagamento e tente novamente.`,
+                  payment_failed: true
+                }),
+                { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+              );
+            }
+            
             // Payment successful
             billingResult = billingData;
             console.log('[BILLING SUCCESS - PROCEEDING WITH STUDENT CREATION]', { 

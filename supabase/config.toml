@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.check-email-confirmation]
 verify_jwt = false
+
+[functions.handle-student-overage]
+verify_jwt = false

@@ -43,8 +43,35 @@ serve(async (req) => {
 
     const { extraStudents, planLimit, userId } = await req.json();
 
+    // Guard clause: validate all required inputs
     if (!userId) {
-      throw new Error("userId is required in request body");
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "userId é obrigatório" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (extraStudents == null || typeof extraStudents !== 'number' || extraStudents <= 0) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Parâmetro extraStudents inválido: ${extraStudents}` 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (planLimit == null || typeof planLimit !== 'number') {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Parâmetro planLimit inválido: ${planLimit}` 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     logStep("Processing student overage for user", { userId, extraStudents, planLimit });
@@ -155,31 +182,31 @@ serve(async (req) => {
 
         immediateChargeSuccess = true;
       } catch (chargeError: any) {
-        logStep("Immediate charge failed - CRITICAL ERROR", { 
+      logStep("Immediate charge failed - CRITICAL ERROR", { 
           error: chargeError.message 
         });
         
-        // CRITICAL: If immediate charge fails, we must return error to block student creation
+        // Return 200 with success:false so create-student can read the error body
         return new Response(JSON.stringify({ 
           success: false,
           error: `Falha ao processar pagamento: ${chargeError.message}`,
           payment_failed: true
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 500,
+          status: 200,
         });
       }
     } else {
       logStep("No default payment method - BLOCKING student creation");
       
-      // CRITICAL: No payment method = cannot charge = block student creation
+      // Return 200 with success:false so create-student can read the error body
       return new Response(JSON.stringify({ 
         success: false,
         error: "Nenhum método de pagamento configurado. Configure um cartão antes de adicionar alunos extras.",
         payment_failed: true
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
+        status: 200,
       });
     }
 

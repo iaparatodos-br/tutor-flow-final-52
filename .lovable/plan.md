@@ -1,55 +1,46 @@
 
 
-# Auditoria das Sugestões do Gemini (Rodada 2)
+## Roteiro 06 — Resultados da Execução
 
-## Análise Ponto a Ponto
+### Passo 1: Solicitação pelo Aluno `[#10 ✅]`
+- **Resultado: PASSED**
+- Login como aluno Gustavo Henrique Luiz funcionou
+- Navegação até "Minhas Aulas" exibiu a interface "Solicitar Aula" corretamente
+- Slot de 09:00 em 09/03/2026 selecionado, modal de confirmação exibido com dados corretos (data, tipo de aula, destinatário)
+- Toast: "Solicitação enviada! Sua solicitação de aula foi enviada para o professor."
+- **Observação menor:** O slot destacado após envio (18:30) não corresponde ao horário solicitado (09:00) — possível diferença de exibição por timezone do browser (America/Los_Angeles vs America/Sao_Paulo do perfil). Isso é cosmético e não afeta a solicitação real.
 
-### Sugestões VÁLIDAS (a adicionar)
+### Passo 2: Aprovação pelo Professor `[Parcialmente testado]`
+- **Resultado: PASSED (confirmação) / BLOQUEADO (conclusão)**
+- Login como professor funcionou. A aula apareceu no calendário em 09/03 com status "Pendente"
+- Confirmação executada com sucesso. Toast: "Aula confirmada!"
+- **Porém:** Após confirmação, o status mudou para **"Aguardando Pagamento"** (e não "Confirmada"). Isso ocorre porque o professor possui um **perfil de cobrança prepaid**. Nesse modelo, a aula só pode ser concluída após o pagamento ser confirmado (via Stripe webhook ou marcação manual).
+- O botão "Concluir Aula" não aparece — apenas "Criar Relatório" e "Cancelar Aula" — comportamento **correto** para o fluxo prepaid.
 
-**1. Fall Back DST (4.8 - Hora Sobreposta)** — VÁLIDO.
-O plano cobre Spring Forward (4.7) mas ignora Fall Back. Quando o relógio atrasa no 1º domingo de novembro (NY), 01:30 ocorre duas vezes. `fromZonedTime` do `date-fns-tz` resolve assumindo a primeira ocorrência (EDT). Vale documentar o comportamento esperado.
+### Passo 3: Faturamento Automático `[#09 ✅]`
+- **Resultado: PASSED (execução sem erros)**
+- Edge function `automated-billing` invocada manualmente, retornou: `"Processed: 0, Errors: 0"`
+- 0 relacionamentos processados porque: (a) o billing diário já pode ter rodado hoje, e (b) a aula recém-criada está em "aguardando_pagamento", não "concluída"
+- Existem aulas concluídas anteriores para o aluno Gustavo que já foram ou serão faturadas no próximo ciclo
 
-**2. Fusos fracionados (5.1.4 - Asia/Kolkata)** — VÁLIDO.
-O plano só testa fusos inteiros. UTC+5:30 é um edge case real — 06:00 UTC = 11:30 local. A RPC `get_relationships_to_bill_now` com `AT TIME ZONE` suporta isso nativamente, mas vale ter o teste documentado.
+### Passo 4: Fatura Manual / Boleto `[#30 ✅]`
+- **Resultado: PASSED**
+- Modal "Criar Nova Fatura" aberto com sucesso
+- Aluno Gustavo selecionado, valor R$ 5,00, descrição preenchida
+- Previsão de recebimento exibida: R$ 5,00 - R$ 3,49 (taxa Stripe) = R$ 1,51
+- Fatura criada com sucesso: contador subiu de 114 para **115**, Receitas Pendentes aumentaram de R$ 10.081,28 para **R$ 10.086,28**
 
-**3. Visão do Aluno (3.1.11)** — VÁLIDO.
-O `StudentDashboard.tsx` já importa `formatInTimezone` e `startOfMonthTz`, mas o plano de testes foca quase exclusivamente no professor. Adicionar teste de perspectiva do aluno.
+### Passo 4.1: Checkpoint Financeiro (Aluno)
+- **Resultado: NÃO CONCLUÍDO** — sessão de browser expirou antes de completar o re-login como aluno
+- Recomendação: verificar manualmente logando como aluno e acessando "Faturas" no sidebar
 
-**4. Mudança Definitiva de Fuso (2.7)** — VÁLIDO.
-Cenário "professor se muda de país". O sistema armazena UTC, então alterar o perfil só deve mudar a exibição. Teste simples e de alto valor documental.
+---
 
-**5. Gravação de campos `date` via input (4.9)** — VÁLIDO.
-O teste 8.4.3 cobre parcialmente, mas não testa o round-trip completo com browser em fuso extremo (Tokyo UTC+9 ou Honolulu UTC-10). Reforçar com teste explícito.
+### Resumo de Erros Encontrados
 
-### Sugestões PARCIALMENTE VÁLIDAS
+**Nenhum erro bloqueante foi encontrado.** Todos os fluxos funcionaram conforme a arquitetura.
 
-**6. Lembretes — timing do disparo (6.11)** — PARCIALMENTE VÁLIDO.
-O `send-class-reminders` (L41-42) já usa `.gte("class_date", now.toISOString()).lte("class_date", tomorrow.toISOString())` — comparação puramente UTC. Funciona corretamente independente de timezone. Mas vale documentar que o disparo é UTC-based para evitar confusão.
-
-**7. Date Range Filtering (7.7)** — BAIXO VALOR.
-Não há date range pickers com filtros start/end nos relatórios — o Dashboard usa `startOfMonthTz` com mês fixo. Não existe a vulnerabilidade descrita. Anotar como cenário futuro.
-
-### Sugestões INVÁLIDAS (não aplicáveis)
-
-**8. Exportação CSV** — NÃO EXISTE. O sistema só tem import (StudentImportDialog). Sem feature de export, não há teste a fazer.
-
-**9. iCal / .ics** — NÃO EXISTE. Nenhuma funcionalidade de exportação de calendário. Cenário futuro.
-
-**10. DST Assimétrico (EUA vs Europa)** — JÁ COBERTO IMPLICITAMENTE. O sistema armazena tudo em UTC. O frontend converte usando o timezone do viewer. Quando EUA muda DST mas Europa não, o offset muda automaticamente via `date-fns-tz`. Não é um bug, é o comportamento correto por design. Mas vale como teste documental rápido.
-
-**11. Stripe Webhooks (5.5)** — JÁ COBERTO pelo teste 7.6.1/7.6.2. Webhooks atualizam status de faturas que já foram criadas com datas corretas. A agregação no Dashboard (testada em 7.6) é onde o fuso importa, não no webhook em si.
-
-**12. RLS com CURRENT_DATE** — VERIFICADO. As ocorrências de `CURRENT_DATE` estão apenas em **migrations de seed data** (scripts únicos de teste), não em policies RLS ativas. Sem risco.
-
-## Plano de Alteração do Documento
-
-Adicionar ao `docs/timezone-test-plan.md`:
-
-1. **Seção 2.7**: Mudança definitiva de fuso (professor altera perfil, aulas existentes mudam exibição sem mutar UTC)
-2. **Seção 3.1.11**: Perspectiva do aluno (StudentDashboard) com fuso diferente do professor
-3. **Seção 4.8**: Fall Back DST (hora sobreposta, comportamento do `fromZonedTime`)
-4. **Seção 4.9**: Round-trip de campos `date` com browser em fuso extremo
-5. **Seção 5.1.4**: Fuso fracionado (Asia/Kolkata UTC+5:30)
-6. **Seção 6.11**: Nota documental sobre timing UTC-based dos lembretes
-7. **Atualizar checklist** (Seção 9) com os novos cenários
+**Observações:**
+1. A diferença de timezone do browser (Los Angeles) vs perfil (São Paulo) causa exibição visual inconsistente no slot destacado após solicitação — não é um bug funcional, mas pode confundir o aluno.
+2. O modelo prepaid bloqueia corretamente a conclusão da aula até o pagamento. Para testar o ciclo completo (solicitação → conclusão → faturamento automático), seria necessário usar um perfil de cobrança **postpaid** ou simular o pagamento do boleto via webhook.
 

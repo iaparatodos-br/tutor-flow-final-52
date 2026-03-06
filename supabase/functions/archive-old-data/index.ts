@@ -199,10 +199,7 @@ serve(async (req) => {
           // 4. class_notifications (reference class_id)
           await supabaseAdmin.from('class_notifications').delete().in('class_id', classIds);
           
-          // 5. class_exceptions (reference original_class_id)
-          await supabaseAdmin.from('class_exceptions').delete().in('original_class_id', classIds);
-          
-          // 6. class_participants
+          // 5. class_participants
           if (participantIds.length > 0) {
             const { error: deleteParticipantsError } = await supabaseAdmin
               .from('class_participants')

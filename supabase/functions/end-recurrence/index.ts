@@ -149,10 +149,7 @@ serve(async (req) => {
         await supabase.from('invoice_classes').delete().in('participant_id', futureParticipantIds);
       }
 
-      // 5c. Delete class_exceptions for these classes
-      await supabase.from('class_exceptions').delete().in('original_class_id', futureClassIds);
-
-      // 5d. Delete class_notifications for these classes
+      // 5c. Delete class_notifications for these classes
       await supabase.from('class_notifications').delete().in('class_id', futureClassIds);
 
       // 5e. Delete class_participants

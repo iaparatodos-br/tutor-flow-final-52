@@ -9,7 +9,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
-import { nowInTimezone, startOfMonthTz, DEFAULT_TIMEZONE } from "@/utils/timezone";
+import { startOfMonthTz, endOfMonthTz, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface DashboardStats {
   totalStudents: number;

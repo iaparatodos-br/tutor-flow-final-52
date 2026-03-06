@@ -2194,26 +2194,16 @@ export type Database = {
             }
             Returns: number
           }
-      count_completed_classes_in_month:
-        | {
-            Args: {
-              p_month: number
-              p_student_id: string
-              p_teacher_id: string
-              p_year: number
-            }
-            Returns: number
-          }
-        | {
-            Args: {
-              p_month: number
-              p_student_id: string
-              p_teacher_id: string
-              p_timezone?: string
-              p_year: number
-            }
-            Returns: number
-          }
+      count_completed_classes_in_month: {
+        Args: {
+          p_month: number
+          p_student_id: string
+          p_teacher_id: string
+          p_timezone?: string
+          p_year: number
+        }
+        Returns: number
+      }
       count_teacher_students_and_dependents: {
         Args: { p_teacher_id: string }
         Returns: {
@@ -2230,25 +2220,17 @@ export type Database = {
         Args: { event_data: Json }
         Returns: string
       }
-      get_billing_cycle_dates:
-        | {
-            Args: { p_billing_day: number; p_reference_date?: string }
-            Returns: {
-              cycle_end: string
-              cycle_start: string
-            }[]
-          }
-        | {
-            Args: {
-              p_billing_day: number
-              p_reference_date?: string
-              p_timezone?: string
-            }
-            Returns: {
-              cycle_end: string
-              cycle_start: string
-            }[]
-          }
+      get_billing_cycle_dates: {
+        Args: {
+          p_billing_day: number
+          p_reference_date?: string
+          p_timezone?: string
+        }
+        Returns: {
+          cycle_end: string
+          cycle_start: string
+        }[]
+      }
       get_calendar_events: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
         Returns: {
@@ -2336,54 +2318,17 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      get_student_active_subscription:
-        | {
-            Args: { p_relationship_id: string }
-            Returns: {
-              price: number
-              starts_at: string
-              student_subscription_id: string
-              subscription_id: string
-              subscription_name: string
-            }[]
-          }
-        | {
-            Args: { p_relationship_id: string; p_timezone?: string }
-            Returns: {
-              price: number
-              starts_at: string
-              student_subscription_id: string
-              subscription_id: string
-              subscription_name: string
-            }[]
-          }
+      get_student_active_subscription: {
+        Args: { p_relationship_id: string; p_timezone?: string }
+        Returns: {
+          price: number
+          starts_at: string
+          student_subscription_id: string
+          subscription_id: string
+          subscription_name: string
+        }[]
+      }
       get_student_subscription_details:
-        | {
-            Args: { p_student_id: string }
-            Returns: {
-              classes_used: number
-              max_classes: number
-              overage_price: number
-              price: number
-              relationship_id: string
-              starts_at: string
-              subscription_name: string
-              teacher_id: string
-              teacher_name: string
-            }[]
-          }
-        | {
-            Args: { p_student_id: string; p_teacher_id: string }
-            Returns: {
-              classes_used: number
-              price: number
-              relationship_id: string
-              starts_at: string
-              subscription_name: string
-              teacher_id: string
-              teacher_name: string
-            }[]
-          }
         | {
             Args: {
               p_student_id: string

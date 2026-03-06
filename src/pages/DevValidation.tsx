@@ -255,7 +255,7 @@ const DevValidation = () => {
         name: 'Função de Contagem', 
         status: 'success', 
         message: `Função executou corretamente (retornou: ${data})`,
-        details: { count: data, year: now.getFullYear(), month: now.getMonth() + 1 }
+        details: { count: data, year: tzYear, month: tzMonth }
       });
       addLog('success', `V05: OK - Função retornou ${data} aulas`);
     } catch (err) {

@@ -1,73 +1,50 @@
 
 
-# Roteiro 10 — Grupo Misto T4 (Adultos + Dependentes): Analise
+# Roteiro 14 — Validacao de API e Regras de Negocio: Analise
 
 ## Resumo
 
-Analisei todos os componentes e Edge Functions envolvidos nos 5 passos do roteiro. **Nenhum erro bloqueante encontrado para este cenario especifico.**
+Analisei os 3 cenarios. **Nenhum erro bloqueante encontrado.**
 
 ---
 
-## Analise por Passo
-
-### Passo 1 — Agendar turma mista (1 adulto + 1 dependente) `[#47]`
+## Passo 1 — Duracao negativa ou texto `[#70]`
 **Status: OK**
 
-- `ClassForm.tsx` suporta `ParticipantSelection` com `student_id` + `dependent_id`
-- Ao submeter, cria a classe com `is_group_class: true` e insere 2 registros em `class_participants`:
-  - `{ student_id: adult-uuid, dependent_id: null }`
-  - `{ student_id: responsible-uuid, dependent_id: child-uuid }`
-- O unique constraint `UNIQUE(class_id, student_id, COALESCE(dependent_id::text, ''))` permite ambos
-- O calendario exibe corretamente via `get_classes_with_participants` RPC
-
-### Passo 2 — Responsavel retira o filho (cancelamento parcial) `[#48]`
-**Status: OK**
-
-- `CancellationModal.tsx` passa `dependent_id` para `process-cancellation`
-- A Edge Function (linhas 279-335) detecta `isStudentLeavingGroupClass = true`
-- Cancela TODOS os registros com `student_id = responsible-uuid` (que inclui apenas o dependente neste caso)
-- O adulto permanece na aula com status inalterado
-- Notificacao enviada ao professor via `send-cancellation-notification` com nome do dependente
-
-### Passo 3 — Professor cancela turma mista inteira `[#49]`
-**Status: OK**
-
-- `process-cancellation` linhas 337-404: cancela TODOS os participantes e atualiza status da classe
-- Cria notificacoes para cada `student_id` distinto (adulto + responsavel)
-- `send-cancellation-notification` busca `dependent_name` dos dependentes e usa `student_guardian_email` da tabela `teacher_student_relationships` para enviar ao responsavel
-- Email do responsavel menciona o nome do dependente; adulto recebe email padrao
-
-### Passo 4 — Faturamento automatico apos turma mista concluida `[#50]`
-**Status: OK**
-
-- `automated-billing` usa `get_unbilled_participants_v2` que retorna cada participante separadamente com `dependent_id` e `dependent_name`
-- Para o adulto: fatura gerada no nome dele (student_id = adult-uuid)
-- Para o dependente: fatura gerada no nome do responsavel (student_id = responsible-uuid), com descricao incluindo `[NomeDependente]` (linha 477)
-- A RPC `create_invoice_and_mark_classes_billed` recebe `p_invoice_data` e `p_class_items` corretamente
-
-### Passo 5 — Relatorio da turma mista `[#51]`
-**Status: OK**
-
-- `ClassReportModal.tsx` inicializa feedbacks para cada participante (linhas 165-178), incluindo `dependent_id`
-- O formulario renderiza campos separados para adulto e dependente (com icone Baby e nome do responsavel)
-- Ao salvar, feedbacks sao inseridos em `class_report_feedbacks` com `student_id` + `dependent_id`
-- `send-class-report-notification` (linhas 169-173) faz match correto por `student_id + dependent_id` para encontrar o feedback individual
-- Email do responsavel usa `student_guardian_email` e menciona o nome do dependente
+- No `ClassForm.tsx` linha 371, a validacao frontend rejeita duracoes fora de 15-480 minutos: `formData.duration_minutes < 15 || formData.duration_minutes > 480`
+- O campo `duration_minutes` usa `type="number"` com `min="15"` e `max="480"` no HTML
+- No banco, existe CHECK constraint nas tabelas `classes` e `class_services` que limita entre 15 e 480 (conforme memoria do projeto)
+- Valores negativos (-30) ou texto ("abc") sao rejeitados pelo frontend (NaN falha na validacao) e pelo banco (CHECK constraint)
 
 ---
 
-## Observacao sobre Bug Latente (fora do escopo deste roteiro)
+## Passo 2 — Pre-Pago + Recorrencia Infinita `[#71]`
+**Status: OK**
 
-Ha um bug latente no `ClassReportModal` quando um **responsavel E seu dependente** sao ambos participantes da mesma aula (mesmo `student_id`, `dependent_id` diferente). Neste caso:
-- Linha 556: `feedbacks.find(f => f.student_id === participant.student_id)` retorna o primeiro match, misturando feedbacks
-- Linha 563: `key={participant.student_id}` gera chaves duplicadas no React
-- Linha 180-186: `updateFeedback` atualiza apenas o primeiro match
+- `ClassForm.tsx` linha 260: `const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class`
+- Quando `isRecurrenceBlocked = true`:
+  - O checkbox de recorrencia fica `disabled` (linha 803)
+  - O card fica com `opacity-60` (linha 783)
+  - A descricao exibe mensagem de bloqueio `recurrenceBlockedPrepaid` (linha 793)
+  - O `onCheckedChange` retorna imediatamente sem alterar estado (linha 805)
+- Na submissao (linha 395-401), `showRecurrence` permanece `false`, entao `recurrence` e `undefined`
+- A combinacao Pre-Pago + Recorrencia esta corretamente bloqueada na UI
 
-Este bug **NAO afeta** o Roteiro 10, pois o adulto e o responsavel sao usuarios diferentes (student_ids distintos). Mas afetaria cenarios onde o proprio pai participa junto com seu filho.
+---
+
+## Passo 3 — smart-delete-student com faturas pagas `[#72]`
+**Status: OK**
+
+- `smart-delete-student/index.ts` linhas 720-752:
+  1. Consulta faturas com status `paga` ou `concluida` (linha 724-725)
+  2. Se existem faturas pagas (`paidInvoicesCount > 0`): faz **soft-delete** — atualiza o profile com `role: 'deleted'`, muda email para `deleted_{id}@removed.local`, preserva o `name` original (linhas 737-744)
+  3. **NAO** deleta o usuario do auth (linha 752: "Do NOT delete auth user")
+  4. Os registros de `invoices` e `invoice_classes` com status `paga`/`concluida` sao preservados ao longo de todo o fluxo (linhas 662-673: filtra com `.not('invoices.status', 'in', '("paga","concluida")')`)
+- Resultado: aluno desaparece da UI (role = 'deleted'), mas dados fiscais (faturas pagas, itens de fatura, participacoes associadas) permanecem intactos no banco
 
 ---
 
 ## Conclusao
 
-Todos os 5 cenarios passam sem erros para a configuracao descrita no roteiro (1 adulto separado + 1 dependente de outro responsavel). Nenhuma alteracao de codigo necessaria.
+Todos os 3 cenarios passam sem erros. Nenhuma alteracao de codigo necessaria.
 

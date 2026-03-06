@@ -12,6 +12,11 @@
   "experimental": "Experimental Class (free)",
   "experimentalNote": "This class will not be charged and will be marked as experimental",
   "groupClass": "Group Class",
+  "participantGroups": {
+    "students": "Students",
+    "dependents": "Dependents",
+    "childOf": "child of"
+  },
   "groupClassPremium": "Group Class - Premium",
   "groupClassNote": "Group classes are a premium feature. Upgrade your plan to use this functionality.",
   "noStudentsRegistered": "No students registered",
@@ -23,8 +28,12 @@
   "selectServicePlaceholder": "Select a service",
   "selectServiceError": "Select a service to set the class price",
   "pastDateTimeError": "Cannot schedule classes for past date/time",
-  "timeConflictError": "There is already a class scheduled at this time",
+  "pastDateTimeWarning": "You are scheduling a class in the past. It will be created normally for record-keeping purposes.",
+  "timeConflictWarning": "There is already a class scheduled at this time. You can continue anyway.",
   "selectStudentError": "Select at least one student",
+  "isPaidClass": "Paid Class",
+  "isPaidClassDescription": "This class will be charged to the student",
+  "recurrenceBlockedPrepaid": "Recurrence not available for paid classes in prepaid model",
   "recurrence": "Recurrence",
   "recurrenceDescription": "Configure recurring classes",
   "infiniteRecurrence": "Continuous Recurrence",
@@ -79,7 +88,13 @@
     "groupShort": "Group ({{count}})",
     "partialCancellation": "Partial Cancellation",
     "activeParticipants": "Active Participants",
-    "cancelledParticipants": "Cancelled Participants"
+    "cancelledParticipants": "Cancelled Participants",
+    "noEventsThisDay": "No events today",
+    "timeConflict": "There are classes with conflicting times on this day"
+  },
+  "mobile": {
+    "viewDetails": "View details",
+    "swipeForActions": "Swipe for actions"
   },
   "fields": {
     "student": "Student",
@@ -99,7 +114,8 @@
     "pending": "Pending",
     "confirmed": "Confirmed",
     "cancelled": "Cancelled",
-    "completed": "Completed"
+    "completed": "Completed",
+    "awaitingPayment": "Awaiting Payment"
   },
   "types": {
     "individual": "Individual",
@@ -116,7 +132,12 @@
     "completeClass": "Complete Class",
     "markAsCompleted": "Mark as Completed",
     "createReport": "Create Report",
-    "editReport": "Edit Report"
+    "editReport": "Edit Report",
+    "chargeManagement": "Charge Management",
+    "confirmTitle": "Confirm Class",
+    "confirmDescription": "Do you want to confirm this class?",
+    "isPaidClass": "Paid Class",
+    "isPaidClassDescription": "This class will be charged to the student"
   },
   "daysOfWeek": {
     "sun": "Sun",
@@ -161,6 +182,10 @@
     "classCompleted": "Class completed!",
     "classCompletedDescription": "The class was marked as completed",
     "occurrenceCancelled": "Class cancelled",
-    "occurrenceCancelledDescription": "This class occurrence was cancelled successfully"
+    "occurrenceCancelledDescription": "This class occurrence was cancelled successfully",
+    "amnestyGuidance": "Grant Amnesty",
+    "amnestyGuidanceDesc": "Click on the highlighted class and use the \"Grant Amnesty\" button.",
+    "reportGuidance": "Create Report",
+    "reportGuidanceDesc": "Click on the highlighted class and use the \"Create Report\" button."
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
+import { formatInTimezone, formatDateTimeBrazil } from "@/utils/timezone";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
@@ -9,13 +10,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ClassReportView } from "@/components/ClassReportView";
+import { useDependents, Dependent, DependentFormData } from "@/hooks/useDependents";
+import { DependentFormModal } from "@/components/DependentFormModal";
+import { useTranslation } from "react-i18next";
 
 import { 
   ArrowLeft, 
   User, 
+  Users,
   Mail, 
   Phone, 
   Calendar, 
@@ -27,18 +33,23 @@ import {
   XCircle,
   AlertCircle,
   FileText,
-  Eye
+  Eye,
+  ChevronDown,
+  ChevronRight,
+  UserPlus,
+  Cake,
+  Package,
+  Infinity,
+  Edit2,
+  Trash2
 } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 interface StudentProfile {
   id: string;
   name: string;
   email: string;
   created_at: string;
-  guardian_name?: string;
-  guardian_email?: string;
-  guardian_phone?: string;
-  billing_day?: number;
 }
 
 interface ClassRecord {
@@ -71,12 +82,28 @@ interface StudentStats {
   pendingAmount: number;
 }
 
+interface DependentStats {
+  dependent_id: string;
+  total_classes: number;
+  total_hours: number;
+  last_class_date: string | null;
+}
+
+interface DependentClassRecord {
+  id: string;
+  class_date: string;
+  status: string;
+  duration_minutes: number;
+  notes?: string;
+}
+
 export default function PerfilAluno() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { profile } = useProfile();
   const { hasFeature } = useSubscription();
   const { toast } = useToast();
+  const { t } = useTranslation('students');
 
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [classes, setClasses] = useState<ClassRecord[]>([]);
@@ -91,12 +118,67 @@ export default function PerfilAluno() {
   });
   const [loading, setLoading] = useState(true);
   const [selectedClassForReport, setSelectedClassForReport] = useState<string | null>(null);
+  
+  // Mensalidade ativa do aluno
+  const [activeSubscription, setActiveSubscription] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  
+  // Dependent states
+  const [studentDependents, setStudentDependents] = useState<Dependent[]>([]);
+  const [dependentStats, setDependentStats] = useState<Record<string, DependentStats>>({});
+  const [expandedDependents, setExpandedDependents] = useState<Set<string>>(new Set());
+  const [dependentClasses, setDependentClasses] = useState<Record<string, DependentClassRecord[]>>({});
+  const [isDependentModalOpen, setIsDependentModalOpen] = useState(false);
+  const [editingDependent, setEditingDependent] = useState<Dependent | null>(null);
+  const [isSubmittingDependent, setIsSubmittingDependent] = useState(false);
+  
+  const { 
+    createDependent, 
+    updateDependent, 
+    deleteDependent,
+    fetchDependentsForResponsible 
+  } = useDependents({ teacherId: profile?.id });
 
   useEffect(() => {
     if (profile?.id && id) {
       loadStudentData();
+      loadDependents();
+      loadActiveSubscription();
     }
   }, [profile, id]);
+
+  const loadActiveSubscription = async () => {
+    if (!profile?.id || !id) return;
+    try {
+      const { data: rel } = await supabase
+        .from('teacher_student_relationships')
+        .select('id')
+        .eq('teacher_id', profile.id)
+        .eq('student_id', id)
+        .single();
+      
+      if (!rel) return;
+
+      const { data: sub } = await supabase
+        .from('student_monthly_subscriptions')
+        .select('id, starts_at, monthly_subscriptions(name)')
+        .eq('relationship_id', rel.id)
+        .eq('is_active', true)
+        .is('ends_at', null)
+        .maybeSingle();
+
+      if (sub?.monthly_subscriptions) {
+        setActiveSubscription({
+          id: sub.id,
+          name: sub.monthly_subscriptions.name,
+        });
+      }
+    } catch (e) {
+      console.error('Error loading subscription:', e);
+    }
+  };
 
   const loadStudentData = async () => {
     if (!profile?.id || !id) return;
@@ -105,7 +187,7 @@ export default function PerfilAluno() {
       // Load student profile - first verify teacher-student relationship
       const { data: relationshipData, error: relationshipError } = await supabase
         .from('teacher_student_relationships')
-        .select('student_id, student_guardian_name, student_guardian_email, student_guardian_phone, billing_day')
+        .select('student_id')
         .eq('teacher_id', profile.id)
         .eq('student_id', id)
         .single();
@@ -123,16 +205,7 @@ export default function PerfilAluno() {
 
       if (studentError) throw studentError;
       
-      // Combine student data with guardian data from relationship
-      const combinedStudent = {
-        ...studentData,
-        guardian_name: relationshipData.student_guardian_name,
-        guardian_email: relationshipData.student_guardian_email,
-        guardian_phone: relationshipData.student_guardian_phone,
-        billing_day: relationshipData.billing_day
-      };
-      
-      setStudent(combinedStudent);
+      setStudent(studentData);
 
       // Load student's class participations (both individual and group)
       const { data: participationsData, error: participationsError } = await supabase
@@ -224,21 +297,186 @@ export default function PerfilAluno() {
     }
   };
 
+  // Load dependents for this student (if they are a responsible)
+  const loadDependents = async () => {
+    if (!profile?.id || !id) return;
+    
+    try {
+      const deps = await fetchDependentsForResponsible(id);
+      setStudentDependents(deps);
+      
+      // Load stats for each dependent
+      if (deps.length > 0) {
+        const statsMap: Record<string, DependentStats> = {};
+        
+        for (const dep of deps) {
+          // Get class participations for this dependent
+          const { data: participations } = await supabase
+            .from('class_participants')
+            .select(`
+              id,
+              status,
+              classes!inner (
+                duration_minutes,
+                class_date,
+                teacher_id
+              )
+            `)
+            .eq('dependent_id', dep.dependent_id)
+            .eq('classes.teacher_id', profile.id);
+          
+          const totalClasses = participations?.length || 0;
+          const totalMinutes = (participations || []).reduce((sum, p) => {
+            const classData = Array.isArray(p.classes) ? p.classes[0] : p.classes;
+            return sum + (classData?.duration_minutes || 0);
+          }, 0);
+          
+          const lastClass = (participations || []).sort((a, b) => {
+            const dateA = Array.isArray(a.classes) ? a.classes[0]?.class_date : a.classes?.class_date;
+            const dateB = Array.isArray(b.classes) ? b.classes[0]?.class_date : b.classes?.class_date;
+            return new Date(dateB || 0).getTime() - new Date(dateA || 0).getTime();
+          })[0];
+          
+          const lastClassDate = lastClass 
+            ? (Array.isArray(lastClass.classes) ? lastClass.classes[0]?.class_date : lastClass.classes?.class_date) 
+            : null;
+          
+          statsMap[dep.dependent_id] = {
+            dependent_id: dep.dependent_id,
+            total_classes: totalClasses,
+            total_hours: Math.round(totalMinutes / 60 * 10) / 10,
+            last_class_date: lastClassDate
+          };
+        }
+        
+        setDependentStats(statsMap);
+      }
+    } catch (error) {
+      console.error('Error loading dependents:', error);
+    }
+  };
+
+  // Load classes for a specific dependent when expanded
+  const loadDependentClasses = async (dependentId: string) => {
+    if (!profile?.id) return;
+    
+    try {
+      const { data: participations } = await supabase
+        .from('class_participants')
+        .select(`
+          id,
+          status,
+          class_id,
+          classes!inner (
+            id,
+            class_date,
+            duration_minutes,
+            notes,
+            teacher_id
+          )
+        `)
+        .eq('dependent_id', dependentId)
+        .eq('classes.teacher_id', profile.id)
+        .order('classes(class_date)', { ascending: false })
+        .limit(10);
+      
+      const classRecords: DependentClassRecord[] = (participations || []).map(p => {
+        const classData = Array.isArray(p.classes) ? p.classes[0] : p.classes;
+        return {
+          id: p.class_id,
+          class_date: classData.class_date,
+          status: p.status,
+          duration_minutes: classData.duration_minutes,
+          notes: classData.notes
+        };
+      });
+      
+      setDependentClasses(prev => ({
+        ...prev,
+        [dependentId]: classRecords
+      }));
+    } catch (error) {
+      console.error('Error loading dependent classes:', error);
+    }
+  };
+
+  const toggleDependentExpanded = (dependentId: string) => {
+    setExpandedDependents(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(dependentId)) {
+        newSet.delete(dependentId);
+      } else {
+        newSet.add(dependentId);
+        // Load classes if not already loaded
+        if (!dependentClasses[dependentId]) {
+          loadDependentClasses(dependentId);
+        }
+      }
+      return newSet;
+    });
+  };
+
+  const handleAddDependent = () => {
+    setEditingDependent(null);
+    setIsDependentModalOpen(true);
+  };
+
+  const handleEditDependent = (dep: Dependent) => {
+    setEditingDependent(dep);
+    setIsDependentModalOpen(true);
+  };
+
+  const handleDependentSubmit = async (formData: DependentFormData) => {
+    if (!id) return;
+    
+    setIsSubmittingDependent(true);
+    try {
+      if (editingDependent) {
+        await updateDependent(editingDependent.dependent_id, formData);
+      } else {
+        await createDependent(formData, id);
+      }
+      setIsDependentModalOpen(false);
+      setEditingDependent(null);
+      await loadDependents();
+    } finally {
+      setIsSubmittingDependent(false);
+    }
+  };
+
+  const handleDeleteDependent = async (dependentId: string) => {
+    const success = await deleteDependent(dependentId);
+    if (success) {
+      await loadDependents();
+    }
+  };
+
+  const formatBirthDate = (date: string | null) => {
+    if (!date) return null;
+    // birth_date is a date-only field (YYYY-MM-DD) — use string split to avoid off-by-one
+    const parts = date.split('-');
+    return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : date;
+  };
+
+  const userTimezone = profile?.timezone || 'America/Sao_Paulo';
+
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'concluida': return <CheckCircle className="h-4 w-4 text-success" />;
-      case 'cancelada': return <XCircle className="h-4 w-4 text-destructive" />;
-      case 'pendente': return <Clock className="h-4 w-4 text-warning" />;
+      case 'concluida': return <CheckCircle className="h-4 w-4 text-emerald-500" />;
+      case 'cancelada': return <XCircle className="h-4 w-4 text-slate-400" />;
+      case 'confirmada': return <CheckCircle className="h-4 w-4 text-blue-500" />;
+      case 'pendente': return <Clock className="h-4 w-4 text-amber-500" />;
       default: return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'concluida': return <Badge className="bg-success text-success-foreground">Concluída</Badge>;
-      case 'cancelada': return <Badge variant="destructive">Cancelada</Badge>;
-      case 'pendente': return <Badge className="bg-warning text-warning-foreground">Pendente</Badge>;
-      case 'paga': return <Badge className="bg-success text-success-foreground">Paga</Badge>;
+      case 'concluida': return <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent">Concluída</Badge>;
+      case 'cancelada': return <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent">Cancelada</Badge>;
+      case 'pendente': return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent">Pendente</Badge>;
+      case 'aguardando_pagamento': return <Badge className="bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400 border-transparent">Aguardando Pagamento</Badge>;
+      case 'paga': return <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent">Paga</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -301,7 +539,15 @@ export default function PerfilAluno() {
                 <User className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold">{student.name}</h1>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-3xl font-bold">{student.name}</h1>
+                  {activeSubscription && (
+                    <Badge variant="secondary" className="flex items-center gap-1">
+                      <Package className="h-3 w-3" />
+                      {activeSubscription.name}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-muted-foreground">Perfil completo do aluno</p>
               </div>
             </div>
@@ -382,66 +628,157 @@ export default function PerfilAluno() {
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">
-                    Cadastrado em {new Date(student.created_at).toLocaleDateString('pt-BR')}
+                    Cadastrado em {formatInTimezone(student.created_at, 'dd/MM/yyyy', userTimezone)}
                   </span>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Responsible Info */}
+            {/* Dependents Section */}
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5" />
-                  Responsável
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    {t('dependents.title', 'Dependentes')} ({studentDependents.length})
+                  </CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={handleAddDependent}
+                    title={t('dependents.add', 'Adicionar')}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                  </Button>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {student.guardian_name ? (
-                  <>
-                    {student.guardian_name === student.name ? (
-                      <div className="text-center py-4">
-                        <Badge variant="outline" className="mb-2">
-                          O próprio aluno é responsável
-                        </Badge>
-                        <p className="text-sm text-muted-foreground">
-                          Cobrança direta para o aluno
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        <div>
-                          <p className="font-medium">{student.guardian_name}</p>
-                        </div>
-                        {student.guardian_email && (
-                          <div className="flex items-center gap-3">
-                            <Mail className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{student.guardian_email}</span>
-                          </div>
-                        )}
-                        {student.guardian_phone && (
-                          <div className="flex items-center gap-3">
-                            <Phone className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{student.guardian_phone}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Dia de cobrança:</span>
-                      <div className="flex items-center gap-1">
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{student.billing_day || 15}</span>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="text-center py-4">
-                    <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Dados do responsável não configurados
+              <CardContent>
+                {studentDependents.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Users className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
+                    <p className="text-muted-foreground text-sm">
+                      {t('dependents.noDependents', 'Nenhum dependente cadastrado')}
                     </p>
+                    <Button 
+                      variant="link" 
+                      size="sm" 
+                      onClick={handleAddDependent}
+                      className="mt-2"
+                    >
+                      <UserPlus className="h-4 w-4 mr-1" />
+                      {t('dependents.addFirst', 'Adicionar primeiro dependente')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {studentDependents.map((dep) => {
+                      const stats = dependentStats[dep.dependent_id];
+                      const isExpanded = expandedDependents.has(dep.dependent_id);
+                      const depClasses = dependentClasses[dep.dependent_id] || [];
+                      
+                      return (
+                        <Collapsible 
+                          key={dep.dependent_id} 
+                          open={isExpanded}
+                          onOpenChange={() => toggleDependentExpanded(dep.dependent_id)}
+                        >
+                          <div className="border border-border rounded-lg">
+                            <CollapsibleTrigger asChild>
+                              <div className="flex items-center gap-2 p-3 cursor-pointer hover:bg-muted/50 transition-colors">
+                                <div className="flex-shrink-0">
+                                  {isExpanded ? (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                  )}
+                                </div>
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                  <User className="h-4 w-4 text-primary" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-sm truncate">{dep.dependent_name}</p>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {dep.birth_date && formatBirthDate(dep.birth_date)}
+                                    {dep.birth_date && stats && ' · '}
+                                    {stats && `${stats.total_classes} ${t('dependents.classes', 'aulas')}`}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditDependent(dep);
+                                    }}
+                                  >
+                                    <Edit2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-destructive hover:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteDependent(dep.dependent_id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            
+                            <CollapsibleContent>
+                              <div className="border-t border-border p-3 bg-muted/30">
+                                {dep.notes && (
+                                  <p className="text-sm text-muted-foreground mb-3 italic">
+                                    "{dep.notes}"
+                                  </p>
+                                )}
+                                
+                                <p className="text-sm font-medium mb-2">
+                                  {t('dependents.classHistory', 'Histórico de Aulas')}
+                                </p>
+                                
+                                {depClasses.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground">
+                                    {t('dependents.noClasses', 'Nenhuma aula registrada')}
+                                  </p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {depClasses.map((cls) => (
+                                      <div 
+                                        key={cls.id} 
+                                        className="flex items-center justify-between p-2 bg-background rounded border border-border"
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          {getStatusIcon(cls.status)}
+                                          <span className="text-sm">
+                                            {formatDateTimeBrazil(cls.class_date, userTimezone)}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground">
+                                            ({cls.duration_minutes} min)
+                                          </span>
+                                        </div>
+                                        
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                {stats?.last_class_date && (
+                                  <p className="text-xs text-muted-foreground mt-2">
+                                    {t('dependents.lastClass', 'Última aula')}: {formatInTimezone(stats.last_class_date, 'dd/MM/yyyy', userTimezone)}
+                                  </p>
+                                )}
+                              </div>
+                            </CollapsibleContent>
+                          </div>
+                        </Collapsible>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -473,13 +810,7 @@ export default function PerfilAluno() {
                           {getStatusIcon(classRecord.status)}
                           <div className="flex-1">
                             <p className="font-medium">
-                              {new Date(classRecord.class_date).toLocaleDateString('pt-BR', {
-                                day: '2-digit',
-                                month: '2-digit',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {formatDateTimeBrazil(classRecord.class_date, userTimezone)}
                             </p>
                             <p className="text-sm text-muted-foreground">
                               {classRecord.duration_minutes} minutos
@@ -534,11 +865,11 @@ export default function PerfilAluno() {
                   ) : (
                     <div className="space-y-3 max-h-96 overflow-y-auto">
                       {invoices.slice(0, 10).map((invoice) => (
-                        <div key={invoice.id} className="flex items-center justify-between p-3 border border-border rounded-lg">
-                          <div>
+                        <div key={invoice.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 border border-border rounded-lg">
+                          <div className="min-w-0">
                             <p className="font-medium">R$ {Number(invoice.amount).toFixed(2)}</p>
                             <p className="text-sm text-muted-foreground">
-                              Vencimento: {new Date(invoice.due_date).toLocaleDateString('pt-BR')}
+                              Vencimento: {(() => { const p = invoice.due_date.split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : invoice.due_date; })()}
                             </p>
                             {invoice.description && (
                               <p className="text-sm text-muted-foreground">
@@ -546,7 +877,7 @@ export default function PerfilAluno() {
                               </p>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                             {getStatusBadge(invoice.status)}
                             {invoice.stripe_invoice_url && (
                               <Button variant="ghost" size="sm" asChild>
@@ -591,6 +922,16 @@ export default function PerfilAluno() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dependent Form Modal */}
+      <DependentFormModal
+        isOpen={isDependentModalOpen}
+        onOpenChange={setIsDependentModalOpen}
+        onSubmit={handleDependentSubmit}
+        isSubmitting={isSubmittingDependent}
+        dependent={editingDependent}
+        responsibleName={student?.name}
+      />
     </Layout>
   );
 }

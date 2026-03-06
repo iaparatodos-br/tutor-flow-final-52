@@ -28,10 +28,24 @@
   "teacher": "Teacher",
   "type": "Type",
   "dueDate": "Due Date",
-  "actions": "Actions",
   "regularType": "Regular",
   "cancellationType": "Cancellation",
+  "defaultDescription": "Private lessons",
+  "invoiceTypes": {
+    "regular": "Regular",
+    "cancellation": "Cancellation",
+    "automated": "Automated",
+    "manual": "Manual",
+    "monthlySubscription": "Monthly Subscription",
+    "prepaidClass": "Prepaid",
+    "orphanCharges": "Pending Charges"
+  },
   "originalAmount": "Original amount: {amount}",
+  "groups": {
+    "students": "Students",
+    "dependents": "Dependents",
+    "childOf": "child of"
+  },
   "fields": {
     "amount": "Amount",
     "date": "Date",
@@ -41,14 +55,32 @@
     "paymentDate": "Payment Date",
     "method": "Method",
     "reference": "Reference",
-    "category": "Category"
+    "category": "Category",
+    "recipient": "Recipient"
+  },
+  "placeholders": {
+    "selectRecipient": "Select a recipient"
+  },
+  "modal": {
+    "createTitle": "Create New Invoice",
+    "createDescription": "The invoice will be automatically directed to the bank account configured for the selected student."
+  },
+  "actions": {
+    "newInvoice": "New Invoice"
+  },
+  "errors": {
+    "studentAndAmountRequired": "Recipient and amount are required",
+    "amountMustBePositive": "Amount must be greater than zero",
+    "amountBelowMinimum": "Minimum amount for boleto is R$ 5.00",
+    "amountAboveMaximum": "Maximum amount for boleto is R$ 49,999.99"
   },
   "status": {
     "paid": "Paid",
     "pending": "Pending",
     "overdue": "Overdue",
     "cancelled": "Cancelled",
-    "refunded": "Refunded"
+    "refunded": "Refunded",
+    "paymentFailed": "Payment Failed"
   },
   "methods": {
     "cash": "Cash",
@@ -62,6 +94,19 @@
     "automatic": "Automatic",
     "manual": "Manual",
     "system": "System"
+  },
+  "paymentOrigins": {
+    "manual": "Manual Payment",
+    "stripe": "Stripe",
+    "automatic": "Automatic Billing",
+    "unspecified": "Not specified"
+  },
+  "receipt": {
+    "paymentMethod": "Payment Method",
+    "back": "Back",
+    "print": "Print",
+    "downloadPdf": "Download PDF",
+    "pdfInstructions": "In the print dialog, select \"Save as PDF\" as the destination."
   },
   "markAsPaid": {
     "title": "Confirm Manual Payment",
@@ -141,5 +186,41 @@
     "previewTitle": "Receipt Preview",
     "invoiceAmount": "Invoice amount",
     "deducted": "This fee is automatically deducted and is already reflected in the amounts you will receive."
+  },
+  "boleto": {
+    "minimumAmountError": "The minimum amount for boleto is R$ 5.00",
+    "maximumAmountError": "The maximum amount for boleto is R$ 49,999.99",
+    "amountBelowMinimum": "Amount below minimum for boleto",
+    "amountBelowMinimumStudent": "This invoice amount is below the minimum of R$ 5.00 for boleto generation. Please contact your teacher."
+  },
+  "studentInvoices": {
+    "title": "My Invoices",
+    "billingHistory": "Billing History",
+    "selectTeacher": "Select a teacher to view your invoices.",
+    "noInvoices": "No invoices found.",
+    "loadError": "Error loading invoices.",
+    "columns": {
+      "date": "Date",
+      "description": "Description",
+      "dueDate": "Due Date",
+      "amount": "Amount",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "defaultDescription": "Class charge",
+    "dependentBadge": "Dependent",
+    "payNow": "Pay Now",
+    "choosePaymentMethod": "Choose Method",
+    "viewReceipt": "View Receipt",
+    "noPaymentMethod": "No payment generated",
+    "changePaymentMethod": {
+      "title": "Change Payment Method",
+      "description": "You will be able to choose a new payment method for this invoice.",
+      "warning": "By changing, the current payment will be cancelled and you will need to generate a new one.",
+      "confirm": "Confirm Change",
+      "cancel": "Cancel",
+      "success": "Payment method changed successfully! You can now choose a new method.",
+      "error": "Error changing payment method"
+    }
   }
 }

@@ -18,6 +18,33 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT — only authenticated teachers/admins can access
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    // Verify user is a teacher (only teachers need to see Stripe events)
+    const { data: profile } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', userData.user.id)
+      .maybeSingle();
+    if (!profile || profile.role !== 'professor') {
+      return new Response(JSON.stringify({ error: "Acesso restrito a professores" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    console.log('[STRIPE-EVENTS-MONITOR] Authenticated:', userData.user.id);
+
     const url = new URL(req.url);
     const days = parseInt(url.searchParams.get('days') || '7');
     const eventType = url.searchParams.get('event_type');

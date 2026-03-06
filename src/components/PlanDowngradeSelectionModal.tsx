@@ -5,15 +5,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2, Check, TrendingUp } from 'lucide-react';
+import { AlertTriangle, Users, CreditCard, ArrowRight, Loader2, Check, TrendingUp, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { ProgressModal } from './ProgressModal';
 import { useSubscription } from '@/contexts/SubscriptionContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useProfile } from '@/contexts/ProfileContext';
 
 interface Student {
   id: string;
@@ -21,6 +22,23 @@ interface Student {
   name: string;
   email: string;
   created_at: string;
+}
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
+  created_at: string;
+}
+
+interface SelectableEntity {
+  id: string;
+  name: string;
+  email?: string;
+  created_at: string;
+  type: 'student' | 'dependent';
+  responsibleName?: string;
 }
 
 interface PlanDowngradeSelectionModalProps {
@@ -32,6 +50,7 @@ interface PlanDowngradeSelectionModalProps {
   currentCount: number;
   targetLimit: number;
   needToRemove: number;
+  isPaymentFailure?: boolean;
 }
 
 export function PlanDowngradeSelectionModal({
@@ -42,24 +61,80 @@ export function PlanDowngradeSelectionModal({
   newPlan,
   currentCount,
   targetLimit,
-  needToRemove
+  needToRemove,
+  isPaymentFailure = false
 }: PlanDowngradeSelectionModalProps) {
   const { t } = useTranslation('subscription');
   const { plans, createCheckoutSession } = useSubscription();
-  const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const { profile } = useProfile();
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [progressSteps, setProgressSteps] = useState<any[]>([]);
   const [progress, setProgress] = useState(0);
   const [availablePlans, setAvailablePlans] = useState<any[]>([]);
-  const [selectedTab, setSelectedTab] = useState<string>('select-students');
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [loadingDependents, setLoadingDependents] = useState(false);
+
+  const hasExcessStudents = needToRemove > 0;
+  const [selectedTab, setSelectedTab] = useState<string>(hasExcessStudents ? 'select-students' : 'upgrade-plan');
+
+  // Update default tab when needToRemove changes
+  useEffect(() => {
+    setSelectedTab(hasExcessStudents ? 'select-students' : 'upgrade-plan');
+  }, [hasExcessStudents]);
+
+  // Fetch dependents when modal opens
+  useEffect(() => {
+    if (open && profile?.id) {
+      loadDependents();
+    }
+  }, [open, profile?.id]);
+
+  const loadDependents = async () => {
+    if (!profile?.id) return;
+    setLoadingDependents(true);
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      if (error) throw error;
+      setDependents(data?.map((d: any) => ({
+        id: d.dependent_id,
+        name: d.dependent_name,
+        responsible_id: d.responsible_id,
+        responsible_name: d.responsible_name,
+        created_at: d.created_at
+      })) || []);
+    } catch (error) {
+      console.error('Error loading dependents:', error);
+    } finally {
+      setLoadingDependents(false);
+    }
+  };
+
+  // Combine students and dependents into selectable entities
+  const allEntities: SelectableEntity[] = [
+    ...students.map(s => ({
+      id: s.id,
+      name: s.name,
+      email: s.email,
+      created_at: s.created_at,
+      type: 'student' as const
+    })),
+    ...dependents.map(d => ({
+      id: `dep_${d.id}`,
+      name: d.name,
+      created_at: d.created_at,
+      type: 'dependent' as const,
+      responsibleName: d.responsible_name
+    }))
+  ];
 
   useEffect(() => {
-    // Filter plans that are superior to the new plan
-    // Include plans with lower student_limit because they can pay for additional students
     const suitablePlans = plans.filter(plan => 
       plan.price_cents > (newPlan?.price_cents || 0) &&
-      plan.slug !== 'free' // Exclude free plan
+      plan.slug !== 'free'
     ).sort((a, b) => a.price_cents - b.price_cents);
     
     setAvailablePlans(suitablePlans);
@@ -76,7 +151,6 @@ export function PlanDowngradeSelectionModal({
         description: "Complete o pagamento no Stripe. Seus dados serão atualizados automaticamente.",
       });
       
-      // Fecha o modal após 2 segundos
       setTimeout(() => {
         onClose(true);
       }, 2000);
@@ -91,34 +165,66 @@ export function PlanDowngradeSelectionModal({
     }
   };
 
-  const handleStudentToggle = (studentId: string) => {
-    setSelectedStudents(prev => {
-      if (prev.includes(studentId)) {
-        return prev.filter(id => id !== studentId);
+  const handleDirectDowngrade = async () => {
+    setProcessing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        isPaymentFailure ? 'process-payment-failure-downgrade' : 'handle-plan-downgrade-selection',
+        {
+          body: isPaymentFailure
+            ? { selectedStudentIds: null, reason: 'payment_failure' }
+            : { selected_student_ids: [], selected_dependent_ids: [], new_plan_id: newPlan.id }
+        }
+      );
+
+      if (error) throw error;
+
+      toast({
+        title: isPaymentFailure
+          ? t('paymentFailure.downgradedSuccessfully')
+          : t('downgrade.selection.downgradeCompleted'),
+      });
+      onClose(true);
+    } catch (error) {
+      console.error('Error processing direct downgrade:', error);
+      toast({
+        title: isPaymentFailure
+          ? t('paymentFailure.errorDowngrading')
+          : t('downgrade.selection.errorProcessing'),
+        variant: "destructive",
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleEntityToggle = (entityId: string) => {
+    setSelectedEntities(prev => {
+      if (prev.includes(entityId)) {
+        return prev.filter(id => id !== entityId);
       } else if (prev.length < targetLimit) {
-        return [...prev, studentId];
+        return [...prev, entityId];
       }
-      return prev; // Don't add if already at limit
+      return prev;
     });
   };
 
   const handleSelectAll = () => {
-    if (selectedStudents.length === targetLimit) {
-      setSelectedStudents([]);
+    if (selectedEntities.length === targetLimit) {
+      setSelectedEntities([]);
     } else {
-      // Select first students up to limit (could be based on creation date)
-      const sortedStudents = [...students].sort((a, b) => 
+      const sortedEntities = [...allEntities].sort((a, b) => 
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
-      setSelectedStudents(sortedStudents.slice(0, targetLimit).map(s => s.id));
+      setSelectedEntities(sortedEntities.slice(0, targetLimit).map(e => e.id));
     }
   };
 
   const handleConfirmSelection = async () => {
-    if (selectedStudents.length !== targetLimit) {
+    if (selectedEntities.length !== targetLimit) {
       toast({
         title: "Seleção incompleta",
-        description: `Você deve selecionar exatamente ${targetLimit} aluno(s).`,
+        description: `Você deve selecionar exatamente ${targetLimit} aluno(s)/dependente(s).`,
         variant: "destructive",
       });
       return;
@@ -127,58 +233,61 @@ export function PlanDowngradeSelectionModal({
     setProcessing(true);
     setShowProgress(true);
     
-    // Initialize progress steps
-    const steps = [
-      {
-        id: 'validate',
-        label: 'Validando seleção',
-        status: 'in-progress' as const,
-        description: 'Verificando alunos selecionados'
-      },
-      {
-        id: 'delete',
-        label: 'Removendo alunos',
-        status: 'pending' as const,
-        description: 'Excluindo alunos não selecionados'
-      },
-      {
-        id: 'update',
-        label: 'Atualizando plano',
-        status: 'pending' as const,
-        description: 'Alterando plano de assinatura'
-      },
-      {
-        id: 'complete',
-        label: 'Finalizando alterações',
-        status: 'pending' as const,
-        description: 'Salvando configurações'
-      }
-    ];
+    const steps = isPaymentFailure
+      ? [
+          { id: 'validate', label: 'Validando seleção', status: 'in-progress' as const, description: 'Verificando alunos e dependentes selecionados' },
+          { id: 'cancel-invoices', label: 'Cancelando faturas', status: 'pending' as const, description: 'Cancelando faturas pendentes' },
+          { id: 'delete', label: 'Removendo alunos/dependentes', status: 'pending' as const, description: 'Excluindo itens não selecionados' },
+          { id: 'update', label: 'Atualizando plano', status: 'pending' as const, description: 'Alterando para plano gratuito' },
+          { id: 'complete', label: 'Finalizando alterações', status: 'pending' as const, description: 'Salvando configurações' }
+        ]
+      : [
+          { id: 'validate', label: 'Validando seleção', status: 'in-progress' as const, description: 'Verificando alunos e dependentes selecionados' },
+          { id: 'delete', label: 'Removendo alunos/dependentes', status: 'pending' as const, description: 'Excluindo itens não selecionados' },
+          { id: 'update', label: 'Atualizando plano', status: 'pending' as const, description: 'Alterando plano de assinatura' },
+          { id: 'complete', label: 'Finalizando alterações', status: 'pending' as const, description: 'Salvando configurações' }
+        ];
     
     setProgressSteps(steps);
     setProgress(10);
 
     try {
-      // Step 1: Validation
       await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const nextStepAfterValidate = isPaymentFailure ? 'cancel-invoices' : 'delete';
       setProgressSteps(prev => prev.map(step => 
         step.id === 'validate' 
           ? { ...step, status: 'completed' as const }
-          : step.id === 'delete'
+          : step.id === nextStepAfterValidate
           ? { ...step, status: 'in-progress' as const }
           : step
       ));
-      setProgress(30);
+      setProgress(isPaymentFailure ? 25 : 30);
 
-      // Step 2: Delete students and update plan
-      const { data, error } = await supabase.functions.invoke('handle-plan-downgrade-selection', {
-        body: {
-          selected_student_ids: selectedStudents,
-          new_plan_id: newPlan.id
-        }
-      });
+      // Separate student IDs and dependent IDs
+      const selectedStudentIds = selectedEntities.filter(id => !id.startsWith('dep_'));
+      const selectedDependentIds = selectedEntities.filter(id => id.startsWith('dep_')).map(id => id.replace('dep_', ''));
+
+      const edgeFn = isPaymentFailure ? 'process-payment-failure-downgrade' : 'handle-plan-downgrade-selection';
+      const body = isPaymentFailure
+        ? { selectedStudentIds: selectedStudentIds, selectedDependentIds, reason: 'payment_failure' }
+        : { selected_student_ids: selectedStudentIds, selected_dependent_ids: selectedDependentIds, new_plan_id: newPlan.id };
+
+      const { data, error } = await supabase.functions.invoke(edgeFn, { body });
 
       if (error) throw error;
+
+      if (isPaymentFailure) {
+        setProgressSteps(prev => prev.map(step => 
+          step.id === 'cancel-invoices' 
+            ? { ...step, status: 'completed' as const }
+            : step.id === 'delete'
+            ? { ...step, status: 'in-progress' as const }
+            : step
+        ));
+        setProgress(50);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
 
       setProgressSteps(prev => prev.map(step => 
         step.id === 'delete' 
@@ -189,7 +298,6 @@ export function PlanDowngradeSelectionModal({
       ));
       setProgress(70);
 
-      // Step 3: Update plan
       await new Promise(resolve => setTimeout(resolve, 500));
       setProgressSteps(prev => prev.map(step => 
         step.id === 'update' 
@@ -200,7 +308,6 @@ export function PlanDowngradeSelectionModal({
       ));
       setProgress(90);
 
-      // Step 4: Complete
       await new Promise(resolve => setTimeout(resolve, 500));
       setProgressSteps(prev => prev.map(step => 
         step.id === 'complete' 
@@ -211,13 +318,14 @@ export function PlanDowngradeSelectionModal({
 
       if (data?.success) {
         toast({
-          title: "Downgrade concluído",
+          title: isPaymentFailure
+            ? t('paymentFailure.downgradedSuccessfully')
+            : t('downgrade.selection.downgradeCompleted'),
           description: data.message,
         });
         
-        // Wait a bit to show completion
         await new Promise(resolve => setTimeout(resolve, 1000));
-        onClose(true); // Signal completion
+        onClose(true);
       } else {
         throw new Error(data?.message || 'Erro desconhecido');
       }
@@ -231,8 +339,9 @@ export function PlanDowngradeSelectionModal({
       ));
       
       toast({
-        title: "Erro no downgrade",
-        description: "Não foi possível processar a seleção. Tente novamente.",
+        title: isPaymentFailure
+          ? t('paymentFailure.errorDowngrading')
+          : t('downgrade.selection.errorProcessing'),
         variant: "destructive",
       });
     } finally {
@@ -244,41 +353,58 @@ export function PlanDowngradeSelectionModal({
     }
   };
 
-  const selectedCount = selectedStudents.length;
-  const studentsToRemove = students.filter(s => !selectedStudents.includes(s.id));
+  const selectedCount = selectedEntities.length;
+  const entitiesToRemove = allEntities.filter(e => !selectedEntities.includes(e.id));
 
   return (
     <Dialog open={open} onOpenChange={() => !processing && onClose()}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Ação Necessária: Limite de Alunos Excedido
+            <AlertTriangle className={`h-5 w-5 ${isPaymentFailure ? 'text-destructive' : 'text-amber-500'}`} />
+            {isPaymentFailure
+              ? t('paymentFailure.title')
+              : 'Ação Necessária: Limite de Alunos Excedido'}
           </DialogTitle>
           <DialogDescription>
-            Seu plano atual não comporta todos os seus alunos. Escolha uma opção abaixo.
+            {isPaymentFailure
+              ? t('paymentFailure.description')
+              : 'Seu plano atual não comporta todos os seus alunos. Escolha uma opção abaixo.'}
           </DialogDescription>
         </DialogHeader>
 
+        {/* Contextual alert for payment failure */}
+        {isPaymentFailure && (
+          <Alert variant="destructive" className="mx-0">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              {t('paymentFailure.explanation')}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="select-students">
-              <Users className="h-4 w-4 mr-2" />
-              Selecionar Alunos
-            </TabsTrigger>
+          <TabsList className={`grid w-full ${hasExcessStudents ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {hasExcessStudents && (
+              <TabsTrigger value="select-students">
+                <Users className="h-4 w-4 mr-2" />
+                Selecionar Alunos
+              </TabsTrigger>
+            )}
             <TabsTrigger value="upgrade-plan">
               <TrendingUp className="h-4 w-4 mr-2" />
-              Fazer Upgrade
+              {isPaymentFailure ? t('paymentFailure.renewButton') : 'Fazer Upgrade'}
             </TabsTrigger>
           </TabsList>
 
+          {hasExcessStudents && (
           <TabsContent value="select-students" className="flex-1 overflow-y-auto space-y-4 mt-4">
           {/* Plan Change Summary */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <CreditCard className="h-4 w-4" />
-                Mudança de Plano
+                {isPaymentFailure ? 'Downgrade por Falha de Pagamento' : 'Mudança de Plano'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -305,6 +431,11 @@ export function PlanDowngradeSelectionModal({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>⚠️ ATENÇÃO: Exclusão Permanente</AlertTitle>
             <AlertDescription className="space-y-2">
+              {isPaymentFailure && (
+                <p>
+                  <strong>Sua assinatura foi cancelada</strong> devido à falha no pagamento.
+                </p>
+              )}
               <p>
                 <strong>Você deve selecionar exatamente {targetLimit} aluno(s)</strong> dos {currentCount} atuais.
               </p>
@@ -312,6 +443,11 @@ export function PlanDowngradeSelectionModal({
                 <strong>Os {needToRemove} aluno(s) não selecionado(s) serão EXCLUÍDOS PERMANENTEMENTE</strong> do sistema, 
                 incluindo todos os dados, aulas, relatórios e histórico.
               </p>
+              {isPaymentFailure && (
+                <p>
+                  <strong>Todas as faturas pendentes serão canceladas automaticamente.</strong>
+                </p>
+              )}
               <p className="text-sm">
                 Esta ação não pode ser desfeita. Considere fazer upgrade do seu plano para manter todos os alunos.
               </p>
@@ -334,7 +470,7 @@ export function PlanDowngradeSelectionModal({
             </Card>
             <Card>
               <CardContent className="pt-4">
-                <div className="text-2xl font-bold text-red-600">{studentsToRemove.length}</div>
+                <div className="text-2xl font-bold text-red-600">{entitiesToRemove.length}</div>
                 <p className="text-sm text-muted-foreground">Serão Excluídos</p>
               </CardContent>
             </Card>
@@ -345,69 +481,92 @@ export function PlanDowngradeSelectionModal({
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4" />
               <span className="font-medium">
-                Selecione {targetLimit} aluno(s) para manter
+                Selecione {targetLimit} aluno(s)/dependente(s) para manter
               </span>
             </div>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleSelectAll}
-              disabled={processing}
+              disabled={processing || loadingDependents}
             >
               {selectedCount === targetLimit ? 'Limpar Seleção' : 'Selecionar Primeiros'}
             </Button>
           </div>
 
-          {/* Students List */}
+          {/* Entities List (Students + Dependents) */}
           <div className="grid gap-2 max-h-64 overflow-y-auto">
-            {students.map((student) => {
-              const isSelected = selectedStudents.includes(student.id);
-              const canSelect = isSelected || selectedStudents.length < targetLimit;
-              
-              return (
-                <div
-                  key={student.id}
-                  className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                    isSelected 
-                      ? 'border-green-500 bg-green-50' 
-                      : canSelect 
-                        ? 'border-gray-200 hover:border-gray-300' 
-                        : 'border-gray-100 bg-gray-50 opacity-50'
-                  }`}
-                  onClick={() => canSelect && handleStudentToggle(student.id)}
-                >
-                  <Checkbox 
-                    checked={isSelected}
-                    disabled={!canSelect || processing}
-                    className="pointer-events-none"
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium">{student.name}</p>
-                    <p className="text-sm text-muted-foreground">{student.email}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Aluno desde {format(new Date(student.created_at), 'dd/MM/yyyy', { locale: ptBR })}
-                    </p>
+            {loadingDependents ? (
+              <div className="text-center py-4 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+                Carregando dependentes...
+              </div>
+            ) : (
+              allEntities.map((entity) => {
+                const isSelected = selectedEntities.includes(entity.id);
+                const canSelect = isSelected || selectedEntities.length < targetLimit;
+                
+                return (
+                  <div
+                    key={entity.id}
+                    className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      isSelected 
+                        ? 'border-green-500 bg-green-50 dark:bg-green-950' 
+                        : canSelect 
+                          ? 'border-border hover:border-muted-foreground' 
+                          : 'border-muted bg-muted/50 opacity-50'
+                    }`}
+                    onClick={() => canSelect && handleEntityToggle(entity.id)}
+                  >
+                    <Checkbox 
+                      checked={isSelected}
+                      disabled={!canSelect || processing}
+                      className="pointer-events-none"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{entity.name}</p>
+                        {entity.type === 'dependent' && (
+                          <Badge variant="outline" className="text-xs">
+                            <Baby className="h-3 w-3 mr-1" />
+                            Dependente
+                          </Badge>
+                        )}
+                      </div>
+                      {entity.type === 'student' && entity.email && (
+                        <p className="text-sm text-muted-foreground">{entity.email}</p>
+                      )}
+                      {entity.type === 'dependent' && entity.responsibleName && (
+                        <p className="text-sm text-muted-foreground">Responsável: {entity.responsibleName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {entity.type === 'student' ? 'Aluno' : 'Cadastrado'} desde {format(parseISO(entity.created_at), 'dd/MM/yyyy', { locale: ptBR })}
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <Badge variant="default" className="bg-green-500">
+                        Selecionado
+                      </Badge>
+                    )}
                   </div>
-                  {isSelected && (
-                    <Badge variant="default" className="bg-green-500">
-                      Selecionado
-                    </Badge>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
-          {/* Students to be removed warning */}
-          {studentsToRemove.length > 0 && (
+          {/* Entities to be removed warning */}
+          {entitiesToRemove.length > 0 && (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Alunos que serão excluídos permanentemente:</AlertTitle>
+              <AlertTitle>Alunos/dependentes que serão excluídos permanentemente:</AlertTitle>
               <AlertDescription>
                 <div className="space-y-1 mt-2">
-                  {studentsToRemove.map(student => (
-                    <div key={student.id} className="text-sm">
-                      • {student.name} ({student.email})
+                  {entitiesToRemove.map(entity => (
+                    <div key={entity.id} className="text-sm flex items-center gap-1">
+                      • {entity.name} 
+                      {entity.type === 'dependent' && <Baby className="h-3 w-3" />}
+                      {entity.email && `(${entity.email})`}
+                      {entity.responsibleName && `(resp: ${entity.responsibleName})`}
                     </div>
                   ))}
                 </div>
@@ -433,14 +592,19 @@ export function PlanDowngradeSelectionModal({
             </Button>
           </DialogFooter>
         </TabsContent>
+          )}
 
         <TabsContent value="upgrade-plan" className="flex-1 overflow-y-auto space-y-4 mt-4">
           {/* Upgrade Option Header */}
           <Alert>
             <Check className="h-4 w-4" />
-            <AlertTitle>Mantenha Todos os Seus Alunos</AlertTitle>
+            <AlertTitle>
+              {isPaymentFailure ? 'Renove sua Assinatura' : 'Mantenha Todos os Seus Alunos'}
+            </AlertTitle>
             <AlertDescription>
-              Escolha um plano que comporte seus {currentCount} alunos e evite a exclusão de qualquer aluno.
+              {isPaymentFailure
+                ? 'Escolha um plano para renovar sua assinatura e manter todos os seus alunos e funcionalidades.'
+                : `Escolha um plano que comporte seus ${currentCount} alunos e evite a exclusão de qualquer aluno.`}
             </AlertDescription>
           </Alert>
 
@@ -452,14 +616,16 @@ export function PlanDowngradeSelectionModal({
             <CardContent>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Plano Novo</p>
+                  <p className="text-muted-foreground">{isPaymentFailure ? 'Plano Anterior' : 'Plano Novo'}</p>
                   <p className="font-medium">{newPlan?.name}</p>
                   <p className="text-xs text-muted-foreground">Limite: {newPlan?.student_limit} alunos</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Alunos Atuais</p>
                   <p className="font-medium text-lg">{currentCount}</p>
-                  <p className="text-xs text-red-600">Excede em {needToRemove} aluno(s)</p>
+                  {hasExcessStudents && (
+                    <p className="text-xs text-red-600">Excede em {needToRemove} aluno(s)</p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -478,7 +644,7 @@ export function PlanDowngradeSelectionModal({
             ) : (
               availablePlans.map(plan => {
                 const extraStudentsNeeded = Math.max(0, currentCount - plan.student_limit);
-                const extraCost = extraStudentsNeeded * 500; // R$ 5,00 per student in cents
+                const extraCost = extraStudentsNeeded * 500;
                 const totalMonthlyCost = plan.price_cents + extraCost;
                 
                 return (
@@ -553,6 +719,33 @@ export function PlanDowngradeSelectionModal({
             )}
           </div>
 
+          {/* Direct downgrade button when no excess students and payment failure */}
+          {!hasExcessStudents && isPaymentFailure && (
+            <div className="border-t pt-4">
+              <p className="text-sm text-muted-foreground mb-3">
+                Ou volte para o plano gratuito sem perder nenhum aluno:
+              </p>
+              <Button
+                variant="outline"
+                onClick={handleDirectDowngrade}
+                disabled={processing}
+                className="w-full"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('paymentFailure.processing')}
+                  </>
+                ) : (
+                  <>
+                    <Users className="mr-2 h-4 w-4" />
+                    {t('paymentFailure.downgradeButton')}
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
           <DialogFooter>
             <Button 
               variant="outline" 
@@ -568,7 +761,7 @@ export function PlanDowngradeSelectionModal({
       
       <ProgressModal
         open={showProgress}
-        title="Processando Downgrade do Plano"
+        title={isPaymentFailure ? 'Processando Downgrade por Falha de Pagamento' : 'Processando Downgrade do Plano'}
         steps={progressSteps}
         progress={progress}
         allowClose={!processing}

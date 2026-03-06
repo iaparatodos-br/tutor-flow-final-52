@@ -120,25 +120,53 @@ serve(async (req) => {
       );
     }
 
-    // Generate new invitation link
+    // Get teacher profile for personalized email
+    const { data: teacherProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('name')
+      .eq('id', user.id)
+      .single();
+
+    // Generate new magic link for activation
     const redirectUrl = Deno.env.get('SITE_URL') || 'https://www.tutor-flow.app';
-    const { error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'signup',
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
       email: studentProfile.email,
       options: {
         redirectTo: `${redirectUrl}/auth/callback`
       }
     });
 
-    if (inviteError) {
-      console.error('[RESEND-STUDENT-INVITATION] Error generating invitation:', inviteError);
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error('[RESEND-STUDENT-INVITATION] Error generating magic link:', linkError);
       return new Response(
         JSON.stringify({ success: false, error: 'Failed to generate invitation link' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[RESEND-STUDENT-INVITATION] Invitation sent successfully');
+    // Send custom invitation email via AWS SES
+    const { data: emailResult, error: emailError } = await supabaseAdmin.functions.invoke(
+      'send-student-invitation',
+      {
+        body: {
+          email: studentProfile.email,
+          name: studentProfile.name,
+          teacher_name: teacherProfile?.name || 'seu professor',
+          invitation_link: linkData.properties.action_link,
+        }
+      }
+    );
+
+    if (emailError || (emailResult && !emailResult.success)) {
+      console.error('[RESEND-STUDENT-INVITATION] Error sending email:', emailError || emailResult?.error);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Failed to send invitation email' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('[RESEND-STUDENT-INVITATION] Invitation sent successfully via AWS SES');
 
     return new Response(
       JSON.stringify({ 

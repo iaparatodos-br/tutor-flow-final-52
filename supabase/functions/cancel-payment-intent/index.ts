@@ -16,6 +16,39 @@ const logStep = (step: string, details?: any) => {
   console.log(`[cancel-payment-intent] ${step}`, details ? JSON.stringify(details) : '');
 };
 
+const autoConfirmClassIfAwaiting = async (supabase: any, invoiceId: string) => {
+  const { data: invoiceWithClass } = await supabase
+    .from('invoices')
+    .select('class_id')
+    .eq('id', invoiceId)
+    .maybeSingle();
+
+  if (!invoiceWithClass?.class_id) return;
+
+  const { data: classData } = await supabase
+    .from('classes')
+    .select('id, status')
+    .eq('id', invoiceWithClass.class_id)
+    .eq('status', 'aguardando_pagamento')
+    .maybeSingle();
+
+  if (!classData) return;
+
+  await supabase
+    .from('classes')
+    .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+    .eq('id', classData.id)
+    .eq('status', 'aguardando_pagamento');
+
+  await supabase
+    .from('class_participants')
+    .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+    .eq('class_id', classData.id)
+    .eq('status', 'aguardando_pagamento');
+
+  logStep('Class auto-confirmed after manual payment', { classId: classData.id });
+};
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -68,7 +101,7 @@ serve(async (req) => {
       .from('invoices')
       .select('id, teacher_id, stripe_payment_intent_id, status, payment_origin')
       .eq('id', invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       logStep('Invoice not found', { error: invoiceError });
@@ -108,7 +141,7 @@ serve(async (req) => {
       const { error: updateError } = await supabase
         .from('invoices')
         .update({
-          status: 'paid',
+          status: 'paga',
           payment_origin: 'manual',
           payment_intent_cancelled_by: user.id,
           payment_intent_cancelled_at: new Date().toISOString(),
@@ -118,6 +151,9 @@ serve(async (req) => {
         .eq('id', invoice_id);
 
       if (updateError) throw updateError;
+
+      // Auto-confirm class if prepaid and awaiting payment
+      await autoConfirmClassIfAwaiting(supabase, invoice_id);
 
       return new Response(
         JSON.stringify({ 
@@ -169,7 +205,7 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from('invoices')
       .update({
-        status: 'paid',
+        status: 'paga',
         payment_origin: 'manual',
         payment_intent_cancelled_by: user.id,
         payment_intent_cancelled_at: new Date().toISOString(),
@@ -183,6 +219,9 @@ serve(async (req) => {
       throw updateError;
     }
 
+    // Auto-confirm class if prepaid and awaiting payment
+    await autoConfirmClassIfAwaiting(supabase, invoice_id);
+
     // Register audit log
     const { error: auditError } = await supabase.from('audit_logs').insert({
       actor_id: user.id,
@@ -192,7 +231,7 @@ serve(async (req) => {
       operation: 'UPDATE',
       old_data: { status: invoice.status, payment_origin: invoice.payment_origin },
       new_data: { 
-        status: 'paid', 
+        status: 'paga', 
         payment_origin: 'manual',
         payment_intent_cancelled: paymentIntentCancelled,
         manual_payment_notes: notes 
@@ -204,6 +243,25 @@ serve(async (req) => {
     }
 
     logStep('Invoice updated successfully and audited', { invoice_id });
+
+    // Enviar notificação de fatura paga (não-bloqueante)
+    supabase.functions
+      .invoke('send-invoice-notification', {
+        body: {
+          invoice_id: invoice_id,
+          notification_type: 'invoice_paid'
+        }
+      })
+      .then(({ error: notifError }) => {
+        if (notifError) {
+          console.error('Error sending invoice paid notification (non-critical):', notifError);
+        } else {
+          logStep('Invoice paid notification sent successfully');
+        }
+      })
+      .catch((err) => {
+        console.error('Error invoking notification function (non-critical):', err);
+      });
 
     return new Response(
       JSON.stringify({ 

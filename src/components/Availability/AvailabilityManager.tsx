@@ -10,10 +10,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Clock, Plus, Settings, X, Calendar, Edit, Trash2 } from 'lucide-react';
-import moment from 'moment';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TimePicker } from '@/components/ui/time-picker';
+import { Clock, Plus, Settings, X, Calendar, Edit, Trash2, Info, CalendarIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { format, parse } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
+import { formatInTimezone, fromUserZonedTime, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 interface AvailabilityBlock {
   id: string;
@@ -39,6 +46,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('availability');
+  const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
   
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([]);
   const [workingHours, setWorkingHours] = useState<WorkingHours[]>([]);
@@ -124,8 +132,9 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
     }
 
     try {
-      const startDateTime = new Date(`${newBlock.start_date}T${newBlock.start_time}`);
-      const endDateTime = new Date(`${newBlock.end_date}T${newBlock.end_time}`);
+      // Usar fromUserZonedTime para interpretar a data/hora no fuso do perfil
+      const startDateTime = fromUserZonedTime(new Date(`${newBlock.start_date}T${newBlock.start_time}`), userTimezone);
+      const endDateTime = fromUserZonedTime(new Date(`${newBlock.end_date}T${newBlock.end_time}`), userTimezone);
 
       if (endDateTime <= startDateTime) {
         toast({
@@ -248,7 +257,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
   };
 
   const formatDateTime = (dateTime: string) => {
-    return moment(dateTime).format('DD/MM/YYYY HH:mm');
+    return formatInTimezone(new Date(dateTime), 'dd/MM/yyyy HH:mm', userTimezone);
   };
 
   const getWorkingHoursForDay = (dayOfWeek: number) => {
@@ -285,11 +294,21 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 {t('workingHours.configure')}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('workingHours.dialogTitle')}</DialogTitle>
                 <p className="text-sm text-muted-foreground">{t('workingHours.dialogDescription')}</p>
               </DialogHeader>
+              
+              <Alert className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
+                <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <AlertTitle className="text-blue-900 dark:text-blue-100">
+                  {t('workingHours.timeHint.title')}
+                </AlertTitle>
+                <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                  {t('workingHours.timeHint.description')}
+                </AlertDescription>
+              </Alert>
               
               <div className="space-y-4">
                 {DAYS_OF_WEEK.map((day) => {
@@ -377,46 +396,82 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="start_date">{t('blocks.fields.startDate.label')} *</Label>
-                    <Input
-                      id="start_date"
-                      type="date"
-                      value={newBlock.start_date}
-                      onChange={(e) => setNewBlock(prev => ({ ...prev, start_date: e.target.value }))}
-                      required
-                    />
+                    <Label>{t('blocks.fields.startDate.label')} *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-10",
+                            !newBlock.start_date && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                          {newBlock.start_date
+                            ? format(parse(newBlock.start_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                            : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={newBlock.start_date ? parse(newBlock.start_date, 'yyyy-MM-dd', new Date()) : undefined}
+                          onSelect={(date) => {
+                            if (date) setNewBlock(prev => ({ ...prev, start_date: format(date, 'yyyy-MM-dd') }));
+                          }}
+                          locale={ptBR}
+                          initialFocus
+                          className="p-3 pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div>
-                    <Label htmlFor="start_time">{t('blocks.fields.startTime.label')} *</Label>
-                    <Input
-                      id="start_time"
-                      type="time"
+                    <Label>{t('blocks.fields.startTime.label')} *</Label>
+                    <TimePicker
                       value={newBlock.start_time}
-                      onChange={(e) => setNewBlock(prev => ({ ...prev, start_time: e.target.value }))}
-                      required
+                      onChange={(val) => setNewBlock(prev => ({ ...prev, start_time: val }))}
                     />
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="end_date">{t('blocks.fields.endDate.label')} *</Label>
-                    <Input
-                      id="end_date"
-                      type="date"
-                      value={newBlock.end_date}
-                      onChange={(e) => setNewBlock(prev => ({ ...prev, end_date: e.target.value }))}
-                      required
-                    />
+                    <Label>{t('blocks.fields.endDate.label')} *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-10",
+                            !newBlock.end_date && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                          {newBlock.end_date
+                            ? format(parse(newBlock.end_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                            : "Selecione"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <CalendarComponent
+                          mode="single"
+                          selected={newBlock.end_date ? parse(newBlock.end_date, 'yyyy-MM-dd', new Date()) : undefined}
+                          onSelect={(date) => {
+                            if (date) setNewBlock(prev => ({ ...prev, end_date: format(date, 'yyyy-MM-dd') }));
+                          }}
+                          locale={ptBR}
+                          initialFocus
+                          className="p-3 pointer-events-auto"
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div>
-                    <Label htmlFor="end_time">{t('blocks.fields.endTime.label')} *</Label>
-                    <Input
-                      id="end_time"
-                      type="time"
+                    <Label>{t('blocks.fields.endTime.label')} *</Label>
+                    <TimePicker
                       value={newBlock.end_time}
-                      onChange={(e) => setNewBlock(prev => ({ ...prev, end_time: e.target.value }))}
-                      required
+                      onChange={(val) => setNewBlock(prev => ({ ...prev, end_time: val }))}
                     />
                   </div>
                 </div>
@@ -519,23 +574,25 @@ function WorkingHourRow({ day, existingHours, onUpdate }: WorkingHourRowProps) {
         <>
           <div className="flex items-center gap-2">
             <Label className="text-sm">De:</Label>
-            <Input
-              type="time"
+            <TimePicker
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              onChange={(val) => {
+                setStartTime(val);
+              }}
               onBlur={handleSave}
-              className="w-24"
+              className="w-28"
             />
           </div>
           
           <div className="flex items-center gap-2">
             <Label className="text-sm">Até:</Label>
-            <Input
-              type="time"
+            <TimePicker
               value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
+              onChange={(val) => {
+                setEndTime(val);
+              }}
               onBlur={handleSave}
-              className="w-24"
+              className="w-28"
             />
           </div>
         </>

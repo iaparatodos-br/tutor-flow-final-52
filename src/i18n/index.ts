@@ -14,7 +14,6 @@ import ptSettings from './locales/pt/settings.json';
 import ptAuth from './locales/pt/auth.json';
 import ptSubscription from './locales/pt/subscription.json';
 import ptExpenses from './locales/pt/expenses.json';
-import ptNotifications from './locales/pt/notifications.json';
 import ptCancellation from './locales/pt/cancellation.json';
 import ptArchive from './locales/pt/archive.json';
 import ptBilling from './locales/pt/billing.json';
@@ -24,6 +23,10 @@ import ptReports from './locales/pt/reports.json';
 import ptAmnesty from './locales/pt/amnesty.json';
 import ptAvailability from './locales/pt/availability.json';
 import ptLegal from './locales/pt/legal.json';
+import ptHistory from './locales/pt/history.json';
+import ptPassword from './locales/pt/password.json';
+import ptMonthlySubscriptions from './locales/pt/monthlySubscriptions.json';
+import ptInbox from './locales/pt/inbox.json';
 
 import enCommon from './locales/en/common.json';
 import enNavigation from './locales/en/navigation.json';
@@ -36,7 +39,6 @@ import enSettings from './locales/en/settings.json';
 import enAuth from './locales/en/auth.json';
 import enSubscription from './locales/en/subscription.json';
 import enExpenses from './locales/en/expenses.json';
-import enNotifications from './locales/en/notifications.json';
 import enCancellation from './locales/en/cancellation.json';
 import enArchive from './locales/en/archive.json';
 import enBilling from './locales/en/billing.json';
@@ -46,6 +48,10 @@ import enReports from './locales/en/reports.json';
 import enAmnesty from './locales/en/amnesty.json';
 import enAvailability from './locales/en/availability.json';
 import enLegal from './locales/en/legal.json';
+import enHistory from './locales/en/history.json';
+import enPassword from './locales/en/password.json';
+import enMonthlySubscriptions from './locales/en/monthlySubscriptions.json';
+import enInbox from './locales/en/inbox.json';
 
 const resources = {
   pt: {
@@ -60,7 +66,6 @@ const resources = {
     auth: ptAuth,
     subscription: ptSubscription,
     expenses: ptExpenses,
-    notifications: ptNotifications,
     cancellation: ptCancellation,
     archive: ptArchive,
     billing: ptBilling,
@@ -70,6 +75,10 @@ const resources = {
     amnesty: ptAmnesty,
     availability: ptAvailability,
     legal: ptLegal,
+    history: ptHistory,
+    password: ptPassword,
+    monthlySubscriptions: ptMonthlySubscriptions,
+    inbox: ptInbox,
   },
   en: {
     common: enCommon,
@@ -83,7 +92,6 @@ const resources = {
     auth: enAuth,
     subscription: enSubscription,
     expenses: enExpenses,
-    notifications: enNotifications,
     cancellation: enCancellation,
     archive: enArchive,
     billing: enBilling,
@@ -93,6 +101,10 @@ const resources = {
     amnesty: enAmnesty,
     availability: enAvailability,
     legal: enLegal,
+    history: enHistory,
+    password: enPassword,
+    monthlySubscriptions: enMonthlySubscriptions,
+    inbox: enInbox,
   },
 };
 
@@ -115,7 +127,7 @@ i18n
       escapeValue: false,
     },
 
-    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'notifications', 'cancellation', 'archive', 'billing', 'services', 'plans', 'reports', 'amnesty', 'availability', 'legal'],
+    ns: ['common', 'navigation', 'dashboard', 'students', 'classes', 'materials', 'financial', 'settings', 'auth', 'subscription', 'expenses', 'cancellation', 'archive', 'billing', 'services', 'plans', 'reports', 'amnesty', 'availability', 'legal', 'history', 'password', 'monthlySubscriptions', 'inbox'],
     defaultNS: 'common',
 
     // Handler para keys faltando

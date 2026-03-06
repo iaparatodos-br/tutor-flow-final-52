@@ -23,9 +23,11 @@ serve(async (req) => {
       throw new Error('STRIPE_SECRET_KEY not found');
     }
 
+    // #142: Added persistSession: false
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
     );
 
     // Get user from JWT

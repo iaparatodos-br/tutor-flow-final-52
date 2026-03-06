@@ -1,8 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-// Deploy timestamp: 2025-10-14T02:35:00Z - Force redeploy to fix SQL order syntax cache issue
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -23,21 +21,27 @@ serve(async (req) => {
   try {
     console.log('🔍 [get-teacher-availability] Function started');
     
+    const authHeader = req.headers.get("Authorization");
+    console.log('🔍 Auth header present:', !!authHeader);
+    if (!authHeader) throw new Error("No authorization header provided");
+
+    const authClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await authClient.auth.getUser(token);
+    console.log('🔍 User data:', { userId: userData?.user?.id, error: userError?.message });
+    if (userError) throw new Error(`Authentication error: ${userError.message}`);
+    const user = userData.user;
+
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } }
     );
-
-    const authHeader = req.headers.get("Authorization");
-    console.log('🔍 Auth header present:', !!authHeader);
-    if (!authHeader) throw new Error("No authorization header provided");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabase.auth.getUser(token);
-    console.log('🔍 User data:', { userId: userData?.user?.id, error: userError?.message });
-    if (userError) throw new Error(`Authentication error: ${userError.message}`);
-    const user = userData.user;
 
     const body = await req.json();
     console.log('🔍 Request body:', body);
@@ -68,6 +72,15 @@ serve(async (req) => {
     if (relationshipError) throw relationshipError;
     if (!relationship) throw new Error("Student is not assigned to this teacher");
 
+    // Buscar timezone do professor para retornar na resposta
+    const { data: teacherProfile } = await supabase
+      .from('profiles')
+      .select('timezone')
+      .eq('id', teacherId)
+      .maybeSingle();
+
+    const teacherTimezone = teacherProfile?.timezone || 'America/Sao_Paulo';
+
     const nowIso = new Date().toISOString();
 
     const [workingHoursRes, blocksRes, classesRes, servicesRes] = await Promise.all([
@@ -83,26 +96,17 @@ serve(async (req) => {
         .gte('end_datetime', nowIso)
         .order('start_datetime', { ascending: true }),
       supabase
-        .from('class_participants')
-        .select(`
-          class_id,
-          status,
-          classes!inner (
-            class_date,
-            duration_minutes,
-            teacher_id
-          )
-        `)
-        .eq('classes.teacher_id', teacherId)
-        .in('status', ['pendente', 'confirmada'])
-        .gte('classes.class_date', nowIso)
-        .order('class_date', { ascending: true, foreignTable: 'classes' }),
+        .from('classes')
+        .select('id, class_date, duration_minutes, teacher_id')
+        .eq('teacher_id', teacherId)
+        .gte('class_date', nowIso)
+        .order('class_date', { ascending: true }),
       supabase
         .from('class_services')
-        .select('id, name, price, duration_minutes, is_default')
+        .select('id, name, price, duration_minutes')
         .eq('teacher_id', teacherId)
         .eq('is_active', true)
-        .order('is_default', { ascending: false })
+        .order('name', { ascending: true })
     ]);
 
     const whErr = (workingHoursRes as any).error; if (whErr) throw whErr;
@@ -114,11 +118,12 @@ serve(async (req) => {
       JSON.stringify({
         workingHours: (workingHoursRes as any).data ?? [],
         availabilityBlocks: (blocksRes as any).data ?? [],
-        existingClasses: ((classesRes as any).data ?? []).map((cp: any) => ({ 
-          class_date: cp.classes.class_date, 
-          duration_minutes: cp.classes.duration_minutes 
+        existingClasses: ((classesRes as any).data ?? []).map((c: any) => ({ 
+          class_date: c.class_date, 
+          duration_minutes: c.duration_minutes 
         })),
-        services: (servicesRes as any).data ?? []
+        services: (servicesRes as any).data ?? [],
+        teacherTimezone, // v3.3: Retornar timezone do professor
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     );

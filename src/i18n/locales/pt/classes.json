@@ -12,6 +12,11 @@
   "experimental": "Aula Experimental (gratuita)",
   "experimentalNote": "Esta aula não será cobrada e será marcada como experimental",
   "groupClass": "Aula em Grupo",
+  "participantGroups": {
+    "students": "Alunos",
+    "dependents": "Dependentes",
+    "childOf": "filho(a) de"
+  },
   "groupClassPremium": "Aula em Grupo - Premium",
   "groupClassNote": "Aulas em grupo são um recurso premium. Faça upgrade do seu plano para usar esta funcionalidade.",
   "noStudentsRegistered": "Nenhum aluno cadastrado",
@@ -23,8 +28,12 @@
   "selectServicePlaceholder": "Selecione um serviço",
   "selectServiceError": "Selecione um serviço para definir o preço da aula",
   "pastDateTimeError": "Não é possível agendar aulas para data/horário passado",
-  "timeConflictError": "Já existe uma aula agendada neste horário",
+  "pastDateTimeWarning": "Você está cadastrando uma aula no passado. Ela será criada normalmente para fins de registro.",
+  "timeConflictWarning": "Já existe uma aula agendada neste horário. Você pode continuar mesmo assim.",
   "selectStudentError": "Selecione pelo menos um aluno",
+  "isPaidClass": "Aula Cobrada",
+  "isPaidClassDescription": "Esta aula será cobrada do aluno",
+  "recurrenceBlockedPrepaid": "Recorrência não disponível para aulas pagas no modelo pré-pago",
   "recurrence": "Recorrência",
   "recurrenceDescription": "Configure aulas recorrentes",
   "infiniteRecurrence": "Recorrência Contínua",
@@ -79,7 +88,13 @@
     "groupShort": "Grupo ({{count}})",
     "partialCancellation": "Cancelamento Parcial",
     "activeParticipants": "Participantes Ativos",
-    "cancelledParticipants": "Participantes Cancelados"
+    "cancelledParticipants": "Participantes Cancelados",
+    "noEventsThisDay": "Nenhum evento hoje",
+    "timeConflict": "Existem aulas com horários conflitantes neste dia"
+  },
+  "mobile": {
+    "viewDetails": "Ver detalhes",
+    "swipeForActions": "Deslize para ações"
   },
   "fields": {
     "student": "Aluno",
@@ -99,7 +114,8 @@
     "pending": "Pendente",
     "confirmed": "Confirmada",
     "cancelled": "Cancelada",
-    "completed": "Concluída"
+    "completed": "Concluída",
+    "awaitingPayment": "Aguardando Pagamento"
   },
   "types": {
     "individual": "Individual",
@@ -116,7 +132,12 @@
     "completeClass": "Concluir Aula",
     "markAsCompleted": "Marcar como Concluída",
     "createReport": "Criar Relatório",
-    "editReport": "Editar Relatório"
+    "editReport": "Editar Relatório",
+    "chargeManagement": "Gestão de Cobrança",
+    "confirmTitle": "Confirmar Aula",
+    "confirmDescription": "Deseja confirmar esta aula?",
+    "isPaidClass": "Aula Cobrada",
+    "isPaidClassDescription": "Esta aula será cobrada do aluno"
   },
   "daysOfWeek": {
     "sun": "Dom",
@@ -161,6 +182,10 @@
     "classCompleted": "Aula concluída!",
     "classCompletedDescription": "A aula foi marcada como concluída",
     "occurrenceCancelled": "Aula cancelada",
-    "occurrenceCancelledDescription": "Esta ocorrência da aula foi cancelada com sucesso"
+    "occurrenceCancelledDescription": "Esta ocorrência da aula foi cancelada com sucesso",
+    "amnestyGuidance": "Conceder Anistia",
+    "amnestyGuidanceDesc": "Clique na aula destacada e use o botão \"Conceder Anistia\".",
+    "reportGuidance": "Criar Relatório",
+    "reportGuidanceDesc": "Clique na aula destacada e use o botão \"Criar Relatório\"."
   }
 }

@@ -18,10 +18,39 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided", can_delete: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed", can_delete: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+
     const { business_profile_id } = await req.json();
     
     if (!business_profile_id) {
       throw new Error("business_profile_id é obrigatório");
+    }
+
+    // AUTH: Verify user owns this business profile
+    const { data: bpOwner } = await supabaseClient
+      .from('business_profiles')
+      .select('user_id')
+      .eq('id', business_profile_id)
+      .maybeSingle();
+    
+    if (!bpOwner || bpOwner.user_id !== authUserId) {
+      return new Response(JSON.stringify({ error: "Você não tem permissão para acessar este perfil de negócio", can_delete: false }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     console.log(`[VALIDATE-BUSINESS-PROFILE-DELETION] Validating deletion for profile: ${business_profile_id}`);

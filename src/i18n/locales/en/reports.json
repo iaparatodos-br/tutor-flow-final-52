@@ -29,6 +29,16 @@
         "label": "Individual Feedback",
         "description": "Personalized feedback for each student (visible only to the student and guardian)",
         "placeholder": "Individual feedback for {{name}} (optional)"
+      },
+      "photos": {
+        "label": "Photo Records",
+        "description": "Class photos (maximum 5 images)",
+        "dropzone": "Click or drag photos here",
+        "maxReached": "Maximum of 5 photos reached",
+        "uploading": "Uploading photos...",
+        "invalidType": "Unsupported format. Use JPEG, PNG or WebP",
+        "tooLarge": "File too large. Maximum 5MB",
+        "removePhoto": "Remove photo"
       }
     },
     "actions": {
@@ -41,7 +51,8 @@
       "createSuccess": "Class report created successfully",
       "updateSuccess": "Class report updated successfully",
       "error": "Error saving report",
-      "requiredField": "Lesson summary is required"
+      "requiredField": "Lesson summary is required",
+      "photoUploadError": "Error uploading some photos"
     }
   },
   "view": {
@@ -50,6 +61,8 @@
       "lessonSummary": "Lesson Summary",
       "homework": "Homework",
       "materials": "Materials and Links",
+      "photos": "Photo Records",
+      "photoCount": "{{count}} photo(s)",
       "feedback": {
         "title": "Individual Feedback",
         "titleStudent": "Your Feedback"
@@ -65,6 +78,8 @@
     },
     "updatedAt": "Updated on {{date}}",
     "error": "No report found for this class",
-    "studentLabel": "Student"
+    "studentLabel": "Student",
+    "dependentLabel": "Dependent",
+    "feedbackForDependent": "Feedback for {{name}}"
   }
 }

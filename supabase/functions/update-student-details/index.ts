@@ -40,6 +40,23 @@ serve(async (req) => {
   }
 
   try {
+    // #133 — Authentication: validate caller identity
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     const body: UpdateStudentRequest = await req.json();
     logStep("Function called", { body });
 
@@ -47,6 +64,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: "Campos obrigatórios: student_id, teacher_id e relationship_id" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // #133 — Validate teacher_id matches authenticated user
+    if (authUser.id !== body.teacher_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: "teacher_id does not match authenticated user" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 

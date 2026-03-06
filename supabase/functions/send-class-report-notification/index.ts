@@ -1,19 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-  { auth: { persistSession: false } }
-);
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -21,117 +13,204 @@ serve(async (req) => {
   }
 
   try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+
+    // AUTH: Validate caller is authenticated (teacher or service role)
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header", success: false }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const isServiceRole = token === Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!isServiceRole) {
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !userData.user) {
+        return new Response(JSON.stringify({ error: "Authentication failed", success: false }), {
+          status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      console.log('[send-class-report-notification] Authenticated user:', userData.user.id);
+    }
+
     const { classId, reportId } = await req.json();
     
     console.log(`Processing notification for class ${classId} and report ${reportId}`);
 
-    // Get class information with participants
-    const { data: classData, error: classError } = await supabaseAdmin
+    // Get class information
+    const { data: classData, error: classError } = await supabase
       .from('classes')
       .select(`
         id,
         class_date,
         duration_minutes,
         is_group_class,
-        profiles!classes_teacher_id_fkey (
-          id,
-          name,
-          email
-        ),
-        class_participants (
-          student_id,
-          profiles!class_participants_student_id_fkey (
-            id,
-            name,
-            email
-          )
-        )
+        teacher_id
       `)
       .eq('id', classId)
-      .single();
+      .maybeSingle();
 
     if (classError) {
       console.error('Error fetching class data:', classError);
       throw classError;
     }
 
+    // Get teacher information separately
+    const { data: teacher, error: teacherError } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .eq('id', classData.teacher_id)
+      .maybeSingle();
+
+    if (teacherError || !teacher) {
+      console.error('Error fetching teacher:', teacherError);
+      throw new Error('Teacher not found');
+    }
+
+    console.log(`Found teacher: ${teacher.name}`);
+
+    // Get participants with dependent_id
+    const { data: participants, error: participantsError } = await supabase
+      .from('class_participants')
+      .select('student_id, dependent_id')
+      .eq('class_id', classId);
+
+    if (participantsError) {
+      console.error('Error fetching participants:', participantsError);
+      throw participantsError;
+    }
+
     // Get report data
-    const { data: reportData, error: reportError } = await supabaseAdmin
+    const { data: reportData, error: reportError } = await supabase
       .from('class_reports')
       .select('*')
       .eq('id', reportId)
-      .single();
+      .maybeSingle();
 
     if (reportError) {
       console.error('Error fetching report data:', reportError);
       throw reportError;
     }
 
-    // Get teacher information
-    const teacherProfile = classData.profiles;
-    if (!teacherProfile) {
-      throw new Error('Teacher information not found');
-    }
-
-    const teacher = Array.isArray(teacherProfile) ? teacherProfile[0] : teacherProfile;
-    
-    console.log(`Found teacher: ${teacher?.name}`);
-
-    // Get individual feedbacks for this report
-    const { data: feedbacks, error: feedbackError } = await supabaseAdmin
+    // Get individual feedbacks for this report (including dependent_id)
+    const { data: feedbacks, error: feedbackError } = await supabase
       .from('class_report_feedbacks')
-      .select(`
-        student_id,
-        feedback,
-        profiles!class_report_feedbacks_student_id_fkey (
-          name,
-          email
-        )
-      `)
+      .select('student_id, dependent_id, feedback')
       .eq('report_id', reportId);
 
     if (feedbackError) {
       console.error('Error fetching feedbacks:', feedbackError);
     }
 
-    // Prepare list of students to notify (for both individual and group classes)
-    const studentsToNotify = classData.class_participants
-      .map(p => p.profiles)
-      .filter(profile => profile !== null);
-
-    if (studentsToNotify.length === 0) {
+    if (!participants || participants.length === 0) {
       throw new Error('No students found in class participants');
     }
 
-    console.log(`Notifying ${studentsToNotify.length} students`);
+    console.log(`Notifying ${participants.length} participants`);
 
-    // Send email to each student and their guardian
-    for (const student of studentsToNotify) {
+    let notifiedCount = 0;
+
+    // Send email to each participant
+    for (const participant of participants) {
       try {
-        // Find individual feedback for this student
-        const studentFeedback = feedbacks?.find(f => f.student_id === student.id);
+        // Get student profile (DESTINATÁRIO) including timezone
+        const { data: student } = await supabase
+          .from('profiles')
+          .select('id, name, email, notification_preferences, timezone')
+          .eq('id', participant.student_id)
+          .maybeSingle();
+
+        if (!student) {
+          console.error(`Student not found: ${participant.student_id}`);
+          continue;
+        }
+
+        // Verificar se aluno/responsável quer receber relatórios
+        const preferences = student.notification_preferences as any;
+        if (preferences?.class_report_created === false) {
+          console.log(`⏭️ Aluno/Responsável ${student.id} desabilitou notificações de relatórios`);
+          continue;
+        }
+
+        // v3.3: Timezone do DESTINATÁRIO (aluno/responsável)
+        const recipientTimezone = student.timezone || 'America/Sao_Paulo';
+
+        // Buscar dados do dependente se aplicável
+        let dependentName: string | null = null;
+        if (participant.dependent_id) {
+          const { data: dependent } = await supabase
+            .from('dependents')
+            .select('name')
+            .eq('id', participant.dependent_id)
+            .maybeSingle();
+          
+          if (dependent) {
+            dependentName = dependent.name;
+            console.log(`📌 Relatório para dependente: ${dependentName}`);
+          }
+        }
+
+        // Get guardian email from relationship
+        const { data: relationship } = await supabase
+          .from('teacher_student_relationships')
+          .select('student_guardian_email, student_guardian_name')
+          .eq('teacher_id', classData.teacher_id)
+          .eq('student_id', participant.student_id)
+          .maybeSingle();
+
+        const recipientEmail = relationship?.student_guardian_email || student.email;
+        const recipientName = relationship?.student_guardian_name || student.name;
+
+        // Find individual feedback for this student/dependent
+        const studentFeedback = feedbacks?.find(f => 
+          f.student_id === participant.student_id && 
+          (participant.dependent_id ? f.dependent_id === participant.dependent_id : !f.dependent_id)
+        );
         
-        // Format class date
+        // Format class date NO FUSO DO DESTINATÁRIO com timeZoneName: 'short'
         const classDate = new Date(classData.class_date);
-        const formattedDate = classDate.toLocaleDateString('pt-BR');
+        const formattedDate = classDate.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+          timeZone: recipientTimezone,
+        });
         const formattedTime = classDate.toLocaleTimeString('pt-BR', { 
           hour: '2-digit', 
-          minute: '2-digit' 
+          minute: '2-digit',
+          timeZone: recipientTimezone,
+          timeZoneName: 'short',
         });
 
         // Prepare email content
-        const emailSubject = `Novo relato de aula - ${teacher?.name}`;
+        const emailSubject = dependentName 
+          ? `Novo relato de aula de ${dependentName} - ${teacher.name}`
+          : `Novo relato de aula - ${teacher.name}`;
+
         const emailContent = `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
               <h1 style="margin: 0; font-size: 24px;">Novo Relato de Aula</h1>
-              <p style="margin: 10px 0 0 0; opacity: 0.9;">Professor ${teacher?.name}</p>
+              <p style="margin: 10px 0 0 0; opacity: 0.9;">Professor ${teacher.name}</p>
             </div>
             
             <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <p>Olá <strong>${recipientName}</strong>,</p>
+              
+              ${dependentName ? `
+                <div style="background: #ede9fe; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: inline-block;">
+                  <span style="color: #7c3aed; font-weight: 500;">📌 Relatório da aula de ${dependentName}</span>
+                </div>
+              ` : ''}
+              
               <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
                 <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">📚 Informações da Aula</h3>
-                <p style="margin: 5px 0; color: #666;"><strong>Aluno:</strong> ${student.name}</p>
+                <p style="margin: 5px 0; color: #666;"><strong>Aluno:</strong> ${dependentName || student.name}${dependentName ? ' (dependente)' : ''}</p>
                 <p style="margin: 5px 0; color: #666;"><strong>Data:</strong> ${formattedDate}</p>
                 <p style="margin: 5px 0; color: #666;"><strong>Horário:</strong> ${formattedTime}</p>
                 <p style="margin: 5px 0; color: #666;"><strong>Duração:</strong> ${classData.duration_minutes} minutos</p>
@@ -146,7 +225,7 @@ serve(async (req) => {
 
               ${reportData.homework ? `
                 <div style="margin-bottom: 25px;">
-                  <h3 style="color: #333; margin-bottom: 10px;">✏️ Tarefas</h3>
+                  <h3 style="color: #333; margin-bottom: 10px;">✏️ Tarefas${dependentName ? ` para ${dependentName}` : ''}</h3>
                   <div style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; border-radius: 4px;">
                     <p style="margin: 0; line-height: 1.6; white-space: pre-wrap;">${reportData.homework}</p>
                   </div>
@@ -164,7 +243,7 @@ serve(async (req) => {
 
               ${studentFeedback ? `
                 <div style="margin-bottom: 25px;">
-                  <h3 style="color: #333; margin-bottom: 10px;">💬 Feedback Individual</h3>
+                  <h3 style="color: #333; margin-bottom: 10px;">💬 Feedback Individual${dependentName ? ` para ${dependentName}` : ''}</h3>
                   <div style="background: #d4edda; padding: 15px; border-left: 4px solid #28a745; border-radius: 4px;">
                     <p style="margin: 0; line-height: 1.6; white-space: pre-wrap;">${studentFeedback.feedback}</p>
                   </div>
@@ -176,41 +255,42 @@ serve(async (req) => {
               <div style="text-align: center; color: #666; font-size: 14px;">
                 <p>Este é um email automático do sistema de gerenciamento de aulas.</p>
                 <p style="margin: 10px 0 0 0;">
-                  <strong>Professor ${teacher?.name}</strong><br>
-                  ${teacher?.email}
+                  <strong>Professor ${teacher.name}</strong><br>
+                  ${teacher.email}
                 </p>
               </div>
             </div>
           </div>
         `;
 
-        // Send to student
-        if (student.email) {
-          await resend.emails.send({
-            from: `${teacher?.name} <noreply@resend.dev>`,
-            to: [student.email],
+        // Send email
+        if (recipientEmail) {
+          const emailResult = await sendEmail({
+            to: recipientEmail,
             subject: emailSubject,
-            html: emailContent
+            html: emailContent,
           });
 
-          console.log(`Email sent to student: ${student.email}`);
+          if (emailResult.success) {
+            console.log(`✅ Email sent to: ${recipientEmail}${dependentName ? ` (for ${dependentName})` : ''} [TZ: ${recipientTimezone}]`);
+            notifiedCount++;
+          } else {
+            console.error(`Failed to send email to: ${recipientEmail}`, emailResult.error);
+          }
         }
 
-        // Note: Guardian email functionality removed as guardian data is not in profiles table
-
         // Record notification in database
-        await supabaseAdmin
+        await supabase
           .from('class_notifications')
           .insert({
             class_id: classId,
-            student_id: student.id,
+            student_id: participant.student_id,
             notification_type: 'class_report_created',
             status: 'sent'
           });
 
       } catch (error) {
-        console.error(`Error sending email to student ${student.name}:`, error);
-        // Continue with next student even if one fails
+        console.error(`Error sending email to participant ${participant.student_id}:`, error);
       }
     }
 
@@ -218,7 +298,7 @@ serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: "Class report notifications sent successfully",
-        notified_students: studentsToNotify.length
+        notified_students: notifiedCount
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

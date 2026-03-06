@@ -37,15 +37,11 @@ serve(async (req) => {
     logStep("Authorization header found");
 
     const token = authHeader.replace("Bearer ", "");
+    
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     
     if (userError || !userData.user) {
-      logStep("Authentication failed", { 
-        error: userError?.message, 
-        hasUser: !!userData.user 
-      });
-      
-      // Return 401 for authentication errors so frontend can handle logout
+      logStep("Authentication failed", { error: userError?.message });
       return new Response(JSON.stringify({ 
         error: "Authentication failed", 
         code: "INVALID_SESSION" 
@@ -55,8 +51,8 @@ serve(async (req) => {
       });
     }
     
-    const user = userData.user;
-    if (!user?.email) {
+    const userEmail = userData.user.email || '';
+    if (!userEmail) {
       logStep("User email not available");
       return new Response(JSON.stringify({ 
         error: "User email not available" 
@@ -66,12 +62,12 @@ serve(async (req) => {
       });
     }
     
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    logStep("User authenticated", { userId: userData.user.id, email: userEmail });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
     
     // Find Stripe customer by email
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+    const customers = await stripe.customers.list({ email: userEmail, limit: 1 });
     if (customers.data.length === 0) {
       logStep("No customer found, returning empty invoices");
       return new Response(JSON.stringify({ invoices: [] }), {

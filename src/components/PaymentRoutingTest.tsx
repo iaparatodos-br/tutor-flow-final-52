@@ -3,40 +3,45 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useProfile } from "@/contexts/ProfileContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2 } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, PlayCircle, Loader2, Users, Baby } from "lucide-react";
+
 interface TestResult {
   test_name: string;
   status: 'success' | 'error' | 'warning';
   message: string;
   details?: any;
 }
+
 interface Student {
   student_id: string;
   student_name: string;
   business_profile_id: string | null;
   relationship_id: string;
 }
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name?: string;
+}
+
 export function PaymentRoutingTest() {
-  const {
-    profile
-  } = useProfile();
-  const [selectedStudent, setSelectedStudent] = useState<string>("");
+  const { profile } = useProfile();
+  const [selectedEntity, setSelectedEntity] = useState<string>("");
+  const [entityType, setEntityType] = useState<'student' | 'dependent'>('student');
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
 
   // Buscar alunos
-  const {
-    data: students
-  } = useQuery({
-    queryKey: ["students-test"],
+  const { data: students } = useQuery({
+    queryKey: ["students-test", profile?.id],
     queryFn: async () => {
-      const {
-        data
-      } = await supabase.rpc('get_teacher_students', {
+      const { data } = await supabase.rpc('get_teacher_students', {
         teacher_user_id: profile?.id
       });
       return data as Student[];
@@ -44,15 +49,43 @@ export function PaymentRoutingTest() {
     enabled: !!profile?.id
   });
 
+  // Buscar dependentes
+  const { data: dependents } = useQuery({
+    queryKey: ["dependents-test", profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
+
+      const { data: deps } = await supabase.
+      from('dependents').
+      select('id, name, responsible_id').
+      eq('teacher_id', profile.id);
+
+      if (!deps || deps.length === 0) return [];
+
+      // Buscar nomes dos responsáveis
+      const responsibleIds = [...new Set(deps.map((d) => d.responsible_id))];
+      const { data: profiles } = await supabase.
+      from('profiles').
+      select('id, name').
+      in('id', responsibleIds);
+
+      const responsibleMap = new Map(profiles?.map((p) => [p.id, p.name]) || []);
+
+      return deps.map((d) => ({
+        ...d,
+        responsible_name: responsibleMap.get(d.responsible_id) || 'Desconhecido'
+      })) as Dependent[];
+    },
+    enabled: !!profile?.id
+  });
+
   // Executar testes de roteamento usando a edge function
   const runTestsMutation = useMutation({
-    mutationFn: async (studentId: string) => {
-      const {
-        data,
-        error
-      } = await supabase.functions.invoke('validate-payment-routing', {
+    mutationFn: async ({ studentId, dependentId }: {studentId: string;dependentId?: string;}) => {
+      const { data, error } = await supabase.functions.invoke('validate-payment-routing', {
         body: {
-          student_id: studentId
+          student_id: studentId,
+          dependent_id: dependentId
         }
       });
       if (error) {
@@ -60,10 +93,10 @@ export function PaymentRoutingTest() {
       }
       return data.results as TestResult[];
     },
-    onSuccess: results => {
+    onSuccess: (results) => {
       setTestResults(results);
-      const hasErrors = results.some(r => r.status === 'error');
-      const hasWarnings = results.some(r => r.status === 'warning');
+      const hasErrors = results.some((r) => r.status === 'error');
+      const hasWarnings = results.some((r) => r.status === 'warning');
       if (hasErrors) {
         toast.error("Testes concluídos com erros");
       } else if (hasWarnings) {
@@ -79,15 +112,40 @@ export function PaymentRoutingTest() {
       setIsRunning(false);
     }
   });
+
   const handleRunTests = () => {
-    if (!selectedStudent) {
-      toast.error("Selecione um aluno para executar os testes");
+    if (!selectedEntity) {
+      toast.error("Selecione um aluno ou dependente para executar os testes");
       return;
     }
     setIsRunning(true);
     setTestResults([]);
-    runTestsMutation.mutate(selectedStudent);
+
+    if (entityType === 'dependent') {
+      // Para dependentes, encontrar o responsável e passar ambos IDs
+      const dependent = dependents?.find((d) => d.id === selectedEntity);
+      if (dependent) {
+        runTestsMutation.mutate({
+          studentId: dependent.responsible_id,
+          dependentId: dependent.id
+        });
+      }
+    } else {
+      runTestsMutation.mutate({ studentId: selectedEntity });
+    }
   };
+
+  const handleSelectChange = (value: string) => {
+    // Determinar se é aluno ou dependente pelo prefixo
+    if (value.startsWith('dep_')) {
+      setEntityType('dependent');
+      setSelectedEntity(value.replace('dep_', ''));
+    } else {
+      setEntityType('student');
+      setSelectedEntity(value);
+    }
+  };
+
   const getStatusIcon = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -100,6 +158,7 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
+
   const getStatusBadge = (status: TestResult['status']) => {
     switch (status) {
       case 'success':
@@ -112,5 +171,49 @@ export function PaymentRoutingTest() {
         return null;
     }
   };
-  return;
+
+  const getCurrentValue = () => {
+    if (!selectedEntity) return "";
+    return entityType === 'dependent' ? `dep_${selectedEntity}` : selectedEntity;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Teste de Roteamento de Pagamento</CardTitle>
+        <CardDescription>Verifique se o roteamento de pagamento está configurado corretamente</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <select
+            className="flex-1 border rounded px-3 py-2 text-sm"
+            value={getCurrentValue()}
+            onChange={(e) => handleSelectChange(e.target.value)}
+          >
+            <option value="">Selecione um aluno ou dependente</option>
+            {students?.map((s) => (
+              <option key={s.student_id} value={s.student_id}>{s.student_name}</option>
+            ))}
+            {dependents?.map((d) => (
+              <option key={d.id} value={`dep_${d.id}`}>{d.name} (dependente)</option>
+            ))}
+          </select>
+          <Button onClick={handleRunTests} disabled={isRunning || !selectedEntity}>
+            {isRunning ? "Executando..." : "Executar Testes"}
+          </Button>
+        </div>
+        {testResults.length > 0 && (
+          <div className="space-y-2">
+            {testResults.map((result, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 border rounded">
+                {getStatusIcon(result.status)}
+                <span className="flex-1 text-sm">{result.message}</span>
+                {getStatusBadge(result.status)}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

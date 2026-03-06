@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useDebouncedCallback } from 'use-debounce';
 import { useProfile } from "@/contexts/ProfileContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,15 +22,19 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { fromUserZonedTime, toUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface ClassWithParticipants {
   id: string;
   class_date: string;
   duration_minutes: number;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   notes: string | null;
   is_experimental: boolean;
   is_group_class: boolean;
+  is_paid_class?: boolean;
   has_report?: boolean;
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
   
   recurrence_pattern?: any;
   // student_id REMOVED - use participants array instead
@@ -41,7 +46,8 @@ interface ClassWithParticipants {
   recurrence_end_date?: string;
   participants: Array<{
     student_id: string;
-    status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+    dependent_id?: string | null;
+    status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
     cancelled_at?: string;
     charge_applied?: boolean;
     confirmed_at?: string;
@@ -56,6 +62,12 @@ interface ClassWithParticipants {
 interface Student {
   id: string;
   name: string;
+}
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
 }
 interface ClassService {
   id: string;
@@ -90,6 +102,7 @@ export default function Agenda() {
   const [calendarClasses, setCalendarClasses] = useState<CalendarClass[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [dependents, setDependents] = useState<Dependent[]>([]);
   const [services, setServices] = useState<ClassService[]>([]);
   const [loading, setLoading] = useState(true);
   const [visibleRange, setVisibleRange] = useState<{
@@ -108,10 +121,17 @@ export default function Agenda() {
       class_date: string;
       service_id: string | null;
       is_group_class: boolean;
+      is_experimental: boolean;
+      is_paid_class: boolean;
       service_price: number | null;
       class_template_id: string;
       duration_minutes: number;
-      // student_id REMOVED
+      status: string;
+    };
+    dependentInfo?: {
+      id: string;
+      name: string;
+      responsible_name: string;
     };
   }>({
     isOpen: false,
@@ -130,6 +150,11 @@ export default function Agenda() {
   const [showBillingAlert, setShowBillingAlert] = useState(true);
   const [materializingClasses, setMaterializingClasses] = useState<Set<string>>(new Set());
   
+  // Deep-linking support from Inbox
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedClassId, setHighlightedClassId] = useState<string | null>(null);
+  const [calendarInitialDate, setCalendarInitialDate] = useState<Date | null>(null);
+  
   // ✅ OTIMIZAÇÃO FASE 4.1: Debounce para navegação de meses (300ms delay)
   const debouncedLoadClasses = useDebouncedCallback(
     (start: Date, end: Date) => {
@@ -144,11 +169,69 @@ export default function Agenda() {
       debouncedLoadClasses.cancel();
     };
   }, [debouncedLoadClasses]);
+
+  // Deep-linking: Process URL parameters from Inbox navigation
+  useEffect(() => {
+    // Only process if we have a profile (user is authenticated)
+    if (!profile) return;
+    
+    const dateParam = searchParams.get('date');
+    const classIdParam = searchParams.get('classId');
+    const actionParam = searchParams.get('action');
+    
+    if (dateParam || classIdParam) {
+      // Navigate calendar to the specified date
+      if (dateParam) {
+        const targetDate = new Date(dateParam);
+        if (!isNaN(targetDate.getTime())) {
+          // Set the initial date for the calendar component (fixes visual navigation)
+          setCalendarInitialDate(targetDate);
+          
+          const firstDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
+          const lastDay = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
+          const startGrid = new Date(firstDay);
+          startGrid.setDate(startGrid.getDate() - firstDay.getDay());
+          const endGrid = new Date(startGrid);
+          endGrid.setDate(endGrid.getDate() + 41);
+          setVisibleRange({ start: startGrid, end: endGrid });
+          // Immediately load classes for the target month
+          loadClasses(startGrid, endGrid);
+        }
+      }
+      
+      // Highlight the specific class
+      if (classIdParam) {
+        setHighlightedClassId(classIdParam);
+        
+        // Show action-specific toast guidance
+        if (actionParam === 'amnesty') {
+          toast({
+            title: t('messages.amnestyGuidance', 'Conceder Anistia'),
+            description: t('messages.amnestyGuidanceDesc', 'Clique na aula destacada e use o botão "Conceder Anistia".'),
+          });
+        } else if (actionParam === 'report') {
+          toast({
+            title: t('messages.reportGuidance', 'Criar Relatório'),
+            description: t('messages.reportGuidanceDesc', 'Clique na aula destacada e use o botão "Criar Relatório".'),
+          });
+        }
+        
+        // Clear highlight after 5 seconds
+        setTimeout(() => setHighlightedClassId(null), 5000);
+      }
+      
+      // Clear URL params after processing
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, toast, t, profile]);
   
   useEffect(() => {
     if (!authLoading && profile) {
       // Initial load with default range (current month)
-      if (!visibleRange) {
+      // Skip if URL has deep-link params (let deep-linking useEffect handle it)
+      const hasDeepLinkParams = searchParams.has('date') || searchParams.has('classId');
+      
+      if (!visibleRange && !hasDeepLinkParams) {
         const now = new Date();
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
@@ -164,11 +247,12 @@ export default function Agenda() {
       }
       if (isProfessor) {
         loadStudents();
+        loadDependents();
         loadAvailabilityBlocks();
         loadServices();
       }
     }
-  }, [profile, isProfessor, authLoading]);
+  }, [profile, isProfessor, authLoading, searchParams]);
 
   // Reload data when selectedTeacherId changes (for students)
   useEffect(() => {
@@ -183,15 +267,15 @@ export default function Agenda() {
       debouncedLoadClasses(visibleRange.start, visibleRange.end);
     }
   }, [visibleRange, profile, debouncedLoadClasses]);
-  const handleVisibleRangeChange = (start: Date, end: Date) => {
-    setVisibleRange({
-      start,
-      end
-    });
-  };
+  const handleVisibleRangeChange = useCallback((start: Date, end: Date) => {
+    setVisibleRange({ start, end });
+  }, []);
 
   // Helper function to generate virtual recurring instances for visible range
+  // DST-safe: converts template UTC → local time for RRule, then back to UTC per occurrence
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
+    const tz = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+
     // ✅ OTIMIZAÇÃO FASE 3.1: Reduzir buffer de +3 meses para +7 dias
     const maxEndDate = new Date(endDate);
     maxEndDate.setDate(maxEndDate.getDate() + 7); // Buffer de +7 dias garante navegação suave
@@ -214,29 +298,58 @@ export default function Agenda() {
     const effectiveEndDate = recurrenceEndDate;
     const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY : pattern.frequency === 'biweekly' ? Frequency.WEEKLY : pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
     const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+
+    // Convert template UTC time to local time components for DST-safe RRule generation
+    const zonedStart = toUserZonedTime(new Date(templateClass.class_date), tz);
+    const localDtstart = new Date(Date.UTC(
+      zonedStart.getFullYear(), zonedStart.getMonth(), zonedStart.getDate(),
+      zonedStart.getHours(), zonedStart.getMinutes(), 0
+    ));
+
+    // Convert range boundaries to same "fake UTC = local time" space
+    const zonedRangeStart = toUserZonedTime(startDate, tz);
+    const fakeUtcRangeStart = new Date(Date.UTC(
+      zonedRangeStart.getFullYear(), zonedRangeStart.getMonth(), zonedRangeStart.getDate(),
+      0, 0, 0
+    ));
+    const zonedEffectiveEnd = toUserZonedTime(effectiveEndDate, tz);
+    const fakeUtcEffectiveEnd = new Date(Date.UTC(
+      zonedEffectiveEnd.getFullYear(), zonedEffectiveEnd.getMonth(), zonedEffectiveEnd.getDate(),
+      23, 59, 59
+    ));
+
     const rule = new RRule({
       freq,
       interval,
-      dtstart: new Date(templateClass.class_date),
-      until: effectiveEndDate
+      dtstart: localDtstart,
+      until: fakeUtcEffectiveEnd
     });
 
-    // Generate occurrences only within the visible range
-    const occurrences = rule.between(startDate, effectiveEndDate, true);
+    // Generate occurrences in "local time as UTC" space, then convert each back to real UTC
+    const occurrences = rule.between(fakeUtcRangeStart, fakeUtcEffectiveEnd, true);
 
-    // Incluir a data do template nas instâncias virtuais
-    const instances = occurrences.map(date => ({
-      ...templateClass,
-      id: `${templateClass.id}_virtual_${date.getTime()}`,
-      class_date: date.toISOString(),
-      isVirtual: true,
-      is_template: false,
-      class_template_id: templateClass.id,
-      status: 'confirmada' as const,
-      participants: templateClass.participants || [], // Garantir array vazio se undefined
-      recurrence_end_date: templateClass.recurrence_end_date,
-      has_report: false // Virtual instances never have reports
-    }));
+    const instances = occurrences.map(date => {
+      // date's UTC components represent local time — convert to a Date with those as local fields
+      const localDate = new Date(
+        date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(),
+        date.getUTCHours(), date.getUTCMinutes(), 0
+      );
+      // Convert local time → real UTC
+      const utcDate = fromUserZonedTime(localDate, tz);
+
+      return {
+        ...templateClass,
+        id: `${templateClass.id}_virtual_${utcDate.getTime()}`,
+        class_date: utcDate.toISOString(),
+        isVirtual: true,
+        is_template: false,
+        class_template_id: templateClass.id,
+        status: 'confirmada' as const,
+        participants: templateClass.participants || [],
+        recurrence_end_date: templateClass.recurrence_end_date,
+        has_report: false
+      };
+    });
     
     return instances;
   };
@@ -280,6 +393,19 @@ export default function Agenda() {
         }
       } else {
         // For students, get classes where they are active participants (via class_participants)
+        // Also include classes where their dependents are participants
+        
+        // First, fetch the user's dependents for the selected teacher
+        let userDependentIds: string[] = [];
+        if (selectedTeacherId) {
+          const { data: userDependents } = await supabase
+            .from('dependents')
+            .select('id')
+            .eq('responsible_id', profile.id)
+            .eq('teacher_id', selectedTeacherId);
+          userDependentIds = userDependents?.map(d => d.id) || [];
+        }
+
         // Query 1: Aulas materializadas individuais (com filtro de 30 dias)
         let individualQuery = supabase
           .from('classes')
@@ -297,8 +423,12 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
+            is_paid_class,
             class_participants!inner (
               student_id,
+              dependent_id,
               status,
               cancelled_at,
               charge_applied,
@@ -345,8 +475,12 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
+            is_paid_class,
           class_participants!inner (
             student_id,
+            dependent_id,
             status,
             cancelled_at,
             charge_applied,
@@ -393,8 +527,12 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
+            is_paid_class,
             class_participants!inner (
               student_id,
+              dependent_id,
               status,
               cancelled_at,
               charge_applied,
@@ -440,8 +578,12 @@ export default function Agenda() {
             is_template,
             recurrence_end_date,
             class_template_id,
+            charge_applied,
+            amnesty_granted,
+            is_paid_class,
           class_participants!inner (
             student_id,
+            dependent_id,
             status,
             cancelled_at,
             charge_applied,
@@ -470,12 +612,111 @@ export default function Agenda() {
           throw groupTemplatesError;
         }
 
-        // Consolidar todos os resultados (aulas materializadas + templates)
+        // Query 5-8: Buscar aulas dos dependentes do usuário
+        let dependentClasses: any[] = [];
+        let dependentTemplates: any[] = [];
+        
+        if (userDependentIds.length > 0) {
+          // Query 5: Aulas materializadas de dependentes (com filtro de 30 dias)
+          const { data: depMaterializedClasses, error: depMaterializedError } = await supabase
+            .from('classes')
+            .select(`
+              id,
+              class_date,
+              duration_minutes,
+              status,
+              notes,
+              is_experimental,
+              is_group_class,
+              service_id,
+              teacher_id,
+              recurrence_pattern,
+              is_template,
+              recurrence_end_date,
+              class_template_id,
+              charge_applied,
+              amnesty_granted,
+              is_paid_class,
+              class_participants!inner (
+                student_id,
+                dependent_id,
+                status,
+                cancelled_at,
+                charge_applied,
+                confirmed_at,
+                completed_at,
+                cancellation_reason,
+                profiles!class_participants_student_id_fkey (
+                  name,
+                  email
+                )
+              )
+            `)
+            .in('class_participants.dependent_id', userDependentIds)
+            .eq('is_template', false)
+            .gte('class_date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+            .order('class_date');
+
+          if (depMaterializedError) {
+            console.error('Error loading dependent materialized classes:', depMaterializedError);
+          } else {
+            dependentClasses = depMaterializedClasses || [];
+          }
+
+          // Query 6: Templates de dependentes (SEM filtro de 30 dias)
+          const { data: depTemplateClasses, error: depTemplatesError } = await supabase
+            .from('classes')
+            .select(`
+              id,
+              class_date,
+              duration_minutes,
+              status,
+              notes,
+              is_experimental,
+              is_group_class,
+              service_id,
+              teacher_id,
+              recurrence_pattern,
+              is_template,
+              recurrence_end_date,
+              class_template_id,
+              charge_applied,
+              amnesty_granted,
+              is_paid_class,
+              class_participants!inner (
+                student_id,
+                dependent_id,
+                status,
+                cancelled_at,
+                charge_applied,
+                confirmed_at,
+                completed_at,
+                cancellation_reason,
+                profiles!class_participants_student_id_fkey (
+                  name,
+                  email
+                )
+              )
+            `)
+            .in('class_participants.dependent_id', userDependentIds)
+            .eq('is_template', true)
+            .order('class_date');
+
+          if (depTemplatesError) {
+            console.error('Error loading dependent template classes:', depTemplatesError);
+          } else {
+            dependentTemplates = depTemplateClasses || [];
+          }
+        }
+
+        // Consolidar todos os resultados (aulas materializadas + templates + dependentes)
         const allClasses = [
           ...(individualClasses || []),
           ...(groupClasses || []),
           ...(individualTemplates || []),
-          ...(groupTemplates || [])
+          ...(groupTemplates || []),
+          ...dependentClasses,
+          ...dependentTemplates
         ];
         const uniqueClassesMap = new Map(allClasses.map(c => [c.id, c]));
         const studentData = Array.from(uniqueClassesMap.values());
@@ -508,7 +749,7 @@ export default function Agenda() {
           // Buscar participantes de aulas em grupo (sem perfis)
           const { data: allParticipants, error: participantsError } = await supabase
             .from('class_participants')
-            .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+            .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
             .in('class_id', groupClassIds);
 
           if (participantsError) {
@@ -579,7 +820,7 @@ export default function Agenda() {
             // Buscar TODOS os participantes desses templates (sem filtro de student_id)
             const { data: allTemplateParticipants } = await supabase
               .from('class_participants')
-              .select('class_id, student_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+              .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
               .in('class_id', templateIds);
 
             // Extrair student_ids únicos
@@ -643,20 +884,22 @@ export default function Agenda() {
       // Process participants data from RPC response
       let classesWithDetails;
       if (isProfessor) {
-        // RPC already returns participants as JSONB array, just parse it
+        // RPC already returns participants as JSONB array with dependent_name included
         classesWithDetails = materializedClasses.map((cls: any) => {
           const participants = Array.isArray(cls.participants) 
             ? cls.participants.map((p: any) => ({
-                student_id: p.student_id,
-                status: p.status,
-                cancelled_at: p.cancelled_at,
-                cancelled_by: p.cancelled_by,
-                charge_applied: p.charge_applied,
-                confirmed_at: p.confirmed_at,
-                completed_at: p.completed_at,
-                cancellation_reason: p.cancellation_reason,
-                student: p.profiles
-              }))
+                  student_id: p.student_id,
+                  dependent_id: p.dependent_id,
+                  dependent_name: p.dependent_name || null, // Agora vem diretamente da RPC
+                  status: p.status,
+                  cancelled_at: p.cancelled_at,
+                  cancelled_by: p.cancelled_by,
+                  charge_applied: p.charge_applied,
+                  confirmed_at: p.confirmed_at,
+                  completed_at: p.completed_at,
+                  cancellation_reason: p.cancellation_reason,
+                  student: p.profiles
+                }))
             : [];
           return {
             ...cls,
@@ -666,18 +909,26 @@ export default function Agenda() {
       } else {
         // For students, data already comes with relations
         classesWithDetails = materializedClasses.map((item: any) => {
-          // For students: Get participants from class_participants (no legacy fallback)
-          const participants = item.class_participants?.map((p: any) => ({
-            student_id: p.student_id,
-            status: p.status,
-            cancelled_at: p.cancelled_at,
-            cancelled_by: p.cancelled_by,
-            charge_applied: p.charge_applied,
-            confirmed_at: p.confirmed_at,
-            completed_at: p.completed_at,
-            cancellation_reason: p.cancellation_reason,
-            student: p.profiles
-          })) || [];
+          // For students: Get participants from class_participants
+          // Note: Students query doesn't use the RPC, so we need to fetch dependent name separately
+          const participants = item.class_participants?.map((p: any) => {
+            const dependentInfo = p.dependent_id 
+              ? dependents.find(d => d.id === p.dependent_id)
+              : null;
+            return {
+              student_id: p.student_id,
+              dependent_id: p.dependent_id,
+              dependent_name: dependentInfo?.name || null,
+              status: p.status,
+              cancelled_at: p.cancelled_at,
+              cancelled_by: p.cancelled_by,
+              charge_applied: p.charge_applied,
+              confirmed_at: p.confirmed_at,
+              completed_at: p.completed_at,
+              cancellation_reason: p.cancellation_reason,
+              student: p.profiles
+            };
+          }) || [];
           
           return {
             ...item,
@@ -732,16 +983,30 @@ export default function Agenda() {
         // ✅ OTIMIZAÇÃO FASE 1.1: Participantes já vêm do RPC (professor) ou class_participants (aluno)
         const participantsFormatted = isProfessor
           ? (Array.isArray(template.participants)
-              ? template.participants.map((p: any) => ({
-                  student_id: p.student_id,
-                  student: p.profiles
-                }))
+              ? template.participants.map((p: any) => {
+                  const dependentInfo = p.dependent_id 
+                    ? dependents.find(d => d.id === p.dependent_id)
+                    : null;
+                  return {
+                    student_id: p.student_id,
+                    dependent_id: p.dependent_id,
+                    dependent_name: dependentInfo?.name || null,
+                    student: p.profiles
+                  };
+                })
               : [])
           : (Array.isArray(template.class_participants)
-              ? template.class_participants.map((p: any) => ({
-                  student_id: p.student_id,
-                  student: p.profiles
-                }))
+              ? template.class_participants.map((p: any) => {
+                  const dependentInfo = p.dependent_id 
+                    ? dependents.find(d => d.id === p.dependent_id)
+                    : null;
+                  return {
+                    student_id: p.student_id,
+                    dependent_id: p.dependent_id,
+                    dependent_name: dependentInfo?.name || null,
+                    student: p.profiles
+                  };
+                })
               : []);
         
         const templateWithParticipants = {
@@ -787,15 +1052,24 @@ export default function Agenda() {
       const calendarEvents: CalendarClass[] = allClasses
         .filter(cls => !cls.is_template) // Não mostrar templates na agenda
         .filter(cls => {
+          // Guard: skip classes with invalid/missing class_date
+          const d = new Date(cls.class_date);
+          if (!cls.class_date || isNaN(d.getTime())) {
+            console.warn('Agenda: skipping class with invalid class_date', cls.id, cls.class_date);
+            return false;
+          }
+          return true;
+        })
+        .filter(cls => {
           // For students, show only classes with active participation
           if (!isProfessor) {
             const myStatus = myParticipationByClassId.get(cls.id)?.status;
             if (myStatus) {
-              return ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myStatus);
+              return ['pendente', 'confirmada', 'concluida', 'cancelada', 'aguardando_pagamento'].includes(myStatus);
             }
             if (cls.participants.length > 0) {
               const myParticipation = cls.participants.find(p => p.student_id === profile.id);
-              return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada'].includes(myParticipation.status || cls.status);
+              return myParticipation && ['pendente', 'confirmada', 'concluida', 'cancelada', 'aguardando_pagamento'].includes(myParticipation.status || cls.status);
             }
           }
           return true;
@@ -838,7 +1112,14 @@ export default function Agenda() {
             isVirtual: cls.isVirtual,
             class_template_id: cls.class_template_id,
             recurrence_end_date: cls.recurrence_end_date,
-            has_report: !!cls.has_report
+            has_report: !!cls.has_report,
+            charge_applied: cls.charge_applied,
+            amnesty_granted: cls.amnesty_granted,
+            is_paid_class: cls.is_paid_class,
+            teacher_id: cls.teacher_id,
+            service_id: cls.service_id,
+            class_date: cls.class_date,
+            duration_minutes: cls.duration_minutes
           };
         });
 
@@ -899,15 +1180,35 @@ export default function Agenda() {
       console.error('Erro ao carregar alunos:', error);
     }
   };
+  
+  const loadDependents = async () => {
+    if (!profile?.id) return;
+    try {
+      const { data, error } = await supabase.rpc('get_teacher_dependents', {
+        p_teacher_id: profile.id
+      });
+      if (error) {
+        console.error('Erro ao carregar dependentes:', error);
+        return;
+      }
+      const mapped = (data || []).map((d: any) => ({
+        id: d.dependent_id,
+        name: d.dependent_name,
+        responsible_id: d.responsible_id,
+        responsible_name: d.responsible_name
+      }));
+      setDependents(mapped);
+    } catch (error) {
+      console.error('Erro ao carregar dependentes:', error);
+    }
+  };
   const loadServices = async () => {
     if (!profile?.id) return;
     try {
       const {
         data,
         error
-      } = await supabase.from('class_services').select('id, name, price, duration_minutes').eq('teacher_id', profile.id).eq('is_active', true).order('is_default', {
-        ascending: false
-      }).order('name');
+} = await supabase.from('class_services').select('id, name, price, duration_minutes').eq('teacher_id', profile.id).eq('is_active', true).order('name');
       if (error) {
         console.error('Erro ao carregar serviços:', error);
         return;
@@ -917,17 +1218,33 @@ export default function Agenda() {
       console.error('Erro ao carregar serviços:', error);
     }
   };
-  const handleConfirmClass = async (classId: string) => {
+  const handleConfirmClass = async (classId: string, isPaidClass: boolean = true) => {
     try {
       // Check if it's a virtual instance (needs materialization)
       if (classId.includes('_virtual_')) {
         await materializeVirtualClass(classId);
         return;
       }
-      // Atualizar status da aula
+      // Determinar o status baseado no charge_timing
+      let targetStatus = 'confirmada';
+      
+      if (isPaidClass) {
+        // Verificar charge_timing do business profile
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        
+        if (bp?.charge_timing === 'prepaid') {
+          targetStatus = 'aguardando_pagamento';
+        }
+      }
+
+      // Atualizar status da aula e is_paid_class
       const { error } = await supabase
         .from('classes')
-        .update({ status: 'confirmada' })
+        .update({ status: targetStatus, is_paid_class: isPaidClass })
         .eq('id', classId);
 
       if (error) throw error;
@@ -936,7 +1253,7 @@ export default function Agenda() {
       const { error: participantsError } = await supabase
         .from('class_participants')
         .update({ 
-          status: 'confirmada',
+          status: targetStatus,
           confirmed_at: new Date().toISOString()
         })
         .eq('class_id', classId)
@@ -946,6 +1263,60 @@ export default function Agenda() {
         console.error('Erro ao atualizar participantes:', participantsError);
         throw participantsError;
       }
+
+      // Buscar dados da aula para enviar notificações
+      const { data: classData, error: classDataError } = await supabase
+        .from('classes')
+        .select(`
+          id,
+          class_date,
+          duration_minutes,
+          teacher_id,
+          service_id,
+          class_services (
+            name
+          )
+        `)
+        .eq('id', classId)
+        .single();
+
+      if (!classDataError && classData) {
+        // Buscar dados do professor
+        const { data: teacherData } = await supabase
+          .from('profiles')
+          .select('name')
+          .eq('id', classData.teacher_id)
+          .single();
+
+        // Buscar participantes confirmados
+        const { data: participants } = await supabase
+          .from('class_participants')
+          .select('student_id')
+          .eq('class_id', classId)
+          .eq('status', 'confirmada');
+
+        // Enviar notificação para cada aluno confirmado
+        if (participants && teacherData) {
+          participants.forEach(async (participant) => {
+            try {
+              await supabase.functions.invoke('send-class-confirmation-notification', {
+                body: {
+                  class_id: classData.id,
+                  teacher_id: classData.teacher_id,
+                  student_id: participant.student_id,
+                  service_name: (classData.class_services as any)?.name || 'Aula',
+                  class_date: classData.class_date,
+                  duration_minutes: classData.duration_minutes,
+                  teacher_name: teacherData.name
+                }
+              });
+            } catch (notifError) {
+              console.error('Erro ao enviar notificação (não crítico):', notifError);
+            }
+          });
+        }
+      }
+
       toast({
         title: t('messages.classConfirmed'),
         description: t('messages.classConfirmedDescription')
@@ -991,6 +1362,7 @@ export default function Agenda() {
         status: targetStatus,
         is_experimental: virtualClass.is_experimental,
         is_group_class: virtualClass.is_group_class,
+        is_paid_class: virtualClass.is_paid_class ?? false, // FASE 4: Herdar is_paid_class do template (fallback defensivo)
         is_template: false,
         class_template_id: templateId
       };
@@ -1005,6 +1377,7 @@ export default function Agenda() {
         const participantInserts = virtualClass.participants.map(p => ({
           class_id: newClass.id,
           student_id: p.student_id,
+          dependent_id: (p as any).dependent_id || null,
           status: targetStatus
         }));
         const {
@@ -1018,6 +1391,7 @@ export default function Agenda() {
           .insert({
             class_id: newClass.id,
             student_id: virtualClass.participants[0].student_id,
+            dependent_id: (virtualClass.participants[0] as any).dependent_id || null,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' ? new Date().toISOString() : null,
             completed_at: targetStatus === 'concluida' ? new Date().toISOString() : null
@@ -1086,27 +1460,20 @@ export default function Agenda() {
   };
 
   const handleClassSubmit = async (formData: any) => {
-    if (!profile?.id) return;
+    if (!profile?.id || submitting) return;
     setSubmitting(true);
     try {
-      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
+      // Usar fromUserZonedTime para interpretar a data/hora no fuso do perfil do professor
+      const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+      const classDateTime = fromUserZonedTime(new Date(`${formData.class_date}T${formData.time}`), userTimezone);
 
-      // VALIDAÇÃO 1: Data no passado
-      const now = new Date();
-      if (classDateTime < now) {
-        toast({
-          title: "❌ Data Inválida",
-          description: "Não é possível agendar aulas no passado.",
-          variant: "destructive",
-        });
-        setSubmitting(false);
-        return;
-      }
+      // Permitir cadastro de aulas no passado (para registros retroativos)
 
       // VALIDAÇÃO 2: Conflito de horário (warning, não bloqueio)
       const classEndTime = new Date(classDateTime.getTime() + formData.duration_minutes * 60000);
       const hasConflict = classes?.some(existingClass => {
         if (existingClass.isVirtual || existingClass.is_template) return false;
+        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') return false;
         
         const existingStart = new Date(existingClass.class_date);
         const existingEnd = new Date(existingStart.getTime() + existingClass.duration_minutes * 60000);
@@ -1121,6 +1488,22 @@ export default function Agenda() {
       // Conflict detected but allowing scheduling
       // Teacher will receive a warning in the UI
 
+      // Determinar status inicial baseado no charge_timing para aulas pagas
+      let initialStatus = 'confirmada';
+      let cachedChargeTiming: string | null = null;
+      if (formData.is_paid_class && !formData.is_experimental && !formData.recurrence) {
+        const { data: bp } = await supabase
+          .from('business_profiles')
+          .select('charge_timing')
+          .eq('user_id', profile.id)
+          .maybeSingle();
+        
+        cachedChargeTiming = bp?.charge_timing || null;
+        if (cachedChargeTiming === 'prepaid') {
+          initialStatus = 'aguardando_pagamento';
+        }
+      }
+
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
@@ -1128,10 +1511,10 @@ export default function Agenda() {
         class_date: classDateTime.toISOString(),
         duration_minutes: formData.duration_minutes,
         notes: formData.notes || null,
-        status: 'confirmada',
-        // Professor-created classes are confirmed by default
-        is_experimental: formData.is_experimental, // Use form value directly
+        status: initialStatus,
+        is_experimental: formData.is_experimental,
         is_group_class: formData.is_group_class,
+        is_paid_class: formData.is_paid_class,
         recurrence_pattern: formData.recurrence ? formData.recurrence : null
       };
       let insertedClasses;
@@ -1179,13 +1562,22 @@ export default function Agenda() {
       }
 
       // ROLLBACK: Insert participants with error handling
-      if (formData.selectedStudents.length > 0) {
+      // Use selectedParticipants if available (new format), fallback to selectedStudents (legacy)
+      const participantsToInsert = formData.selectedParticipants?.length > 0 
+        ? formData.selectedParticipants 
+        : formData.selectedStudents?.map((studentId: string) => ({
+            student_id: studentId,
+            type: 'student' as const
+          })) || [];
+
+      if (participantsToInsert.length > 0) {
         try {
           for (const classInstance of insertedClasses) {
-            const participantInserts = formData.selectedStudents.map((studentId: string) => ({
+            const participantInserts = participantsToInsert.map((participant: any) => ({
               class_id: classInstance.id,
-              student_id: studentId,
-              status: 'confirmada' // Professor-created classes are confirmed by default
+              student_id: participant.student_id,
+              dependent_id: participant.dependent_id || null,
+              status: initialStatus
             }));
             const {
               error: participantError
@@ -1204,8 +1596,49 @@ export default function Agenda() {
           throw new Error('Erro ao adicionar participantes. As aulas não foram criadas.');
         }
       }
-      // Note: Individual classes without selectedStudents are now handled 
-      // by the selectedStudents array above (no separate logic needed)
+      // FASE 5: Gerar faturas pré-pagas em background (fire-and-forget)
+      if (!formData.recurrence && formData.is_paid_class && !formData.is_experimental && participantsToInsert.length > 0) {
+        if (cachedChargeTiming === 'prepaid') {
+          const servicePrice = formData.service_id
+            ? services.find(s => s.id === formData.service_id)?.price || 0
+            : 0;
+
+          if (servicePrice > 0 && insertedClasses?.[0]) {
+            const classId = insertedClasses[0].id;
+            const classDateStr = formatInTimezone(classDateTime, 'dd/MM/yyyy', profile?.timezone || DEFAULT_TIMEZONE);
+
+            // Fire-and-forget: gerar faturas em paralelo sem bloquear o modal
+            const invoicePromises = participantsToInsert.map((participant: any) =>
+              supabase.functions.invoke('create-invoice', {
+                body: {
+                  student_id: participant.student_id,
+                  dependent_id: participant.dependent_id || undefined,
+                  amount: servicePrice,
+                  description: `Aula pré-paga - ${classDateStr}`,
+                  class_id: classId,
+                  invoice_type: 'prepaid_class',
+                }
+              })
+            );
+
+            Promise.allSettled(invoicePromises).then((results) => {
+              const errors = results.filter(r => 
+                r.status === 'rejected' || 
+                (r.status === 'fulfilled' && (r.value.error || (r.value.data && !r.value.data.success)))
+              );
+              if (errors.length > 0) {
+                console.error('[PREPAID] Erros ao gerar faturas pré-pagas:', errors);
+                toast({
+                  title: "Aviso",
+                  description: `${errors.length} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
+                  variant: "destructive"
+                });
+              }
+            });
+          }
+        }
+      }
+
       if (formData.recurrence) {
         toast({
           title: t('messages.recurringConfirmed'),
@@ -1336,9 +1769,9 @@ export default function Agenda() {
     // through other actions (complete, report, cancel)
   };
 
-  const handleRecurringClassCancel = (classId: string, className: string, classDate: string) => {
+  const handleRecurringClassCancel = async (classId: string, className: string, classDate: string) => {
     const classToCancel = calendarClasses.find(c => c.id === classId);
-    
+
     if (!classToCancel) {
       toast({
         title: "Erro",
@@ -1348,27 +1781,72 @@ export default function Agenda() {
       return;
     }
     
-    // Find the full class data from classes array to get service info
-    const fullClassData = classes.find(c => c.id === classId);
+    // For virtual classes, find the template in the raw classes array using class_template_id
+    // For materialized classes, find by classId directly
+    // For virtual classes, use classToCancel directly (CalendarClass now includes all needed fields)
+    // For materialized classes, find by classId in the classes array
+    const fullClassData = classToCancel.isVirtual 
+      ? classToCancel
+      : classes.find(c => c.id === classId);
     
-    // Prepare virtual class data if it's a virtual class
-    const virtualData = classToCancel.isVirtual && fullClassData ? {
-      teacher_id: fullClassData.teacher_id || profile!.id,
-      class_date: fullClassData.class_date,
-      service_id: fullClassData.service_id || null,
-      is_group_class: fullClassData.is_group_class || false,
-      service_price: null, // Will be fetched from service if needed
-      class_template_id: fullClassData.class_template_id || '',
-      duration_minutes: fullClassData.duration_minutes || 60
-      // student_id REMOVED - no longer needed
-    } : undefined;
+    // Resolve service price: use cached services (teacher) or fetch directly (student)
+    let servicePrice = 0;
+    if (classToCancel.service_id) {
+      const cached = services.find(s => s.id === classToCancel.service_id);
+      if (cached) {
+        servicePrice = cached.price;
+      } else {
+        const { data: svcData } = await supabase
+          .from('class_services')
+          .select('price')
+          .eq('id', classToCancel.service_id)
+          .maybeSingle();
+        servicePrice = svcData?.price ? Number(svcData.price) : 0;
+      }
+    }
+
+    // Prepare class data for ALL classes (virtual and materialized)
+    // This avoids the modal needing to query `classes` directly, which RLS blocks for students
+    const classDataForModal = {
+      teacher_id: classToCancel.teacher_id || profile!.id,
+      class_date: classToCancel.class_date || classToCancel.start.toISOString(),
+      service_id: classToCancel.service_id || null,
+      is_group_class: classToCancel.is_group_class || false,
+      is_experimental: classToCancel.is_experimental || false,
+      is_paid_class: classToCancel.is_paid_class ?? false,
+      service_price: servicePrice,
+      class_template_id: classToCancel.class_template_id || classId,
+      is_virtual: classToCancel.isVirtual || false,
+      duration_minutes: classToCancel.duration_minutes || 60,
+      status: classToCancel.isVirtual
+        ? 'confirmada' as const
+        : (classToCancel.status || 'confirmada')
+    };
+    
+    // Check if any participant is a dependent and extract dependent info
+    let dependentInfo: { id: string; name: string; responsible_name: string } | undefined;
+    if (fullClassData?.participants) {
+      const participantWithDependent = fullClassData.participants.find(p => p.dependent_id);
+      if (participantWithDependent?.dependent_id) {
+        // Find the dependent info from the dependents array
+        const dependent = dependents.find(d => d.id === participantWithDependent.dependent_id);
+        if (dependent) {
+          dependentInfo = {
+            id: dependent.id,
+            name: dependent.name,
+            responsible_name: dependent.responsible_name
+          };
+        }
+      }
+    }
     
     setCancellationModal({
       isOpen: true,
       classId,
       className,
       classDate,
-      virtualClassData: virtualData
+      virtualClassData: classDataForModal,
+      dependentInfo
     });
   };
   if (loading) {
@@ -1436,14 +1914,21 @@ export default function Agenda() {
           isProfessor={isProfessor} 
           loading={loading} 
           onScheduleClass={() => setIsDialogOpen(true)} 
-          onVisibleRangeChange={handleVisibleRangeChange} 
+          onVisibleRangeChange={handleVisibleRangeChange}
+          highlightedClassId={highlightedClassId}
+          initialDate={calendarInitialDate}
+          onAmnestyGranted={() => {
+            if (visibleRange) {
+              loadClasses(visibleRange.start, visibleRange.end);
+            }
+          }}
         />
 
         {/* Availability Manager for Professors */}
         {isProfessor && <AvailabilityManager />}
 
         {/* Class Form Dialog */}
-        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} services={services} existingClasses={classes} />
+        <ClassForm open={isDialogOpen} onOpenChange={setIsDialogOpen} onSubmit={handleClassSubmit} students={students} dependents={dependents} services={services} existingClasses={classes} loading={submitting} />
 
         {/* Cancellation Modal */}
         <CancellationModal 
@@ -1456,7 +1941,14 @@ export default function Agenda() {
           className={cancellationModal.className} 
           classDate={cancellationModal.classDate} 
           virtualClassData={cancellationModal.virtualClassData}
-          onCancellationComplete={loadClasses} 
+          dependentInfo={cancellationModal.dependentInfo}
+          onCancellationComplete={() => {
+            if (visibleRange) {
+              loadClasses(visibleRange.start, visibleRange.end);
+            } else {
+              loadClasses();
+            }
+          }}
         />
 
         {/* Class Report Modal */}

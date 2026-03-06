@@ -46,17 +46,30 @@ serve(async (req) => {
     // Start transaction-like operations
     logStep("Starting downgrade process", { reason, selectedStudentIds });
 
-    // 1. Get user's current subscription and student count
+    // 1. Get user's current subscription and plan info (sequential queries — Etapa 0.6)
     const { data: currentSubscription, error: subError } = await supabaseClient
       .from('user_subscriptions')
-      .select('*, subscription_plans(*)')
+      .select('id, user_id, plan_id, status, stripe_subscription_id, cancel_at_period_end, extra_students, extra_cost_cents')
       .eq('user_id', user.id)
-      .eq('status', 'active')
-      .single();
+      .in('status', ['active', 'expired', 'past_due', 'cancelled'])
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (subError || !currentSubscription) {
       logStep("No active subscription found", { error: subError });
       throw new Error('No active subscription found');
+    }
+
+    // Fetch plan details separately (avoid FK join)
+    let subscriptionPlan: any = null;
+    if (currentSubscription.plan_id) {
+      const { data: plan } = await supabaseClient
+        .from('subscription_plans')
+        .select('*')
+        .eq('id', currentSubscription.plan_id)
+        .maybeSingle();
+      subscriptionPlan = plan;
     }
 
     // 2. Get all teacher's students
@@ -69,6 +82,22 @@ serve(async (req) => {
       logStep("Error fetching students", { error: studentsError });
       throw new Error('Failed to fetch students');
     }
+    
+    // 2.1 Get all teacher's dependents
+    const { data: allDependents, error: dependentsError } = await supabaseClient
+      .rpc('get_teacher_dependents', { p_teacher_id: user.id });
+    
+    if (dependentsError) {
+      logStep("Error fetching dependents", { error: dependentsError });
+      // Continue - dependents are optional
+    }
+    
+    // 2.2 Get total count including dependents
+    const { data: countData } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: user.id });
+    
+    const totalCount = countData?.[0] || { total_students: 0, regular_students: 0, dependents_count: 0 };
+    logStep("Total students + dependents count", totalCount);
 
     // 3. Get free plan
     const { data: freePlan, error: freePlanError } = await supabaseClient
@@ -76,7 +105,7 @@ serve(async (req) => {
       .select('*')
       .eq('slug', 'free')
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
 
     if (freePlanError || !freePlan) {
       logStep("Free plan not found", { error: freePlanError });
@@ -106,14 +135,23 @@ serve(async (req) => {
         student => !selectedStudentIds.includes(student.student_id)
       );
 
-      logStep("Removing excess students", { 
+      // Calculate dependents that will be cascade-deleted with their responsibles
+      const removedResponsibleIds = studentsToRemove.map(s => s.student_id);
+      const dependentsToRemove = (allDependents || []).filter(
+        (dep: any) => removedResponsibleIds.includes(dep.responsible_id)
+      );
+      
+      logStep("Removing excess students and their dependents", { 
         totalStudents: allStudents.length,
+        totalDependents: allDependents?.length || 0,
         selectedCount: selectedStudentIds.length,
-        toRemoveCount: studentsToRemove.length
+        studentsToRemoveCount: studentsToRemove.length,
+        dependentsToRemoveCount: dependentsToRemove.length
       });
 
       if (studentsToRemove.length > 0) {
         // Call smart-delete-student for each student to remove
+        // Note: smart-delete-student handles cascade deletion of dependents
         for (const student of studentsToRemove) {
           try {
             const { error: deleteError } = await supabaseClient.functions.invoke(
@@ -133,7 +171,7 @@ serve(async (req) => {
               });
               // Log but continue with other students
             } else {
-              logStep("Successfully deleted student", { 
+              logStep("Successfully deleted student (and their dependents)", { 
                 studentId: student.student_id,
                 studentName: student.student_name
               });
@@ -207,12 +245,21 @@ serve(async (req) => {
       // Don't fail the operation for audit errors
     }
 
+    const studentsRemoved = selectedStudentIds ? allStudents.length - selectedStudentIds.length : 0;
+    const removedResponsibleIds = selectedStudentIds 
+      ? allStudents.filter(s => !selectedStudentIds.includes(s.student_id)).map(s => s.student_id)
+      : [];
+    const dependentsRemoved = (allDependents || []).filter(
+      (dep: any) => removedResponsibleIds.includes(dep.responsible_id)
+    ).length;
+    
     logStep("Payment failure downgrade completed successfully", {
       userId: user.id,
-      previousPlan: currentSubscription.subscription_plans?.name,
+      previousPlan: subscriptionPlan?.name || 'unknown',
       newPlan: freePlan.name,
       cancelledInvoices: true,
-      studentsRemoved: selectedStudentIds ? allStudents.length - selectedStudentIds.length : 0
+      studentsRemoved,
+      dependentsRemoved
     });
 
     return new Response(JSON.stringify({

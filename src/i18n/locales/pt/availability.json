@@ -8,7 +8,11 @@
     "done": "Concluído",
     "unavailable": "Indisponível",
     "save": "Salvar",
-    "saving": "Salvando..."
+    "saving": "Salvando...",
+    "timeHint": {
+      "title": "Importante sobre o horário de fim",
+      "description": "Configure o horário de FIM da sua última aula, não o horário de INÍCIO. Exemplo: se sua última aula é às 17h e dura 1h, coloque 18:00 como horário de fim."
+    }
   },
   "blocks": {
     "title": "Bloqueios de Agenda",

@@ -96,7 +96,7 @@
     "ownStudent": "Own student",
     "notConfigured": "Not configured"
   },
-  "actions": {
+  "formActions": {
     "save": "Save Changes",
     "register": "Register Student",
     "saving": "Saving..."
@@ -113,5 +113,118 @@
     "relationshipNotFound": "Could not find student relationship",
     "deleteError": "Error processing student removal",
     "profileLoadError": "Could not load student data"
+  },
+  "registrationType": {
+    "title": "Registration Type",
+    "description": "Select the registration type for this student",
+    "individual": {
+      "title": "Student with Email",
+      "description": "Adult student or student with their own email for system access"
+    },
+    "family": {
+      "title": "Family / Minors",
+      "description": "Guardian with one or more minor dependents",
+      "dependentsLabel": "Dependents",
+      "addDependent": "Add",
+      "newDependent": "New Dependent",
+      "noDependentsYet": "No dependents added yet",
+      "addFirst": "Add first dependent",
+      "minOneDependentRequired": "Add at least one dependent",
+      "guardianInfo": "Guardian Information",
+      "guardianInfoDescription": "The guardian will receive system access and be able to monitor all dependents' classes"
+    },
+    "back": "Back"
+  },
+  "dependents": {
+    "title": "Dependents",
+    "add": "Add",
+    "addButton": "Add Dependent",
+    "description": "Minors under {{name}}'s responsibility",
+    "empty": "No dependents registered",
+    "emptyState": "No dependents registered for this guardian.",
+    "addFirst": "Add first dependent",
+    "noDependents": "No dependents registered",
+    "classes": "classes",
+    "classHistory": "Class History",
+    "noClasses": "No classes recorded",
+    "lastClass": "Last class",
+    "modal": {
+      "addTitle": "Add Dependent",
+      "editTitle": "Edit Dependent",
+      "responsibleLabel": "Guardian",
+      "addDescription": "Add a dependent for this guardian.",
+      "editDescription": "Update dependent information.",
+      "addButton": "Add"
+    },
+    "fields": {
+      "name": "Dependent Name",
+      "birthDate": "Birth Date",
+      "birthDateHint": "Optional, for internal control",
+      "notes": "Notes"
+    },
+    "placeholders": {
+      "name": "Full name",
+      "notes": "Notes about the dependent..."
+    },
+    "success": {
+      "created": "Dependent added",
+      "createdDescription": "Dependent was added successfully.",
+      "updated": "Dependent updated",
+      "updatedDescription": "Dependent information was updated.",
+      "deleted": "Dependent removed",
+      "deletedDescription": "Dependent was removed successfully."
+    },
+    "errors": {
+      "nameRequired": "Name is required",
+      "createFailed": "Error adding dependent",
+      "updateFailed": "Error updating dependent",
+      "deleteFailed": "Error removing dependent",
+      "missingTeacherId": "Error",
+      "teacherIdRequired": "Teacher ID is required",
+      "saveFailed": "Error saving dependent",
+      "partialCreation": "Some dependents could not be created",
+      "partialCreationDescription": "Could not create: {{names}}",
+      "limitReached": "Limit reached",
+      "limitReachedDescription": "You have reached the student/dependent limit for the free plan. Upgrade to add more.",
+      "upgradeToPlan": "Limit reached. Upgrade to add more."
+    },
+    "deleteConfirm": {
+      "title": "Remove dependent?",
+      "description": "This action will remove dependent {{name}}. Future classes associated will be cancelled."
+    },
+    "confirmDelete": "Are you sure you want to remove {{name}}?",
+    "billedToResponsible": "Billed via guardian",
+    "addAnother": "Add another dependent"
+  },
+  "table": {
+    "name": "Name",
+    "type": "Type",
+    "email": "Email",
+    "businessProfile": "Payment Business",
+    "billingDay": "Billing Day",
+    "createdAt": "Registration Date",
+    "actions": "Actions"
+  },
+  "badges": {
+    "student": "Student",
+    "family": "Family",
+    "dependent": "Dependent"
+  },
+  "status": {
+    "configured": "Configured",
+    "notConfigured": "Not configured"
+  },
+  "actions": {
+    "viewProfile": "View profile",
+    "edit": "Edit",
+    "remove": "Remove",
+    "addDependent": "Add Dependent",
+    "resendInvitation": "Resend invitation"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Remove"
   }
 }

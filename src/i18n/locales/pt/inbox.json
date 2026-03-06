@@ -1,0 +1,117 @@
+{
+  "title": "Central de Ações",
+  "subtitle": "Gerencie suas pendências e notificações",
+  
+  "tabs": {
+    "inbox": "Caixa de Entrada",
+    "inboxCount": "Caixa de Entrada ({{count}})",
+    "saved": "Salvas",
+    "savedCount": "Salvas ({{count}})",
+    "done": "Concluídas",
+    "doneCount": "Concluídas ({{count}})"
+  },
+  
+  "filters": {
+    "all": "Todas",
+    "unread": "Não lidas",
+    "read": "Lidas",
+    "urgency": {
+      "label": "Urgência",
+      "all": "Todas",
+      "high": "Alta",
+      "medium": "Média",
+      "low": "Baixa"
+    },
+    "category": {
+      "label": "Categoria",
+      "all": "Todas",
+      "pending_past_classes": "Aulas Pendentes",
+      "amnesty_eligible": "Anistia Disponível",
+      "overdue_invoices": "Faturas Vencidas",
+      "pending_reports": "Relatórios Pendentes"
+    }
+  },
+  
+  "categories": {
+    "pending_past_classes": {
+      "title": "Aula Pendente",
+      "description": "Confirme ou cancele esta aula passada"
+    },
+    "amnesty_eligible": {
+      "title": "Anistia Disponível",
+      "description": "Você pode conceder anistia para esta aula cancelada"
+    },
+    "overdue_invoices": {
+      "title": "Fatura Vencida",
+      "description": "Esta fatura está aguardando pagamento"
+    },
+    "pending_reports": {
+      "title": "Relatório Pendente",
+      "description": "Crie o relatório para esta aula concluída"
+    }
+  },
+  
+  "actions": {
+    "markDone": "Concluir",
+    "save": "Salvar",
+    "undo": "Desfazer",
+    "dismiss": "Dispensar",
+    "dismissed": "Notificação removida",
+    "viewClass": "Ver Aula",
+    "viewInvoice": "Ver Fatura",
+    "grantAmnesty": "Conceder Anistia",
+    "createReport": "Criar Relatório",
+    "confirmClass": "Confirmar Aula",
+    "movedToInbox": "Movido para Caixa de Entrada",
+    "saved": "Salvo para depois",
+    "markedDone": "Marcado como concluído",
+    "batchSuccess": "{{count}} itens atualizados com sucesso",
+    "batchPartial": "{{success}} atualizados, {{failed}} falharam"
+  },
+  
+  "empty": {
+    "inbox": {
+      "title": "Nenhuma pendência",
+      "description": "Você está em dia! Não há ações pendentes no momento."
+    },
+    "saved": {
+      "title": "Nenhum item salvo",
+      "description": "Salve notificações importantes para revisar depois."
+    },
+    "done": {
+      "title": "Nenhum item concluído",
+      "description": "Itens marcados como concluídos aparecerão aqui."
+    }
+  },
+  
+  "errors": {
+    "loadFailed": "Erro ao carregar notificações",
+    "updateFailed": "Erro ao atualizar",
+    "tryAgain": "Tente novamente"
+  },
+  
+  "pagination": {
+    "loadMore": "Carregar mais",
+    "loading": "Carregando...",
+    "noMore": "Fim da lista"
+  },
+  
+  "time": {
+    "daysAgo_one": "há {{count}} dia",
+    "daysAgo_other": "há {{count}} dias",
+    "hoursAgo_one": "há {{count}} hora",
+    "hoursAgo_other": "há {{count}} horas",
+    "justNow": "agora mesmo"
+  },
+  
+  "student": {
+    "unknown": "Aluno não identificado"
+  },
+  
+  "invoice": {
+    "amount": "R$ {{amount}}",
+    "dueDate": "Vencimento: {{date}}",
+    "daysOverdue_one": "{{count}} dia em atraso",
+    "daysOverdue_other": "{{count}} dias em atraso"
+  }
+}

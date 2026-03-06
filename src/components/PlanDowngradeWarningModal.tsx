@@ -5,7 +5,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertTriangle, CreditCard, Users, Calendar, ArrowRight } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface PlanDowngradeWarningModalProps {
@@ -97,7 +97,7 @@ export function PlanDowngradeWarningModal({
                 </div>
                 <p className="text-lg font-semibold text-green-600 mt-1">
                   {subscriptionEndDate 
-                    ? format(new Date(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })
+                    ? format(parseISO(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })
                     : 'Imediatamente'
                   }
                 </p>
@@ -152,7 +152,7 @@ export function PlanDowngradeWarningModal({
                   <div className="w-2 h-2 rounded-full bg-amber-500 mt-2 flex-shrink-0" />
                   <div>
                     <p className="font-medium">
-                      {format(new Date(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })}
+                      {format(parseISO(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Fim do período atual - você manterá acesso até esta data
@@ -167,7 +167,7 @@ export function PlanDowngradeWarningModal({
                   <div>
                     <p className="font-medium">
                       {subscriptionEndDate 
-                        ? format(new Date(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })
+                        ? format(parseISO(subscriptionEndDate), 'dd/MM/yyyy', { locale: ptBR })
                         : 'Imediatamente'
                       }
                     </p>

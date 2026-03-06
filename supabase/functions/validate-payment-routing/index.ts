@@ -39,12 +39,62 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { student_id } = await req.json();
+    const { student_id, dependent_id } = await req.json();
     if (!student_id) {
       throw new Error('student_id is required');
     }
 
     const results: ValidationResult[] = [];
+
+    // Teste 0: Se dependent_id fornecido, verificar dependente
+    if (dependent_id) {
+      const { data: dependent, error: depError } = await supabase
+        .from('dependents')
+        .select('id, name, responsible_id, teacher_id')
+        .eq('id', dependent_id)
+        .eq('teacher_id', user.id)
+        .single();
+
+      if (depError || !dependent) {
+        results.push({
+          test_name: "Dependent Validation",
+          status: "error",
+          message: "Dependente não encontrado ou não pertence ao professor"
+        });
+        return new Response(JSON.stringify({ results }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      // Verificar se o responsável é o student_id fornecido
+      if (dependent.responsible_id !== student_id) {
+        results.push({
+          test_name: "Dependent Validation",
+          status: "error",
+          message: "Dependente não pertence ao responsável informado",
+          details: {
+            dependent_id: dependent.id,
+            dependent_name: dependent.name,
+            expected_responsible: student_id,
+            actual_responsible: dependent.responsible_id
+          }
+        });
+        return new Response(JSON.stringify({ results }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      results.push({
+        test_name: "Dependent Validation",
+        status: "success",
+        message: `Dependente "${dependent.name}" validado - cobrança será direcionada ao responsável`,
+        details: {
+          dependent_id: dependent.id,
+          dependent_name: dependent.name,
+          responsible_id: dependent.responsible_id
+        }
+      });
+    }
 
     // Teste 1: Verificar se o aluno existe e está vinculado ao professor
     const { data: studentRelation, error: studentError } = await supabase
@@ -67,9 +117,11 @@ serve(async (req) => {
 
     if (studentError || !studentRelation) {
       results.push({
-        test_name: "Student Relationship Validation",
+        test_name: dependent_id ? "Responsible Relationship Validation" : "Student Relationship Validation",
         status: "error",
-        message: "Aluno não encontrado ou não vinculado ao professor"
+        message: dependent_id 
+          ? "Responsável do dependente não encontrado ou não vinculado ao professor"
+          : "Aluno não encontrado ou não vinculado ao professor"
       });
       return new Response(JSON.stringify({ results }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -79,13 +131,16 @@ serve(async (req) => {
     const profile = Array.isArray(studentRelation.profiles) ? studentRelation.profiles[0] : studentRelation.profiles;
     
     results.push({
-      test_name: "Student Relationship Validation",
+      test_name: dependent_id ? "Responsible Relationship Validation" : "Student Relationship Validation",
       status: "success",
-      message: `Aluno ${studentRelation.student_name || profile?.name} validado`,
+      message: dependent_id 
+        ? `Responsável ${studentRelation.student_name || profile?.name} validado (receberá a cobrança)`
+        : `Aluno ${studentRelation.student_name || profile?.name} validado`,
       details: {
         student_id: studentRelation.student_id,
         teacher_id: studentRelation.teacher_id,
-        business_profile_id: studentRelation.business_profile_id
+        business_profile_id: studentRelation.business_profile_id,
+        is_responsible: !!dependent_id
       }
     });
 
@@ -174,52 +229,47 @@ serve(async (req) => {
       });
     }
 
-    // Teste 5: Simular criação de fatura para validar roteamento
+    // Teste 5: Validar estrutura de fatura (sem criar registro real — #259 FIX)
+    // Anteriormente criava uma fatura REAL e depois deletava, corrompendo dados.
+    // Agora apenas valida se os campos necessários estão presentes.
     try {
       const mockInvoice = {
         teacher_id: user.id,
         student_id: student_id,
         business_profile_id: studentRelation.business_profile_id,
         amount: 1.00,
-        description: "Teste de validação de roteamento",
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        status: 'pendente'
+        due_date: new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
       };
 
-      // Não inserir realmente, apenas validar se passaria pelas políticas RLS
-      const { error: insertTestError } = await supabase
-        .from('invoices')
-        .insert(mockInvoice)
-        .select()
-        .single();
+      // Validação sem INSERT: verificar se todos os campos obrigatórios estão preenchidos
+      const requiredFields = ['teacher_id', 'student_id', 'amount', 'due_date'];
+      const missingFields = requiredFields.filter(f => !mockInvoice[f as keyof typeof mockInvoice]);
 
-      if (insertTestError) {
+      if (missingFields.length > 0) {
         results.push({
-          test_name: "Invoice Creation Simulation",
+          test_name: "Invoice Creation Validation",
           status: "error",
-          message: `Simulação de criação de fatura falhou: ${insertTestError.message}`
+          message: `Campos obrigatórios ausentes: ${missingFields.join(', ')}`
         });
       } else {
-        // Se chegou aqui, deletar a fatura de teste
-        await supabase
-          .from('invoices')
-          .delete()
-          .eq('description', 'Teste de validação de roteamento')
-          .eq('teacher_id', user.id)
-          .eq('student_id', student_id);
-
         results.push({
-          test_name: "Invoice Creation Simulation",
+          test_name: "Invoice Creation Validation",
           status: "success",
-          message: "Simulação de criação de fatura bem-sucedida",
-          details: mockInvoice
+          message: "Validação de estrutura de fatura bem-sucedida (sem inserção real)",
+          details: {
+            has_teacher_id: !!mockInvoice.teacher_id,
+            has_student_id: !!mockInvoice.student_id,
+            has_business_profile: !!mockInvoice.business_profile_id,
+            has_amount: mockInvoice.amount > 0,
+            has_due_date: !!mockInvoice.due_date
+          }
         });
       }
     } catch (error) {
       results.push({
-        test_name: "Invoice Creation Simulation",
+        test_name: "Invoice Creation Validation",
         status: "error",
-        message: `Erro na simulação: ${error instanceof Error ? error.message : 'Unknown error'}`
+        message: `Erro na validação: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
 

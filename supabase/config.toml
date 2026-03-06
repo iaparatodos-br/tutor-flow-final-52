@@ -27,3 +27,59 @@ verify_jwt = true
 [functions.materialize-virtual-class]
 verify_jwt = true
 
+[functions.send-class-request-notification]
+verify_jwt = false
+
+[functions.send-class-confirmation-notification]
+verify_jwt = false
+
+[functions.send-class-reminders]
+verify_jwt = false
+
+[functions.setup-class-reminders-automation]
+verify_jwt = false
+
+[functions.send-invoice-notification]
+verify_jwt = false
+
+[functions.check-overdue-invoices]
+verify_jwt = false
+
+[functions.send-material-shared-notification]
+verify_jwt = false
+
+[functions.send-boleto-subscription-notification]
+verify_jwt = false
+
+[functions.check-pending-boletos]
+verify_jwt = false
+
+[functions.validate-monthly-subscriptions]
+verify_jwt = true
+
+[functions.dev-seed-test-data]
+verify_jwt = true
+
+[functions.change-payment-method]
+verify_jwt = true
+
+[functions.resend-confirmation]
+verify_jwt = false
+
+[functions.send-password-reset]
+verify_jwt = false
+
+[functions.create-teacher]
+verify_jwt = false
+
+[functions.generate-teacher-notifications]
+verify_jwt = false
+
+[functions.list-business-profiles]
+verify_jwt = false
+
+[functions.check-email-confirmation]
+verify_jwt = false
+
+[functions.handle-student-overage]
+verify_jwt = false

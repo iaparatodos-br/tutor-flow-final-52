@@ -18,70 +18,43 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !anonKey) {
+      throw new Error("Missing required environment variables");
+    }
+
     console.log('[SETUP-ORPHAN-CHARGES] Setting up orphan cancellation charges automation');
 
-    // Verificar se extensões necessárias estão habilitadas
-    const { data: extensions, error: extError } = await supabaseAdmin
-      .rpc('pg_available_extensions');
+    const functionUrl = `${supabaseUrl}/functions/v1/process-orphan-cancellation-charges`;
+    const cronSchedule = '0 2 * * 1'; // Segunda-feira às 02:00 UTC
 
-    if (extError) {
-      console.error('Error checking extensions:', extError);
+    // 1. Remover job existente (se houver)
+    const { error: unscheduleError } = await supabaseAdmin.rpc('cron_unschedule', {
+      p_jobname: 'process-orphan-cancellation-charges-weekly'
+    });
+
+    if (unscheduleError) {
+      console.log('[SETUP-ORPHAN-CHARGES] Job anterior não encontrado (normal na primeira execução)');
     }
 
-    const projectId = Deno.env.get("SUPABASE_URL")?.split('//')[1]?.split('.')[0];
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-    
-    if (!projectId || !anonKey) {
-      throw new Error('Missing required environment variables');
-    }
-
-    // Criar job cron para processar cobranças órfãs semanalmente (toda segunda-feira às 02:00)
-    const cronSchedule = '0 2 * * 1'; // Segunda-feira às 02:00
-    const functionUrl = `https://${projectId}.supabase.co/functions/v1/process-orphan-cancellation-charges`;
-
-    const setupQuery = `
-      -- Remover job existente se houver
-      SELECT cron.unschedule('process-orphan-cancellation-charges-weekly')
-      WHERE EXISTS (
-        SELECT 1 FROM cron.job WHERE jobname = 'process-orphan-cancellation-charges-weekly'
-      );
-
-      -- Criar novo job
-      SELECT cron.schedule(
-        'process-orphan-cancellation-charges-weekly',
-        '${cronSchedule}',
-        $$
+    // 2. Criar novo job
+    const { data, error: scheduleError } = await supabaseAdmin.rpc('cron_schedule', {
+      p_jobname: 'process-orphan-cancellation-charges-weekly',
+      p_schedule: cronSchedule,
+      p_command: `
         SELECT net.http_post(
           url:='${functionUrl}',
           headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${anonKey}"}'::jsonb,
-          body:=concat('{"timestamp": "', now(), '"}')::jsonb
+          body:='{"triggered_by": "cron"}'::jsonb
         ) as request_id;
-        $$
-      );
-    `;
-
-    console.log('[SETUP-ORPHAN-CHARGES] Executing setup query');
-    
-    // Executar query de setup
-    const { error: setupError } = await supabaseAdmin.rpc('exec_sql', {
-      sql: setupQuery
+      `
     });
 
-    if (setupError) {
-      console.error('[SETUP-ORPHAN-CHARGES] Setup error:', setupError);
-      
-      // Se RPC não existir, tentar abordagem alternativa
-      console.log('[SETUP-ORPHAN-CHARGES] Attempting alternative setup approach');
-      
-      return new Response(JSON.stringify({ 
-        success: false,
-        message: 'Por favor, execute o seguinte SQL manualmente no Supabase SQL Editor:',
-        sql: setupQuery,
-        error: setupError.message
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+    if (scheduleError) {
+      console.error('[SETUP-ORPHAN-CHARGES] Setup error:', scheduleError);
+      throw scheduleError;
     }
 
     console.log('[SETUP-ORPHAN-CHARGES] Automation setup completed successfully');
@@ -89,8 +62,9 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true,
       message: 'Automação de cobranças órfãs configurada com sucesso',
-      schedule: 'Toda segunda-feira às 02:00 (Horário de Brasília)',
-      cron: cronSchedule
+      schedule: 'Toda segunda-feira às 02:00 UTC (23:00 BRT domingo)',
+      cron: cronSchedule,
+      data
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

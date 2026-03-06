@@ -7,20 +7,14 @@ import { useTranslation } from "react-i18next";
 
 interface StripeAccountGuardProps {
   children: React.ReactNode;
-  requireChargesEnabled?: boolean;
 }
 
 export function StripeAccountGuard({ 
-  children, 
-  requireChargesEnabled = false 
+  children
 }: StripeAccountGuardProps) {
   const { profile } = useProfile();
   const { t } = useTranslation(['financial', 'common']);
-  const [accountStatus, setAccountStatus] = useState<{
-    restricted: boolean;
-    chargesDisabled: boolean;
-    reason?: string;
-  } | null>(null);
+  const [hasStripeAccount, setHasStripeAccount] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,26 +26,20 @@ export function StripeAccountGuard({
   const checkAccountStatus = async () => {
     try {
       const { data, error } = await supabase
-        .from('stripe_connect_accounts')
-        .select('account_status, charges_enabled, status_reason, charges_disabled_reason')
-        .eq('teacher_id', profile.id)
-        .maybeSingle();
+        .from('business_profiles')
+        .select('stripe_connect_id')
+        .eq('user_id', profile.id);
 
       if (error) {
-        console.error('Error checking account status:', error);
-        setAccountStatus(null);
-      } else if (data) {
-        setAccountStatus({
-          restricted: data.account_status === 'restricted',
-          chargesDisabled: !data.charges_enabled,
-          reason: data.status_reason || data.charges_disabled_reason
-        });
+        console.error('Error checking business profile:', error);
+        setHasStripeAccount(null);
       } else {
-        setAccountStatus(null);
+        const hasAccount = Array.isArray(data) && data.length > 0 && !!data[0].stripe_connect_id;
+        setHasStripeAccount(hasAccount);
       }
     } catch (error) {
       console.error('Error in checkAccountStatus:', error);
-      setAccountStatus(null);
+      setHasStripeAccount(null);
     } finally {
       setLoading(false);
     }
@@ -65,30 +53,18 @@ export function StripeAccountGuard({
     );
   }
 
-  // If account is restricted or charges are disabled and we require charges
-  if (accountStatus && (accountStatus.restricted || (requireChargesEnabled && accountStatus.chargesDisabled))) {
+  if (!hasStripeAccount) {
     return (
       <Alert variant="destructive" className="mb-4">
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>
-          {accountStatus.restricted 
-            ? t('financial:stripe.account.restricted.title')
-            : t('financial:stripe.account.charges_disabled.title')
-          }
+          {t('financial:stripe.account.no_account.title', 'Conta Stripe não configurada')}
         </AlertTitle>
         <AlertDescription>
           <div className="space-y-2">
             <p>
-              {accountStatus.restricted 
-                ? t('financial:stripe.account.restricted.description')
-                : t('financial:stripe.account.charges_disabled.description')
-              }
+              {t('financial:stripe.account.no_account.description', 'Você precisa configurar uma conta Stripe Connect antes de criar faturas. Acesse Painel de Negócios para configurar.')}
             </p>
-            {accountStatus.reason && (
-              <p className="text-sm">
-                <strong>{t('common:reason')}:</strong> {accountStatus.reason}
-              </p>
-            )}
             <p className="text-sm">
               {t('financial:stripe.account.function_disabled')}
             </p>

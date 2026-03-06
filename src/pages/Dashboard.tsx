@@ -9,6 +9,7 @@ import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, DollarSign, Clock, CreditCard, AlertCircle } from "lucide-react";
 import { UpgradeBanner } from "@/components/UpgradeBanner";
+import { startOfMonthTz, endOfMonthTz, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface DashboardStats {
   totalStudents: number;
@@ -31,6 +32,8 @@ export default function Dashboard() {
   });
   const [loading, setLoading] = useState(true);
 
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+
   useEffect(() => {
     if (!authLoading && profile?.id) {
       if (isProfessor) {
@@ -45,10 +48,10 @@ export default function Dashboard() {
     if (!profile?.id) return;
 
     try {
-      // Buscar total de alunos
-      const { data: teacherStudents } = await supabase
-        .rpc('get_teacher_students', { teacher_user_id: profile.id });
-      const studentsCount = (teacherStudents || []).length;
+      // Buscar total de alunos (incluindo dependentes)
+      const { data: countData } = await supabase
+        .rpc('count_teacher_students_and_dependents', { p_teacher_id: profile.id });
+      const studentsCount = countData?.[0]?.total_students || 0;
 
       // Buscar aulas futuras
       const { count: classesCount } = await supabase
@@ -60,27 +63,27 @@ export default function Dashboard() {
       let invoicesCount = 0;
       let monthlyRevenue = 0;
 
-      // Only load financial data if user has financial module
       const hasFinancialAccess = isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module');
       if (hasFinancialAccess) {
-        // Buscar faturas pendentes
         const { count: pendingInvoicesCount } = await supabase
           .from('invoices')
           .select('*', { count: 'exact', head: true })
           .eq('teacher_id', profile.id)
           .eq('status', 'pendente');
 
-        // Buscar receita do mês
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-        
+        // Início e fim do mês no fuso do utilizador, convertidos a UTC real
+        const monthStartZoned = startOfMonthTz(new Date(), userTimezone);
+        const monthEndZoned = endOfMonthTz(new Date(), userTimezone);
+        const monthStartUtc = fromUserZonedTime(monthStartZoned, userTimezone);
+        const monthEndUtc = fromUserZonedTime(monthEndZoned, userTimezone);
+
         const { data: paidInvoices } = await supabase
           .from('invoices')
           .select('amount')
           .eq('teacher_id', profile.id)
           .eq('status', 'paga')
-          .gte('updated_at', startOfMonth.toISOString());
+          .gte('updated_at', monthStartUtc.toISOString())
+          .lte('updated_at', monthEndUtc.toISOString());
 
         invoicesCount = pendingInvoicesCount || 0;
         monthlyRevenue = paidInvoices?.reduce((sum, invoice) => sum + Number(invoice.amount), 0) || 0;
@@ -263,7 +266,7 @@ export default function Dashboard() {
               {(isProfessor ? hasFeature('financial_module') : hasTeacherFeature('financial_module')) && (
                 <div 
                   className="text-center p-4 rounded-lg bg-primary-light hover:bg-primary-hover cursor-pointer transition-colors"
-                  onClick={() => navigate("/painel/configuracoes/negocios")}
+                  onClick={() => navigate("/financeiro")}
                 >
                   <CreditCard className="h-8 w-8 mx-auto mb-2 text-primary" />
                   <p className="font-medium">{t('dashboard:quickActions.paymentAccounts.title')}</p>
@@ -286,7 +289,7 @@ export default function Dashboard() {
               >
                 <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
                 <p className="font-medium">{t('dashboard:quickActions.policies.title')}</p>
-                <p className="text-sm text-muted-foregoing">{t('dashboard:quickActions.policies.description')}</p>
+                <p className="text-sm text-muted-foreground">{t('dashboard:quickActions.policies.description')}</p>
               </div>
             </div>
           </CardContent>

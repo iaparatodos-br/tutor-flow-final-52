@@ -127,27 +127,36 @@ export type Database = {
       }
       business_profiles: {
         Row: {
+          auto_generate_boleto: boolean
           business_name: string
+          charge_timing: string
           cnpj: string | null
           created_at: string
+          enabled_payment_methods: string[] | null
           id: string
           stripe_connect_id: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          auto_generate_boleto?: boolean
           business_name: string
+          charge_timing?: string
           cnpj?: string | null
           created_at?: string
+          enabled_payment_methods?: string[] | null
           id?: string
           stripe_connect_id: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          auto_generate_boleto?: boolean
           business_name?: string
+          charge_timing?: string
           cnpj?: string | null
           created_at?: string
+          enabled_payment_methods?: string[] | null
           id?: string
           stripe_connect_id?: string
           updated_at?: string
@@ -195,63 +204,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      class_exceptions: {
-        Row: {
-          created_at: string
-          exception_date: string
-          id: string
-          new_description: string | null
-          new_duration_minutes: number | null
-          new_end_time: string | null
-          new_start_time: string | null
-          new_title: string | null
-          original_class_id: string
-          status: Database["public"]["Enums"]["exception_status"]
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          exception_date: string
-          id?: string
-          new_description?: string | null
-          new_duration_minutes?: number | null
-          new_end_time?: string | null
-          new_start_time?: string | null
-          new_title?: string | null
-          original_class_id: string
-          status: Database["public"]["Enums"]["exception_status"]
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          exception_date?: string
-          id?: string
-          new_description?: string | null
-          new_duration_minutes?: number | null
-          new_end_time?: string | null
-          new_start_time?: string | null
-          new_title?: string | null
-          original_class_id?: string
-          status?: Database["public"]["Enums"]["exception_status"]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "class_exceptions_original_class_id_fkey"
-            columns: ["original_class_id"]
-            isOneToOne: false
-            referencedRelation: "class_billing_status"
-            referencedColumns: ["class_id"]
-          },
-          {
-            foreignKeyName: "class_exceptions_original_class_id_fkey"
-            columns: ["original_class_id"]
-            isOneToOne: false
-            referencedRelation: "classes"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       class_notifications: {
         Row: {
@@ -315,6 +267,7 @@ export type Database = {
           completed_at: string | null
           confirmed_at: string | null
           created_at: string
+          dependent_id: string | null
           id: string
           status: string
           student_id: string
@@ -329,6 +282,7 @@ export type Database = {
           completed_at?: string | null
           confirmed_at?: string | null
           created_at?: string
+          dependent_id?: string | null
           id?: string
           status?: string
           student_id: string
@@ -343,6 +297,7 @@ export type Database = {
           completed_at?: string | null
           confirmed_at?: string | null
           created_at?: string
+          dependent_id?: string | null
           id?: string
           status?: string
           student_id?: string
@@ -371,6 +326,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "class_participants_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "class_participants_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
@@ -382,6 +344,7 @@ export type Database = {
       class_report_feedbacks: {
         Row: {
           created_at: string
+          dependent_id: string | null
           feedback: string
           id: string
           report_id: string
@@ -390,6 +353,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          dependent_id?: string | null
           feedback: string
           id?: string
           report_id: string
@@ -398,13 +362,57 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          dependent_id?: string | null
           feedback?: string
           id?: string
           report_id?: string
           student_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "class_report_feedbacks_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_report_photos: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          report_id: string
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size?: number
+          id?: string
+          report_id: string
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          report_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_report_photos_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "class_reports"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       class_reports: {
         Row: {
@@ -446,7 +454,6 @@ export type Database = {
           duration_minutes: number
           id: string
           is_active: boolean
-          is_default: boolean
           name: string
           price: number
           teacher_id: string
@@ -458,7 +465,6 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
-          is_default?: boolean
           name: string
           price?: number
           teacher_id: string
@@ -470,7 +476,6 @@ export type Database = {
           duration_minutes?: number
           id?: string
           is_active?: boolean
-          is_default?: boolean
           name?: string
           price?: number
           teacher_id?: string
@@ -494,6 +499,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean | null
           notes: string | null
           parent_class_id: string | null
@@ -519,6 +525,7 @@ export type Database = {
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_paid_class?: boolean
           is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
@@ -544,6 +551,7 @@ export type Database = {
           id?: string
           is_experimental?: boolean
           is_group_class?: boolean
+          is_paid_class?: boolean
           is_template?: boolean | null
           notes?: string | null
           parent_class_id?: string | null
@@ -592,6 +600,54 @@ export type Database = {
           },
           {
             foreignKeyName: "classes_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dependents: {
+        Row: {
+          birth_date: string | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          responsible_id: string
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          birth_date?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          responsible_id: string
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          birth_date?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          responsible_id?: string
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dependents_responsible_id_fkey"
+            columns: ["responsible_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dependents_teacher_id_fkey"
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -670,37 +726,40 @@ export type Database = {
           amount: number
           cancellation_policy_id: string | null
           charge_percentage: number | null
-          class_id: string
+          class_id: string | null
           created_at: string
+          dependent_id: string | null
           description: string | null
           id: string
           invoice_id: string
           item_type: string
-          participant_id: string
+          participant_id: string | null
         }
         Insert: {
           amount: number
           cancellation_policy_id?: string | null
           charge_percentage?: number | null
-          class_id: string
+          class_id?: string | null
           created_at?: string
+          dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id: string
           item_type: string
-          participant_id: string
+          participant_id?: string | null
         }
         Update: {
           amount?: number
           cancellation_policy_id?: string | null
           charge_percentage?: number | null
-          class_id?: string
+          class_id?: string | null
           created_at?: string
+          dependent_id?: string | null
           description?: string | null
           id?: string
           invoice_id?: string
           item_type?: string
-          participant_id?: string
+          participant_id?: string | null
         }
         Relationships: [
           {
@@ -722,6 +781,13 @@ export type Database = {
             columns: ["class_id"]
             isOneToOne: false
             referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_classes_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
             referencedColumns: ["id"]
           },
           {
@@ -751,6 +817,7 @@ export type Database = {
         Row: {
           amount: number
           barcode: string | null
+          boleto_expires_at: string | null
           boleto_url: string | null
           business_profile_id: string | null
           cancellation_policy_id: string | null
@@ -763,6 +830,7 @@ export type Database = {
           invoice_type: string | null
           linha_digitavel: string | null
           manual_payment_notes: string | null
+          monthly_subscription_id: string | null
           original_amount: number | null
           payment_account_used_id: string | null
           payment_due_date: string | null
@@ -771,6 +839,7 @@ export type Database = {
           payment_method: string | null
           payment_origin: string | null
           pix_copy_paste: string | null
+          pix_expires_at: string | null
           pix_qr_code: string | null
           sent_to_guardian: boolean | null
           status: string
@@ -785,6 +854,7 @@ export type Database = {
         Insert: {
           amount: number
           barcode?: string | null
+          boleto_expires_at?: string | null
           boleto_url?: string | null
           business_profile_id?: string | null
           cancellation_policy_id?: string | null
@@ -797,6 +867,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           manual_payment_notes?: string | null
+          monthly_subscription_id?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
@@ -805,6 +876,7 @@ export type Database = {
           payment_method?: string | null
           payment_origin?: string | null
           pix_copy_paste?: string | null
+          pix_expires_at?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
@@ -819,6 +891,7 @@ export type Database = {
         Update: {
           amount?: number
           barcode?: string | null
+          boleto_expires_at?: string | null
           boleto_url?: string | null
           business_profile_id?: string | null
           cancellation_policy_id?: string | null
@@ -831,6 +904,7 @@ export type Database = {
           invoice_type?: string | null
           linha_digitavel?: string | null
           manual_payment_notes?: string | null
+          monthly_subscription_id?: string | null
           original_amount?: number | null
           payment_account_used_id?: string | null
           payment_due_date?: string | null
@@ -839,6 +913,7 @@ export type Database = {
           payment_method?: string | null
           payment_origin?: string | null
           pix_copy_paste?: string | null
+          pix_expires_at?: string | null
           pix_qr_code?: string | null
           sent_to_guardian?: boolean | null
           status?: string
@@ -856,6 +931,13 @@ export type Database = {
             columns: ["business_profile_id"]
             isOneToOne: false
             referencedRelation: "business_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_monthly_subscription_id_fkey"
+            columns: ["monthly_subscription_id"]
+            isOneToOne: false
+            referencedRelation: "monthly_subscriptions"
             referencedColumns: ["id"]
           },
           {
@@ -952,6 +1034,7 @@ export type Database = {
       }
       material_access: {
         Row: {
+          dependent_id: string | null
           granted_at: string
           granted_by: string
           id: string
@@ -959,6 +1042,7 @@ export type Database = {
           student_id: string
         }
         Insert: {
+          dependent_id?: string | null
           granted_at?: string
           granted_by: string
           id?: string
@@ -966,6 +1050,7 @@ export type Database = {
           student_id: string
         }
         Update: {
+          dependent_id?: string | null
           granted_at?: string
           granted_by?: string
           id?: string
@@ -973,6 +1058,13 @@ export type Database = {
           student_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "material_access_dependent_id_fkey"
+            columns: ["dependent_id"]
+            isOneToOne: false
+            referencedRelation: "dependents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "material_access_material_id_fkey"
             columns: ["material_id"]
@@ -1058,6 +1150,47 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "material_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monthly_subscriptions: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          teacher_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+          teacher_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+          teacher_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monthly_subscriptions_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1285,9 +1418,11 @@ export type Database = {
           created_at: string | null
           current_plan_id: string | null
           default_billing_day: number | null
+          default_payment_method: string | null
           email: string
           id: string
           name: string
+          notification_preferences: Json | null
           password_changed: boolean
           payment_due_days: number
           policy_document_url: string | null
@@ -1296,6 +1431,7 @@ export type Database = {
           stripe_customer_id: string | null
           subscription_end_date: string | null
           subscription_status: string | null
+          timezone: string
           updated_at: string | null
         }
         Insert: {
@@ -1308,9 +1444,11 @@ export type Database = {
           created_at?: string | null
           current_plan_id?: string | null
           default_billing_day?: number | null
+          default_payment_method?: string | null
           email: string
           id?: string
           name: string
+          notification_preferences?: Json | null
           password_changed?: boolean
           payment_due_days?: number
           policy_document_url?: string | null
@@ -1319,6 +1457,7 @@ export type Database = {
           stripe_customer_id?: string | null
           subscription_end_date?: string | null
           subscription_status?: string | null
+          timezone?: string
           updated_at?: string | null
         }
         Update: {
@@ -1331,9 +1470,11 @@ export type Database = {
           created_at?: string | null
           current_plan_id?: string | null
           default_billing_day?: number | null
+          default_payment_method?: string | null
           email?: string
           id?: string
           name?: string
+          notification_preferences?: Json | null
           password_changed?: boolean
           payment_due_days?: number
           policy_document_url?: string | null
@@ -1342,6 +1483,7 @@ export type Database = {
           stripe_customer_id?: string | null
           subscription_end_date?: string | null
           subscription_status?: string | null
+          timezone?: string
           updated_at?: string | null
         }
         Relationships: [
@@ -1495,6 +1637,54 @@ export type Database = {
           },
         ]
       }
+      student_monthly_subscriptions: {
+        Row: {
+          created_at: string
+          ends_at: string | null
+          id: string
+          is_active: boolean
+          relationship_id: string
+          starts_at: string
+          subscription_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          relationship_id: string
+          starts_at?: string
+          subscription_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string | null
+          id?: string
+          is_active?: boolean
+          relationship_id?: string
+          starts_at?: string
+          subscription_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_monthly_subscriptions_relationship_id_fkey"
+            columns: ["relationship_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_student_relationships"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_monthly_subscriptions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "monthly_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_overage_charges: {
         Row: {
           amount_cents: number
@@ -1569,6 +1759,53 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      teacher_notifications: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_read: boolean
+          read_at: string | null
+          source_id: string
+          source_type: string
+          status: string
+          status_changed_at: string | null
+          teacher_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          source_id: string
+          source_type: string
+          status?: string
+          status_changed_at?: string | null
+          teacher_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          read_at?: string | null
+          source_id?: string
+          source_type?: string
+          status?: string
+          status_changed_at?: string | null
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_notifications_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       teacher_student_relationships: {
         Row: {
@@ -1697,6 +1934,9 @@ export type Database = {
       }
       user_subscriptions: {
         Row: {
+          boleto_barcode: string | null
+          boleto_due_date: string | null
+          boleto_url: string | null
           cancel_at_period_end: boolean
           created_at: string
           current_period_end: string | null
@@ -1704,6 +1944,7 @@ export type Database = {
           extra_cost_cents: number
           extra_students: number
           id: string
+          pending_payment_method: string | null
           plan_id: string
           status: string
           stripe_customer_id: string | null
@@ -1712,6 +1953,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          boleto_barcode?: string | null
+          boleto_due_date?: string | null
+          boleto_url?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1719,6 +1963,7 @@ export type Database = {
           extra_cost_cents?: number
           extra_students?: number
           id?: string
+          pending_payment_method?: string | null
           plan_id: string
           status?: string
           stripe_customer_id?: string | null
@@ -1727,6 +1972,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          boleto_barcode?: string | null
+          boleto_due_date?: string | null
+          boleto_url?: string | null
           cancel_at_period_end?: boolean
           created_at?: string
           current_period_end?: string | null
@@ -1734,6 +1982,7 @@ export type Database = {
           extra_cost_cents?: number
           extra_students?: number
           id?: string
+          pending_payment_method?: string | null
           plan_id?: string
           status?: string
           stripe_customer_id?: string | null
@@ -1853,6 +2102,10 @@ export type Database = {
         Args: { p_class_template_id: string; p_student_id: string }
         Returns: boolean
       }
+      check_student_has_active_subscription: {
+        Args: { p_exclude_subscription_id?: string; p_relationship_id: string }
+        Returns: boolean
+      }
       cleanup_expired_pending_profiles: { Args: never; Returns: number }
       cleanup_old_login_attempts: { Args: never; Returns: undefined }
       cleanup_orphaned_stripe_events: { Args: never; Returns: number }
@@ -1864,6 +2117,44 @@ export type Database = {
         }
         Returns: boolean
       }
+      count_completed_classes_in_billing_cycle:
+        | {
+            Args: {
+              p_billing_day: number
+              p_reference_date?: string
+              p_student_id: string
+              p_teacher_id: string
+            }
+            Returns: number
+          }
+        | {
+            Args: {
+              p_billing_day: number
+              p_reference_date?: string
+              p_student_id: string
+              p_teacher_id: string
+              p_timezone?: string
+            }
+            Returns: number
+          }
+      count_completed_classes_in_month: {
+        Args: {
+          p_month: number
+          p_student_id: string
+          p_teacher_id: string
+          p_timezone?: string
+          p_year: number
+        }
+        Returns: number
+      }
+      count_teacher_students_and_dependents: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          dependents_count: number
+          regular_students: number
+          total_students: number
+        }[]
+      }
       create_invoice_and_mark_classes_billed: {
         Args: { p_class_items: Json; p_invoice_data: Json }
         Returns: Json
@@ -1871,6 +2162,17 @@ export type Database = {
       generate_stripe_fingerprint: {
         Args: { event_data: Json }
         Returns: string
+      }
+      get_billing_cycle_dates: {
+        Args: {
+          p_billing_day: number
+          p_reference_date?: string
+          p_timezone?: string
+        }
+        Returns: {
+          cycle_end: string
+          cycle_start: string
+        }[]
       }
       get_calendar_events: {
         Args: { p_end_date: string; p_start_date: string; p_teacher_id: string }
@@ -1889,6 +2191,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean | null
           notes: string | null
           parent_class_id: string | null
@@ -1923,6 +2226,7 @@ export type Database = {
           id: string
           is_experimental: boolean
           is_group_class: boolean
+          is_paid_class: boolean
           is_template: boolean
           notes: string
           participants: Json
@@ -1937,12 +2241,65 @@ export type Database = {
         }[]
       }
       get_current_user_role_safe: { Args: never; Returns: string }
+      get_dependent_responsible: {
+        Args: { p_dependent_id: string }
+        Returns: string
+      }
       get_group_class_classmates: {
         Args: { _user_id: string }
         Returns: {
           classmate_id: string
         }[]
       }
+      get_relationships_to_bill_now: {
+        Args: never
+        Returns: Database["public"]["CompositeTypes"]["billing_relationship_with_tz"][]
+        SetofOptions: {
+          from: "*"
+          to: "billing_relationship_with_tz"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_student_active_subscription: {
+        Args: { p_relationship_id: string; p_timezone?: string }
+        Returns: {
+          price: number
+          starts_at: string
+          student_subscription_id: string
+          subscription_id: string
+          subscription_name: string
+        }[]
+      }
+      get_student_subscription_details:
+        | {
+            Args: {
+              p_student_id: string
+              p_teacher_id: string
+              p_timezone?: string
+            }
+            Returns: {
+              classes_used: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
+        | {
+            Args: { p_student_id: string; p_timezone?: string }
+            Returns: {
+              classes_used: number
+              price: number
+              relationship_id: string
+              starts_at: string
+              subscription_name: string
+              teacher_id: string
+              teacher_name: string
+            }[]
+          }
       get_student_teachers: {
         Args: { student_user_id: string }
         Returns: {
@@ -1952,6 +2309,106 @@ export type Database = {
           teacher_email: string
           teacher_id: string
           teacher_name: string
+        }[]
+      }
+      get_subscription_assigned_students:
+        | {
+            Args: { p_subscription_id: string }
+            Returns: {
+              classes_used: number
+              ends_at: string
+              is_active: boolean
+              relationship_id: string
+              starts_at: string
+              student_email: string
+              student_id: string
+              student_name: string
+              student_subscription_id: string
+            }[]
+          }
+        | {
+            Args: { p_subscription_id: string; p_timezone?: string }
+            Returns: {
+              classes_used: number
+              ends_at: string
+              is_active: boolean
+              relationship_id: string
+              starts_at: string
+              student_email: string
+              student_id: string
+              student_name: string
+              student_subscription_id: string
+            }[]
+          }
+      get_subscription_students_count: {
+        Args: { p_subscription_id: string }
+        Returns: number
+      }
+      get_subscriptions_with_students: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          created_at: string
+          description: string
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+          students_count: number
+          teacher_id: string
+          updated_at: string
+        }[]
+      }
+      get_teacher_dependents: {
+        Args: { p_teacher_id: string }
+        Returns: {
+          birth_date: string
+          created_at: string
+          dependent_id: string
+          dependent_name: string
+          notes: string
+          responsible_email: string
+          responsible_id: string
+          responsible_name: string
+        }[]
+      }
+      get_teacher_notification_counts: {
+        Args: never
+        Returns: {
+          done_count: number
+          inbox_count: number
+          inbox_unread_count: number
+          saved_count: number
+        }[]
+      }
+      get_teacher_notifications: {
+        Args: {
+          p_category?: string
+          p_is_read?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_status?: string
+          p_timezone?: string
+        }
+        Returns: {
+          category: string
+          class_date: string
+          class_status: string
+          created_at: string
+          days_overdue: number
+          id: string
+          invoice_amount: number
+          invoice_due_date: string
+          invoice_status: string
+          is_read: boolean
+          read_at: string
+          service_name: string
+          source_id: string
+          source_type: string
+          status: string
+          status_changed_at: string
+          student_email: string
+          student_name: string
+          teacher_id: string
         }[]
       }
       get_teacher_students: {
@@ -1988,6 +2445,27 @@ export type Database = {
           student_id: string
         }[]
       }
+      get_unbilled_participants_v2: {
+        Args: {
+          p_end_date?: string
+          p_start_date?: string
+          p_status?: string
+          p_student_id?: string
+          p_teacher_id: string
+        }
+        Returns: {
+          charge_applied: boolean
+          class_date: string
+          class_id: string
+          class_services: Json
+          dependent_id: string
+          dependent_name: string
+          participant_id: string
+          responsible_id: string
+          service_id: string
+          student_id: string
+        }[]
+      }
       get_user_class_ids: {
         Args: { _user_id: string }
         Returns: {
@@ -2009,6 +2487,10 @@ export type Database = {
         Returns: boolean
       }
       is_professor: { Args: { _user_id: string }; Returns: boolean }
+      is_responsible_for_dependent: {
+        Args: { p_dependent_id: string }
+        Returns: boolean
+      }
       is_student_in_class: {
         Args: { p_class_id: string; p_student_id: string }
         Returns: boolean
@@ -2032,6 +2514,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      mark_notification_read: {
+        Args: { p_notification_id: string }
+        Returns: boolean
+      }
       process_stripe_event_atomic: {
         Args: {
           p_event_created: string
@@ -2054,6 +2540,14 @@ export type Database = {
       }
       teacher_has_financial_module: {
         Args: { teacher_id: string }
+        Returns: boolean
+      }
+      teacher_owns_dependent: {
+        Args: { p_dependent_id: string }
+        Returns: boolean
+      }
+      update_notification_status: {
+        Args: { p_new_status: string; p_notification_id: string }
         Returns: boolean
       }
       user_owns_material: { Args: { p_material_id: string }; Returns: boolean }
@@ -2088,11 +2582,17 @@ export type Database = {
       }
     }
     Enums: {
-      exception_status: "canceled" | "rescheduled"
       processing_status_enum: "processing" | "completed" | "failed" | "timeout"
     }
     CompositeTypes: {
-      [_ in never]: never
+      billing_relationship_with_tz: {
+        relationship_id: string | null
+        student_id: string | null
+        teacher_id: string | null
+        billing_day: number | null
+        business_profile_id: string | null
+        teacher_timezone: string | null
+      }
     }
   }
 }
@@ -2217,7 +2717,6 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      exception_status: ["canceled", "rescheduled"],
       processing_status_enum: ["processing", "completed", "failed", "timeout"],
     },
   },

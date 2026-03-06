@@ -31,6 +31,10 @@ const getProfessorItems = (t: any) => [{
   url: "/financeiro",
   icon: DollarSign
 }, {
+  title: t('navigation:sidebar.services'),
+  url: "/servicos",
+  icon: Package
+}, {
   title: t('navigation:sidebar.history'),
   url: "/historico",
   icon: Archive
@@ -79,9 +83,10 @@ export function AppSidebar({
   const {
     currentPlan,
     hasFeature,
-    hasTeacherFeature
+    hasTeacherFeature,
+    teacherPlanLoading
   } = useSubscription();
-  const teacherContext = isAluno ? useTeacherContext() : null;
+  const teacherContext = useTeacherContext();
   const { toggle: toggleSidebar } = useSidebarState();
   const currentPath = location.pathname;
   const {
@@ -90,7 +95,8 @@ export function AppSidebar({
   const navigate = useNavigate();
 
   // Don't render role-specific content until we're sure of the user's role
-  if (loading || !profile || !isProfessor && !isAluno) {
+  const isSubscriptionLoading = isAluno && teacherPlanLoading;
+  if (loading || isSubscriptionLoading || !profile || (!isProfessor && !isAluno)) {
     return <div className={`${isOpen ? 'w-64' : 'w-16'} transition-all duration-300 border-r bg-card h-full`}>
         <div className="flex h-full flex-col">
           <div className="flex h-16 items-center border-b px-4">

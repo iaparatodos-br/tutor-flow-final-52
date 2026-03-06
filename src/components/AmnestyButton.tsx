@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -6,8 +6,9 @@ import { Label } from "@/components/ui/label";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Heart, AlertCircle } from "lucide-react";
+import { HandHeart, AlertCircle, Ban } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
 
 interface AmnestyButtonProps {
@@ -24,14 +25,41 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
   const [isOpen, setIsOpen] = useState(false);
   const [justification, setJustification] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isBilled, setIsBilled] = useState(false);
+  const [checkingBilling, setCheckingBilling] = useState(true);
+
+  // Check if this class has already been billed (exists in invoice_classes with a non-cancelled invoice)
+  useEffect(() => {
+    const checkBillingStatus = async () => {
+      setCheckingBilling(true);
+      try {
+        const { data, error } = await supabase
+          .from('invoice_classes')
+          .select('id, invoice_id, invoices!inner(id, status)')
+          .eq('class_id', classId)
+          .neq('invoices.status', 'cancelada')
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          setIsBilled(true);
+        }
+      } catch (err) {
+        console.error('Error checking billing status:', err);
+      } finally {
+        setCheckingBilling(false);
+      }
+    };
+
+    checkBillingStatus();
+  }, [classId]);
+
+  const isDisabled = disabled || isBilled || checkingBilling;
 
   const handleGrantAmnesty = async () => {
     if (!profile?.id) return;
 
     setLoading(true);
     try {
-      // Start a transaction-like approach
-      // First, update the class - keep status as 'cancelada', just remove charge
       const { error: classError } = await supabase
         .from('classes')
         .update({
@@ -44,7 +72,6 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
 
       if (classError) throw classError;
 
-      // Then, update or cancel the related invoice
       const { error: invoiceError } = await supabase
         .from('invoices')
         .update({
@@ -56,7 +83,6 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
 
       if (invoiceError) {
         console.error('Error updating invoice:', invoiceError);
-        // Don't throw here as class update was successful
       }
 
       toast({
@@ -79,23 +105,49 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
     }
   };
 
+  // If billed, show disabled button with tooltip
+  if (isBilled) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0}>
+              <Button
+                variant="outline"
+                size="lg"
+                disabled
+                className="w-full h-12 border-2 border-muted-foreground/30 text-muted-foreground hover:bg-muted hover:text-foreground text-base font-semibold gap-2"
+              >
+                <Ban className="h-5 w-5" />
+                {t('button')}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{t('billedTooltip')}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          disabled={disabled}
-          className="gap-2"
+          size="lg"
+          disabled={isDisabled}
+          className="w-full h-12 border-2 border-muted-foreground/30 text-muted-foreground hover:bg-muted hover:text-foreground text-base font-semibold gap-2"
         >
-          <Heart className="h-4 w-4" />
+          <HandHeart className="h-5 w-5" />
           {t('button')}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Heart className="h-5 w-5 text-red-500" />
+            <HandHeart className="h-5 w-5 text-red-500" />
             {t('title')}
           </DialogTitle>
           <DialogDescription dangerouslySetInnerHTML={{ __html: t('description', { studentName }) }} />

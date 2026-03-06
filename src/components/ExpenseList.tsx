@@ -9,8 +9,9 @@ import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ExpenseModal } from "./ExpenseModal";
-import { Edit, Trash2, FileText, Image, Eye, Search, Filter } from "lucide-react";
-import { format } from "date-fns";
+import { Edit, Trash2, FileText, Image, Eye, Search, Filter, Settings } from "lucide-react";
+import { ExpenseCategoryManager } from "./ExpenseCategoryManager";
+import { format, parseISO } from "date-fns";
 import { ptBR, enUS } from "date-fns/locale";
 import { FeatureGate } from "@/components/FeatureGate";
 import { useTranslation } from "react-i18next";
@@ -31,7 +32,11 @@ interface ExpenseCategory {
   color: string;
 }
 
-export function ExpenseList() {
+interface ExpenseListProps {
+  onExpensesChanged?: () => void;
+}
+
+export function ExpenseList({ onExpensesChanged }: ExpenseListProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t, i18n } = useTranslation('expenses');
@@ -42,6 +47,7 @@ export function ExpenseList() {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -105,6 +111,7 @@ export function ExpenseList() {
       });
 
       loadExpenses();
+      onExpensesChanged?.();
     } catch (error) {
       console.error('Error deleting expense:', error);
       toast({
@@ -134,7 +141,8 @@ export function ExpenseList() {
 
   const formatDate = (dateString: string) => {
     const locale = i18n.language === 'en' ? enUS : ptBR;
-    return format(new Date(dateString), 'dd/MM/yyyy', { locale });
+    // expense_date é campo 'date' (YYYY-MM-DD) — parseISO sem offset
+    return format(parseISO(dateString), 'dd/MM/yyyy', { locale });
   };
 
   const getCategoryColor = (categoryName: string) => {
@@ -259,6 +267,14 @@ export function ExpenseList() {
                 ))}
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setCategoryManagerOpen(true)}
+              title={t('category.manageCategories')}
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
           </div>
 
           {/* Expenses Table */}
@@ -351,8 +367,14 @@ export function ExpenseList() {
       <ExpenseModal
         isOpen={modalOpen}
         onClose={handleCloseModal}
-        onExpenseAdded={loadExpenses}
+        onExpenseAdded={() => { loadExpenses(); onExpensesChanged?.(); }}
         expense={selectedExpense}
+      />
+
+      <ExpenseCategoryManager
+        isOpen={categoryManagerOpen}
+        onClose={() => setCategoryManagerOpen(false)}
+        onCategoriesChanged={loadCategories}
       />
     </FeatureGate>
   );

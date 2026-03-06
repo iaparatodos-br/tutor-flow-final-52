@@ -5,13 +5,18 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CategoryModal } from "./CategoryModal";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ExpenseCategoryModal } from "./ExpenseCategoryModal";
 import { useProfile } from "@/contexts/ProfileContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, FileText, Image, X, Plus, Settings } from "lucide-react";
-import { formatDate } from "date-fns";
+import { Upload, FileText, Image, X, Plus, Settings, CalendarIcon } from "lucide-react";
+import { format, parse } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
+import { todayDateString, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -39,10 +44,13 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   const { t } = useTranslation('expenses');
   const [loading, setLoading] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
+
   const [formData, setFormData] = useState({
     description: "",
     amount: "",
-    expense_date: formatDate(new Date(), 'yyyy-MM-dd'),
+    expense_date: todayDateString(userTimezone),
     category: "",
   });
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -79,7 +87,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
 
       if (error) throw error;
       
-      console.log('Categories loaded:', data); // Debug log
+      console.log('Categories loaded:', data);
       setCategories(data || []);
     } catch (error) {
       console.error('Error loading categories:', error);
@@ -90,7 +98,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
     setFormData({
       description: "",
       amount: "",
-      expense_date: formatDate(new Date(), 'yyyy-MM-dd'),
+      expense_date: todayDateString(userTimezone),
       category: "",
     });
     setReceiptFile(null);
@@ -100,7 +108,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         toast({
           title: t('validation.fileSizeLimit'),
           description: t('validation.fileSizeLimit'),
@@ -147,7 +155,6 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
       throw error;
     }
 
-    // Return the file path instead of public URL since the bucket is private
     return fileName;
   };
 
@@ -248,13 +255,35 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="expense_date">{t('fields.date')} *</Label>
-              <Input
-                id="expense_date"
-                type="date"
-                value={formData.expense_date}
-                onChange={(e) => setFormData({ ...formData, expense_date: e.target.value })}
-              />
+              <Label>{t('fields.date')} *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.expense_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.expense_date
+                      ? format(parse(formData.expense_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.expense_date ? parse(formData.expense_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) setFormData({ ...formData, expense_date: format(date, 'yyyy-MM-dd') });
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
@@ -369,7 +398,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
         </DialogFooter>
       </DialogContent>
 
-      <CategoryModal
+      <ExpenseCategoryModal
         isOpen={categoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
         onCategoryAdded={() => {

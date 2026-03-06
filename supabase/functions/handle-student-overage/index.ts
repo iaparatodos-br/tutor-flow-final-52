@@ -43,8 +43,35 @@ serve(async (req) => {
 
     const { extraStudents, planLimit, userId } = await req.json();
 
+    // Guard clause: validate all required inputs
     if (!userId) {
-      throw new Error("userId is required in request body");
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "userId é obrigatório" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (extraStudents == null || typeof extraStudents !== 'number' || extraStudents <= 0) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Parâmetro extraStudents inválido: ${extraStudents}` 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    if (planLimit == null || typeof planLimit !== 'number') {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Parâmetro planLimit inválido: ${planLimit}` 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
     logStep("Processing student overage for user", { userId, extraStudents, planLimit });
@@ -54,18 +81,21 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // Get total number of students for this teacher
-    const { count: totalStudents, error: countError } = await supabaseClient
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', userId);
+    // Get total number of students AND dependents for this teacher (for plan limits)
+    const { data: countData, error: countError } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: userId });
 
     if (countError) {
-      logStep("Error counting students", { error: countError });
+      logStep("Error counting students and dependents", { error: countError });
       throw new Error(`Failed to count students: ${countError.message}`);
     }
 
-    logStep("Total students counted", { totalStudents });
+    const totalStudents = countData?.[0]?.total_students ?? 0;
+    logStep("Total students + dependents counted", { 
+      totalStudents,
+      regularStudents: countData?.[0]?.regular_students,
+      dependentsCount: countData?.[0]?.dependents_count
+    });
 
     // Get current subscription
     const { data: subscriptionData, error: subError } = await supabaseClient
@@ -73,7 +103,7 @@ serve(async (req) => {
       .select('stripe_subscription_id, stripe_customer_id, plan_id')
       .eq('user_id', userId)
       .eq('status', 'active')
-      .single();
+      .maybeSingle();
 
     if (subError || !subscriptionData?.stripe_subscription_id) {
       logStep("No active subscription found, proceeding without billing");
@@ -92,7 +122,6 @@ serve(async (req) => {
     const subscription = await stripe.subscriptions.retrieve(subscriptionData.stripe_subscription_id);
     
     let immediateChargeSuccess = false;
-    let immediateChargeError = null;
 
     // Try to create immediate charge if payment method exists
     if (subscription.default_payment_method) {
@@ -124,54 +153,65 @@ serve(async (req) => {
           throw new Error(`Payment failed with status: ${immediateCharge.status}`);
         }
 
-        // Register immediate charge in database
-        const { error: insertError } = await supabaseClient
-          .from('student_overage_charges')
-          .insert({
-            user_id: userId,
+        // FIX #396: student_overage_charges table does not exist
+        // Log the charge details instead of inserting into non-existent table
+        // The charge is already tracked in Stripe via payment intent metadata
+        logStep("Immediate charge recorded in Stripe", {
+          paymentIntentId: immediateCharge.id,
+          amount_cents: 500,
+          status: immediateCharge.status,
+          extra_students: extraStudents,
+          user_id: userId
+        });
+
+        // Write audit log for tracking
+        await supabaseClient.from('audit_logs').insert({
+          actor_id: userId,
+          target_teacher_id: userId,
+          table_name: 'student_overage',
+          record_id: immediateCharge.id,
+          operation: 'STUDENT_OVERAGE_CHARGE',
+          old_data: null,
+          new_data: {
             stripe_payment_intent_id: immediateCharge.id,
             amount_cents: 500,
-            status: immediateCharge.status,
             extra_students: extraStudents,
-          });
-
-        if (insertError) {
-          logStep("Error inserting charge record", { error: insertError });
-        }
+            status: immediateCharge.status
+          }
+        });
 
         immediateChargeSuccess = true;
-      } catch (immediateChargeError: any) {
-        logStep("Immediate charge failed - CRITICAL ERROR", { 
-          error: immediateChargeError.message 
+      } catch (chargeError: any) {
+      logStep("Immediate charge failed - CRITICAL ERROR", { 
+          error: chargeError.message 
         });
         
-        // CRITICAL: If immediate charge fails, we must return error to block student creation
+        // Return 200 with success:false so create-student can read the error body
         return new Response(JSON.stringify({ 
           success: false,
-          error: `Falha ao processar pagamento: ${immediateChargeError.message}`,
+          error: `Falha ao processar pagamento: ${chargeError.message}`,
           payment_failed: true
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 500,
+          status: 200,
         });
       }
     } else {
       logStep("No default payment method - BLOCKING student creation");
       
-      // CRITICAL: No payment method = cannot charge = block student creation
+      // Return 200 with success:false so create-student can read the error body
       return new Response(JSON.stringify({ 
         success: false,
         error: "Nenhum método de pagamento configurado. Configure um cartão antes de adicionar alunos extras.",
         payment_failed: true
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
+        status: 200,
       });
     }
 
     // Update the main subscription item quantity with total students
-    // The tiered pricing will automatically calculate the correct charge
-    const mainItem = subscription.items.data[0]; // Main subscription item with tiered pricing
+    const mainItem = subscription.items.data[0];
     
     if (!mainItem) {
       logStep("ERROR: No main subscription item found");
@@ -179,8 +219,8 @@ serve(async (req) => {
     }
 
     await stripe.subscriptionItems.update(mainItem.id, {
-      quantity: totalStudents, // Update with total students, not just extra
-      proration_behavior: 'none', // No proration since we already charged immediately
+      quantity: totalStudents,
+      proration_behavior: 'none',
     });
     
     logStep("Updated main subscription item", { 

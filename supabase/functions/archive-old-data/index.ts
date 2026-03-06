@@ -12,65 +12,23 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-interface ArchiveData {
-  [userId: string]: {
-    [period: string]: {
-      classes: any[];
-      reports: any[];
-      metadata: {
-        archivedAt: string;
-        totalClasses: number;
-        totalReports: number;
-        period: string;
-      };
-    };
-  };
-}
 
 function formatPeriod(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
-function groupDataByUserAndMonth(classes: any[]): ArchiveData {
-  const grouped: ArchiveData = {};
+function groupClassesByUserAndMonth(classes: any[]): Record<string, Record<string, any[]>> {
+  const grouped: Record<string, Record<string, any[]>> = {};
   
   for (const classItem of classes) {
     const userId = classItem.teacher_id;
     const classDate = new Date(classItem.class_date);
     const period = formatPeriod(classDate);
     
-    if (!grouped[userId]) {
-      grouped[userId] = {};
-    }
+    if (!grouped[userId]) grouped[userId] = {};
+    if (!grouped[userId][period]) grouped[userId][period] = [];
     
-    if (!grouped[userId][period]) {
-      grouped[userId][period] = {
-        classes: [],
-        reports: [],
-        metadata: {
-          archivedAt: new Date().toISOString(),
-          totalClasses: 0,
-          totalReports: 0,
-          period
-        }
-      };
-    }
-    
-    grouped[userId][period].classes.push(classItem);
-    
-    // Adicionar relatórios se existirem
-    if (classItem.class_reports && classItem.class_reports.length > 0) {
-      grouped[userId][period].reports.push(...classItem.class_reports);
-    }
-  }
-  
-  // Atualizar metadados
-  for (const userId in grouped) {
-    for (const period in grouped[userId]) {
-      const data = grouped[userId][period];
-      data.metadata.totalClasses = data.classes.length;
-      data.metadata.totalReports = data.reports.length;
-    }
+    grouped[userId][period].push(classItem);
   }
   
   return grouped;
@@ -104,43 +62,13 @@ serve(async (req) => {
     
     console.log(`Arquivando dados anteriores a: ${eighteenMonthsAgo.toISOString()}`);
     
-    // Buscar aulas antigas com seus relatórios e participantes
+    // Buscar aulas antigas (sem FK joins para Deno - Etapa 0.6)
     const { data: oldClasses, error: fetchError } = await supabaseAdmin
       .from('classes')
-      .select(`
-        id,
-        teacher_id,
-        student_id,
-        class_date,
-        duration_minutes,
-        status,
-        notes,
-        service_id,
-        created_at,
-        updated_at,
-        class_participants (
-          id,
-          student_id,
-          status,
-          cancelled_at,
-          cancelled_by,
-          charge_applied,
-          cancellation_reason,
-          confirmed_at,
-          completed_at
-        ),
-        class_reports (
-          id,
-          lesson_summary,
-          homework,
-          extra_materials,
-          created_at,
-          updated_at
-        )
-      `)
+      .select('id, teacher_id, class_date, duration_minutes, status, notes, service_id, created_at, updated_at')
       .lt('class_date', eighteenMonthsAgo.toISOString())
       .order('class_date', { ascending: true });
-
+    
     if (fetchError) {
       console.error("Erro ao buscar aulas antigas:", fetchError);
       throw fetchError;
@@ -163,8 +91,36 @@ serve(async (req) => {
 
     console.log(`Encontradas ${oldClasses.length} aulas para arquivar`);
     
-    // Agrupar dados por usuário e período
-    const archivesByUser = groupDataByUserAndMonth(oldClasses);
+    // Agrupar dados por usuário e período (estrutura simplificada sem FK joins)
+    const archivesByUser = groupClassesByUserAndMonth(oldClasses);
+    
+    // Fetch participants and reports separately for all old classes
+    const allClassIds = oldClasses.map(c => c.id);
+    
+    // Batch fetch participants
+    const { data: allParticipants } = await supabaseAdmin
+      .from('class_participants')
+      .select('id, class_id, student_id, dependent_id, status, cancelled_at, cancelled_by, charge_applied, cancellation_reason, confirmed_at, completed_at')
+      .in('class_id', allClassIds);
+    
+    // Batch fetch reports
+    const { data: allReports } = await supabaseAdmin
+      .from('class_reports')
+      .select('id, class_id, lesson_summary, homework, extra_materials, created_at, updated_at')
+      .in('class_id', allClassIds);
+
+    // Create lookup maps
+    const participantsByClass = new Map<string, any[]>();
+    for (const p of (allParticipants || [])) {
+      if (!participantsByClass.has(p.class_id)) participantsByClass.set(p.class_id, []);
+      participantsByClass.get(p.class_id)!.push(p);
+    }
+    
+    const reportsByClass = new Map<string, any[]>();
+    for (const r of (allReports || [])) {
+      if (!reportsByClass.has(r.class_id)) reportsByClass.set(r.class_id, []);
+      reportsByClass.get(r.class_id)!.push(r);
+    }
     
     let totalArchived = 0;
     let totalErrors = 0;
@@ -173,10 +129,24 @@ serve(async (req) => {
     for (const [userId, monthlyArchives] of Object.entries(archivesByUser)) {
       console.log(`Processando arquivos para usuário: ${userId}`);
       
-      for (const [period, data] of Object.entries(monthlyArchives)) {
+      for (const [period, classes] of Object.entries(monthlyArchives)) {
         try {
+          // Build archive data with related records
+          const archiveData = {
+            classes: classes.map(c => ({
+              ...c,
+              participants: participantsByClass.get(c.id) || [],
+              reports: reportsByClass.get(c.id) || [],
+            })),
+            metadata: {
+              archivedAt: new Date().toISOString(),
+              totalClasses: classes.length,
+              period
+            }
+          };
+
           const filePath = `${userId}/${period}.json`;
-          const jsonData = JSON.stringify(data, null, 2);
+          const jsonData = JSON.stringify(archiveData, null, 2);
           
           console.log(`Fazendo upload do arquivo: ${filePath}`);
           
@@ -185,7 +155,7 @@ serve(async (req) => {
             .from('archives')
             .upload(filePath, jsonData, { 
               contentType: 'application/json',
-              upsert: true // Sobrescrever se já existir
+              upsert: true
             });
 
           if (uploadError) {
@@ -197,42 +167,52 @@ serve(async (req) => {
           console.log(`Upload bem-sucedido: ${filePath}`);
           
           // Coletar IDs para deleção
-          const classIds = data.classes.map(c => c.id);
-          const reportIds = data.reports.map(r => r.id);
-          const participantIds = data.classes
-            .flatMap(c => c.class_participants || [])
-            .map(p => p.id);
+          const classIds = classes.map(c => c.id);
+          const participantIds = classIds.flatMap(cid => (participantsByClass.get(cid) || []).map(p => p.id));
+          const reportIds = classIds.flatMap(cid => (reportsByClass.get(cid) || []).map(r => r.id));
           
-          // Deletar dados do banco principal (dentro de transação, ordem importa)
-          // 1. Deletar relatórios primeiro
+          // CRITICAL: Delete in correct FK order
+          // 1. invoice_classes (references participant_id - FK RESTRICT)
+          if (participantIds.length > 0) {
+            await supabaseAdmin.from('invoice_classes').delete().in('participant_id', participantIds);
+          }
+          
+          // 2. class_report_photos & class_report_feedbacks (reference report_id)
+          if (reportIds.length > 0) {
+            await supabaseAdmin.from('class_report_photos').delete().in('report_id', reportIds);
+            await supabaseAdmin.from('class_report_feedbacks').delete().in('report_id', reportIds);
+          }
+          
+          // 3. class_reports
           if (reportIds.length > 0) {
             const { error: deleteReportsError } = await supabaseAdmin
               .from('class_reports')
               .delete()
               .in('id', reportIds);
-              
             if (deleteReportsError) {
-              console.error(`Erro ao deletar relatórios para período ${period}:`, deleteReportsError);
+              console.error(`Erro ao deletar relatórios:`, deleteReportsError);
               totalErrors++;
               continue;
             }
           }
           
-          // 2. Deletar participantes
+          // 4. class_notifications (reference class_id)
+          await supabaseAdmin.from('class_notifications').delete().in('class_id', classIds);
+          
+          // 5. class_participants
           if (participantIds.length > 0) {
             const { error: deleteParticipantsError } = await supabaseAdmin
               .from('class_participants')
               .delete()
               .in('id', participantIds);
-              
             if (deleteParticipantsError) {
-              console.error(`Erro ao deletar participantes para período ${period}:`, deleteParticipantsError);
+              console.error(`Erro ao deletar participantes:`, deleteParticipantsError);
               totalErrors++;
               continue;
             }
           }
           
-          // 3. Deletar classes por último
+          // 7. Finally delete classes
           const { error: deleteClassesError } = await supabaseAdmin
             .from('classes')
             .delete()
@@ -245,7 +225,7 @@ serve(async (req) => {
           }
           
           console.log(`Dados do período ${period} arquivados e removidos com sucesso`);
-          totalArchived += data.classes.length;
+          totalArchived += classes.length;
           
         } catch (error) {
           console.error(`Erro ao processar período ${period} para usuário ${userId}:`, error);

@@ -72,5 +72,27 @@
     "materialShared": "Material compartilhado com sucesso!",
     "confirmDelete": "Tem certeza que deseja excluir este material?",
     "noMaterials": "Nenhum material encontrado"
+  },
+  "tabs": {
+    "myMaterials": "Meus Materiais",
+    "materialsCount": "{{count}} material(is)"
+  },
+  "sharing": {
+    "selectStudents": "Selecionar Alunos",
+    "selectDependents": "Selecionar Dependentes",
+    "studentsGroup": "Alunos",
+    "dependentsGroup": "Dependentes",
+    "childOf": "filho(a) de",
+    "shareWith": "Compartilhar com"
+  },
+  "categoryManager": {
+    "title": "Gerenciar Categorias",
+    "newCategory": "Nova Categoria",
+    "deleted": "Categoria excluída com sucesso",
+    "deleteError": "Erro ao excluir categoria",
+    "confirmDeleteTitle": "Excluir categoria?",
+    "confirmDeleteDescription": "A categoria \"{{name}}\" será excluída permanentemente. Materiais já cadastrados com essa categoria não serão afetados.",
+    "deleteAction": "Excluir",
+    "noCategories": "Nenhuma categoria encontrada"
   }
 }

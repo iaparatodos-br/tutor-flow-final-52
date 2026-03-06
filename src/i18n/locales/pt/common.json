@@ -114,5 +114,12 @@
   "notFound": {
     "message": "Ops! Página não encontrada",
     "returnHome": "Voltar para Início"
+  },
+  "dependent": {
+    "label": "Dependente",
+    "of": "de",
+    "childOf": "filho(a) de",
+    "responsible": "Responsável",
+    "minor": "Menor de idade"
   }
 }

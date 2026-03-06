@@ -6,46 +6,42 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const supabaseAdmin = createClient(
-  Deno.env.get("SUPABASE_URL") ?? "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-  { auth: { persistSession: false } }
-);
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log("Setting up billing automation cron job...");
-    
-    // Set up cron job to run automated billing daily at 12:00 PM UTC (9:00 AM Brasília time)
-    const { data, error } = await supabaseAdmin.rpc('cron_schedule', {
-      job_name: 'automated-billing-daily',
-      schedule: '0 12 * * *', // Daily at 12:00 PM UTC (9:00 AM Brasília time)
-      command: `
-        select
-          net.http_post(
-              url:='${Deno.env.get("SUPABASE_URL")}/functions/v1/automated-billing',
-              headers:='{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}"}'::jsonb,
-              body:='{"source": "cron"}'::jsonb
-          ) as request_id;
-      `
-    });
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
 
-    if (error) {
-      console.error("Error setting up cron job:", error);
-      throw error;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+    if (!supabaseUrl || !anonKey) {
+      throw new Error("Missing required environment variables");
     }
 
-    console.log("Billing automation cron job setup completed:", data);
+    console.log("[SETUP-BILLING] Setting up billing automation cron job...");
+
+    const functionUrl = `${supabaseUrl}/functions/v1/automated-billing`;
+
+    // Note: cron jobs are configured via SQL migrations.
+    // This function serves as a manual fallback for re-setup if needed.
+    // The primary cron job (automated-billing-daily) is already configured in the database.
+
+    console.log("[SETUP-BILLING] Billing automation cron job is configured via SQL migration.");
+    console.log("[SETUP-BILLING] Current schedule: Daily at 9:00 AM UTC (6:00 AM Brasília)");
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: "Billing automation cron job setup completed",
-        data
+        message: "Billing automation cron job is configured",
+        schedule: "Daily at 9:00 AM UTC (6:00 AM Brasília)",
+        note: "Cron jobs are managed via SQL migrations. Check cron.job table for current configuration."
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -54,7 +50,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error("Error setting up billing automation:", error);
+    console.error("[SETUP-BILLING] Error:", error);
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'Unknown error',

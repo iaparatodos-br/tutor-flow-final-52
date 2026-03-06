@@ -1,7 +1,18 @@
 {
-  "title": "Serviços",
+  "title": "Serviços e Preços",
+  "subtitle": "Gerencie os diferentes tipos de aula e seus valores",
   "new": "Novo Serviço",
   "edit": "Editar Serviço",
+  "showInactive": "Mostrar inativos",
+  "noActiveServices": "Nenhum serviço ativo encontrado. Ative um serviço existente ou crie um novo.",
+  "noServices": "Nenhum serviço cadastrado",
+  "noServicesDescription": "Crie seu primeiro serviço para definir preços das suas aulas",
+  "createFirst": "Criar Primeiro Serviço",
+  
+  "active": "Ativo",
+  "inactive": "Inativo",
+  "activate": "Ativar",
+  "deactivate": "Desativar",
   "fields": {
     "name": "Nome do Serviço",
     "namePlaceholder": "Ex: Aula Individual 60min",
@@ -12,7 +23,8 @@
     "duration": "Duração (min)",
     "durationPlaceholder": "60",
     "isActive": "Serviço ativo",
-    "isDefault": "Definir como padrão"
+    
+    "groupPricingNote": "Em aulas em grupo, este valor será cobrado individualmente de cada participante, não sendo dividido entre os alunos."
   },
   "validation": {
     "loginRequired": "Você precisa estar logado para criar um serviço.",

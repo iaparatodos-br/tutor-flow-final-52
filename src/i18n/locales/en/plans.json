@@ -30,7 +30,9 @@
     "noExpenses": "No Expense Tracking",
     "storage": "Material Storage",
     "materialSharing": "Material Upload and Sharing",
-    "limitedMaterials": "Limited Materials"
+    "limitedMaterials": "Limited Materials",
+    "reportPhotos": "Photos in Class Reports",
+    "noReportPhotos": "No Photos in Reports"
   },
   "comparison": {
     "title": "Compare Plans",
@@ -41,7 +43,8 @@
       "groupClasses": "Group Classes",
       "expenses": "Expense Tracking",
       "materialSharing": "Material Upload and Sharing",
-      "storage": "Material Storage"
+      "storage": "Material Storage",
+      "reportPhotos": "Photos in Class Reports"
     }
   },
   "messages": {

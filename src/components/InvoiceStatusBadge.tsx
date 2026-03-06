@@ -1,23 +1,27 @@
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { CheckCircle, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface InvoiceStatusBadgeProps {
-  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada';
+  status: 'paid' | 'open' | 'overdue' | 'void' | 'draft' | 'paga' | 'pendente' | 'vencida' | 'cancelada' | 'falha_pagamento';
   paymentOrigin?: string | null;
 }
 
 export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadgeProps) {
-  const statusMap = {
-    paid: { label: 'Paga', className: 'bg-success text-success-foreground hover:bg-success/80' },
-    paga: { label: 'Paga', className: 'bg-success text-success-foreground hover:bg-success/80' },
-    open: { label: 'Em Aberto', className: 'bg-primary text-primary-foreground hover:bg-primary/80' },
-    pendente: { label: 'Em Aberto', className: 'bg-primary text-primary-foreground hover:bg-primary/80' },
-    overdue: { label: 'Vencida', className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
-    vencida: { label: 'Vencida', className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
-    void: { label: 'Anulada', className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
-    cancelada: { label: 'Anulada', className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
-    draft: { label: 'Rascunho', className: 'bg-warning text-warning-foreground hover:bg-warning/80' },
+  const { t } = useTranslation('financial');
+
+  const statusMap: Record<string, { label: string; className: string }> = {
+    paid: { label: t('status.paid'), className: 'bg-success text-success-foreground hover:bg-success/80' },
+    paga: { label: t('status.paid'), className: 'bg-success text-success-foreground hover:bg-success/80' },
+    open: { label: t('status.pending'), className: 'bg-primary text-primary-foreground hover:bg-primary/80' },
+    pendente: { label: t('status.pending'), className: 'bg-primary text-primary-foreground hover:bg-primary/80' },
+    overdue: { label: t('status.overdue'), className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
+    vencida: { label: t('status.overdue'), className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
+    void: { label: t('status.cancelled'), className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
+    cancelada: { label: t('status.cancelled'), className: 'bg-muted text-muted-foreground hover:bg-muted/80' },
+    draft: { label: t('status.pending'), className: 'bg-warning text-warning-foreground hover:bg-warning/80' },
+    falha_pagamento: { label: t('status.paymentFailed'), className: 'bg-destructive text-destructive-foreground hover:bg-destructive/80' },
   };
 
   const { label, className } = statusMap[status] || statusMap.void;
@@ -26,13 +30,25 @@ export function InvoiceStatusBadge({ status, paymentOrigin }: InvoiceStatusBadge
   const isManual = paymentOrigin === 'manual';
   const isAutomatic = paymentOrigin === 'automatic';
 
+  // Get payment origin icon for paid invoices
+  const getPaymentIcon = () => {
+    if (isPaid && isManual) return <CheckCircle className="h-3 w-3" />;
+    if (isPaid && isAutomatic) return <Zap className="h-3 w-3" />;
+    return null;
+  };
+
+  // Get payment origin suffix for paid invoices
+  const getPaymentSuffix = () => {
+    if (isPaid && isManual) return <span className="text-xs opacity-80">({t('paymentOrigin.manual')})</span>;
+    if (isPaid && isAutomatic) return <span className="text-xs opacity-80">({t('paymentOrigin.automatic')})</span>;
+    return null;
+  };
+
   return (
     <Badge className={cn('text-white gap-1', className)}>
-      {isPaid && isManual && <CheckCircle className="h-3 w-3" />}
-      {isPaid && isAutomatic && <Zap className="h-3 w-3" />}
+      {getPaymentIcon()}
       {label}
-      {isPaid && isManual && <span className="text-xs opacity-80">(Manual)</span>}
-      {isPaid && isAutomatic && <span className="text-xs opacity-80">(Auto)</span>}
+      {getPaymentSuffix()}
     </Badge>
   );
 }

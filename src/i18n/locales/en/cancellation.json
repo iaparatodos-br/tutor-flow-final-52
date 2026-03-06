@@ -32,6 +32,27 @@
       "title": "Group Class",
       "description": "By canceling, you will be removed from this group class.",
       "chargeApplied": "The charge will be applied normally."
+    },
+    "dependent": {
+      "title": "Dependent's Class",
+      "description": "You are canceling the class for {{dependentName}}.",
+      "chargeToResponsible": "The charge will be directed to the responsible party ({{responsibleName}})."
+    },
+    "experimental": {
+      "title": "Experimental Class",
+      "noCharge": "Experimental classes are not subject to cancellation fees."
+    },
+    "prepaid": {
+      "title": "Prepaid Class",
+      "noCharge": "This class was already billed upfront. Any adjustments should be arranged directly with the teacher."
+    },
+    "unpaid": {
+      "title": "Free Class",
+      "noCharge": "This class is free, so there is no financial impact from cancellation."
+    },
+    "pending": {
+      "title": "Pending Class",
+      "noCharge": "This class has not yet been confirmed by the teacher. Cancellations of pending classes are not subject to charges."
     }
   },
   "fields": {

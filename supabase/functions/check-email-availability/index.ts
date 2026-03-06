@@ -29,14 +29,16 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if email exists in auth.users using listUsers
-    const { data: users, error: authError } = await supabaseClient.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000 // Should be enough for most cases, could paginate if needed
-    })
+    // Check if email exists in profiles table instead of using listUsers()
+    // This avoids the Supabase bug with NULL confirmation_token
+    const { data: profileData, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('id')
+      .eq('email', email.toLowerCase())
+      .maybeSingle()
 
-    if (authError) {
-      console.error('Error checking auth users:', authError)
+    if (profileError) {
+      console.error('Error checking profiles:', profileError)
       return new Response(
         JSON.stringify({ error: 'Error checking email availability' }),
         { 
@@ -46,9 +48,10 @@ Deno.serve(async (req) => {
       )
     }
 
-    // Check if any user has this email
-    const emailExists = users.users?.some(user => user.email === email) || false
-    const available = !emailExists
+    // Email is available if no profile exists with this email
+    const available = !profileData
+
+    console.log(`Email check for ${email}: available=${available}`)
 
     return new Response(
       JSON.stringify({ available }),

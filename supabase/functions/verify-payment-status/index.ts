@@ -29,6 +29,23 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
+
     const { invoice_id } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
@@ -37,19 +54,39 @@ serve(async (req) => {
       .from("invoices")
       .select("*")
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");
     }
 
+    // AUTH: Verify user is the student or teacher of this invoice
+    if (invoice.student_id !== authUserId && invoice.teacher_id !== authUserId) {
+      logStep("AUTHORIZATION FAILED", { authUserId, studentId: invoice.student_id, teacherId: invoice.teacher_id });
+      return new Response(JSON.stringify({ error: "Você não tem permissão para verificar esta fatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
     logStep("Invoice found", { invoiceId: invoice_id, status: invoice.status });
 
-    // If already paid, return current status
-    if (invoice.status === 'paga') {
+    // Guard: If already in terminal status, return current status
+    const terminalStatuses = ['paga', 'cancelada'];
+    if (terminalStatuses.includes(invoice.status)) {
       return new Response(JSON.stringify({
-        status: 'paga',
-        message: 'Invoice is already paid'
+        status: invoice.status,
+        message: `Invoice is already in terminal status: ${invoice.status}`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // Guard: don't overwrite manual payments
+    if (invoice.payment_origin === 'manual') {
+      return new Response(JSON.stringify({
+        status: invoice.status,
+        message: 'Invoice was manually confirmed, skipping automatic verification'
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -69,8 +106,25 @@ serve(async (req) => {
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
 
-    // Check payment intent status in Stripe
-    const paymentIntent = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id);
+    // #554: Buscar stripeAccount do Connect para este professor
+    let stripeAccount: string | undefined = undefined;
+    if (invoice.teacher_id) {
+      const { data: bp } = await supabaseClient
+        .from("business_profiles")
+        .select("stripe_connect_id")
+        .eq("user_id", invoice.teacher_id)
+        .maybeSingle();
+      if (bp?.stripe_connect_id) {
+        stripeAccount = bp.stripe_connect_id;
+      }
+    }
+
+    // Check payment intent status in Stripe (com stripeAccount para Connect)
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      invoice.stripe_payment_intent_id,
+      undefined,
+      stripeAccount ? { stripeAccount } : undefined
+    );
     
     logStep("Payment intent retrieved", { 
       paymentIntentId: paymentIntent.id, 
@@ -85,12 +139,13 @@ serve(async (req) => {
       newStatus = 'falha_pagamento';
     }
 
-    // Update invoice status if it changed
+    // Update invoice status if it changed (with guard clause)
     if (newStatus !== invoice.status) {
       const { error: updateError } = await supabaseClient
         .from("invoices")
         .update({ status: newStatus })
-        .eq("id", invoice_id);
+        .eq("id", invoice_id)
+        .in("status", ["pendente", "falha_pagamento"]); // Guard: only update non-terminal
 
       if (updateError) {
         logStep("Error updating invoice status", updateError);

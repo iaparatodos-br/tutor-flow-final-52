@@ -27,16 +27,26 @@ const checkNeedsStudentSelection = async (
     }
 
     // Get current student count
-    const { data: students, error: studentsError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: studentsRaw, error: studentsError } = await supabaseClient
       .from('teacher_student_relationships')
-      .select(`
-        id,
-        student_id,
-        student_name,
-        created_at,
-        profiles!teacher_student_relationships_student_id_fkey(name, email)
-      `)
+      .select('id, student_id, student_name, created_at')
       .eq('teacher_id', userId);
+
+    let students: any[] | null = null;
+    if (!studentsError && studentsRaw && studentsRaw.length > 0) {
+      const studentIds = [...new Set(studentsRaw.map(s => s.student_id))];
+      const { data: profiles } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email')
+        .in('id', studentIds);
+      
+      const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+      students = studentsRaw.map(s => ({
+        ...s,
+        profiles: profileMap.get(s.student_id) || null,
+      }));
+    }
 
     if (studentsError) {
       logStep("Error fetching students for downgrade check", { error: studentsError });
@@ -101,10 +111,9 @@ serve(async (req) => {
     if (userError || !userData.user) {
       logStep("Authentication failed", { 
         error: userError?.message, 
-        hasUser: !!userData.user 
+        hasUser: !!userData?.user 
       });
       
-      // Return 401 for authentication errors so frontend can handle logout
       return new Response(JSON.stringify({ 
         error: "Authentication failed", 
         code: "INVALID_SESSION" 
@@ -135,7 +144,7 @@ serve(async (req) => {
         subscription_plans (*)
       `)
       .eq('user_id', user.id)
-      .in('status', ['active', 'expired'])
+      .in('status', ['active', 'expired', 'pending_boleto', 'cancelled'])
       .order('updated_at', { ascending: false });
 
     if (subError) throw subError;
@@ -178,8 +187,8 @@ serve(async (req) => {
           });
 
           // Check if subscription is in past_due or other failure states
+          // IMPORTANT: Do NOT treat 'incomplete' as failure if payment method is boleto
           if (stripeSubscription.status === 'past_due' || 
-              stripeSubscription.status === 'incomplete' ||
               stripeSubscription.status === 'incomplete_expired') {
             
             logStep("PAYMENT FAILURE DETECTED for active subscription", {
@@ -207,6 +216,65 @@ serve(async (req) => {
             };
 
             logStep("Payment failure details", paymentFailure);
+          } else if (stripeSubscription.status === 'incomplete') {
+            // Check if it's a boleto payment - don't treat as failure
+            logStep("Incomplete status detected, checking payment method");
+            
+            try {
+              const invoices = await stripe.invoices.list({
+                subscription: activeSubscription.stripe_subscription_id,
+                limit: 1
+              });
+
+              if (invoices.data.length > 0 && invoices.data[0].payment_intent) {
+                const pi = await stripe.paymentIntents.retrieve(invoices.data[0].payment_intent as string);
+                const isBoleto = pi.payment_method_types?.includes('boleto') || 
+                                 pi.next_action?.type === 'boleto_display_details';
+                
+                if (isBoleto) {
+                  logStep("Boleto payment detected - not treating as failure");
+                  
+                  // Get boleto details
+                  const boletoDetails = pi.next_action?.boleto_display_details;
+                  
+                  return new Response(JSON.stringify({
+                    subscription: {
+                      id: activeSubscription.id,
+                      plan_id: activeSubscription.plan_id,
+                      status: 'pending_boleto',
+                      current_period_end: activeSubscription.current_period_end,
+                      cancel_at_period_end: activeSubscription.cancel_at_period_end,
+                      extra_students: activeSubscription.extra_students,
+                      extra_cost_cents: activeSubscription.extra_cost_cents
+                    },
+                    plan: activeSubscription.subscription_plans,
+                    pendingBoleto: {
+                      detected: true,
+                      boletoUrl: boletoDetails?.hosted_voucher_url || activeSubscription.boleto_url,
+                      dueDate: boletoDetails?.expires_at 
+                        ? new Date(boletoDetails.expires_at * 1000).toISOString() 
+                        : activeSubscription.boleto_due_date,
+                      barcode: boletoDetails?.number || activeSubscription.boleto_barcode,
+                      amount: invoices.data[0].amount_due
+                    }
+                  }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                    status: 200,
+                  });
+                } else {
+                  // Not boleto, treat as payment failure
+                  paymentFailure = {
+                    detected: true,
+                    status: stripeSubscription.status,
+                    lastFailureDate: null,
+                    attemptsCount: 0,
+                    nextAttempt: null
+                  };
+                }
+              }
+            } catch (boletoCheckError) {
+              logStep("Error checking if boleto", { error: (boletoCheckError as Error).message });
+            }
           }
         } catch (stripeError) {
           logStep("Error checking Stripe subscription status for active sub", { 
@@ -217,6 +285,31 @@ serve(async (req) => {
       }
 
       // Return active subscription WITH payment failure data if detected
+      // Also check for pending_boleto status from database
+      if (activeSubscription.status === 'pending_boleto' || activeSubscription.pending_payment_method === 'boleto') {
+        return new Response(JSON.stringify({
+          subscription: {
+            id: activeSubscription.id,
+            plan_id: activeSubscription.plan_id,
+            status: 'pending_boleto',
+            current_period_end: activeSubscription.current_period_end,
+            cancel_at_period_end: activeSubscription.cancel_at_period_end,
+            extra_students: activeSubscription.extra_students,
+            extra_cost_cents: activeSubscription.extra_cost_cents
+          },
+          plan: activeSubscription.subscription_plans,
+          pendingBoleto: {
+            detected: true,
+            boletoUrl: activeSubscription.boleto_url,
+            dueDate: activeSubscription.boleto_due_date,
+            barcode: activeSubscription.boleto_barcode
+          }
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
       return new Response(JSON.stringify({
         subscription: {
           id: activeSubscription.id,
@@ -242,27 +335,323 @@ serve(async (req) => {
       logStep("Found subscription in database (no active with future period)", { 
         subscriptionId: subscription.id, 
         status: subscription.status,
-        currentPeriodEnd: subscription.current_period_end 
+        currentPeriodEnd: subscription.current_period_end,
+        stripeSubscriptionId: subscription.stripe_subscription_id
       });
       
       let paymentFailure = null;
 
+      // ============= CRITICAL FIX: Check for NEW active subscription in Stripe =============
+      // When subscription is expired/canceled in DB, check if there's a NEW active subscription in Stripe
+      const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
+      
+      // Get Stripe customer
+      const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+      
+      if (customers.data.length > 0) {
+        const customerId = customers.data[0].id;
+        logStep("Found Stripe customer, checking for active subscriptions", { customerId });
+        
+        // Get ALL active subscriptions from Stripe
+        const activeStripeSubscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'active',
+          limit: 5
+        });
+        
+        logStep("Active Stripe subscriptions found", { 
+          count: activeStripeSubscriptions.data.length,
+          ids: activeStripeSubscriptions.data.map(s => s.id)
+        });
+
+        // Also check for incomplete subscriptions (boleto pending payment)
+        const incompleteStripeSubscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: 'incomplete',
+          limit: 5
+        });
+
+        logStep("Incomplete Stripe subscriptions found", {
+          count: incompleteStripeSubscriptions.data.length,
+          ids: incompleteStripeSubscriptions.data.map(s => s.id)
+        });
+        
+        // Check if there's an active subscription DIFFERENT from the one in DB
+        const newActiveSub = activeStripeSubscriptions.data.find(
+          s => s.id !== subscription.stripe_subscription_id
+        );
+        
+        if (newActiveSub) {
+          logStep("🔄 NEW ACTIVE SUBSCRIPTION FOUND IN STRIPE - syncing", { 
+            oldDbSubscriptionId: subscription.stripe_subscription_id,
+            newStripeSubscriptionId: newActiveSub.id,
+            dbStatus: subscription.status
+          });
+          
+          // Get price_id and map to subscription plan
+          const priceId = newActiveSub.items.data[0].price.id;
+          logStep("Found price_id for new subscription", { priceId });
+          
+          const { data: plan, error: planError } = await supabaseClient
+            .from('subscription_plans')
+            .select('*')
+            .eq('stripe_price_id', priceId)
+            .maybeSingle();
+          
+          if (!planError && plan) {
+            // Update subscription record with NEW subscription data
+            const subscriptionData = {
+              user_id: user.id,
+              plan_id: plan.id,
+              status: 'active',
+              stripe_customer_id: customerId,
+              stripe_subscription_id: newActiveSub.id,
+              current_period_start: new Date(newActiveSub.current_period_start * 1000).toISOString(),
+              current_period_end: new Date(newActiveSub.current_period_end * 1000).toISOString(),
+              cancel_at_period_end: newActiveSub.cancel_at_period_end,
+              extra_students: 0,
+              extra_cost_cents: 0,
+              updated_at: new Date().toISOString(),
+              // Clear boleto fields from old subscription
+              boleto_url: null,
+              boleto_barcode: null,
+              boleto_due_date: null,
+              pending_payment_method: null
+            };
+
+            const { data: updatedSubscription, error: upsertError } = await supabaseClient
+              .from('user_subscriptions')
+              .upsert(subscriptionData, { onConflict: 'user_id' })
+              .select(`*, subscription_plans (*)`)
+              .single();
+
+            if (!upsertError && updatedSubscription) {
+              // Update user profile
+              await supabaseClient
+                .from('profiles')
+                .update({
+                  current_plan_id: plan.id,
+                  subscription_status: 'active',
+                  subscription_end_date: subscriptionData.current_period_end,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', user.id);
+
+              logStep("✅ Successfully synced NEW subscription from Stripe", { 
+                subscriptionId: updatedSubscription.id,
+                planId: plan.id,
+                planName: plan.name
+              });
+
+              return new Response(JSON.stringify({
+                subscription: {
+                  id: updatedSubscription.id,
+                  plan_id: updatedSubscription.plan_id,
+                  status: updatedSubscription.status,
+                  current_period_end: updatedSubscription.current_period_end,
+                  cancel_at_period_end: updatedSubscription.cancel_at_period_end,
+                  extra_students: updatedSubscription.extra_students,
+                  extra_cost_cents: updatedSubscription.extra_cost_cents
+                },
+                plan: plan
+              }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            } else {
+              logStep("Error upserting new subscription", { error: upsertError });
+            }
+          } else {
+            logStep("Plan not found for new subscription", { priceId, error: planError });
+          }
+        } else if (activeStripeSubscriptions.data.length > 0) {
+          // Same subscription ID is active in Stripe - resync status
+          const sameSub = activeStripeSubscriptions.data[0];
+          logStep("Same subscription is ACTIVE in Stripe but expired/inactive in DB - resyncing", {
+            stripeId: sameSub.id,
+            dbStatus: subscription.status
+          });
+          
+          // Get the plan for this subscription
+          const priceId = sameSub.items.data[0].price.id;
+          const { data: plan } = await supabaseClient
+            .from('subscription_plans')
+            .select('*')
+            .eq('stripe_price_id', priceId)
+            .maybeSingle();
+            
+          if (plan) {
+            // Update subscription to active
+            const { data: updatedSub, error: updateErr } = await supabaseClient
+              .from('user_subscriptions')
+              .update({
+                status: 'active',
+                current_period_start: new Date(sameSub.current_period_start * 1000).toISOString(),
+                current_period_end: new Date(sameSub.current_period_end * 1000).toISOString(),
+                cancel_at_period_end: sameSub.cancel_at_period_end,
+                updated_at: new Date().toISOString(),
+                boleto_url: null,
+                boleto_barcode: null,
+                boleto_due_date: null,
+                pending_payment_method: null
+              })
+              .eq('id', subscription.id)
+              .select(`*, subscription_plans (*)`)
+              .single();
+              
+            if (!updateErr && updatedSub) {
+              // Update profile too
+              await supabaseClient
+                .from('profiles')
+                .update({
+                  current_plan_id: plan.id,
+                  subscription_status: 'active',
+                  subscription_end_date: new Date(sameSub.current_period_end * 1000).toISOString(),
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', user.id);
+                
+              logStep("✅ Resynced existing subscription to ACTIVE", { subscriptionId: updatedSub.id });
+              
+              return new Response(JSON.stringify({
+                subscription: {
+                  id: updatedSub.id,
+                  plan_id: updatedSub.plan_id,
+                  status: updatedSub.status,
+                  current_period_end: updatedSub.current_period_end,
+                  cancel_at_period_end: updatedSub.cancel_at_period_end,
+                  extra_students: updatedSub.extra_students,
+                  extra_cost_cents: updatedSub.extra_cost_cents
+                },
+                plan: plan
+              }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            }
+          }
+        } else if (incompleteStripeSubscriptions.data.length > 0) {
+          // ============= BOLETO FIX: incomplete subscription = pending boleto =============
+          const incompleteSub = incompleteStripeSubscriptions.data[0];
+          logStep("🔄 INCOMPLETE subscription found in Stripe - checking if boleto", {
+            stripeId: incompleteSub.id,
+            dbStatus: subscription.status
+          });
+
+          try {
+            const invoices = await stripe.invoices.list({
+              subscription: incompleteSub.id,
+              limit: 1
+            });
+
+            let isBoleto = false;
+            let boletoDetails: any = null;
+            let invoiceAmountDue = 0;
+
+            if (invoices.data.length > 0 && invoices.data[0].payment_intent) {
+              const pi = await stripe.paymentIntents.retrieve(invoices.data[0].payment_intent as string);
+              isBoleto = pi.payment_method_types?.includes('boleto') ||
+                         pi.next_action?.type === 'boleto_display_details';
+              boletoDetails = pi.next_action?.boleto_display_details;
+              invoiceAmountDue = invoices.data[0].amount_due;
+            }
+
+            if (isBoleto) {
+              logStep("✅ Boleto payment detected for incomplete subscription - syncing as pending_boleto");
+
+              const priceId = incompleteSub.items.data[0].price.id;
+              const { data: plan } = await supabaseClient
+                .from('subscription_plans')
+                .select('*')
+                .eq('stripe_price_id', priceId)
+                .maybeSingle();
+
+              if (plan) {
+                const boletoUrl = boletoDetails?.hosted_voucher_url || null;
+                const boletoDueDate = boletoDetails?.expires_at
+                  ? new Date(boletoDetails.expires_at * 1000).toISOString()
+                  : null;
+                const boletoBarcode = boletoDetails?.number || null;
+
+                // Upsert subscription as pending_boleto
+                const { data: updatedSub, error: upsertErr } = await supabaseClient
+                  .from('user_subscriptions')
+                  .upsert({
+                    user_id: user.id,
+                    plan_id: plan.id,
+                    status: 'pending_boleto',
+                    stripe_customer_id: customerId,
+                    stripe_subscription_id: incompleteSub.id,
+                    current_period_start: new Date(incompleteSub.current_period_start * 1000).toISOString(),
+                    current_period_end: new Date(incompleteSub.current_period_end * 1000).toISOString(),
+                    cancel_at_period_end: incompleteSub.cancel_at_period_end,
+                    pending_payment_method: 'boleto',
+                    boleto_url: boletoUrl,
+                    boleto_due_date: boletoDueDate,
+                    boleto_barcode: boletoBarcode,
+                    extra_students: 0,
+                    extra_cost_cents: 0,
+                    updated_at: new Date().toISOString(),
+                  }, { onConflict: 'user_id' })
+                  .select(`*, subscription_plans (*)`)
+                  .single();
+
+                if (!upsertErr && updatedSub) {
+                  // Update profile to reflect pending_boleto
+                  await supabaseClient
+                    .from('profiles')
+                    .update({
+                      current_plan_id: plan.id,
+                      subscription_status: 'pending_boleto',
+                      subscription_end_date: new Date(incompleteSub.current_period_end * 1000).toISOString(),
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', user.id);
+
+                  logStep("✅ Synced incomplete boleto subscription to DB as pending_boleto", {
+                    subscriptionId: updatedSub.id,
+                    planName: plan.name
+                  });
+
+                  return new Response(JSON.stringify({
+                    subscription: {
+                      id: updatedSub.id,
+                      plan_id: updatedSub.plan_id,
+                      status: 'pending_boleto',
+                      current_period_end: updatedSub.current_period_end,
+                      cancel_at_period_end: updatedSub.cancel_at_period_end,
+                      extra_students: updatedSub.extra_students,
+                      extra_cost_cents: updatedSub.extra_cost_cents
+                    },
+                    plan: plan,
+                    pendingBoleto: {
+                      detected: true,
+                      boletoUrl: boletoUrl,
+                      dueDate: boletoDueDate,
+                      barcode: boletoBarcode,
+                      amount: invoiceAmountDue
+                    }
+                  }), {
+                    headers: { ...corsHeaders, "Content-Type": "application/json" },
+                    status: 200,
+                  });
+                }
+              }
+            } else {
+              logStep("Incomplete subscription is NOT boleto, ignoring");
+            }
+          } catch (boletoCheckError) {
+            logStep("Error checking incomplete subscription for boleto", {
+              error: (boletoCheckError as Error).message
+            });
+          }
+          // ============= END BOLETO FIX =============
+        }
+      }
+      // ============= END CRITICAL FIX =============
+
       // If we have a Stripe subscription ID, check its status for payment failures
       if (subscription.stripe_subscription_id) {
-        const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-        if (!stripeKey) {
-          logStep("Stripe secret key not found");
-          return new Response(
-            JSON.stringify({ error: "Stripe configuration missing" }),
-            { 
-              status: 500, 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-            }
-          );
-        }
-
-        const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
-        
         try {
           const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
           logStep("Retrieved Stripe subscription", { 
@@ -330,7 +719,7 @@ serve(async (req) => {
           .from('subscription_plans')
           .select('*')
           .eq('slug', 'free')
-          .single();
+          .maybeSingle();
 
         if (freePlanError || !freePlan) {
           logStep("Error getting free plan", { error: freePlanError });
@@ -367,6 +756,7 @@ serve(async (req) => {
             subscription: null,
             plan: freePlan,
             needs_student_selection: true,
+            student_selection: needsStudentSelection,
             current_students: needsStudentSelection.students,
             previous_plan: subscription.subscription_plans
           }), {
@@ -401,11 +791,12 @@ serve(async (req) => {
           }
         }
 
-        logStep("Subscription marked as expired and profile updated");
+        logStep("Subscription marked as expired and profile updated", { hasPaymentFailure: !!paymentFailure });
 
         return new Response(JSON.stringify({
           subscription: null,
-          plan: freePlan
+          plan: freePlan,
+          ...(paymentFailure ? { paymentFailure, payment_failed: true, payment_failure_data: paymentFailure } : {})
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
           status: 200,
@@ -448,7 +839,7 @@ serve(async (req) => {
         .from('subscription_plans')
         .select('*')
         .eq('slug', 'free')
-        .single();
+        .maybeSingle();
 
       return new Response(JSON.stringify({
         subscription: null,
@@ -472,13 +863,131 @@ serve(async (req) => {
     const hasActiveSub = subscriptions.data.length > 0;
     
     if (!hasActiveSub) {
-      logStep("No active subscription in Stripe");
-      // Get free plan
+      logStep("No active subscription in Stripe, checking for incomplete (boleto)");
+
+      // Check for incomplete subscriptions (boleto pending)
+      const incompleteSubscriptions = await stripe.subscriptions.list({
+        customer: customerId,
+        status: "incomplete",
+        limit: 1,
+      });
+
+      if (incompleteSubscriptions.data.length > 0) {
+        const incompleteSub = incompleteSubscriptions.data[0];
+        logStep("Found incomplete subscription, checking if boleto", { stripeId: incompleteSub.id });
+
+        try {
+          const invoices = await stripe.invoices.list({
+            subscription: incompleteSub.id,
+            limit: 1
+          });
+
+          let isBoleto = false;
+          let boletoDetails: any = null;
+          let invoiceAmountDue = 0;
+
+          if (invoices.data.length > 0 && invoices.data[0].payment_intent) {
+            const pi = await stripe.paymentIntents.retrieve(invoices.data[0].payment_intent as string);
+            isBoleto = pi.payment_method_types?.includes('boleto') ||
+                       pi.next_action?.type === 'boleto_display_details';
+            boletoDetails = pi.next_action?.boleto_display_details;
+            invoiceAmountDue = invoices.data[0].amount_due;
+          }
+
+          if (isBoleto) {
+            logStep("✅ Boleto payment detected - creating pending_boleto record");
+
+            const priceId = incompleteSub.items.data[0].price.id;
+            const { data: plan } = await supabaseClient
+              .from('subscription_plans')
+              .select('*')
+              .eq('stripe_price_id', priceId)
+              .maybeSingle();
+
+            if (plan) {
+              const boletoUrl = boletoDetails?.hosted_voucher_url || null;
+              const boletoDueDate = boletoDetails?.expires_at
+                ? new Date(boletoDetails.expires_at * 1000).toISOString()
+                : null;
+              const boletoBarcode = boletoDetails?.number || null;
+
+              const { data: newSub, error: upsertErr } = await supabaseClient
+                .from('user_subscriptions')
+                .upsert({
+                  user_id: user.id,
+                  plan_id: plan.id,
+                  status: 'pending_boleto',
+                  stripe_customer_id: customerId,
+                  stripe_subscription_id: incompleteSub.id,
+                  current_period_start: new Date(incompleteSub.current_period_start * 1000).toISOString(),
+                  current_period_end: new Date(incompleteSub.current_period_end * 1000).toISOString(),
+                  cancel_at_period_end: incompleteSub.cancel_at_period_end,
+                  pending_payment_method: 'boleto',
+                  boleto_url: boletoUrl,
+                  boleto_due_date: boletoDueDate,
+                  boleto_barcode: boletoBarcode,
+                  extra_students: 0,
+                  extra_cost_cents: 0,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'user_id' })
+                .select()
+                .single();
+
+              if (!upsertErr && newSub) {
+                await supabaseClient
+                  .from('profiles')
+                  .update({
+                    current_plan_id: plan.id,
+                    subscription_status: 'pending_boleto',
+                    subscription_end_date: new Date(incompleteSub.current_period_end * 1000).toISOString(),
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', user.id);
+
+                logStep("✅ Created pending_boleto subscription from Stripe incomplete", {
+                  subscriptionId: newSub.id,
+                  planName: plan.name
+                });
+
+                return new Response(JSON.stringify({
+                  subscription: {
+                    id: newSub.id,
+                    plan_id: newSub.plan_id,
+                    status: 'pending_boleto',
+                    current_period_end: newSub.current_period_end,
+                    cancel_at_period_end: newSub.cancel_at_period_end,
+                    extra_students: newSub.extra_students,
+                    extra_cost_cents: newSub.extra_cost_cents
+                  },
+                  plan: plan,
+                  pendingBoleto: {
+                    detected: true,
+                    boletoUrl: boletoUrl,
+                    dueDate: boletoDueDate,
+                    barcode: boletoBarcode,
+                    amount: invoiceAmountDue
+                  }
+                }), {
+                  headers: { ...corsHeaders, "Content-Type": "application/json" },
+                  status: 200,
+                });
+              }
+            }
+          }
+        } catch (boletoCheckError) {
+          logStep("Error checking incomplete subscription for boleto", {
+            error: (boletoCheckError as Error).message
+          });
+        }
+      }
+
+      // No active or boleto subscription found
+      logStep("No active or boleto subscription in Stripe, returning free plan");
       const { data: freePlan } = await supabaseClient
         .from('subscription_plans')
         .select('*')
         .eq('slug', 'free')
-        .single();
+        .maybeSingle();
 
       return new Response(JSON.stringify({
         subscription: null,
@@ -504,7 +1013,7 @@ serve(async (req) => {
       .from('subscription_plans')
       .select('*')
       .eq('stripe_price_id', priceId)
-      .single();
+      .maybeSingle();
 
     if (planError || !plan) {
       logStep("Plan not found for price_id", { priceId, error: planError });

@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail } from "lucide-react";
+import { GraduationCap, Loader2, Eye, EyeOff, ArrowLeft, Mail, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -29,6 +29,16 @@ export default function Auth() {
   const [showResetForm, setShowResetForm] = useState(false);
   const [emailNotConfirmed, setEmailNotConfirmed] = useState<string | null>(null);
   const [resendingConfirmation, setResendingConfirmation] = useState(false);
+  const [signupSuccessEmail, setSignupSuccessEmail] = useState<string | null>(null);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+
+  // Password requirements checker
+  const getPasswordRequirements = (password: string) => ({
+    minLength: password.length >= 8,
+    lowercase: /[a-z]/.test(password),
+    uppercase: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+  });
 
   if (isAuthenticated) {
     // Redirecionar baseado no papel do usuário
@@ -94,19 +104,39 @@ export default function Auth() {
     
     setResendingConfirmation(true);
     
-    const { error } = await resendConfirmation(emailNotConfirmed);
+    const { error, code } = await resendConfirmation(emailNotConfirmed);
     
     if (error) {
-      toast({
-        title: t('messages.confirmationResentError'),
-        description: error.message || t('messages.confirmationResentErrorDescription'),
-        variant: "destructive",
-      });
+      // Tratamento específico por código de erro
+      if (code === 'already_confirmed') {
+        toast({
+          title: t('messages.emailAlreadyConfirmed'),
+        });
+        setEmailNotConfirmed(null); // Limpa o alerta, pois email já está confirmado
+      } else if (code === 'user_not_found') {
+        toast({
+          title: t('messages.confirmationResentError'),
+          description: t('messages.userNotFoundResend'),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: t('messages.confirmationResentError'),
+          description: error, // error já é string, não precisa de .message
+          variant: "destructive",
+        });
+      }
     } else {
       toast({
         title: t('messages.confirmationResentTitle'),
         description: t('messages.confirmationResentDescription'),
       });
+      // Toast adicional informando sobre possível delay
+      setTimeout(() => {
+        toast({
+          title: t('messages.emailMightBeDelayed'),
+        });
+      }, 1500);
       setEmailNotConfirmed(null);
     }
     
@@ -162,9 +192,14 @@ export default function Auth() {
         variant: "destructive",
       });
     } else {
+      // Set state for inline alert
+      setSignupSuccessEmail(signupForm.email);
+      
+      // Persistent toast as reinforcement (won't auto-dismiss)
       toast({
         title: t('messages.emailVerificationRequired'),
         description: t('messages.emailVerificationDescription'),
+        duration: Infinity,
       });
     }
     
@@ -189,18 +224,26 @@ export default function Auth() {
     const { error } = await resetPassword(resetForm.email);
     
     if (error) {
+      // Mostra erro apenas para erros de conexão/servidor
+      // A edge function NÃO revela se email existe (anti-enumeration)
       toast({
         title: t('messages.resetEmailError'),
-        description: error.includes("not found") 
-          ? t('messages.emailNotFound')
-          : error,
+        description: error,
         variant: "destructive",
       });
     } else {
+      // Mensagem genérica por segurança (não confirma se email existe)
       toast({
         title: t('messages.resetEmailSent'),
         description: t('messages.resetEmailSentDescription'),
       });
+      
+      // Toast adicional sobre possível delay de email
+      setTimeout(() => {
+        toast({
+          title: t('messages.emailMightBeDelayed'),
+        });
+      }, 1500);
       
       // Switch back to login form after success
       setShowResetForm(false);
@@ -398,6 +441,32 @@ export default function Auth() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Signup success alert - inline and persistent */}
+                  {signupSuccessEmail && (
+                    <Alert className="mb-4 border-primary/50 bg-primary/5">
+                      <Mail className="h-4 w-4 text-primary" />
+                      <AlertDescription className="flex flex-col gap-2">
+                        <span className="text-sm font-medium">
+                          {t('messages.emailVerificationRequired')}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          {t('messages.emailVerificationDescription')}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {t('ui.emailSentTo', { email: signupSuccessEmail })}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSignupSuccessEmail(null)}
+                          className="w-full mt-2"
+                        >
+                          {t('ui.understoodCloseAlert')}
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">{t('fields.name')}</Label>
                     <Input
@@ -440,6 +509,8 @@ export default function Auth() {
                           setSignupForm(prev => ({ ...prev, password: e.target.value }));
                           setSignupErrors(prev => ({ ...prev, password: false }));
                         }}
+                        onFocus={() => setPasswordFocused(true)}
+                        onBlur={() => setPasswordFocused(false)}
                         className={signupErrors.password ? "border-destructive pr-10" : "pr-10"}
                         required
                         minLength={8}
@@ -458,6 +529,27 @@ export default function Auth() {
                         )}
                       </Button>
                     </div>
+                    
+                    {/* Password requirements checklist */}
+                    {(passwordFocused || signupForm.password.length > 0) && (
+                      <div className="mt-2 p-3 bg-muted/50 rounded-md text-sm space-y-1.5">
+                        <p className="text-muted-foreground font-medium text-xs">
+                          {t('validation.passwordRequirements.title')}
+                        </p>
+                        {Object.entries(getPasswordRequirements(signupForm.password)).map(([key, met]) => (
+                          <div key={key} className="flex items-center gap-2">
+                            {met ? (
+                              <Check className="h-3.5 w-3.5 text-success" />
+                            ) : (
+                              <X className="h-3.5 w-3.5 text-muted-foreground" />
+                            )}
+                            <span className={met ? "text-success" : "text-muted-foreground"}>
+                              {t(`validation.passwordRequirements.${key}`)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Checkbox de aceite de termos */}

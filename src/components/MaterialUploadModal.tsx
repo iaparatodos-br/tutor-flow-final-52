@@ -31,7 +31,12 @@ const ALLOWED_FILE_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
-  'text/plain'
+  'text/plain',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+  'audio/mp4',
+  'audio/webm'
 ];
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
@@ -346,7 +351,7 @@ export function MaterialUploadModal({
                 id="file-input"
                 type="file"
                 className="hidden"
-                accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.gif,.txt"
+                accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.gif,.txt,.mp3,.wav,.ogg,.m4a"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) await handleFileSelect(file);
@@ -384,7 +389,7 @@ export function MaterialUploadModal({
                     <div>
                       <p className="font-medium">Clique ou arraste um arquivo</p>
                       <p className="text-sm text-muted-foreground">
-                        PDF, DOCX, PPTX, JPG, PNG, GIF, TXT
+                        PDF, DOCX, PPTX, JPG, PNG, GIF, TXT, MP3, WAV, OGG, M4A
                       </p>
                       <StorageInfo />
                     </div>

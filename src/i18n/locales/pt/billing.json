@@ -13,6 +13,31 @@
       "placeholder": "15"
     }
   },
+  "chargeTiming": {
+    "title": "Modelo de Cobrança",
+    "description": "Defina quando as aulas serão cobradas dos seus alunos.",
+    "prepaid": "Cobrar Antes",
+    "postpaid": "Cobrar Depois",
+    "prepaidDescription": "A fatura é gerada imediatamente ao agendar a aula. Aulas pagas não podem ser recorrentes. Em caso de cancelamento, não há reembolso automático.",
+    "postpaidDescription": "As aulas são acumuladas e cobradas no dia de fechamento do ciclo. Aulas podem ser recorrentes. Em caso de cancelamento tardio, uma taxa pode ser aplicada conforme sua política.",
+    "infoTitle": "Como funciona?",
+    "infoContent": "O modelo de cobrança define quando a fatura é gerada para aulas avulsas pagas. Aulas gratuitas ou de reposição não são afetadas. Mensalidades continuam sendo cobradas no ciclo normal independente do modelo escolhido."
+  },
+  "paymentMethods": {
+    "title": "Métodos de Pagamento",
+    "description": "Selecione os métodos de pagamento que seus alunos podem usar. Os métodos serão aplicados na ordem de prioridade: Boleto → PIX → Cartão.",
+    "card": "Cartão de Crédito/Débito",
+    "cardDescription": "Aceite pagamentos via cartão de crédito ou débito",
+    "boleto": "Boleto Bancário",
+    "boletoDescription": "Gera boleto bancário automaticamente (mínimo R$ 5,00)",
+    "pix": "PIX",
+    "pixDescription": "Gera QR Code PIX automaticamente (mínimo R$ 1,00)",
+    "noMethodsWarning": "Selecione pelo menos um método de pagamento para poder cobrar seus alunos.",
+    "noMethodsError": "Você precisa ter pelo menos um método de pagamento habilitado.",
+    "saveSuccess": "Métodos de pagamento atualizados com sucesso.",
+    "saveError": "Erro ao atualizar métodos de pagamento.",
+    "loadError": "Erro ao carregar métodos de pagamento."
+  },
   "validation": {
     "minDays": "Deve ser pelo menos 1 dia",
     "maxDays": "Máximo 90 dias",
@@ -21,6 +46,12 @@
   "actions": {
     "save": "Salvar Configurações",
     "saving": "Salvando..."
+  },
+  "autoGenerateBoleto": {
+    "title": "Geração automática de boletos",
+    "description": "Quando desativado, as faturas serão criadas normalmente mas sem gerar boleto no Stripe. Útil para professores que geram boletos diretamente no banco.",
+    "enabled": "Boletos serão gerados automaticamente",
+    "disabled": "Boletos não serão gerados automaticamente"
   },
   "messages": {
     "updateSuccess": "Configurações atualizadas",

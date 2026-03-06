@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -15,9 +14,8 @@ serve(async (req) => {
   try {
     console.log('[CHECK-EMAIL-CONFIRMATION] Function started');
 
-    // Get authorization header
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
+    if (!authHeader?.startsWith('Bearer ')) {
       console.error('[CHECK-EMAIL-CONFIRMATION] No authorization header');
       return new Response(
         JSON.stringify({ success: false, error: 'Unauthorized' }),
@@ -25,34 +23,27 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase client with user's token
-    const supabase = createClient(
+    const token = authHeader.replace('Bearer ', '');
+
+    // Use ANON_KEY client for JWT validation via getClaims
+    const anonClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: authHeader }
-        },
-        auth: {
-          persistSession: false
-        }
-      }
+      { auth: { persistSession: false } }
     );
 
-    // Get authenticated user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    if (userError || !user) {
-      console.error('[CHECK-EMAIL-CONFIRMATION] User not authenticated:', userError);
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      console.error('[CHECK-EMAIL-CONFIRMATION] JWT validation failed:', claimsError);
       return new Response(
         JSON.stringify({ success: false, error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('[CHECK-EMAIL-CONFIRMATION] Authenticated teacher:', user.id);
+    const userId = claimsData.claims.sub as string;
+    console.log('[CHECK-EMAIL-CONFIRMATION] Authenticated teacher:', userId);
 
-    // Parse request body
     const { student_ids } = await req.json();
 
     if (!Array.isArray(student_ids) || student_ids.length === 0) {
@@ -65,11 +56,18 @@ serve(async (req) => {
 
     console.log('[CHECK-EMAIL-CONFIRMATION] Checking confirmation status for students:', student_ids);
 
-    // Verify teacher-student relationships for all students
-    const { data: relationships, error: relError } = await supabase
+    // Use SERVICE_ROLE client for data operations
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Verify teacher-student relationships
+    const { data: relationships, error: relError } = await supabaseAdmin
       .from('teacher_student_relationships')
       .select('student_id')
-      .eq('teacher_id', user.id)
+      .eq('teacher_id', userId)
       .in('student_id', student_ids);
 
     if (relError) {
@@ -80,10 +78,7 @@ serve(async (req) => {
       );
     }
 
-    // Create a set of valid student IDs for this teacher
     const validStudentIds = new Set(relationships?.map(r => r.student_id) || []);
-
-    // Filter out students that don't belong to this teacher
     const authorizedStudentIds = student_ids.filter(id => validStudentIds.has(id));
 
     if (authorizedStudentIds.length === 0) {
@@ -94,18 +89,6 @@ serve(async (req) => {
       );
     }
 
-    // Create Supabase admin client
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-
     // Check confirmation status for each student
     const confirmationStatus: Record<string, boolean> = {};
 
@@ -115,17 +98,14 @@ serve(async (req) => {
         confirmationStatus[studentId] = !!authUser?.user?.email_confirmed_at;
       } catch (error) {
         console.error(`[CHECK-EMAIL-CONFIRMATION] Error checking student ${studentId}:`, error);
-        confirmationStatus[studentId] = false; // Assume not confirmed on error
+        confirmationStatus[studentId] = false;
       }
     }
 
     console.log('[CHECK-EMAIL-CONFIRMATION] Confirmation status:', confirmationStatus);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        confirmationStatus 
-      }),
+      JSON.stringify({ success: true, confirmationStatus }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

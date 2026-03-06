@@ -15,6 +15,7 @@ export interface Profile {
   address_state?: string | null;
   address_postal_code?: string | null;
   address_complete?: boolean;
+  timezone?: string;
 }
 
 interface AuthContextType {
@@ -43,7 +44,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: any }>;
   updatePassword: (password: string) => Promise<{ error: any }>;
-  resendConfirmation: (email: string) => Promise<{ error: any }>;
+  resendConfirmation: (email: string) => Promise<{ error: string | null; code?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -149,7 +150,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address_city: existingProfile.address_city,
           address_state: existingProfile.address_state,
           address_postal_code: existingProfile.address_postal_code,
-          address_complete: existingProfile.address_complete
+          address_complete: existingProfile.address_complete,
+          timezone: existingProfile.timezone,
         };
       } else {
         // Criar perfil se não existir
@@ -188,7 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           address_city: createdProfile.address_city,
           address_state: createdProfile.address_state,
           address_postal_code: createdProfile.address_postal_code,
-          address_complete: createdProfile.address_complete
+          address_complete: createdProfile.address_complete,
+          timezone: createdProfile.timezone,
         };
 
         console.log('AuthProvider: Perfil criado com sucesso');
@@ -240,44 +243,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('AuthProvider: Estado de autenticação mudou', { event, hasSession: !!session });
       
-      // Handle password recovery flow - MUST be first to prevent auto-login
-      if (event === 'PASSWORD_RECOVERY') {
-        console.log('AuthProvider: Password recovery detected, handling special flow');
-        
-        // Get the recovery tokens from URL before they get cleared
-        const url = window.location.href;
-        let accessToken = null;
-        let refreshToken = null;
-        let type = null;
-        
-        // Check both search params and hash fragments
-        const searchParams = new URLSearchParams(window.location.search);
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        
-        accessToken = searchParams.get('access_token') || hashParams.get('access_token');
-        refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
-        type = searchParams.get('type') || hashParams.get('type');
-        
-        console.log('AuthProvider: Recovery tokens found', { 
-          hasAccessToken: !!accessToken, 
-          hasRefreshToken: !!refreshToken, 
-          type 
-        });
-        
-        // Force logout to prevent auto-login and redirect with tokens
-        if (accessToken && refreshToken && type === 'recovery') {
-          console.log('AuthProvider: Forcing logout and redirecting to reset page');
-          
-          // Clear the session immediately to prevent auto-login
-          await supabase.auth.signOut();
-          
-          // Redirect to reset password page with tokens in URL params (not hash)
-          const resetUrl = `/reset-password?access_token=${encodeURIComponent(accessToken)}&refresh_token=${encodeURIComponent(refreshToken)}&type=recovery`;
-          window.location.href = resetUrl;
-          return; // Exit early to prevent further processing
-        }
-      }
-      
       // Limpar timeout anterior
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current);
@@ -287,20 +252,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user || null);
 
       if (session?.user) {
-        setupLoadingTimeout();
-        setProfileLoading(true);
+        // Apenas mostrar loading global para eventos que mudam o usuário (login/signup)
+        // USER_UPDATED e TOKEN_REFRESHED não devem causar unmount de componentes
+        const showLoading = event === 'SIGNED_IN' || event === 'INITIAL_SESSION';
+        
+        if (showLoading) {
+          setupLoadingTimeout();
+          setProfileLoading(true);
+        }
         
         // Usar setTimeout para evitar problemas de concorrência
         setTimeout(async () => {
           try {
+            // Para USER_UPDATED, invalidar cache antes de recarregar
+            if (event === 'USER_UPDATED') {
+              profileCache.delete(session.user.id);
+            }
             const userProfile = await loadProfile(session.user);
             setProfile(userProfile);
           } catch (error) {
             console.error('AuthProvider: Erro ao carregar perfil no onAuthStateChange:', error);
             setProfile(null);
           } finally {
-            setProfileLoading(false);
-            setLoading(false);
+            if (showLoading) {
+              setProfileLoading(false);
+              setLoading(false);
+            }
             if (loadingTimeoutRef.current) {
               clearTimeout(loadingTimeoutRef.current);
             }
@@ -380,25 +357,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error: 'Este e-mail já está sendo usado por outro usuário. Por favor, use um e-mail diferente para criar sua conta.' };
       }
 
-      const redirectUrl = `${window.location.origin}/`;
-      
-      // Mesclar metadados de termos com dados do usuário
-      const userData = {
-        name,
-        role,
-        ...(termsMetadata || {})
-      };
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: userData
+      // Use edge function to create user (sends email via AWS SES)
+      // Detectar timezone do browser para enviar ao backend
+      const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
+
+      const { data, error } = await supabase.functions.invoke('create-teacher', {
+        body: { 
+          email, 
+          password, 
+          name, 
+          termsMetadata,
+          timezone: detectedTimezone,
         }
       });
+
+      if (error) {
+        console.error('Create teacher invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      if (!data.success) {
+        return { error: data.error || 'Erro ao criar conta' };
+      }
+
+      // Check if email was sent
+      if (data.warning) {
+        console.warn('Signup warning:', data.warning);
+      }
+
+      // Return success - user needs to confirm email
+      return { error: null };
       
-      return { error: error?.message };
     } catch (error) {
       console.error('Signup error:', error);
       return { error: 'Erro inesperado durante o cadastro' };
@@ -443,18 +432,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   };
 
-  const resetPassword = async (email: string) => {
+  const resetPassword = async (email: string): Promise<{ error: string | null }> => {
     try {
-      // Ensure the redirect URL is exactly what we want
-      const redirectUrl = `${window.location.protocol}//${window.location.host}/reset-password`;
+      console.log('AuthContext: Sending reset password request via edge function');
       
-      console.log('AuthContext: Sending reset password email with redirect to:', redirectUrl);
-      
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectUrl
+      const { data, error } = await supabase.functions.invoke('send-password-reset', {
+        body: { email }
       });
-      
-      return { error: error?.message };
+
+      // Erro de conexão com edge function
+      if (error) {
+        console.error('Reset password invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      // Edge function retorna success:false para erros de validação (HTTP 400)
+      // Mas para segurança anti-enumeration, sempre retorna success:true quando email processado
+      if (!data.success) {
+        return { error: data.error || 'Erro ao processar solicitação' };
+      }
+
+      return { error: null };
     } catch (error) {
       console.error('Reset password error:', error);
       return { error: 'Erro inesperado ao solicitar redefinição de senha' };
@@ -474,17 +472,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const resendConfirmation = async (email: string) => {
+  const resendConfirmation = async (email: string): Promise<{ error: string | null; code?: string }> => {
     try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
+      const { data, error } = await supabase.functions.invoke('resend-confirmation', {
+        body: { email }
       });
 
-      return { error: error?.message };
+      // Edge function retorna HTTP 200 com success:false para erros de validação
+      if (error) {
+        console.error('Resend confirmation invoke error:', error);
+        return { error: 'Erro ao conectar com o servidor' };
+      }
+
+      if (!data.success) {
+        // Retorna código do erro para tratamento específico no frontend
+        return { 
+          error: data.error || 'Erro desconhecido',
+          code: data.code // 'already_confirmed', 'user_not_found', 'failed_to_generate', 'failed_to_send'
+        };
+      }
+
+      return { error: null };
     } catch (error: any) {
       console.error('Resend confirmation error:', error);
       return { error: 'Erro inesperado ao reenviar confirmação' };
@@ -522,4 +530,9 @@ export const useAuth = () => {
     throw new Error('useAuth deve ser usado dentro de um AuthProvider');
   }
   return context;
+};
+
+// Função para invalidar cache de perfil externamente
+export const invalidateProfileCache = (userId: string) => {
+  profileCache.delete(userId);
 };

@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { formatDateBrazil, formatDateTimeBrazil } from "@/utils/timezone";
 
 interface ArchivedClass {
   id: string;
@@ -41,7 +42,7 @@ interface ArchivedData {
 }
 
 export function ArchivedDataViewer() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { t, i18n } = useTranslation('archive');
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -101,25 +102,24 @@ export function ArchivedDataViewer() {
   };
 
   const formatDateTime = (dateString: string) => {
-    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-    return new Date(dateString).toLocaleString(locale) + ' (Horário de Brasília)';
+    return formatDateTimeBrazil(dateString, profile?.timezone);
   };
 
   const formatDate = (dateString: string) => {
-    const locale = i18n.language === 'en' ? 'en-US' : 'pt-BR';
-    return new Date(dateString).toLocaleDateString(locale);
+    return formatDateBrazil(dateString, undefined, profile?.timezone);
   };
 
   const getStatusBadge = (status: string) => {
     const statusMap = {
-      'confirmada': { label: t('status.confirmed'), variant: 'default' as const },
-      'pendente': { label: t('status.pending'), variant: 'secondary' as const },
-      'cancelada': { label: t('status.cancelled'), variant: 'destructive' as const },
-      'concluida': { label: t('status.completed'), variant: 'outline' as const },
+      'confirmada': { label: t('status.confirmed'), className: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-transparent' },
+      'pendente': { label: t('status.pending'), className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent' },
+      'cancelada': { label: t('status.cancelled'), className: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent' },
+      'concluida': { label: t('status.completed'), className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent' },
+      'aguardando_pagamento': { label: t('status.awaitingPayment', 'Aguardando Pagamento'), className: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400 border-transparent' },
     };
     
-    const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, variant: 'secondary' as const };
-    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+    const statusInfo = statusMap[status as keyof typeof statusMap] || { label: status, className: '' };
+    return <Badge variant="secondary" className={statusInfo.className}>{statusInfo.label}</Badge>;
   };
 
   return (

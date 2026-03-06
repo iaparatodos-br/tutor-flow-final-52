@@ -31,21 +31,105 @@ serve(async (req) => {
     logStep("Processing invoice", { invoice_id });
 
     // Get invoice and student profile data
-    const { data: invoice, error: invoiceError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: invoiceRaw, error: invoiceError } = await supabaseClient
       .from("invoices")
-      .select(`
-        *,
-        student:profiles!invoices_student_id_fkey(
-          id, name, email, cpf,
-          address_street, address_city, address_state, address_postal_code, address_complete
-        ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email)
-      `)
+      .select("*")
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
 
-    if (invoiceError || !invoice) {
-      throw new Error("Invoice not found");
+    if (invoiceError) {
+      logStep("Error fetching invoice", invoiceError);
+      throw new Error("Erro ao buscar fatura");
+    }
+
+    if (!invoiceRaw) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Fatura não encontrada" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
+
+    // Verificar se o professor desativou a geração automática de boleto
+    const { data: businessProfile } = await supabaseClient
+      .from('business_profiles')
+      .select('auto_generate_boleto')
+      .eq('user_id', invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    if (businessProfile?.auto_generate_boleto === false) {
+      logStep("Boleto generation disabled by teacher settings", { teacherId: invoiceRaw.teacher_id });
+      return new Response(JSON.stringify({
+        success: false,
+        error: "A geração automática de boletos está desativada pelo professor. Entre em contato com seu professor para obter os dados de pagamento."
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    const { data: studentProfile } = await supabaseClient
+      .from("profiles")
+      .select("id, name, email, cpf, address_street, address_city, address_state, address_postal_code, address_complete")
+      .eq("id", invoiceRaw.student_id)
+      .maybeSingle();
+
+    const { data: teacherProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email")
+      .eq("id", invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    const invoice = {
+      ...invoiceRaw,
+      student: studentProfile,
+      teacher: teacherProfile,
+    };
+
+    if (invoiceError) {
+      logStep("Error fetching invoice", invoiceError);
+      throw new Error("Erro ao buscar fatura");
+    }
+
+    if (!invoice) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: "Fatura não encontrada" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
+
+    // #151 - Guard clause: verificar status da fatura antes de gerar pagamento
+    const allowedStatuses = ['pendente', 'open', 'falha_pagamento'];
+    if (!allowedStatuses.includes(invoice.status)) {
+      logStep("Invoice status not allowed for boleto generation", { status: invoice.status });
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Não é possível gerar boleto para fatura com status "${invoice.status}"`
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
+    if (invoice.stripe_payment_intent_id) {
+      logStep("Invoice already has a payment intent", { 
+        existingPI: invoice.stripe_payment_intent_id 
+      });
+    }
+
+    // VALIDAÇÃO DE VALOR MÍNIMO PARA BOLETO
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+    const invoiceAmount = parseFloat(invoice.amount);
+
+    if (invoiceAmount < MINIMUM_BOLETO_AMOUNT) {
+      logStep("Amount below minimum for boleto", { amount: invoiceAmount, minimum: MINIMUM_BOLETO_AMOUNT });
+      throw new Error(`O valor mínimo para geração de boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`);
     }
 
     // Get guardian data from teacher_student_relationships

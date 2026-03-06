@@ -5,7 +5,8 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebarState } from "@/contexts/SidebarContext";
-import { TeacherContextSwitcher } from "@/components/TeacherContextSwitcher";
+import { NotificationBell } from "@/components/NotificationBell";
+import { useTimezoneSync } from "@/hooks/useTimezoneSync";
 interface LayoutProps {
   children: ReactNode;
   requireAuth?: boolean;
@@ -17,12 +18,16 @@ export function Layout({
   const {
     loading,
     isAuthenticated,
-    isAluno
+    isAluno,
+    isProfessor
   } = useAuth();
   const {
     isOpen,
     toggle
   } = useSidebarState();
+
+  // Sincroniza timezone do browser com o perfil após login
+  useTimezoneSync();
   if (loading) {
     return <div className="flex h-screen items-center justify-center bg-gradient-subtle">
         <div className="text-center">
@@ -67,8 +72,8 @@ export function Layout({
           <span className="font-semibold">TutorFlow</span>
           
           <div className="ml-auto flex items-center gap-4">
-            {/* Teacher context switcher for students */}
-            {isAluno}
+            {/* Notification bell for professors */}
+            {isProfessor && <NotificationBell />}
           </div>
         </header>
 

@@ -29,32 +29,169 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
+    // AUTH: Validate JWT and get authenticated user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
+
     const { invoice_id, payment_method = "boleto", payer_tax_id, payer_name, payer_email, payer_address } = await req.json();
     if (!invoice_id) throw new Error("invoice_id is required");
 
-    // Get invoice details with business profile
+    // Get invoice details with business profile (v2.5: including enabled_payment_methods)
     // NOTE: Guardian data is now stored ONLY in teacher_student_relationships
-    const { data: invoice, error: invoiceError } = await supabaseClient
+    // Sequential queries to avoid FK join syntax (Etapa 0.6)
+    const { data: invoiceRaw, error: invoiceError } = await supabaseClient
       .from("invoices")
-      .select(`
-        *,
-        student:profiles!invoices_student_id_fkey(
-          name, email, cpf,
-          address_street, address_city, address_state, address_postal_code, address_complete
-        ),
-        teacher:profiles!invoices_teacher_id_fkey(name, email, payment_due_days),
-        business_profile:business_profiles!invoices_business_profile_id_fkey(
-          id, business_name, stripe_connect_id
-        )
-      `)
+      .select("*")
       .eq("id", invoice_id)
-      .single();
+      .maybeSingle();
+
+    if (invoiceError || !invoiceRaw) {
+      throw new Error("Invoice not found");
+    }
+
+    // Fetch related data sequentially
+    const { data: studentProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email, cpf, address_street, address_city, address_state, address_postal_code, address_complete")
+      .eq("id", invoiceRaw.student_id)
+      .maybeSingle();
+
+    const { data: teacherProfile } = await supabaseClient
+      .from("profiles")
+      .select("name, email, payment_due_days")
+      .eq("id", invoiceRaw.teacher_id)
+      .maybeSingle();
+
+    const { data: businessProfile } = invoiceRaw.business_profile_id
+      ? await supabaseClient
+          .from("business_profiles")
+          .select("id, business_name, stripe_connect_id, enabled_payment_methods")
+          .eq("id", invoiceRaw.business_profile_id)
+          .maybeSingle()
+      : { data: null };
+
+    const invoice = {
+      ...invoiceRaw,
+      student: studentProfile,
+      teacher: teacherProfile,
+      business_profile: businessProfile,
+    };
 
     if (invoiceError || !invoice) {
       throw new Error("Invoice not found");
     }
 
+    // AUTH: Verify user is the student, teacher, or responsible for a dependent on this invoice
+    const isInvoiceStudent = invoiceRaw.student_id === authUserId;
+    const isInvoiceTeacher = invoiceRaw.teacher_id === authUserId;
+    let isResponsibleForStudent = false;
+    if (!isInvoiceStudent && !isInvoiceTeacher) {
+      // Check if user is a responsible for dependents linked to this student
+      const { data: depCheck } = await supabaseClient
+        .from('dependents')
+        .select('id')
+        .eq('responsible_id', authUserId)
+        .eq('teacher_id', invoiceRaw.teacher_id)
+        .limit(1);
+      if (depCheck && depCheck.length > 0) {
+        // Check if the invoice student is actually this user (responsible)
+        // or if the invoice is for a dependent's responsible
+        const { data: relCheck } = await supabaseClient
+          .from('teacher_student_relationships')
+          .select('id')
+          .eq('student_id', invoiceRaw.student_id)
+          .eq('teacher_id', invoiceRaw.teacher_id)
+          .limit(1);
+        if (relCheck && relCheck.length > 0) {
+          isResponsibleForStudent = true;
+        }
+      }
+    }
+    if (!isInvoiceStudent && !isInvoiceTeacher && !isResponsibleForStudent) {
+      logStep("AUTHORIZATION FAILED", { authUserId, studentId: invoiceRaw.student_id, teacherId: invoiceRaw.teacher_id });
+      return new Response(JSON.stringify({ error: "Você não tem permissão para gerar pagamentos desta fatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    logStep("Authorization passed", { isInvoiceStudent, isInvoiceTeacher, isResponsibleForStudent });
+
     logStep("Invoice found", { invoiceId: invoice_id, amount: invoice.amount });
+
+    // VALIDAÇÃO DE VALOR MÍNIMO E MÁXIMO PARA BOLETO/PIX
+    const MINIMUM_BOLETO_AMOUNT = 5.00;
+    const MAXIMUM_BOLETO_AMOUNT = 49999.99;
+    const MINIMUM_PIX_AMOUNT = 1.00; // PIX não tem mínimo no Stripe, mas evitamos micro-transações
+    const invoiceAmount = parseFloat(invoice.amount);
+
+    // v2.5: Validar enabled_payment_methods do business_profile
+    const enabledMethods: string[] = invoice.business_profile?.enabled_payment_methods || ['boleto', 'pix', 'card'];
+    
+    if (!enabledMethods.includes(payment_method)) {
+      logStep("Payment method not enabled for this business profile", { 
+        requestedMethod: payment_method, 
+        enabledMethods,
+        businessProfileId: invoice.business_profile_id 
+      });
+      return new Response(JSON.stringify({
+        error: `O método de pagamento "${payment_method}" não está habilitado para este negócio. Métodos disponíveis: ${enabledMethods.join(', ')}`,
+        success: false
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
+    logStep("Payment method validation passed", { payment_method, enabledMethods });
+
+    if (payment_method === 'boleto') {
+      if (invoiceAmount < MINIMUM_BOLETO_AMOUNT) {
+        logStep("Amount below minimum for boleto", { amount: invoiceAmount, minimum: MINIMUM_BOLETO_AMOUNT });
+        return new Response(JSON.stringify({
+          error: `O valor mínimo para geração de boleto é R$ ${MINIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
+
+      if (invoiceAmount > MAXIMUM_BOLETO_AMOUNT) {
+        logStep("Amount above maximum for boleto", { amount: invoiceAmount, maximum: MAXIMUM_BOLETO_AMOUNT });
+        return new Response(JSON.stringify({
+          error: `O valor máximo para boleto é R$ ${MAXIMUM_BOLETO_AMOUNT.toFixed(2).replace('.', ',')}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
+    }
+
+    if (payment_method === 'pix') {
+      if (invoiceAmount < MINIMUM_PIX_AMOUNT) {
+        logStep("Amount below minimum for PIX", { amount: invoiceAmount, minimum: MINIMUM_PIX_AMOUNT });
+        return new Response(JSON.stringify({
+          error: `O valor mínimo para PIX é R$ ${MINIMUM_PIX_AMOUNT.toFixed(2).replace('.', ',')}`,
+          success: false
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
+    }
     
     // Fetch guardian data from teacher_student_relationships
     const { data: relationship, error: relError } = await supabaseClient
@@ -255,6 +392,48 @@ serve(async (req) => {
 
     let response: any = {};
 
+    // v2.5: Limpar dados de método de pagamento anterior antes de gerar novo
+    const clearPreviousPaymentData: any = {
+      pix_qr_code: null,
+      pix_copy_paste: null,
+      pix_expires_at: null,
+      boleto_url: null,
+      linha_digitavel: null,
+      boleto_expires_at: null,
+      barcode: null,
+      stripe_hosted_invoice_url: null,
+      stripe_payment_intent_id: null,
+      payment_method: null
+    };
+
+    // Se houver um payment intent anterior, tentar cancelá-lo
+    if (invoice.stripe_payment_intent_id) {
+      logStep("Cancelling previous payment intent before creating new one", { 
+        previousPI: invoice.stripe_payment_intent_id 
+      });
+      try {
+        await stripe.paymentIntents.cancel(invoice.stripe_payment_intent_id);
+        logStep("Previous payment intent cancelled successfully");
+      } catch (cancelError: any) {
+        // Ignorar erros de cancelamento (PI já pode estar cancelado/pago)
+        logStep("Could not cancel previous PI (may be already cancelled/paid)", { 
+          error: cancelError.message 
+        });
+      }
+    }
+
+    // Limpar dados anteriores imediatamente
+    const { error: clearError } = await supabaseClient
+      .from("invoices")
+      .update(clearPreviousPaymentData)
+      .eq("id", invoice_id);
+
+    if (clearError) {
+      logStep("Warning: Could not clear previous payment data", { error: clearError });
+    } else {
+      logStep("Previous payment data cleared successfully");
+    }
+
     if (payment_method === "card") {
       // For card payments, create a checkout session
       const session = await stripe.checkout.sessions.create({
@@ -295,12 +474,13 @@ serve(async (req) => {
         payment_method: "card"
       };
 
-      // Update invoice with session details
+      // Update invoice with session details and payment_method
         const { error: updateError } = await supabaseClient
           .from("invoices")
           .update({
             stripe_payment_intent_id: session.payment_intent as string,
             gateway_provider: "stripe",
+            payment_method: "card", // v2.5: Save the payment method
           })
           .eq("id", invoice_id);
 
@@ -336,12 +516,14 @@ serve(async (req) => {
         logStep("Connected customer ready", { customerId: connectedCustomerId, account: stripeConnectAccountId });
 
         // Create PI directly on the connected account (Direct charge)
+        // v2.5: PIX expires in 24 hours (86400 seconds)
+        const PIX_EXPIRES_SECONDS = 86400;
         const paymentIntent = await stripe.paymentIntents.create({
           amount: amountInCents,
           currency: "brl",
           customer: connectedCustomerId,
           payment_method_types: ["pix"],
-          payment_method_options: { pix: { expires_after_seconds: 86400 } },
+          payment_method_options: { pix: { expires_after_seconds: PIX_EXPIRES_SECONDS } },
           description: `Fatura ${invoice.description || 'Mensalidade'} - ${invoice.student?.name}`,
           metadata: {
             invoice_id: invoice_id,
@@ -357,9 +539,14 @@ serve(async (req) => {
           payment_method_data: { type: "pix" },
         }, { stripeAccount: stripeConnectAccountId });
 
+        // v2.5: Calculate pix_expires_at (24 hours from now)
+        const pixExpiresAt = new Date(Date.now() + PIX_EXPIRES_SECONDS * 1000).toISOString();
+
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
+          payment_method: "pix", // v2.5: Always save the payment method
+          pix_expires_at: pixExpiresAt, // v2.5: CRITICAL - Save expiration time
         };
         if (confirmedPI.next_action?.pix_display_qr_code) {
           const pixDetails: any = confirmedPI.next_action.pix_display_qr_code;
@@ -385,12 +572,18 @@ serve(async (req) => {
           throw new Error(`Database error: ${updateError.message}`);
         }
 
+        logStep("PIX payment created with expiration", { 
+          paymentIntentId: paymentIntent.id, 
+          pix_expires_at: pixExpiresAt 
+        });
+
         response = {
           payment_intent_id: paymentIntent.id,
           client_secret: paymentIntent.client_secret,
           payment_method: payment_method,
           pix_qr_code: updateData.pix_qr_code,
           pix_copy_paste: updateData.pix_copy_paste,
+          pix_expires_at: pixExpiresAt, // v2.5: Include in response
         };
       } else {
         // Default: boleto on platform using destination charges
@@ -443,9 +636,14 @@ serve(async (req) => {
         };
 
         // Update invoice with payment intent details
+        // v2.5: Calculate boleto_expires_at
+        const boletoExpiresAt = new Date(Date.now() + boletoExpireDays * 24 * 60 * 60 * 1000).toISOString();
+        
         const updateData: any = {
           stripe_payment_intent_id: paymentIntent.id,
           gateway_provider: "stripe",
+          payment_method: "boleto", // v2.5: Save the payment method
+          boleto_expires_at: boletoExpiresAt, // v2.5: CRITICAL - Save expiration time
         };
 
         // Handle boleto confirmation and retrieve boleto details

@@ -1,0 +1,88 @@
+{
+  "title": "Monthly Subscriptions",
+  "new": "New Subscription",
+  "edit": "Edit Subscription",
+  "tabs": {
+    "services": "Services",
+    "subscriptions": "Subscriptions",
+    "settings": "Settings"
+  },
+  "fields": {
+    "name": "Plan Name",
+    "namePlaceholder": "E.g., Basic Plan, Premium Plan",
+    "description": "Description",
+    "descriptionPlaceholder": "Describe the plan benefits",
+    "price": "Monthly Price",
+    "pricePlaceholder": "0.00",
+    "students": "Assigned Students",
+    "startsAt": "Start Date",
+    "isActive": "Active"
+  },
+  "list": {
+    "noSubscriptions": "No subscriptions registered",
+    "noSubscriptionsDescription": "Create your first subscription to start offering fixed plans to your students.",
+    "studentsCount": "{{count}} student(s) assigned",
+    "noStudents": "No students assigned",
+    "perMonth": "/month",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "validation": {
+    "nameRequired": "Plan name is required",
+    "validPrice": "Enter a valid price"
+  },
+  "actions": {
+    "cancel": "Cancel",
+    "create": "Create Subscription",
+    "update": "Save Changes",
+    "saving": "Saving...",
+    "deactivate": "Deactivate",
+    "activate": "Activate",
+    "edit": "Edit",
+    "viewStudents": "View Students",
+    "assignStudent": "Assign Student",
+    "removeStudent": "Remove Student"
+  },
+  "messages": {
+    "createSuccess": "Subscription created successfully!",
+    "updateSuccess": "Subscription updated successfully!",
+    "saveError": "Error saving subscription",
+    "deactivateSuccess": "Subscription deactivated successfully!",
+    "activateSuccess": "Subscription activated successfully!",
+    "studentAssigned": "Student assigned to subscription!",
+    "studentRemoved": "Student removed from subscription!",
+    "studentAlreadyHasSubscription": "This student already has an active subscription with you",
+    "loadError": "Error loading subscriptions",
+    "updateError": "Error updating subscription",
+    "toggleError": "Error changing subscription status",
+    "assignError": "Error assigning student",
+    "removeError": "Error removing student"
+  },
+  "info": {
+    "familyBilling": "The subscription covers the guardian and all their dependents automatically.",
+    "billingDay": "Billing is generated on the billing day configured for each student.",
+    "experimentalNotCounted": "Trial classes are not counted towards the monthly limit.",
+    "softDelete": "Subscriptions cannot be deleted, only deactivated."
+  },
+  "confirm": {
+    "deactivate": "Deactivate Subscription",
+    "deactivateDescription": "When deactivated, assigned students will be automatically removed from this plan. This action cannot be undone.",
+    "removeStudent": "Remove Student",
+    "removeStudentDescription": "The student will be removed from this subscription. Future classes will be billed individually."
+  },
+  "studentView": {
+    "title": "My Plans",
+    "noSubscription": "You don't have an active subscription at the moment",
+    "currentPlan": "Current Plan",
+    "teacher": "Teacher",
+    "nextBilling": "Next billing",
+    "since": "Since"
+  },
+  "assign": {
+    "title": "Assign Student to Subscription",
+    "selectStudent": "Select a student",
+    "noAvailableStudents": "All students already have an active subscription",
+    "startsAt": "Start date",
+    "startsAtHelp": "From this date, classes will be counted towards the subscription"
+  }
+}

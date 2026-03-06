@@ -96,7 +96,7 @@
     "ownStudent": "Próprio aluno",
     "notConfigured": "Não configurado"
   },
-  "actions": {
+  "formActions": {
     "save": "Salvar Alterações",
     "register": "Cadastrar Aluno",
     "saving": "Salvando..."
@@ -113,5 +113,118 @@
     "relationshipNotFound": "Não foi possível encontrar o relacionamento do aluno",
     "deleteError": "Erro ao processar a remoção do aluno",
     "profileLoadError": "Não foi possível carregar os dados do aluno"
+  },
+  "registrationType": {
+    "title": "Tipo de Cadastro",
+    "description": "Selecione o tipo de cadastro para este aluno",
+    "individual": {
+      "title": "Aluno com Email",
+      "description": "Aluno adulto ou com email próprio para acesso ao sistema"
+    },
+    "family": {
+      "title": "Família / Menores",
+      "description": "Responsável com um ou mais dependentes menores de idade",
+      "dependentsLabel": "Dependentes",
+      "addDependent": "Adicionar",
+      "newDependent": "Novo Dependente",
+      "noDependentsYet": "Nenhum dependente adicionado",
+      "addFirst": "Adicionar primeiro dependente",
+      "minOneDependentRequired": "Adicione pelo menos um dependente",
+      "guardianInfo": "Dados do Responsável",
+      "guardianInfoDescription": "O responsável receberá acesso ao sistema e poderá acompanhar as aulas de todos os dependentes"
+    },
+    "back": "Voltar"
+  },
+  "dependents": {
+    "title": "Dependentes",
+    "add": "Adicionar",
+    "addButton": "Adicionar Dependente",
+    "description": "Menores sob responsabilidade de {{name}}",
+    "empty": "Nenhum dependente cadastrado",
+    "emptyState": "Nenhum dependente cadastrado para este responsável.",
+    "addFirst": "Adicionar primeiro dependente",
+    "noDependents": "Nenhum dependente cadastrado",
+    "classes": "aulas",
+    "classHistory": "Histórico de Aulas",
+    "noClasses": "Nenhuma aula registrada",
+    "lastClass": "Última aula",
+    "modal": {
+      "addTitle": "Adicionar Dependente",
+      "editTitle": "Editar Dependente",
+      "responsibleLabel": "Responsável",
+      "addDescription": "Adicione um dependente para este responsável.",
+      "editDescription": "Atualize os dados do dependente.",
+      "addButton": "Adicionar"
+    },
+    "fields": {
+      "name": "Nome do Dependente",
+      "birthDate": "Data de Nascimento",
+      "birthDateHint": "Opcional, para controle interno",
+      "notes": "Observações"
+    },
+    "placeholders": {
+      "name": "Nome completo",
+      "notes": "Notas sobre o dependente..."
+    },
+    "success": {
+      "created": "Dependente adicionado",
+      "createdDescription": "Dependente foi adicionado com sucesso.",
+      "updated": "Dependente atualizado",
+      "updatedDescription": "Dados do dependente foram atualizados.",
+      "deleted": "Dependente removido",
+      "deletedDescription": "Dependente foi removido com sucesso."
+    },
+    "errors": {
+      "nameRequired": "Nome é obrigatório",
+      "createFailed": "Erro ao adicionar dependente",
+      "updateFailed": "Erro ao atualizar dependente",
+      "deleteFailed": "Erro ao remover dependente",
+      "missingTeacherId": "Erro",
+      "teacherIdRequired": "ID do professor é necessário",
+      "saveFailed": "Erro ao salvar dependente",
+      "partialCreation": "Alguns dependentes não foram criados",
+      "partialCreationDescription": "Não foi possível criar: {{names}}",
+      "limitReached": "Limite atingido",
+      "limitReachedDescription": "Você atingiu o limite de alunos/dependentes do plano gratuito. Faça upgrade para adicionar mais.",
+      "upgradeToPlan": "Limite atingido. Faça upgrade para adicionar mais."
+    },
+    "deleteConfirm": {
+      "title": "Remover dependente?",
+      "description": "Esta ação irá remover o dependente {{name}}. Aulas futuras associadas serão canceladas."
+    },
+    "confirmDelete": "Tem certeza que deseja remover {{name}}?",
+    "billedToResponsible": "Cobra via responsável",
+    "addAnother": "Adicionar mais um dependente"
+  },
+  "table": {
+    "name": "Nome",
+    "type": "Tipo",
+    "email": "E-mail",
+    "businessProfile": "Negócio Recebimento",
+    "billingDay": "Dia Cobrança",
+    "createdAt": "Data de Cadastro",
+    "actions": "Ações"
+  },
+  "badges": {
+    "student": "Aluno",
+    "family": "Família",
+    "dependent": "Dependente"
+  },
+  "status": {
+    "configured": "Configurado",
+    "notConfigured": "Não configurado"
+  },
+  "actions": {
+    "viewProfile": "Ver perfil",
+    "edit": "Editar",
+    "remove": "Remover",
+    "addDependent": "Adicionar Dependente",
+    "resendInvitation": "Reenviar convite"
+  },
+  "common": {
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "edit": "Editar",
+    "delete": "Remover"
   }
 }

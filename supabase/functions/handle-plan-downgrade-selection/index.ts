@@ -26,14 +26,21 @@ const logAuditEvent = async (
   metadata?: Record<string, any>
 ) => {
   try {
+    // Map to actual audit_logs schema: actor_id, operation, table_name, record_id, old_data, new_data, target_teacher_id
+    const tableNameValue = details?.table_name || 'system';
+    const recordIdValue = details?.record_id || userId;
+    const targetTeacherId = details?.target_teacher_id || userId;
+
     const { error } = await supabaseClient
       .from('audit_logs')
       .insert({
-        user_id: userId,
-        action,
-        details,
-        metadata,
-        created_at: new Date().toISOString(),
+        actor_id: userId,
+        operation: action,
+        table_name: tableNameValue,
+        record_id: recordIdValue,
+        old_data: details?.old_data || null,
+        new_data: { ...details, ...(metadata || {}) },
+        target_teacher_id: targetTeacherId,
       });
     
     if (error) {
@@ -108,7 +115,7 @@ serve(async (req) => {
       .from('subscription_plans')
       .select('*')
       .eq('id', new_plan_id)
-      .single();
+      .maybeSingle();
 
     if (planError || !newPlan) {
       throw new Error(`Plan not found: ${new_plan_id}`);
@@ -119,7 +126,18 @@ serve(async (req) => {
       planLimit: newPlan.student_limit 
     });
 
-    // Validate selection count against plan limit
+    // Get total count using RPC that includes dependents
+    const { data: countData, error: countError } = await supabaseClient
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: user.id });
+    
+    if (countError) {
+      logStep("Error counting students+dependents", { error: countError });
+    }
+    
+    const totalCount = countData?.[0] || { total_students: 0, regular_students: 0, dependents_count: 0 };
+    logStep("Total count (students + dependents)", totalCount);
+
+    // Validate selection count against plan limit (considering total including dependents)
     if (selected_student_ids.length > newPlan.student_limit) {
       throw new Error(`Too many students selected. Plan limit: ${newPlan.student_limit}, Selected: ${selected_student_ids.length}`);
     }
@@ -134,12 +152,35 @@ serve(async (req) => {
       throw new Error(`Error fetching students: ${studentsError.message}`);
     }
 
-    logStep("Current students fetched", { totalCount: allStudents?.length || 0 });
+    // Get all dependents for this teacher
+    const { data: allDependents, error: dependentsError } = await supabaseClient
+      .rpc('get_teacher_dependents', { p_teacher_id: user.id });
+
+    if (dependentsError) {
+      logStep("Error fetching dependents", { error: dependentsError });
+    }
+
+    logStep("Current students and dependents fetched", { 
+      studentsCount: allStudents?.length || 0,
+      dependentsCount: allDependents?.length || 0
+    });
 
     // Identify students to be removed (not in selected list)
+    // Note: When a responsible is deleted, their dependents are cascade-deleted via smart-delete-student
     const studentsToRemove = allStudents?.filter(
       student => !selected_student_ids.includes(student.student_id)
     ) || [];
+    
+    // Count dependents that will be removed (children of removed responsibles)
+    const removedResponsibleIds = studentsToRemove.map(s => s.student_id);
+    const dependentsToRemove = (allDependents || []).filter(
+      (dep: any) => removedResponsibleIds.includes(dep.responsible_id)
+    );
+    
+    logStep("Entities to remove", { 
+      studentsCount: studentsToRemove.length,
+      dependentsCount: dependentsToRemove.length 
+    });
 
     logStep("Students to remove identified", { removeCount: studentsToRemove.length });
 
@@ -244,6 +285,7 @@ serve(async (req) => {
       newPlanId: new_plan_id,
       studentsKept: selected_student_ids.length,
       studentsDeleted: deletedCount,
+      dependentsDeleted: dependentsToRemove.length,
       deleteResults: deleteResults
     });
 
@@ -252,6 +294,7 @@ serve(async (req) => {
       target_plan_id: new_plan_id,
       students_kept_count: selected_student_ids.length,
       students_deleted_count: deletedCount,
+      dependents_deleted_count: dependentsToRemove.length,
       kept_student_ids: selected_student_ids,
       delete_results: deleteResults,
     }, {

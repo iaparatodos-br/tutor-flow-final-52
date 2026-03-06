@@ -28,10 +28,24 @@
   "teacher": "Professor",
   "type": "Tipo",
   "dueDate": "Vencimento",
-  "actions": "Ações",
   "regularType": "Regular",
   "cancellationType": "Cancelamento",
+  "defaultDescription": "Aulas particulares",
+  "invoiceTypes": {
+    "regular": "Regular",
+    "cancellation": "Cancelamento",
+    "automated": "Automática",
+    "manual": "Manual",
+    "monthlySubscription": "Mensalidade",
+    "prepaidClass": "Pré-paga",
+    "orphanCharges": "Cobranças Pendentes"
+  },
   "originalAmount": "Valor original: {amount}",
+  "groups": {
+    "students": "Alunos",
+    "dependents": "Dependentes",
+    "childOf": "filho de"
+  },
   "fields": {
     "amount": "Valor",
     "date": "Data",
@@ -41,14 +55,32 @@
     "paymentDate": "Data de Pagamento",
     "method": "Método",
     "reference": "Referência",
-    "category": "Categoria"
+    "category": "Categoria",
+    "recipient": "Destinatário"
+  },
+  "placeholders": {
+    "selectRecipient": "Selecione um destinatário"
+  },
+  "modal": {
+    "createTitle": "Criar Nova Fatura",
+    "createDescription": "A fatura será direcionada automaticamente para a conta bancária configurada para o aluno selecionado."
+  },
+  "actions": {
+    "newInvoice": "Nova Fatura"
+  },
+  "errors": {
+    "studentAndAmountRequired": "Destinatário e valor são obrigatórios",
+    "amountMustBePositive": "O valor deve ser maior que zero",
+    "amountBelowMinimum": "O valor mínimo para geração de fatura é R$ 5,00",
+    "amountAboveMaximum": "O valor máximo para fatura é R$ 49.999,99"
   },
   "status": {
     "paid": "Paga",
     "pending": "Pendente",
     "overdue": "Vencida",
     "cancelled": "Cancelada",
-    "refunded": "Reembolsada"
+    "refunded": "Reembolsada",
+    "paymentFailed": "Falha no Pagamento"
   },
   "methods": {
     "cash": "Dinheiro",
@@ -62,6 +94,19 @@
     "automatic": "Automático",
     "manual": "Manual",
     "system": "Sistema"
+  },
+  "paymentOrigins": {
+    "manual": "Pagamento Manual",
+    "stripe": "Stripe",
+    "automatic": "Cobrança Automática",
+    "unspecified": "Não especificado"
+  },
+  "receipt": {
+    "paymentMethod": "Forma de Pagamento",
+    "back": "Voltar",
+    "print": "Imprimir",
+    "downloadPdf": "Baixar PDF",
+    "pdfInstructions": "No diálogo de impressão, selecione \"Salvar como PDF\" como destino."
   },
   "markAsPaid": {
     "title": "Confirmar Pagamento Manual",
@@ -143,5 +188,41 @@
     "previewTitle": "Previsão de Recebimento",
     "invoiceAmount": "Valor da fatura",
     "deducted": "Esta taxa é deduzida automaticamente e já está refletida nos valores que você receberá."
+  },
+  "boleto": {
+    "minimumAmountError": "O valor mínimo para geração de fatura é R$ 5,00",
+    "maximumAmountError": "O valor máximo para fatura é R$ 49.999,99",
+    "amountBelowMinimum": "Valor abaixo do mínimo para boleto",
+    "amountBelowMinimumStudent": "O valor desta fatura está abaixo do mínimo de R$ 5,00 para geração de boleto. Entre em contato com o professor."
+  },
+  "studentInvoices": {
+    "title": "Minhas Faturas",
+    "billingHistory": "Histórico de Cobranças",
+    "selectTeacher": "Selecione um professor para visualizar suas faturas.",
+    "noInvoices": "Nenhuma fatura encontrada.",
+    "loadError": "Erro ao carregar as faturas.",
+    "columns": {
+      "date": "Data",
+      "description": "Descrição",
+      "dueDate": "Vencimento",
+      "amount": "Valor",
+      "status": "Status",
+      "actions": "Ações"
+    },
+    "defaultDescription": "Cobrança de aula",
+    "dependentBadge": "Dependente",
+    "payNow": "Pagar Agora",
+    "choosePaymentMethod": "Escolher Método",
+    "viewReceipt": "Ver Recibo",
+    "noPaymentMethod": "Nenhum pagamento gerado",
+    "changePaymentMethod": {
+      "title": "Alterar Método de Pagamento",
+      "description": "Você poderá escolher um novo método de pagamento para esta fatura.",
+      "warning": "Ao alterar, o pagamento atual será cancelado e você precisará gerar um novo.",
+      "confirm": "Confirmar Alteração",
+      "cancel": "Cancelar",
+      "success": "Método de pagamento alterado com sucesso! Você pode agora escolher um novo método.",
+      "error": "Erro ao alterar método de pagamento"
+    }
   }
 }

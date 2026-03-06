@@ -71,9 +71,36 @@ serve(async (req) => {
           paymentIntentId: invoice.stripe_payment_intent_id 
         });
 
-        // Buscar status do payment intent no Stripe
+        // #553: Buscar stripeAccount do Connect para este professor
+        let stripeAccount: string | undefined = undefined;
+        if (invoice.teacher_id) {
+          const { data: bp, error: bpError } = await supabaseClient
+            .from("business_profiles")
+            .select("stripe_connect_id")
+            .eq("user_id", invoice.teacher_id)
+            .maybeSingle();
+          
+          logStep("Business profile lookup", { 
+            teacherId: invoice.teacher_id, 
+            connectId: bp?.stripe_connect_id || null,
+            error: bpError?.message || null
+          });
+          
+          if (bp?.stripe_connect_id) {
+            stripeAccount = bp.stripe_connect_id;
+          }
+        }
+
+        logStep("Retrieving payment intent", { 
+          paymentIntentId: invoice.stripe_payment_intent_id, 
+          stripeAccount: stripeAccount || 'platform' 
+        });
+
+        // Buscar status do payment intent no Stripe (com stripeAccount para Connect)
         const paymentIntent = await stripe.paymentIntents.retrieve(
-          invoice.stripe_payment_intent_id
+          invoice.stripe_payment_intent_id,
+          undefined,
+          stripeAccount ? { stripeAccount } : undefined
         );
 
         verifiedCount++;
@@ -88,6 +115,36 @@ serve(async (req) => {
 
         // Atualizar se o status mudou
         if (newStatus !== invoice.status) {
+          // Guard: re-check current status to prevent reversing terminal states
+          const { data: freshInvoice } = await supabaseClient
+            .from("invoices")
+            .select("status, payment_origin")
+            .eq("id", invoice.id)
+            .maybeSingle();
+
+          const terminalStatuses = ['paga', 'cancelada'];
+          if (freshInvoice && terminalStatuses.includes(freshInvoice.status)) {
+            logStep("Skipping update - invoice in terminal status", { 
+              invoiceId: invoice.id, 
+              currentStatus: freshInvoice.status 
+            });
+            results.push({
+              invoice_id: invoice.id,
+              payment_intent_id: invoice.stripe_payment_intent_id,
+              old_status: invoice.status,
+              new_status: freshInvoice.status,
+              updated: false,
+              skipped_reason: 'terminal_status'
+            });
+            continue;
+          }
+
+          // Guard: don't overwrite manual payments
+          if (freshInvoice?.payment_origin === 'manual') {
+            logStep("Skipping update - manual payment origin", { invoiceId: invoice.id });
+            continue;
+          }
+
           const { error: updateError } = await supabaseClient
             .from("invoices")
             .update({ 
@@ -95,7 +152,8 @@ serve(async (req) => {
               payment_origin: paymentIntent.status === 'succeeded' ? 'automatic' : undefined,
               updated_at: new Date().toISOString()
             })
-            .eq("id", invoice.id);
+            .eq("id", invoice.id)
+            .in("status", ["pendente", "falha_pagamento"]); // Guard clause no UPDATE
 
           if (updateError) {
             logStep("Error updating invoice", { 

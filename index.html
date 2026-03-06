@@ -17,6 +17,58 @@
     <meta name="twitter:site" content="@tutorflow_app" />
     <meta name="twitter:image" content="https://www.tutor-flow.app/og-image.png" />
 
+    <!-- INTERCEPTAÇÃO DE TOKENS DE RECUPERAÇÃO DE SENHA -->
+    <!-- Este script DEVE executar ANTES de qualquer outro JavaScript -->
+    <script>
+      (function() {
+        console.log('🔑 [Pre-Init] Verificando tokens de recuperação na URL');
+        
+        // Capturar URL completa antes do Supabase processar
+        const fullUrl = window.location.href;
+        console.log('🔑 [Pre-Init] URL:', fullUrl);
+        
+        // Verificar query params e hash
+        const searchParams = new URLSearchParams(window.location.search);
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        
+        const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+        const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+        const type = searchParams.get('type') || hashParams.get('type');
+        
+        console.log('🔑 [Pre-Init] Tokens detectados:', {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          type: type,
+          fromSearch: !!searchParams.get('access_token'),
+          fromHash: !!hashParams.get('access_token')
+        });
+        
+        // APENAS interceptar tokens de RECUPERAÇÃO DE SENHA
+        // Magic links de convite (type='magiclink') devem seguir o fluxo normal via AuthCallback
+        if (accessToken && refreshToken && type === 'recovery') {
+          console.log('🔑 [Pre-Init] TOKEN DE RECOVERY ENCONTRADO! Salvando e redirecionando...');
+          
+          // Salvar no sessionStorage
+          sessionStorage.setItem('recovery_access_token', accessToken);
+          sessionStorage.setItem('recovery_refresh_token', refreshToken);
+          sessionStorage.setItem('recovery_type', type || 'recovery');
+          sessionStorage.setItem('recovery_url', fullUrl);
+          
+          // Redirecionar IMEDIATAMENTE para /reset-password com tokens limpos
+          // Isso previne o Supabase de processar os tokens
+          const resetUrl = '/reset-password?recovery=true';
+          console.log('🔑 [Pre-Init] Redirecionando para:', resetUrl);
+          
+          // Usar replace para não adicionar ao histórico
+          window.location.replace(resetUrl);
+        } else if (accessToken && refreshToken) {
+          console.log('🔑 [Pre-Init] Magic link detectado (type=' + type + '), deixando AuthCallback processar');
+        } else {
+          console.log('🔑 [Pre-Init] Nenhum token detectado, continuando normalmente');
+        }
+      })();
+    </script>
+
     <!-- Google Analytics (BLOQUEADO até consentimento) -->
     <!-- Substitua GA_MEASUREMENT_ID pelo ID real quando disponível -->
     <!-- <script type="text/plain" data-category="analytics" async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>

@@ -11,7 +11,8 @@ import { SidebarProvider } from "@/contexts/SidebarContext";
 import { TeacherProvider } from "@/contexts/TeacherContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { StudentSelectionBlocker } from "@/components/StudentSelectionBlocker";
-import { PaymentFailureGuard } from "@/components/PaymentFailureGuard";
+import { PendingBoletoGuard } from "@/components/PendingBoletoGuard";
+import { useStatusBar } from "@/hooks/useStatusBar";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
@@ -34,16 +35,21 @@ import Historico from "./pages/Historico";
 import StudentDashboard from "./pages/StudentDashboard";
 import Faturas from "./pages/Faturas";
 import Recibo from "./pages/Recibo";
-import PainelNegocios from "./pages/PainelNegocios";
+// PainelNegocios route now redirects to Financeiro
 import Seguranca from "./pages/Seguranca";
 import Legal from "./pages/Legal";
 import NotFound from "./pages/NotFound";
+import DevValidation from "./pages/DevValidation";
+import Inbox from "./pages/Inbox";
 import { FinancialRouteGuard } from "./components/FinancialRouteGuard";
 
 const queryClient = new QueryClient();
 
 const AppWithProviders = () => {
   const { loading, profile, isProfessor, isAluno, isAuthenticated, needsPasswordChange, needsAddressInfo } = useAuth();
+  
+  // Sincronizar status bar com tema (apenas no app nativo)
+  useStatusBar();
   
   // Aguardar o carregamento completo do auth e profile
   if (loading) {
@@ -122,8 +128,8 @@ const AppWithProviders = () => {
         <SubscriptionProvider>
           <SidebarProvider>
             <TooltipProvider>
-              <StudentSelectionBlocker />
-              <PaymentFailureGuard />
+            <StudentSelectionBlocker />
+              <PendingBoletoGuard />
               <Toaster />
               <Sonner />
               <Routes>
@@ -145,13 +151,16 @@ const AppWithProviders = () => {
             
             <Route path="/servicos" element={<Servicos />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
-            <Route path="/painel/configuracoes/negocios" element={<FinancialRouteGuard><PainelNegocios /></FinancialRouteGuard>} />
+            <Route path="/painel/configuracoes/negocios" element={<FinancialRouteGuard><Financeiro /></FinancialRouteGuard>} />
             <Route path="/politicas-cancelamento" element={<Configuracoes />} />
             <Route path="/historico" element={<Historico />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/subscription" element={<Subscription />} />
             <Route path="/seguranca" element={<Seguranca />} />
             <Route path="/portal-do-aluno" element={<StudentDashboard />} />
+            <Route path="/inbox" element={<Inbox />} />
+            {/* DEV ONLY: Validation page */}
+            {import.meta.env.DEV && <Route path="/dev/validation" element={<DevValidation />} />}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

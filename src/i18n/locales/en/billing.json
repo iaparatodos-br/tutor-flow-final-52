@@ -13,6 +13,31 @@
       "placeholder": "15"
     }
   },
+  "chargeTiming": {
+    "title": "Billing Model",
+    "description": "Define when classes will be charged to your students.",
+    "prepaid": "Charge Before",
+    "postpaid": "Charge After",
+    "prepaidDescription": "The invoice is generated immediately when scheduling the class. Paid classes cannot be recurring. In case of cancellation, there is no automatic refund.",
+    "postpaidDescription": "Classes are accumulated and charged on the billing cycle closing date. Classes can be recurring. In case of late cancellation, a fee may be applied according to your policy.",
+    "infoTitle": "How does it work?",
+    "infoContent": "The billing model defines when the invoice is generated for paid individual classes. Free or makeup classes are not affected. Monthly subscriptions continue to be charged on the normal cycle regardless of the chosen model."
+  },
+  "paymentMethods": {
+    "title": "Payment Methods",
+    "description": "Select the payment methods your students can use. Methods will be applied in priority order: Boleto → PIX → Card.",
+    "card": "Credit/Debit Card",
+    "cardDescription": "Accept payments via credit or debit card",
+    "boleto": "Bank Slip (Boleto)",
+    "boletoDescription": "Automatically generates bank slip (minimum R$ 5.00)",
+    "pix": "PIX",
+    "pixDescription": "Automatically generates PIX QR Code (minimum R$ 1.00)",
+    "noMethodsWarning": "Select at least one payment method to charge your students.",
+    "noMethodsError": "You must have at least one payment method enabled.",
+    "saveSuccess": "Payment methods updated successfully.",
+    "saveError": "Error updating payment methods.",
+    "loadError": "Error loading payment methods."
+  },
   "validation": {
     "minDays": "Must be at least 1 day",
     "maxDays": "Maximum 90 days",
@@ -21,6 +46,12 @@
   "actions": {
     "save": "Save Settings",
     "saving": "Saving..."
+  },
+  "autoGenerateBoleto": {
+    "title": "Automatic boleto generation",
+    "description": "When disabled, invoices will be created normally but without generating a boleto on Stripe. Useful for teachers who generate boletos directly at their bank.",
+    "enabled": "Boletos will be generated automatically",
+    "disabled": "Boletos will not be generated automatically"
   },
   "messages": {
     "updateSuccess": "Settings updated",

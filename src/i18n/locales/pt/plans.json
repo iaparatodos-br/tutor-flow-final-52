@@ -30,7 +30,9 @@
     "noExpenses": "Sem Cadastro de Despesas",
     "storage": "Armazenamento de Materiais",
     "materialSharing": "Upload e Compartilhamento de Materiais",
-    "limitedMaterials": "Materiais Limitados"
+    "limitedMaterials": "Materiais Limitados",
+    "reportPhotos": "Fotos nos Relatórios de Aula",
+    "noReportPhotos": "Sem Fotos nos Relatórios"
   },
   "comparison": {
     "title": "Compare os Planos",
@@ -41,7 +43,8 @@
       "groupClasses": "Aulas em Grupo",
       "expenses": "Cadastro de Despesas",
       "materialSharing": "Upload e Compartilhamento de Materiais",
-      "storage": "Armazenamento de Materiais"
+      "storage": "Armazenamento de Materiais",
+      "reportPhotos": "Fotos nos Relatórios de Aula"
     }
   },
   "messages": {

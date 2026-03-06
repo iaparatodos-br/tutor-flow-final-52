@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.21.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,6 +21,7 @@ interface ProcessingReport {
   invoices_voided: number;
   invoices_already_paid: number;
   invoices_failed: number;
+  payment_intents_cancelled: number;
   processing_time_ms: number;
   errors: string[];
 }
@@ -45,11 +46,36 @@ serve(async (req) => {
 
   try {
     logStep("Function started");
+
+    // AUTH: Validate JWT
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: userData, error: userError } = await supabaseService.auth.getUser(token);
+    if (userError || !userData.user) {
+      return new Response(JSON.stringify({ error: "Authentication failed" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+    const authUserId = userData.user.id;
+    logStep("User authenticated", { userId: authUserId });
     
     const { teacher_id, cancellation_reason, previous_plan_features }: CancellationRequest = await req.json();
     
     if (!teacher_id) {
       throw new Error("teacher_id is required");
+    }
+
+    // AUTH: Verify the authenticated user IS the teacher being cancelled
+    if (teacher_id !== authUserId) {
+      logStep("AUTHORIZATION FAILED: User trying to cancel another teacher", { authUserId, teacher_id });
+      return new Response(JSON.stringify({ error: "Você só pode cancelar sua própria assinatura" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     logStep("Processing cancellation", { teacher_id, cancellation_reason });
@@ -104,6 +130,7 @@ serve(async (req) => {
       invoices_voided: 0,
       invoices_already_paid: 0,
       invoices_failed: 0,
+      payment_intents_cancelled: 0,
       processing_time_ms: 0,
       errors: []
     };
@@ -117,22 +144,58 @@ serve(async (req) => {
       try {
         logStep("Processing invoice", { invoice_id: invoice.id, stripe_invoice_id: invoice.stripe_invoice_id });
 
+        // FIX #578: Cancel active Payment Intents before voiding invoices
+        if (invoice.stripe_payment_intent_id) {
+          try {
+            const pi = await stripe.paymentIntents.retrieve(invoice.stripe_payment_intent_id);
+            // Only cancel PIs that are in a cancellable state
+            if (['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
+              await stripe.paymentIntents.cancel(invoice.stripe_payment_intent_id);
+              report.payment_intents_cancelled++;
+              logStep("Cancelled Payment Intent", { 
+                pi_id: invoice.stripe_payment_intent_id, 
+                previous_status: pi.status 
+              });
+            } else {
+              logStep("Payment Intent not cancellable", { 
+                pi_id: invoice.stripe_payment_intent_id, 
+                status: pi.status 
+              });
+            }
+          } catch (piError: any) {
+            // Non-fatal: log and continue
+            logStep("Failed to cancel Payment Intent (non-fatal)", { 
+              pi_id: invoice.stripe_payment_intent_id, 
+              error: piError.message 
+            });
+          }
+        }
+
         // Check if invoice has Stripe ID and verify its status
         if (invoice.stripe_invoice_id) {
-          const stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
-          
-          if (stripeInvoice.status === 'paid') {
-            // Invoice was already paid
-            logStep("Invoice already paid", { invoice_id: invoice.id });
-            paidInvoices.push(invoice);
-            report.invoices_already_paid++;
-            continue;
-          }
+          try {
+            const stripeInvoice = await stripe.invoices.retrieve(invoice.stripe_invoice_id);
+            
+            if (stripeInvoice.status === 'paid') {
+              // Invoice was already paid
+              logStep("Invoice already paid", { invoice_id: invoice.id });
+              paidInvoices.push(invoice);
+              report.invoices_already_paid++;
+              continue;
+            }
 
-          if (stripeInvoice.status === 'open' || stripeInvoice.status === 'draft') {
-            // Void the invoice in Stripe
-            await stripe.invoices.voidInvoice(invoice.stripe_invoice_id);
-            logStep("Voided Stripe invoice", { stripe_invoice_id: invoice.stripe_invoice_id });
+            if (stripeInvoice.status === 'open' || stripeInvoice.status === 'draft') {
+              // Void the invoice in Stripe
+              await stripe.invoices.voidInvoice(invoice.stripe_invoice_id);
+              logStep("Voided Stripe invoice", { stripe_invoice_id: invoice.stripe_invoice_id });
+            }
+          } catch (stripeError: any) {
+            // FIX #567: Handle case where stripeAccount might be needed for Connect invoices
+            logStep("Stripe invoice operation failed (may be Connect invoice)", { 
+              stripe_invoice_id: invoice.stripe_invoice_id,
+              error: stripeError.message 
+            });
+            // Continue with local DB update even if Stripe operation fails
           }
         }
 
@@ -140,10 +203,11 @@ serve(async (req) => {
         const { error: updateError } = await supabaseService
           .from('invoices')
           .update({ 
-            status: 'cancelada_por_professor_inativo',
+            status: 'cancelada',
             updated_at: new Date().toISOString()
           })
-          .eq('id', invoice.id);
+          .eq('id', invoice.id)
+          .eq('status', 'pendente'); // Guard: only cancel if still pendente
 
         if (updateError) {
           throw new Error(`Failed to update invoice: ${updateError.message}`);
@@ -196,15 +260,20 @@ serve(async (req) => {
     }
 
     // 5. Send notifications
-    if (Deno.env.get("RESEND_API_KEY")) {
+    // FIX #577: Check for AWS SES credentials instead of RESEND_API_KEY
+    // The sendEmail function uses AWS SES (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
+    const hasEmailCredentials = Deno.env.get("AWS_ACCESS_KEY_ID") && Deno.env.get("AWS_SECRET_ACCESS_KEY");
+    if (hasEmailCredentials) {
       await sendNotifications(supabaseService, teacher_id, voidedInvoices, paidInvoices);
+    } else {
+      logStep("Email credentials not configured, skipping notifications");
     }
 
     // 6. Write audit log
     report.processing_time_ms = Date.now() - startTime;
     
     await supabaseService.from('audit_logs').insert({
-      actor_id: null, // System action
+      actor_id: authUserId,
       target_teacher_id: teacher_id,
       table_name: 'invoices',
       record_id: teacher_id,
@@ -244,8 +313,6 @@ async function sendNotifications(
   paidInvoices: any[]
 ) {
   try {
-    const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
-
     // Get teacher info
     const { data: teacher } = await supabaseService
       .from('profiles')
@@ -259,16 +326,17 @@ async function sendNotifications(
       ...paidInvoices.map(inv => inv.student_id)
     ])];
 
+    // FIX #565: Remove guardian_email — column does not exist on profiles table
+    // Guardian info is stored in teacher_student_relationships, not profiles
     const { data: students } = await supabaseService
       .from('profiles')
-      .select('name, email, guardian_email')
+      .select('id, name, email')
       .in('id', studentIds);
 
     // Send notification to teacher
     if (teacher?.email) {
-      await resend.emails.send({
-        from: "Sistema de Ensino <noreply@sistema.com>",
-        to: [teacher.email],
+      await sendEmail({
+        to: teacher.email,
         subject: "Cobranças automaticamente suspensas",
         html: `
           <h2>Olá ${teacher.name},</h2>
@@ -283,13 +351,31 @@ async function sendNotifications(
       });
     }
 
-    // Send notifications to students/guardians
+    // Send notifications to students
+    // FIX #565: Also look up guardian emails from teacher_student_relationships
     for (const student of students || []) {
-      const emailTo = student.guardian_email || student.email;
-      if (emailTo) {
-        await resend.emails.send({
-          from: "Sistema de Ensino <noreply@sistema.com>",
-          to: [emailTo],
+      const recipientEmails: string[] = [];
+      
+      if (student.email) {
+        recipientEmails.push(student.email);
+      }
+
+      // Look up guardian email from teacher_student_relationships
+      const { data: relationships } = await supabaseService
+        .from('teacher_student_relationships')
+        .select('student_guardian_email')
+        .eq('student_id', student.id)
+        .eq('teacher_id', teacherId);
+
+      for (const rel of relationships || []) {
+        if (rel.student_guardian_email && !recipientEmails.includes(rel.student_guardian_email)) {
+          recipientEmails.push(rel.student_guardian_email);
+        }
+      }
+
+      for (const emailTo of recipientEmails) {
+        await sendEmail({
+          to: emailTo,
           subject: "Cobranças suspensas temporariamente",
           html: `
             <h2>Olá ${student.name},</h2>

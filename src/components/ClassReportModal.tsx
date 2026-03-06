@@ -10,8 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { CalendarClass } from '@/components/Calendar/CalendarView';
 import { useProfile } from '@/contexts/ProfileContext';
-import { BookOpen, FileText, Link, MessageSquare } from 'lucide-react';
+import { BookOpen, FileText, Link, MessageSquare, Baby } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { formatDateBrazil, formatTimeBrazil } from '@/utils/timezone';
+import { 
+  ClassReportPhotoUpload, 
+  uploadReportPhotos, 
+  loadReportPhotos,
+  deleteReportPhotos
+} from '@/components/ClassReportPhotoUpload';
 
 interface ClassReportModalProps {
   isOpen: boolean;
@@ -27,8 +34,18 @@ interface ClassReport {
   extra_materials: string;
 }
 
+interface PhotoFile {
+  id: string;
+  file?: File;
+  preview: string;
+  isExisting: boolean;
+  filePath?: string;
+  fileName?: string;
+}
+
 interface StudentFeedback {
   student_id: string;
+  dependent_id?: string | null;
   feedback: string;
 }
 
@@ -50,6 +67,8 @@ export function ClassReportModal({
   const [homework, setHomework] = useState('');
   const [extraMaterials, setExtraMaterials] = useState('');
   const [feedbacks, setFeedbacks] = useState<StudentFeedback[]>([]);
+  const [photos, setPhotos] = useState<PhotoFile[]>([]);
+  const [initialPhotos, setInitialPhotos] = useState<PhotoFile[]>([]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -65,6 +84,8 @@ export function ClassReportModal({
     setHomework('');
     setExtraMaterials('');
     setFeedbacks([]);
+    setPhotos([]);
+    setInitialPhotos([]);
     setExistingReport(null);
   };
 
@@ -96,6 +117,11 @@ export function ClassReportModal({
         setHomework(report.homework || '');
         setExtraMaterials(report.extra_materials || '');
 
+        // Load photos for this report
+        const existingPhotos = await loadReportPhotos(report.id);
+        setPhotos(existingPhotos);
+        setInitialPhotos(existingPhotos);
+
         // Load individual feedbacks
         const { data: feedbackData, error: feedbackError } = await supabase
           .from('class_report_feedbacks')
@@ -108,11 +134,22 @@ export function ClassReportModal({
           return;
         }
 
+        // CORREÇÃO: Sempre mesclar feedbacks do banco com lista completa de participantes
+        const participants = classData.participants || [];
+        
         if (feedbackData && feedbackData.length > 0) {
-          setFeedbacks(feedbackData.map(f => ({
-            student_id: f.student_id,
-            feedback: f.feedback
-          })));
+          // Criar array mesclado: todos os participantes com feedbacks (existentes ou vazios)
+          const mergedFeedbacks = participants.map(p => {
+            const existingFeedback = feedbackData.find(f => f.student_id === p.student_id);
+            return {
+              student_id: p.student_id,
+              dependent_id: (p as any).dependent_id || null,
+              feedback: existingFeedback?.feedback || ''
+            };
+          });
+          
+          console.log('🔄 Merged feedbacks loaded:', mergedFeedbacks);
+          setFeedbacks(mergedFeedbacks);
         } else {
           initializeFeedbacks();
         }
@@ -133,6 +170,7 @@ export function ClassReportModal({
 
     const initialFeedbacks = participants.map(p => ({
       student_id: p.student_id,
+      dependent_id: (p as any).dependent_id || null,
       feedback: ''
     }));
 
@@ -140,11 +178,28 @@ export function ClassReportModal({
   };
 
   const updateFeedback = (studentId: string, feedback: string) => {
+    console.log('🔍 updateFeedback called:', { studentId, feedback, currentFeedbacksCount: feedbacks.length });
     setFeedbacks(prev => 
       prev.map(f => 
         f.student_id === studentId ? { ...f, feedback } : f
       )
     );
+  };
+
+  // Helper para obter nome do participante (dependente ou aluno)
+  const getParticipantName = (participant: any): string => {
+    if (participant.dependent_id && participant.dependent_name) {
+      return participant.dependent_name;
+    }
+    return participant.student?.name || participant.profiles?.name || 'Nome não disponível';
+  };
+
+  // Helper para obter nome do responsável (quando é dependente)
+  const getResponsibleName = (participant: any): string | null => {
+    if (participant.dependent_id && participant.dependent_name) {
+      return participant.student?.name || participant.profiles?.name || null;
+    }
+    return null;
   };
 
   const handleSubmit = async () => {
@@ -203,6 +258,7 @@ export function ClassReportModal({
           const participantInserts = classData.participants.map((p: any) => ({
             class_id: newClass.id,
             student_id: p.student_id,
+            dependent_id: p.dependent_id || null,
             status: targetStatus,
             confirmed_at: targetStatus === 'confirmada' || targetStatus === 'concluida' 
               ? new Date().toISOString() 
@@ -274,18 +330,54 @@ export function ClassReportModal({
 
         if (deleteError) throw deleteError;
 
-        // Insert new feedbacks
+        // Insert new feedbacks with dependent_id
         const { error: feedbackError } = await supabase
           .from('class_report_feedbacks')
           .insert(
             feedbacksToSave.map(f => ({
               report_id: reportId!,
               student_id: f.student_id,
+              dependent_id: f.dependent_id || null,
               feedback: f.feedback
             }))
           );
 
         if (feedbackError) throw feedbackError;
+      }
+
+      // Handle photo uploads
+      const newPhotos = photos.filter(p => !p.isExisting);
+      if (newPhotos.length > 0 && profile?.id) {
+        const { errors } = await uploadReportPhotos(
+          photos,
+          profile.id,
+          finalClassId,
+          reportId!
+        );
+        
+        if (errors.length > 0) {
+          toast({
+            title: t('modal.messages.photoUploadError'),
+            description: errors.join(', '),
+            variant: "destructive",
+          });
+        }
+      }
+
+      // Handle deleted photos
+      const deletedPhotos = initialPhotos.filter(
+        ip => ip.isExisting && !photos.some(p => p.id === ip.id)
+      );
+      if (deletedPhotos.length > 0) {
+        await deleteReportPhotos(deletedPhotos);
+        
+        // Also delete from database
+        for (const photo of deletedPhotos) {
+          await supabase
+            .from('class_report_photos')
+            .delete()
+            .eq('id', photo.id);
+        }
       }
 
       // Send notifications (call edge function) - usar finalClassId
@@ -334,7 +426,10 @@ export function ClassReportModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        key={`report-${classData.id}-${existingReport?.id || 'new'}`}
+        className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto"
+      >
         <DialogHeader>
           <DialogTitle>
             {existingReport ? t('modal.title.edit') : t('modal.title.create')}
@@ -353,22 +448,23 @@ export function ClassReportModal({
             <CardContent className="space-y-2 text-sm">
               <div>
                 <strong>{t('modal.classInfo.students')}</strong>{' '}
-                {participants.map(p => p.student.name).join(', ')}
+                {participants.map(p => {
+                  const name = getParticipantName(p);
+                  const responsibleName = getResponsibleName(p);
+                  if (responsibleName) {
+                    return `${name} (Resp: ${responsibleName})`;
+                  }
+                  return name;
+                }).join(', ')}
               </div>
               <div>
                 <strong>{t('modal.classInfo.date')}</strong>{' '}
-                {new Date(classData.start).toLocaleDateString('pt-BR')}
+                {formatDateBrazil(classData.start, undefined, profile?.timezone)}
               </div>
               <div>
                 <strong>{t('modal.classInfo.time')}</strong>{' '}
-                {new Date(classData.start).toLocaleTimeString('pt-BR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })} -{' '}
-                {new Date(classData.end).toLocaleTimeString('pt-BR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })} <span className="text-xs text-muted-foreground">{t('modal.classInfo.timezone')}</span>
+                {formatTimeBrazil(classData.start, profile?.timezone)} -{' '}
+                {formatTimeBrazil(classData.end, profile?.timezone)} <span className="text-xs text-muted-foreground">{t('modal.classInfo.timezone')}</span>
               </div>
             </CardContent>
           </Card>
@@ -386,6 +482,12 @@ export function ClassReportModal({
               onChange={(e) => setLessonSummary(e.target.value)}
               className="min-h-[100px]"
               required
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -401,6 +503,12 @@ export function ClassReportModal({
               value={homework}
               onChange={(e) => setHomework(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
 
@@ -416,8 +524,20 @@ export function ClassReportModal({
               value={extraMaterials}
               onChange={(e) => setExtraMaterials(e.target.value)}
               className="min-h-[80px]"
+              style={{
+                scrollBehavior: 'auto',
+                pointerEvents: 'auto',
+                userSelect: 'text',
+                WebkitUserSelect: 'text'
+              }}
             />
           </div>
+
+          {/* Photo Upload Section (only for professional/premium plans) */}
+          <ClassReportPhotoUpload
+            photos={photos}
+            onPhotosChange={setPhotos}
+          />
 
           {/* Individual Feedbacks */}
           {participants.length > 0 && (
@@ -434,17 +554,34 @@ export function ClassReportModal({
                 
                 {participants.map((participant) => {
                   const feedback = feedbacks.find(f => f.student_id === participant.student_id);
+                  const displayName = getParticipantName(participant);
+                  const responsibleName = getResponsibleName(participant);
+                  const isDependent = !!responsibleName;
+                  console.log('🎨 Rendering feedback for:', displayName, 'value:', feedback?.feedback || '(empty)', 'found:', !!feedback);
                   
                   return (
                     <div key={participant.student_id} className="space-y-2">
-                      <Label className="text-sm font-medium">
-                        {participant.student.name}
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
+                        {isDependent && <Baby className="h-4 w-4 text-purple-600" />}
+                        {displayName}
+                        {responsibleName && (
+                          <span className="text-xs text-muted-foreground font-normal ml-1">
+                            (Responsável: {responsibleName})
+                          </span>
+                        )}
                       </Label>
                       <Textarea
-                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: participant.student.name })}
+                        key={`feedback-${participant.student_id}-${existingReport?.id || 'new'}`}
+                        placeholder={t('modal.fields.individualFeedback.placeholder', { name: displayName })}
                         value={feedback?.feedback || ''}
                         onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
                         className="min-h-[80px]"
+                        style={{
+                          scrollBehavior: 'auto',
+                          pointerEvents: 'auto',
+                          userSelect: 'text',
+                          WebkitUserSelect: 'text'
+                        }}
                       />
                     </div>
                   );

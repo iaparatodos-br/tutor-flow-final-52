@@ -1,13 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.54.0";
-import { Resend } from "https://esm.sh/resend@2.0.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const resend = new Resend(Deno.env.get("RESEND_API_KEY") || "");
 
 const supabaseAdmin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -41,6 +39,23 @@ serve(async (req) => {
   }
 
   try {
+    // #132 — Authentication: validate caller identity
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !authUser) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Unauthorized" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     const body: CreateStudentRequest = await req.json();
     console.log('create-student function called with body:', JSON.stringify(body));
 
@@ -48,6 +63,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ success: false, error: "Campos obrigatórios não informados: nome, email e professor" }),
         { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // #132 — Validate teacher_id matches authenticated user
+    if (authUser.id !== body.teacher_id) {
+      return new Response(
+        JSON.stringify({ success: false, error: "teacher_id does not match authenticated user" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
@@ -131,49 +154,115 @@ serve(async (req) => {
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
+
+      // Send invitation email to existing student if email not confirmed
+      const { data: authUserData } = await supabaseAdmin.auth.admin.getUserById(studentId);
+      if (!authUserData?.user?.email_confirmed_at) {
+        console.log('Existing student email not confirmed, sending invitation email');
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: body.email,
+          options: { redirectTo }
+        });
+
+        if (!linkError && linkData?.properties?.action_link) {
+          const { error: emailError } = await supabaseAdmin.functions.invoke('send-student-invitation', {
+            body: {
+              email: body.email,
+              name: body.name,
+              teacher_name: body.professor_name || 'seu professor',
+              invitation_link: linkData.properties.action_link,
+            }
+          });
+          if (emailError) {
+            console.warn('Failed to send invitation to existing student:', emailError);
+          } else {
+            console.log('Invitation email sent to existing student via send-student-invitation');
+          }
+        } else {
+          console.warn('Failed to generate magic link for existing student:', linkError);
+        }
+      }
     } else {
       // New student, create the account first
       console.log('Creating new student account');
       isNewStudent = true;
 
-      // Invite the student by email (Supabase sends the invite email)
-      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-        body.email,
-        {
-          redirectTo,
-          data: {
-            name: body.name,
-            role: 'aluno',
-          },
-        }
-      );
+      // Create user without sending Supabase's default invite email
+      // Generate a temporary random password
+      const temporaryPassword = crypto.randomUUID();
+      
+      const { data: userData, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: body.email,
+        password: temporaryPassword,
+        email_confirm: false, // User needs to activate via magic link
+        user_metadata: {
+          name: body.name,
+          role: 'aluno',
+        },
+      });
 
-      if (inviteError || !inviteData?.user) {
-        console.error('Error inviting student:', inviteError);
-        console.log('InviteError details:', JSON.stringify(inviteError));
+      if (createError || !userData?.user) {
+        console.error('Error creating student:', createError);
+        console.log('CreateError details:', JSON.stringify(createError));
         
-        // Check for specific error types and return success response with error field
-        let errorMessage = 'Failed to invite student';
+        let errorMessage = 'Failed to create student';
         
-        if (inviteError?.message) {
-          // Handle email already exists error
-          if (inviteError.message.includes('User already registered') || 
-              inviteError.message.includes('already exists') ||
-              inviteError.message.includes('email address is already registered')) {
+        if (createError?.message) {
+          if (createError.message.includes('User already registered') || 
+              createError.message.includes('already exists') ||
+              createError.message.includes('email address is already registered')) {
             errorMessage = 'Este e-mail já está sendo utilizado por outro aluno ou professor';
           } else {
-            errorMessage = inviteError.message;
+            errorMessage = createError.message;
           }
         }
         
-        // Return 200 with error in response body instead of error status
         return new Response(
           JSON.stringify({ success: false, error: errorMessage }),
           { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
 
-      studentId = inviteData.user.id;
+      studentId = userData.user.id;
+
+      // Generate magic link for account activation
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: body.email,
+        options: { redirectTo }
+      });
+
+      if (linkError || !linkData?.properties?.action_link) {
+        console.error('Error generating magic link:', linkError);
+        // Rollback: delete the created user
+        await supabaseAdmin.auth.admin.deleteUser(studentId);
+        return new Response(
+          JSON.stringify({ success: false, error: 'Erro ao gerar link de ativação' }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Send custom invitation email via AWS SES
+      const { data: emailResult, error: emailError } = await supabaseAdmin.functions.invoke(
+        'send-student-invitation',
+        {
+          body: {
+            email: body.email,
+            name: body.name,
+            teacher_name: body.professor_name || 'seu professor',
+            invitation_link: linkData.properties.action_link,
+          }
+        }
+      );
+
+      if (emailError || (emailResult && !emailResult.success)) {
+        console.error('Error sending invitation email:', emailError || emailResult?.error);
+        // Don't rollback - user is created, we can resend email later
+        console.warn('Student created but invitation email failed. User can request resend.');
+      } else {
+        console.log('Invitation email sent successfully via AWS SES');
+      }
 
       // Wait for trigger to create profile, then update additional fields
       let retries = 10;
@@ -199,11 +288,21 @@ serve(async (req) => {
     // FIRST: Check if teacher needs to be charged for overage BEFORE creating relationship
     let billingResult = null;
     
-    // Get CURRENT student count for this teacher (before adding new student)
-    const { count: currentStudentCount } = await supabaseAdmin
-      .from('teacher_student_relationships')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', body.teacher_id);
+    // Get CURRENT student + dependent count for this teacher (before adding new student)
+    // Uses RPC function that counts both students and dependents for plan limits
+    const { data: countData, error: countError } = await supabaseAdmin
+      .rpc('count_teacher_students_and_dependents', { p_teacher_id: body.teacher_id });
+    
+    if (countError) {
+      console.error('Error counting students and dependents:', countError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Erro ao verificar limite de alunos' }),
+        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+    
+    const currentStudentCount = countData?.[0]?.total_students ?? 0;
+    console.log('Current student + dependent count:', currentStudentCount);
 
     // Get teacher's subscription and plan
     const { data: subscription } = await supabaseAdmin
@@ -216,93 +315,178 @@ serve(async (req) => {
     let needsPayment = false;
     let extraStudents = 0;
 
+    // Calculate future count
+    const futureCount = (currentStudentCount ?? 0) + 1;
+
     if (subscription?.plan_id) {
+      // #391: .maybeSingle() to prevent crash if plan not found
       const { data: plan } = await supabaseAdmin
         .from('subscription_plans')
         .select('student_limit, slug')
         .eq('id', subscription.plan_id)
-        .single();
+        .maybeSingle();
 
-      // Check if adding this student will exceed the limit (only for paid plans)
-      const futureCount = (currentStudentCount ?? 0) + 1;
-      if (plan && plan.slug !== 'free' && futureCount > plan.student_limit) {
-        needsPayment = true;
-        extraStudents = futureCount - plan.student_limit;
-        console.log('[BILLING] Student will exceed limit, payment required BEFORE adding', { 
-          currentCount: currentStudentCount, 
-          futureCount,
-          limit: plan.student_limit, 
-          extraStudents,
-          teacherId: body.teacher_id,
-          studentEmail: body.email
-        });
-
-        // PROCESS PAYMENT BEFORE CREATING RELATIONSHIP
-        try {
-          const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
-            'handle-student-overage',
-            {
-              body: {
-                extraStudents,
-                planLimit: plan.student_limit,
-                userId: body.teacher_id,
-              }
-            }
-          );
-
-          if (billingError) {
-            console.error('[BILLING ERROR - BLOCKING STUDENT CREATION]', {
-              teacherId: body.teacher_id,
-              studentEmail: body.email,
-              extraStudents,
-              error: billingError
-            });
-            
-            // CRITICAL: Payment failed - delete newly created student if necessary
-            if (isNewStudent) {
-              console.log('[ROLLBACK] Deleting newly created student due to payment failure');
-              await supabaseAdmin.auth.admin.deleteUser(studentId);
-            }
-            
-            return new Response(
-              JSON.stringify({ 
-                success: false, 
-                error: `Não foi possível processar o pagamento adicional de R$ ${(extraStudents * 5).toFixed(2)} para adicionar este aluno. Verifique seu método de pagamento e tente novamente.`,
-                payment_failed: true
-              }),
-              { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-            );
-          }
-          
-          // Payment successful
-          billingResult = billingData;
-          console.log('[BILLING SUCCESS - PROCEEDING WITH STUDENT CREATION]', { 
-            teacherId: body.teacher_id, 
-            billingData 
-          });
-        } catch (err) {
-          console.error('[BILLING EXCEPTION - BLOCKING STUDENT CREATION]', {
-            teacherId: body.teacher_id,
-            studentEmail: body.email,
-            extraStudents,
-            error: (err as Error).message
+      // Check if adding this student will exceed the limit
+      if (plan && futureCount > plan.student_limit) {
+        if (plan.slug === 'free') {
+          // FREE PLAN: Block student creation completely
+          console.log('[PLAN LIMIT] Free plan limit reached, blocking student creation', {
+            currentCount: currentStudentCount,
+            futureCount,
+            limit: plan.student_limit,
+            teacherId: body.teacher_id
           });
           
-          // CRITICAL: Payment failed - delete newly created student if necessary
+          // Rollback: delete newly created student if necessary
           if (isNewStudent) {
-            console.log('[ROLLBACK] Deleting newly created student due to payment exception');
+            console.log('[ROLLBACK] Deleting newly created student due to free plan limit');
             await supabaseAdmin.auth.admin.deleteUser(studentId);
           }
           
           return new Response(
             JSON.stringify({ 
               success: false, 
-              error: `Erro ao processar pagamento adicional. O aluno não foi adicionado. Por favor, tente novamente.`,
-              payment_failed: true
+              error: `Limite de ${plan.student_limit} alunos atingido no plano gratuito. Faça upgrade para adicionar mais alunos.`,
+              plan_limit_reached: true,
+              current_count: currentStudentCount,
+              limit: plan.student_limit
             }),
             { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
           );
+        } else {
+          // PAID PLAN: Charge additional fee
+          needsPayment = true;
+          extraStudents = futureCount - plan.student_limit;
+          console.log('[BILLING] Student will exceed limit, payment required BEFORE adding', { 
+            currentCount: currentStudentCount, 
+            futureCount,
+            limit: plan.student_limit, 
+            extraStudents,
+            teacherId: body.teacher_id,
+            studentEmail: body.email
+          });
+
+          // PROCESS PAYMENT BEFORE CREATING RELATIONSHIP
+          try {
+            const { data: billingData, error: billingError } = await supabaseAdmin.functions.invoke(
+              'handle-student-overage',
+              {
+                body: {
+                  extraStudents,
+                  planLimit: plan.student_limit,
+                  userId: body.teacher_id,
+                }
+              }
+            );
+
+            if (billingError) {
+              console.error('[BILLING ERROR - BLOCKING STUDENT CREATION]', {
+                teacherId: body.teacher_id,
+                studentEmail: body.email,
+                extraStudents,
+                error: billingError
+              });
+              
+              // CRITICAL: Payment failed - delete newly created student if necessary
+              if (isNewStudent) {
+                console.log('[ROLLBACK] Deleting newly created student due to payment failure');
+                await supabaseAdmin.auth.admin.deleteUser(studentId);
+              }
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: `Não foi possível processar o pagamento adicional de R$ ${(extraStudents * 5).toFixed(2)} para adicionar este aluno. Verifique seu método de pagamento e tente novamente.`,
+                  payment_failed: true
+                }),
+                { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+              );
+            }
+            
+            // Check if overage function returned success:false (now returns 200 with error in body)
+            if (billingData && billingData.success === false) {
+              console.error('[BILLING REJECTED - BLOCKING STUDENT CREATION]', {
+                teacherId: body.teacher_id,
+                studentEmail: body.email,
+                extraStudents,
+                reason: billingData.error
+              });
+              
+              if (isNewStudent) {
+                console.log('[ROLLBACK] Deleting newly created student due to billing rejection');
+                await supabaseAdmin.auth.admin.deleteUser(studentId);
+              }
+              
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: billingData.error || `Não foi possível processar o pagamento adicional. Verifique seu método de pagamento e tente novamente.`,
+                  payment_failed: true
+                }),
+                { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+              );
+            }
+            
+            // Payment successful
+            billingResult = billingData;
+            console.log('[BILLING SUCCESS - PROCEEDING WITH STUDENT CREATION]', { 
+              teacherId: body.teacher_id, 
+              billingData 
+            });
+          } catch (err) {
+            console.error('[BILLING EXCEPTION - BLOCKING STUDENT CREATION]', {
+              teacherId: body.teacher_id,
+              studentEmail: body.email,
+              extraStudents,
+              error: (err as Error).message
+            });
+            
+            // CRITICAL: Payment failed - delete newly created student if necessary
+            if (isNewStudent) {
+              console.log('[ROLLBACK] Deleting newly created student due to payment exception');
+              await supabaseAdmin.auth.admin.deleteUser(studentId);
+            }
+            
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: `Erro ao processar pagamento adicional. O aluno não foi adicionado. Por favor, tente novamente.`,
+                payment_failed: true
+              }),
+              { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+            );
+          }
         }
+      }
+    } else {
+      // NO ACTIVE SUBSCRIPTION = Implicit free plan
+      // Apply default free plan limit (3 students)
+      const defaultFreeLimit = 3;
+      
+      if (futureCount > defaultFreeLimit) {
+        console.log('[PLAN LIMIT] No subscription, implicit free plan limit reached', {
+          currentCount: currentStudentCount,
+          futureCount,
+          limit: defaultFreeLimit,
+          teacherId: body.teacher_id
+        });
+        
+        // Rollback: delete newly created student if necessary
+        if (isNewStudent) {
+          console.log('[ROLLBACK] Deleting newly created student due to implicit free plan limit');
+          await supabaseAdmin.auth.admin.deleteUser(studentId);
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Limite de ${defaultFreeLimit} alunos atingido no plano gratuito. Faça upgrade para adicionar mais alunos.`,
+            plan_limit_reached: true,
+            current_count: currentStudentCount,
+            limit: defaultFreeLimit
+          }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
       }
     }
 
@@ -346,9 +530,8 @@ serve(async (req) => {
     // Send a confirmation email to the professor if provided
     if (body.notify_professor_email) {
       try {
-        await resend.emails.send({
-          from: `${body.professor_name || 'TutorFlow'} <noreply@resend.dev>`,
-          to: [body.notify_professor_email],
+        await sendEmail({
+          to: body.notify_professor_email,
           subject: isNewStudent ? `Aluno cadastrado: ${body.name}` : `Aluno vinculado: ${body.name}`,
           html: `
             <div style="font-family:Arial, sans-serif; max-width:600px; margin:0 auto;">

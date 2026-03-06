@@ -1,7 +1,18 @@
 {
-  "title": "Services",
+  "title": "Services & Pricing",
+  "subtitle": "Manage your different class types and their prices",
   "new": "New Service",
   "edit": "Edit Service",
+  "showInactive": "Show inactive",
+  "noActiveServices": "No active services found. Activate an existing service or create a new one.",
+  "noServices": "No services registered",
+  "noServicesDescription": "Create your first service to define prices for your classes",
+  "createFirst": "Create First Service",
+  
+  "active": "Active",
+  "inactive": "Inactive",
+  "activate": "Activate",
+  "deactivate": "Deactivate",
   "fields": {
     "name": "Service Name",
     "namePlaceholder": "E.g.: Individual Class 60min",
@@ -12,7 +23,8 @@
     "duration": "Duration (min)",
     "durationPlaceholder": "60",
     "isActive": "Service active",
-    "isDefault": "Set as default"
+    
+    "groupPricingNote": "For group classes, this price will be charged individually to each participant, not split among students."
   },
   "validation": {
     "loginRequired": "You need to be logged in to create a service.",

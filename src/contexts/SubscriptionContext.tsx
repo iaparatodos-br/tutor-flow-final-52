@@ -31,6 +31,14 @@ interface UserSubscription {
   extra_cost_cents: number;
 }
 
+interface PendingBoletoData {
+  detected: boolean;
+  boletoUrl?: string;
+  dueDate?: string;
+  barcode?: string;
+  amount?: number;
+}
+
 interface SubscriptionContextType {
   currentPlan: SubscriptionPlan | null;
   subscription: UserSubscription | null;
@@ -38,8 +46,8 @@ interface SubscriptionContextType {
   loading: boolean;
   needsStudentSelection: boolean;
   studentSelectionData: any;
-  paymentFailureDetected: boolean;
-  paymentFailureData: any;
+  pendingBoletoDetected: boolean;
+  pendingBoletoData: PendingBoletoData | null;
   hasFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   hasTeacherFeature: (feature: keyof SubscriptionPlan['features']) => boolean;
   canAddStudent: () => boolean;
@@ -52,7 +60,8 @@ interface SubscriptionContextType {
   createCheckoutSession: (planSlug: string) => Promise<string>;
   cancelSubscription: (action: 'cancel' | 'reactivate') => Promise<void>;
   completeStudentSelection: () => Promise<void>;
-  handlePaymentFailure: (action: 'renew' | 'downgrade') => Promise<void>;
+  dismissPendingBoleto: () => void;
+  teacherPlanLoading: boolean;
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined);
@@ -66,18 +75,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [needsStudentSelection, setNeedsStudentSelection] = useState(false);
   const [studentSelectionData, setStudentSelectionData] = useState<any>(null);
-  const [paymentFailureDetected, setPaymentFailureDetected] = useState(false);
-  const [paymentFailureData, setPaymentFailureData] = useState<any>(null);
+  const [pendingBoletoDetected, setPendingBoletoDetected] = useState(false);
+  const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
+  const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
 
-  // Get teacher context conditionally
-  let teacherContext = null;
-  if (profile?.role === 'aluno') {
-    try {
-      teacherContext = useTeacherContext();
-    } catch (error) {
-      console.warn('TeacherContext not available, this is expected during initial loading');
-    }
-  }
+  const teacherContext = useTeacherContext();
 
   const loadPlans = async () => {
     try {
@@ -93,74 +95,115 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * Helper: when payment failure is detected, build studentSelectionData
+   * with isPaymentFailure=true so the unified modal handles everything.
+   */
+  const activatePaymentFailureFlow = async (failurePlan: any) => {
+    try {
+      const { data: students } = await supabase
+        .rpc('get_teacher_students', { teacher_user_id: user?.id });
+      
+      const freePlan = plans.find(p => p.slug === 'free');
+      if (!freePlan) return;
+      
+      const currentStudentCount = students?.length || 0;
+      const studentData = (students || []).map((s: any) => ({
+        id: s.student_id,
+        relationship_id: s.relationship_id,
+        name: s.student_name,
+        email: s.student_email,
+        created_at: s.created_at
+      }));
+
+      setStudentSelectionData({
+        students: studentData,
+        currentPlan: failurePlan,
+        newPlan: freePlan,
+        currentCount: currentStudentCount,
+        targetLimit: freePlan.student_limit,
+        needToRemove: currentStudentCount - freePlan.student_limit,
+        isPaymentFailure: true
+      });
+      setNeedsStudentSelection(true);
+      setCurrentPlan(freePlan);
+      setSubscription(null);
+    } catch (error) {
+      console.error('Error activating payment failure flow:', error);
+    }
+  };
+
   const loadSubscription = async () => {
     if (!user) return;
 
+    if (profile?.role === 'aluno') {
+      const freePlan = plans.find(p => p.slug === 'free');
+      setCurrentPlan(freePlan || null);
+      setSubscription(null);
+      return;
+    }
+
     try {
-      // Timeout para evitar travamento na inicialização
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout no carregamento inicial')), 5000)
       );
 
       const invokePromise = supabase.functions.invoke('check-subscription-status', {
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
       
       if (error) {
         console.warn('Erro ao carregar subscription inicial:', error);
-        // Usar plano gratuito como fallback
         const freePlan = plans.find(p => p.slug === 'free');
         setCurrentPlan(freePlan || null);
         setSubscription(null);
         return;
       }
 
-      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
-      if (data?.subscription && data.subscription.status === 'active') {
-        console.log('Active subscription found - clearing any payment failure state');
+      // PRIORITY 1: Pending boleto
+      if (data?.pendingBoleto?.detected) {
+        console.log('Pending boleto detected - showing boleto modal');
+        setPendingBoletoDetected(true);
+        setPendingBoletoData(data.pendingBoleto);
         setSubscription(data.subscription);
-        
-        // Use plan directly from check-subscription-status response if available
+        if (data.plan) setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        return;
+      }
+
+      // PRIORITY 2: Active subscription
+      if (data?.subscription && data.subscription.status === 'active') {
+        setSubscription(data.subscription);
         if (data.plan) {
           setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         } else {
-          // Fallback to loading plan separately
           const { data: planData, error: planError } = await supabase
             .from('subscription_plans')
             .select('*')
             .eq('id', data.subscription.plan_id)
             .single();
-          
-          if (!planError && planData) {
-            setCurrentPlan(planData as unknown as SubscriptionPlan);
-          }
+          if (!planError && planData) setCurrentPlan(planData as unknown as SubscriptionPlan);
         }
         
-        // CRITICAL: Clear payment failure state when active subscription exists
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
-        setNeedsStudentSelection(false);
-        setStudentSelectionData(null);
-      } else if (data?.payment_failed) {
-        // Só mostrar payment failure se NÃO houver subscription ativa
-        console.log('Payment failure detected (no active subscription):', data.payment_failure_data);
-        setPaymentFailureDetected(true);
-        setPaymentFailureData(data.payment_failure_data || {});
-        
-        // Set current plan to plan from response or free plan
-        if (data.plan) {
-          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        // Active subscription with payment failure (past_due in Stripe)
+        if (data.paymentFailure?.detected) {
+          console.log('Payment failure detected for active subscription:', data.paymentFailure);
+          await activatePaymentFailureFlow(data.plan || currentPlan);
         } else {
-          const freePlan = plans.find(p => p.slug === 'free');
-          setCurrentPlan(freePlan || null);
+          setPendingBoletoDetected(false);
+          setPendingBoletoData(null);
+          setNeedsStudentSelection(false);
+          setStudentSelectionData(null);
         }
+      } else if (data?.paymentFailure?.detected || data?.payment_failed) {
+        // Payment failure without active subscription
+        console.log('Payment failure detected (no active subscription)');
+        const failurePlan = data.plan || currentPlan;
+        if (data.plan) setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         setSubscription(null);
+        await activatePaymentFailureFlow(failurePlan);
       } else if (data?.needs_student_selection) {
-        // Handle student selection requirement
         setNeedsStudentSelection(true);
         setStudentSelectionData({
           students: data.current_students,
@@ -168,12 +211,12 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           newPlan: data.plan,
           currentCount: data.current_students?.length || 0,
           targetLimit: data.plan?.student_limit || 0,
-          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0)
+          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0),
+          isPaymentFailure: false
         });
         setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         setSubscription(null);
       } else {
-        // Use plan from response (should be free plan) or find free plan
         if (data?.plan) {
           setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         } else {
@@ -184,14 +227,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
       }
-
-      // Load teacher's plan if user is a student
-      if (profile?.role === 'aluno') {
-        await loadTeacherSubscriptions();
-      }
     } catch (error) {
       console.error('Error loading subscription:', error);
-      // Fallback to free plan
       const freePlan = plans.find(p => p.slug === 'free');
       setCurrentPlan(freePlan || null);
       setSubscription(null);
@@ -200,29 +237,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const loadTeacherSubscriptions = async () => {
     if (!user || profile?.role !== 'aluno') return;
+    setTeacherPlanLoading(true);
     
-    // Use selected teacher ID from context, fallback to first teacher if none selected
     const selectedTeacherId = teacherContext?.selectedTeacherId;
     
     if (!selectedTeacherId) {
-      console.log('No teacher selected');
       const freePlan = plans.find(p => p.slug === 'free');
       setTeacherPlan(freePlan || null);
+      setTeacherPlanLoading(false);
       return;
     }
     
     try {
-      // Get the selected teacher's subscription
-      const teacherId = selectedTeacherId;
-      
-      // Check if teacher has an active subscription
       const { data: subscriptionData, error: subscriptionError } = await supabase
         .from('user_subscriptions')
-        .select(`
-          *,
-          subscription_plans(*)
-        `)
-        .eq('user_id', teacherId)
+        .select(`*, subscription_plans(*)`)
+        .eq('user_id', selectedTeacherId)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
@@ -236,7 +266,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (subscriptionData && subscriptionData.subscription_plans) {
         setTeacherPlan(subscriptionData.subscription_plans as unknown as SubscriptionPlan);
       } else {
-        // Teacher has no active subscription, use free plan
         const freePlan = plans.find(p => p.slug === 'free');
         setTeacherPlan(freePlan || null);
       }
@@ -244,6 +273,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.error('Error loading teacher subscription:', error);
       const freePlan = plans.find(p => p.slug === 'free');
       setTeacherPlan(freePlan || null);
+    } finally {
+      setTeacherPlanLoading(false);
     }
   };
 
@@ -252,91 +283,81 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     
     setLoading(true);
     try {
-      // Usar timeout para evitar problemas de conectividade
       const timeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('Timeout na verificação da subscription')), 8000)
       );
 
       const invokePromise = supabase.functions.invoke('check-subscription-status', {
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        headers: { 'Content-Type': 'application/json' }
       });
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
       
       if (error) {
         console.error('Error checking subscription:', error);
-        
-        // Se não conseguiu acessar a função, usar plano gratuito
         const freePlan = plans.find(p => p.slug === 'free');
         setCurrentPlan(freePlan || null);
         setSubscription(null);
-        console.log('Erro na verificação - usando plano gratuito como fallback');
         return;
       }
       
-      // PRIORIDADE: Verificar se há subscription ativa PRIMEIRO (ignora payment failures históricos)
+      // PRIORITY 1: Pending boleto
+      if (data?.pendingBoleto?.detected) {
+        console.log('Pending boleto detected on refresh');
+        setPendingBoletoDetected(true);
+        setPendingBoletoData(data.pendingBoleto);
+        setSubscription(data.subscription);
+        setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        setNeedsStudentSelection(false);
+        setStudentSelectionData(null);
+        return;
+      }
+      
+      // PRIORITY 2: Active subscription
       if (data?.subscription && data.subscription.status === 'active') {
-        console.log('Active subscription found on refresh - clearing any payment failure state');
+        console.log('Active subscription found on refresh');
         setSubscription(data.subscription);
         setCurrentPlan(data.plan);
-        setNeedsStudentSelection(false);
-        setStudentSelectionData(null);
         
-        // CRITICAL: Clear payment failure state when active subscription exists
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
-      } else if (data?.payment_failed) {
-        // Só mostrar payment failure se NÃO houver subscription ativa
-        console.log('Payment failure detected on refresh (no active subscription):', data.payment_failure_data);
-        setPaymentFailureDetected(true);
-        setPaymentFailureData(data.payment_failure_data || {});
-        
-        // Set current plan to plan from response or free plan
-        if (data.plan) {
-          setCurrentPlan(data.plan);
+        if (data.paymentFailure?.detected) {
+          console.log('Payment failure detected for active subscription on refresh');
+          await activatePaymentFailureFlow(data.plan);
         } else {
-          const freePlan = plans.find(p => p.slug === 'free');
-          setCurrentPlan(freePlan || null);
+          setNeedsStudentSelection(false);
+          setStudentSelectionData(null);
         }
+        setPendingBoletoDetected(false);
+        setPendingBoletoData(null);
+      } else if (data?.paymentFailure?.detected || data?.payment_failed) {
+        console.log('Payment failure detected on refresh (no active subscription)');
+        if (data.plan) setCurrentPlan(data.plan);
         setSubscription(null);
-        setNeedsStudentSelection(false);
-        setStudentSelectionData(null);
+        await activatePaymentFailureFlow(data.plan || currentPlan);
       } else if (data?.needs_student_selection) {
-        // Handle student selection requirement
         setNeedsStudentSelection(true);
-          setStudentSelectionData({
-            students: data.current_students,
-            currentPlan: data.previous_plan,
-            newPlan: data.plan,
-            currentCount: data.current_students?.length || 0,
-            targetLimit: data.plan?.student_limit || 0,
-            needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0),
-            isPaymentFailure: true
-          });
+        setStudentSelectionData({
+          students: data.current_students,
+          currentPlan: data.previous_plan,
+          newPlan: data.plan,
+          currentCount: data.current_students?.length || 0,
+          targetLimit: data.plan?.student_limit || 0,
+          needToRemove: (data.current_students?.length || 0) - (data.plan?.student_limit || 0),
+          isPaymentFailure: false
+        });
         setCurrentPlan(data.plan);
         setSubscription(null);
       } else {
-        // No active subscription - user is on free plan
         setSubscription(null);
         const freePlan = plans.find(p => p.slug === 'free');
         setCurrentPlan(freePlan || null);
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
-        
-        // Clear payment failure state on free plan fallback
-        setPaymentFailureDetected(false);
-        setPaymentFailureData(null);
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
-      
-      // Em caso de erro, usar plano gratuito como fallback
       const freePlan = plans.find(p => p.slug === 'free');
       setCurrentPlan(freePlan || null);
       setSubscription(null);
-      console.log('Fallback: usando plano gratuito após erro de conectividade');
     } finally {
       setLoading(false);
     }
@@ -349,37 +370,23 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   };
 
   const hasTeacherFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
-    // For professors, use their own plan
-    if (profile?.role === 'professor') {
-      return hasFeature(feature);
-    }
-    
-    // For students, check teacher's plan
+    if (profile?.role === 'professor') return hasFeature(feature);
     if (profile?.role === 'aluno' && teacherPlan) {
       const featureValue = teacherPlan.features[feature];
       return typeof featureValue === 'boolean' ? featureValue : Boolean(featureValue);
     }
-    
     return false;
   };
 
   const canAddStudent = (): boolean => {
-    // Free plan blocks after limit, paid plans allow with additional cost
     if (!currentPlan) return false;
-    if (currentPlan.slug === 'free') {
-      // Will be checked against actual student count in component
-      return true; // Let component handle the blocking logic
-    }
-    return true; // Paid plans always allow (with additional cost)
+    if (currentPlan.slug === 'free') return true;
+    return true;
   };
 
   const getStudentOverageInfo = (currentStudentCount: number) => {
     if (!currentPlan) {
-      return {
-        isOverLimit: false,
-        additionalCost: 0,
-        message: ''
-      };
+      return { isOverLimit: false, additionalCost: 0, message: '' };
     }
 
     const isOverLimit = currentStudentCount >= currentPlan.student_limit;
@@ -394,11 +401,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Paid plans
     if (isOverLimit) {
       const extraStudents = currentStudentCount - currentPlan.student_limit + 1;
-      const additionalCost = extraStudents * 5; // R$ 5 per extra student
-      
+      const additionalCost = extraStudents * 5;
       return {
         isOverLimit: true,
         additionalCost,
@@ -406,59 +411,37 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    return {
-      isOverLimit: false,
-      additionalCost: 0,
-      message: ''
-    };
+    return { isOverLimit: false, additionalCost: 0, message: '' };
   };
 
   const createCheckoutSession = async (planSlug: string): Promise<string> => {
-    // Verificar se o usuário está autenticado e a sessão é válida
-    if (!user) {
-      throw new Error('Usuário não autenticado');
-    }
+    if (!user) throw new Error('Usuário não autenticado');
 
-    // Verificar e renovar a sessão antes de fazer a chamada
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        console.error('Erro ao verificar sessão:', sessionError);
-        throw new Error('Sessão inválida');
-      }
-
+      if (sessionError) throw new Error('Sessão inválida');
       if (!session) {
-        console.error('Sessão não encontrada - fazendo logout');
         await supabase.auth.signOut();
         window.location.href = '/auth';
         throw new Error('Sessão expirada');
       }
 
-      // Verificar se a sessão está próxima do vencimento (< 5 minutos)
       const expiresAt = session.expires_at;
       const now = Math.floor(Date.now() / 1000);
-      const timeUntilExpiry = expiresAt - now;
-
-      if (timeUntilExpiry < 300) { // 5 minutos
-        console.log('Sessão próxima do vencimento, renovando...');
+      if (expiresAt - now < 300) {
         const { error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
-          console.error('Erro ao renovar sessão:', refreshError);
           await supabase.auth.signOut();
           window.location.href = '/auth';
           throw new Error('Não foi possível renovar a sessão');
         }
       }
     } catch (error) {
-      console.error('Erro na verificação/renovação da sessão:', error);
       throw error;
     }
 
-    // Implementar retry com backoff exponencial
     let retries = 0;
     const maxRetries = 3;
-    
-    console.log(`SubscriptionContext: Iniciando checkout para plano ${planSlug}`);
     
     while (retries < maxRetries) {
       try {
@@ -466,45 +449,30 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           setTimeout(() => reject(new Error('Timeout na criação do checkout')), 15000)
         );
 
-        // Prepare the request body explicitly
-        const requestBody = { planSlug };
-        console.log(`SubscriptionContext: Tentativa ${retries + 1}, enviando body:`, requestBody);
-
         const invokePromise = supabase.functions.invoke('create-subscription-checkout', {
-          body: requestBody
+          body: { planSlug }
         });
 
         const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
-        console.log(`SubscriptionContext: Resposta recebida:`, { data, error });
         
         if (error) {
-          // Se receber erro 401 (Unauthorized), tratar como sessão expirada
-          if (error.message?.includes('status code') && error.message?.includes('401')) {
-            console.error('Erro 401 - Sessão expirada, fazendo logout');
+          if (error.message?.includes('401')) {
             await supabase.auth.signOut();
             window.location.href = '/auth';
             throw new Error('Sessão expirada. Por favor, faça login novamente.');
           }
-
           if (retries < maxRetries - 1) {
             retries++;
-            console.log(`Retry ${retries}/${maxRetries} para checkout`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * retries)); // backoff exponencial
+            await new Promise(resolve => setTimeout(resolve, 1000 * retries));
             continue;
           }
           throw error;
         }
 
-        if (data?.url) {
-          return data.url;
-        } else {
-          throw new Error('URL de checkout não recebida');
-        }
+        if (data?.url) return data.url;
+        throw new Error('URL de checkout não recebida');
       } catch (error) {
         if (retries >= maxRetries - 1) {
-          console.error('Error creating checkout session após todos os retries:', error);
-          
-          // Diferentes mensagens de erro baseadas no tipo
           if (error instanceof Error && error.message.includes('Sessão expirada')) {
             toast.error('Sua sessão expirou. Por favor, faça login novamente.');
           } else {
@@ -513,7 +481,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           throw error;
         }
         retries++;
-        console.log(`Retry ${retries}/${maxRetries} após erro:`, error);
         await new Promise(resolve => setTimeout(resolve, 1000 * retries));
       }
     }
@@ -524,7 +491,6 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const completeStudentSelection = async () => {
     setNeedsStudentSelection(false);
     setStudentSelectionData(null);
-    // Refresh subscription after selection is complete
     await refreshSubscription();
   };
 
@@ -533,78 +499,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.functions.invoke('cancel-subscription', {
         body: { action },
       });
-
       if (error) throw error;
-
-      // Force refresh subscription state to reflect the change
       await refreshSubscription();
     } catch (error) {
       console.error('Error canceling subscription:', error);
-      throw error;
-    }
-  };
-
-  const handlePaymentFailure = async (action: 'renew' | 'downgrade'): Promise<void> => {
-    try {
-      if (action === 'renew') {
-        // Create checkout session for current plan
-        if (currentPlan) {
-          const url = await createCheckoutSession(currentPlan.slug);
-          window.open(url, '_blank');
-        }
-      } else if (action === 'downgrade') {
-        // Check if user has excess students
-        const { data: students } = await supabase
-          .rpc('get_teacher_students', { teacher_user_id: user?.id });
-        
-        const freePlan = plans.find(p => p.slug === 'free');
-        if (!freePlan) throw new Error('Free plan not found');
-        
-        const currentStudentCount = students?.length || 0;
-        
-        if (currentStudentCount > freePlan.student_limit) {
-          // Show student selection modal
-          const studentData = students.map((s: any) => ({
-            id: s.student_id,
-            relationship_id: s.relationship_id,
-            name: s.student_name,
-            email: s.student_email,
-            created_at: s.created_at
-          }));
-          
-          setStudentSelectionData({
-            students: studentData,
-            currentPlan,
-            newPlan: freePlan,
-            currentCount: currentStudentCount,
-            targetLimit: freePlan.student_limit,
-            needToRemove: currentStudentCount - freePlan.student_limit,
-            isPaymentFailure: true
-          });
-          setNeedsStudentSelection(true);
-          setPaymentFailureDetected(false);
-        } else {
-          // Direct downgrade without student selection
-          const { error } = await supabase.functions.invoke('process-payment-failure-downgrade', {
-            body: { selectedStudentIds: null, reason: 'payment_failure' }
-          });
-          
-          if (error) throw error;
-          
-          toast.success('Downgrade realizado com sucesso. Suas faturas pendentes foram canceladas.');
-          
-          // Clear payment failure state and refresh
-          setPaymentFailureDetected(false);
-          setPaymentFailureData(null);
-          await refreshSubscription();
-        }
-      }
-      
-      setPaymentFailureDetected(false);
-      setPaymentFailureData(null);
-    } catch (error) {
-      console.error('Error handling payment failure:', error);
-      toast.error('Erro ao processar sua solicitação. Tente novamente.');
       throw error;
     }
   };
@@ -619,29 +517,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [user, plans, profile]);
 
-  // React to teacher selection changes for students
   useEffect(() => {
     if (profile?.role === 'aluno' && teacherContext && plans.length > 0) {
       loadTeacherSubscriptions();
     }
   }, [teacherContext?.selectedTeacherId, plans, profile]);
 
-  // Verificação por parâmetros de URL (retorno do Stripe)
+  // Stripe return URL handling
   useEffect(() => {
     if (!user) return;
 
     const urlParams = new URLSearchParams(window.location.search);
     const stripeParams = [
-      'success',
-      'payment_intent',
-      'payment_intent_client_secret',
-      'setup_intent',
-      'setup_intent_client_secret',
-      'subscription_id',
-      'session_id'
+      'success', 'payment_intent', 'payment_intent_client_secret',
+      'setup_intent', 'setup_intent_client_secret', 'subscription_id', 'session_id'
     ];
 
-    // Verifica se há parâmetros do Stripe na URL
     const hasStripeParams = stripeParams.some(param => urlParams.has(param));
 
     if (hasStripeParams) {
@@ -650,17 +541,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const verifyAndCleanUrl = async () => {
         try {
           await refreshSubscription();
-          
-          // CRITICAL: Limpar explicitamente payment failure após renovação bem-sucedida
-          console.log('Stripe return processed - clearing payment failure state');
-          setPaymentFailureDetected(false);
-          setPaymentFailureData(null);
-          
-          // Limpa os parâmetros da URL após a verificação
           const newUrl = new URL(window.location.href);
           stripeParams.forEach(param => newUrl.searchParams.delete(param));
-          
-          // Atualiza a URL sem recarregar a página
           window.history.replaceState({}, '', newUrl.toString());
         } catch (error) {
           console.error('Error verifying subscription after Stripe return:', error);
@@ -671,7 +553,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   }, [user, refreshSubscription]);
 
-  // Verificação diária do status da subscription à meia-noite
+  // Daily midnight check
   useEffect(() => {
     if (!user) return;
 
@@ -679,36 +561,32 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       const now = new Date();
       const tomorrow = new Date(now);
       tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0); // Meia-noite
+      tomorrow.setHours(0, 0, 0, 0);
       
       const msUntilMidnight = tomorrow.getTime() - now.getTime();
       
       return setTimeout(async () => {
-        try {
-          await refreshSubscription();
-        } catch (error) {
+        try { await refreshSubscription(); } catch (error) {
           console.error('Error during midnight subscription check:', error);
         }
         
-        // Agendar próxima verificação em 24 horas
         const interval = setInterval(async () => {
-          try {
-            await refreshSubscription();
-          } catch (error) {
+          try { await refreshSubscription(); } catch (error) {
             console.error('Error during daily subscription check:', error);
           }
-        }, 24 * 60 * 60 * 1000); // 24 horas
+        }, 24 * 60 * 60 * 1000);
         
         return interval;
       }, msUntilMidnight);
     };
 
     const initialTimeout = scheduleNextMidnightCheck();
-    
-    return () => {
-      clearTimeout(initialTimeout);
-    };
+    return () => clearTimeout(initialTimeout);
   }, [user]);
+
+  const dismissPendingBoleto = () => {
+    setPendingBoletoDetected(false);
+  };
 
   return (
     <SubscriptionContext.Provider
@@ -719,8 +597,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         loading,
         needsStudentSelection,
         studentSelectionData,
-        paymentFailureDetected,
-        paymentFailureData,
+        pendingBoletoDetected,
+        pendingBoletoData,
         hasFeature,
         hasTeacherFeature,
         canAddStudent,
@@ -729,7 +607,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         createCheckoutSession,
         cancelSubscription,
         completeStudentSelection,
-        handlePaymentFailure,
+        dismissPendingBoleto,
+        teacherPlanLoading,
       }}
     >
       {children}

@@ -1,5 +1,4 @@
 import { useProfile } from "@/contexts/ProfileContext";
-import { useSubscription } from "@/contexts/SubscriptionContext";
 import { Layout } from "@/components/Layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CancellationPolicySettings } from "@/components/Settings/CancellationPolicySettings";
@@ -8,22 +7,17 @@ import { NotificationSettings } from "@/components/Settings/NotificationSettings
 import { PreferencesSettings } from "@/components/Settings/PreferencesSettings";
 import { CookieSettings } from "@/components/Settings/CookieSettings";
 import { Settings, User, Bell, FileText, Palette, Shield } from "lucide-react";
-import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { useTranslation } from "react-i18next";
 
 export default function Configuracoes() {
   const { isProfessor } = useProfile();
-  const { hasFeature } = useSubscription();
   const { t } = useTranslation('settings');
 
-  // Determine which tabs to show based on user type and features
-  const showBillingTab = isProfessor && hasFeature('financial_module');
   const showCancellationTab = isProfessor;
   
-  // Use explicit grid classes that Tailwind can detect
   const getGridClass = () => {
-    if (!isProfessor) return 'grid-cols-4'; // +1 para cookies
-    return showBillingTab ? 'grid-cols-6' : 'grid-cols-5'; // +1 para cookies
+    if (!isProfessor) return 'grid-cols-4';
+    return showCancellationTab ? 'grid-cols-5' : 'grid-cols-4';
   };
 
   return (
@@ -49,12 +43,6 @@ export default function Configuracoes() {
               <Palette className="h-4 w-4" />
               {t('tabs.preferences')}
             </TabsTrigger>
-            {showBillingTab && (
-              <TabsTrigger value="billing" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                {t('tabs.billing')}
-              </TabsTrigger>
-            )}
             {showCancellationTab && (
               <TabsTrigger value="cancellation" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -83,12 +71,6 @@ export default function Configuracoes() {
             <TabsContent value="notifications" className="space-y-6">
               <NotificationSettings />
             </TabsContent>
-
-            {showBillingTab && (
-              <TabsContent value="billing" className="space-y-6">
-                <BillingSettings />
-              </TabsContent>
-            )}
 
             {showCancellationTab && (
               <TabsContent value="cancellation" className="space-y-6">

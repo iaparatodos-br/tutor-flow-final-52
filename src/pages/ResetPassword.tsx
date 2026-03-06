@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,14 +20,80 @@ export default function ResetPassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  // Check if we have recovery tokens in URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const accessToken = urlParams.get('access_token');
-  const refreshToken = urlParams.get('refresh_token');
-  const type = urlParams.get('type');
+  // PRIORIDADE 1: sessionStorage (salvos pelo script pre-init)
+  // PRIORIDADE 2: URL (fallback para casos edge)
+  const getTokensFromUrl = () => {
+    console.log('🔑 ResetPassword: Obtendo tokens');
+    
+    // PRIORIDADE 1: Tentar sessionStorage (salvos pelo script pre-init)
+    const storedAccessToken = sessionStorage.getItem('recovery_access_token');
+    const storedRefreshToken = sessionStorage.getItem('recovery_refresh_token');
+    const storedType = sessionStorage.getItem('recovery_type');
+    
+    if (storedAccessToken && storedRefreshToken) {
+      console.log('🔑 ResetPassword: Tokens encontrados no sessionStorage');
+      return {
+        accessToken: storedAccessToken,
+        refreshToken: storedRefreshToken,
+        type: storedType || 'recovery'
+      };
+    }
+    
+    // PRIORIDADE 2: Tentar URL (fallback para casos edge)
+    console.log('🔑 ResetPassword: Tentando obter tokens da URL');
+    let params = new URLSearchParams(window.location.search);
+    
+    if (!params.get('access_token') && window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      params = new URLSearchParams(hash);
+    }
+    
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    const type = params.get('type');
+    
+    if (accessToken && refreshToken) {
+      console.log('🔑 ResetPassword: Tokens encontrados na URL');
+    } else {
+      console.log('❌ ResetPassword: Nenhum token encontrado');
+    }
+    
+    return {
+      accessToken,
+      refreshToken,
+      type
+    };
+  };
+
+  const { accessToken, refreshToken, type } = getTokensFromUrl();
   
-  // If no recovery tokens, redirect to auth
-  if (!accessToken || !refreshToken || type !== 'recovery') {
+  // Garantir que não há sessão ativa ao entrar na página de reset
+  useEffect(() => {
+    const clearSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          console.log('🔑 ResetPassword: Limpando sessão ativa antes de resetar senha');
+          await supabase.auth.signOut();
+        }
+      } catch (error) {
+        console.error('❌ ResetPassword: Erro ao limpar sessão:', error);
+      }
+    };
+    
+    clearSession();
+  }, []);
+  
+  // If no recovery tokens, redirect to auth with error message
+  if (!accessToken || !refreshToken) {
+    console.error('❌ ResetPassword: Tokens inválidos ou ausentes');
+    
+    toast({
+      title: "Link inválido ou expirado",
+      description: "O link de recuperação pode ter expirado. Por favor, solicite um novo link.",
+      variant: "destructive"
+    });
+    
     return <Navigate to="/auth" replace />;
   }
 
@@ -50,17 +116,22 @@ export default function ResetPassword() {
     setLoading(true);
     
     try {
-      console.log('ResetPassword: Setting session and updating password');
+      console.log('🔑 ResetPassword: Configurando sessão com tokens de recuperação');
+      console.log('🔑 ResetPassword: Access token presente:', !!accessToken);
+      console.log('🔑 ResetPassword: Refresh token presente:', !!refreshToken);
       
       // Set session with recovery tokens first
-      const { error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken
+      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken!,
+        refresh_token: refreshToken!
       });
       
       if (sessionError) {
+        console.error('❌ ResetPassword: Erro ao configurar sessão:', sessionError);
         throw new Error(sessionError.message);
       }
+      
+      console.log('✅ ResetPassword: Sessão configurada, atualizando senha');
       
       // Now update the password
       const { error: updateError } = await supabase.auth.updateUser({
@@ -68,8 +139,18 @@ export default function ResetPassword() {
       });
       
       if (updateError) {
+        console.error('❌ ResetPassword: Erro ao atualizar senha:', updateError);
         throw new Error(updateError.message);
       }
+      
+      console.log('✅ ResetPassword: Senha atualizada com sucesso!');
+      
+      // Limpar tokens do sessionStorage
+      sessionStorage.removeItem('recovery_access_token');
+      sessionStorage.removeItem('recovery_refresh_token');
+      sessionStorage.removeItem('recovery_type');
+      sessionStorage.removeItem('recovery_url');
+      console.log('✅ ResetPassword: Tokens limpos do sessionStorage');
       
       toast({
         title: "Senha redefinida!",
@@ -83,7 +164,7 @@ export default function ResetPassword() {
       }, 2000);
       
     } catch (error: any) {
-      console.error('ResetPassword: Error updating password:', error);
+      console.error('❌ ResetPassword: Erro no processo:', error);
       toast({
         title: "Erro ao redefinir senha",
         description: error.message?.includes("expired") 

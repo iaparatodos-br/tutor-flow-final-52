@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Calendar, Clock, Plus, User, AlertCircle } from "lucide-react";
+import { Calendar, Clock, Plus, User, AlertCircle, Baby } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useProfile } from "@/contexts/ProfileContext";
+import { formatInTimezone, formatDateBrazil, fromUserZonedTime, DEFAULT_TIMEZONE } from "@/utils/timezone";
 
 interface WorkingHour {
   id: string;
@@ -42,6 +44,12 @@ interface TimeSlot {
   reason?: string;
 }
 
+interface Dependent {
+  id: string;
+  name: string;
+  birth_date: string | null;
+}
+
 interface StudentScheduleRequestProps {
   teacherId: string;
 }
@@ -53,6 +61,9 @@ const DAYS_OF_WEEK = [
 
 export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProps) {
   const { toast } = useToast();
+  const { profile } = useProfile();
+  const studentTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+  const [teacherTimezone, setTeacherTimezone] = useState<string>(DEFAULT_TIMEZONE);
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>([]);
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([]);
   const [existingClasses, setExistingClasses] = useState<ExistingClass[]>([]);
@@ -70,10 +81,40 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
   const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<string>("");
+  
+  // Dependent selection state
+  const [dependents, setDependents] = useState<Dependent[]>([]);
+  const [selectedDependentId, setSelectedDependentId] = useState<string>("self");
 
   useEffect(() => {
     loadTeacherAvailability();
+    loadDependents();
   }, [teacherId]);
+
+  const loadDependents = async () => {
+    if (!teacherId || !profile?.id) return;
+    
+    console.log('🧒 Loading dependents for responsible:', profile.id, 'teacher:', teacherId);
+    
+    try {
+      const { data, error } = await supabase
+        .from('dependents')
+        .select('id, name, birth_date')
+        .eq('responsible_id', profile.id)
+        .eq('teacher_id', teacherId)
+        .order('name');
+      
+      if (error) {
+        console.error('Error loading dependents:', error);
+        return;
+      }
+      
+      console.log('🧒 Dependents loaded:', data);
+      setDependents(data || []);
+    } catch (error) {
+      console.error('Error loading dependents:', error);
+    }
+  };
 
   useEffect(() => {
     if (workingHours.length > 0) {
@@ -104,9 +145,10 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setAvailabilityBlocks(data?.availabilityBlocks || []);
       setExistingClasses(data?.existingClasses || []);
       setServices(data?.services || []);
+      setTeacherTimezone(data?.teacherTimezone || data?.timezone || DEFAULT_TIMEZONE);
       
       if (data?.services && data.services.length > 0) {
-        const defaultService = data.services.find((s: any) => s.is_default) || data.services[0];
+        const defaultService = data.services[0];
         setSelectedService(defaultService.id);
       }
     } catch (error) {
@@ -134,26 +176,31 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
     for (let day = 0; day < 7; day++) {
       const currentDate = new Date(weekStart);
       currentDate.setDate(weekStart.getDate() + day);
-      const dayOfWeek = currentDate.getDay();
+      
+      // Calculate date string in teacher's timezone to match working_hours day_of_week
+      const teacherDateStr = formatInTimezone(currentDate, 'yyyy-MM-dd', teacherTimezone);
+      const teacherDayOfWeek = parseInt(formatInTimezone(currentDate, 'e', teacherTimezone)) % 7; // date-fns 'e' is 1=Mon..7=Sun, convert
+      // Actually use 'i' for ISO day or calculate manually
+      const dayOfWeek = new Date(teacherDateStr + 'T12:00:00').getDay(); // safe: noon avoids DST edge
       
       // Find working hours for this day
       const dayWorkingHours = workingHours.filter(wh => wh.day_of_week === dayOfWeek);
       
       dayWorkingHours.forEach(workingHour => {
-        const startTime = new Date(currentDate);
+        // Interpret working_hours times in the TEACHER's timezone
         const [startHour, startMinute] = workingHour.start_time.split(':').map(Number);
-        startTime.setHours(startHour, startMinute, 0, 0);
-        
-        const endTime = new Date(currentDate);
         const [endHour, endMinute] = workingHour.end_time.split(':').map(Number);
-        endTime.setHours(endHour, endMinute, 0, 0);
+        
+        // Build UTC instants from teacher-local times
+        const startUTC = fromUserZonedTime(new Date(`${teacherDateStr}T${workingHour.start_time}`), teacherTimezone);
+        const endUTC = fromUserZonedTime(new Date(`${teacherDateStr}T${workingHour.end_time}`), teacherTimezone);
         
         // Generate 30-minute slots
-        const currentSlot = new Date(startTime);
-        while (currentSlot < endTime) {
+        const currentSlot = new Date(startUTC);
+        while (currentSlot < endUTC) {
           const slotEnd = new Date(currentSlot.getTime() + service.duration_minutes * 60000);
           
-          if (slotEnd <= endTime) {
+          if (slotEnd <= endUTC) {
             const isAvailable = checkSlotAvailability(currentSlot, service.duration_minutes);
             
             slots.push({
@@ -198,6 +245,10 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
     
     // Check against existing classes
     for (const existingClass of existingClasses) {
+      // Skip cancelled/completed classes - they don't occupy the time slot
+      if ((existingClass as any).status === 'cancelada' || (existingClass as any).status === 'concluida') {
+        continue;
+      }
       const classStart = new Date(existingClass.class_date);
       const classEnd = new Date(classStart.getTime() + existingClass.duration_minutes * 60000);
       
@@ -218,13 +269,29 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
 
     setSubmitting(true);
     try {
+      // Prepare payload with optional dependent_id
+      const payload: {
+        teacherId: string;
+        datetime: string;
+        serviceId: string;
+        notes: string;
+        dependent_id?: string;
+      } = {
+        teacherId,
+        datetime: selectedTimeSlot,
+        serviceId: selectedService,
+        notes
+      };
+      
+      // Add dependent_id if a dependent is selected (not "self")
+      if (selectedDependentId && selectedDependentId !== "self") {
+        payload.dependent_id = selectedDependentId;
+      }
+      
+      console.log('📤 Requesting class with payload:', payload);
+      
       const { error } = await supabase.functions.invoke('request-class', {
-        body: {
-          teacherId,
-          datetime: selectedTimeSlot,
-          serviceId: selectedService,
-          notes
-        }
+        body: payload
       });
 
       if (error) throw error;
@@ -237,6 +304,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setIsDialogOpen(false);
       setSelectedTimeSlot("");
       setNotes("");
+      setSelectedDependentId("self");
       
       // Reload data to update available slots
       loadTeacherAvailability();
@@ -254,18 +322,11 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
   };
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    return formatInTimezone(date, 'dd/MM/yyyy', studentTimezone);
   };
 
   const formatTime = (datetime: string) => {
-    return new Date(datetime).toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return formatInTimezone(new Date(datetime), 'HH:mm', studentTimezone);
   };
 
   const groupSlotsByDate = () => {
@@ -398,11 +459,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
             Object.entries(groupedSlots).map(([dateStr, slots]) => (
               <div key={dateStr} className="space-y-2">
                 <h4 className="font-medium text-sm">
-                  {new Date(dateStr).toLocaleDateString('pt-BR', {
-                    weekday: 'long',
-                    day: '2-digit',
-                    month: '2-digit'
-                  })}
+                  {formatInTimezone(new Date(dateStr), "EEEE, dd/MM", studentTimezone)}
                 </h4>
                 <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
                   {slots.map((slot, index) => (
@@ -445,12 +502,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                            <div>
                              <Label>Data e Horário</Label>
                              <p className="text-sm text-muted-foreground">
-                               {new Date(selectedTimeSlot).toLocaleDateString('pt-BR', {
-                                 weekday: 'long',
-                                 day: '2-digit',
-                                 month: '2-digit',
-                                 year: 'numeric'
-                               })} às {formatTime(selectedTimeSlot)} <span className="text-xs">(Horário de Brasília)</span>
+                               {formatInTimezone(new Date(selectedTimeSlot), "EEEE, dd/MM/yyyy", studentTimezone)} às {formatTime(selectedTimeSlot)} <span className="text-xs">(Seu fuso horário)</span>
                              </p>
                            </div>
                           
@@ -461,6 +513,37 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
                               {services.find(s => s.id === selectedService)?.duration_minutes}min
                             </p>
                           </div>
+                          
+                          {/* Dependent Selection - only show if user has dependents */}
+                          {dependents.length > 0 && (
+                            <div>
+                              <Label htmlFor="class-for">Para quem é a aula?</Label>
+                              <Select 
+                                value={selectedDependentId} 
+                                onValueChange={setSelectedDependentId}
+                              >
+                                <SelectTrigger id="class-for" className="mt-1">
+                                  <SelectValue placeholder="Selecione o aluno" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="self">
+                                    <div className="flex items-center gap-2">
+                                      <User className="h-4 w-4" />
+                                      <span>Para mim</span>
+                                    </div>
+                                  </SelectItem>
+                                  {dependents.map((dep) => (
+                                    <SelectItem key={dep.id} value={dep.id}>
+                                      <div className="flex items-center gap-2">
+                                        <Baby className="h-4 w-4" />
+                                        <span>{dep.name}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
                           
                           <div>
                             <Label htmlFor="notes">Observações (opcional)</Label>

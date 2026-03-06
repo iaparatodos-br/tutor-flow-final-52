@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { formatDateBrazil, formatDateTimeBrazil } from '@/utils/timezone';
 import { 
   BookOpen, 
   FileText, 
@@ -12,10 +13,12 @@ import {
   MessageSquare, 
   Calendar,
   Clock,
-  Edit3
+  Edit3,
+  Baby
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslation } from 'react-i18next';
+import { ClassReportPhotoGallery } from '@/components/ClassReportPhotoGallery';
 
 interface ClassReportViewProps {
   classId: string;
@@ -34,8 +37,16 @@ interface ClassReport {
 
 interface StudentFeedback {
   student_id: string;
+  dependent_id: string | null;
   feedback: string;
   student_name?: string;
+  dependent_name?: string;
+}
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
 }
 
 export function ClassReportView({ 
@@ -50,10 +61,34 @@ export function ClassReportView({
   const [feedbacks, setFeedbacks] = useState<StudentFeedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userDependents, setUserDependents] = useState<Dependent[]>([]);
 
   useEffect(() => {
     loadReport();
-  }, [classId]);
+    if (!isProfessor && profile?.id) {
+      loadUserDependents();
+    }
+  }, [classId, profile?.id, isProfessor]);
+
+  const loadUserDependents = async () => {
+    if (!profile?.id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('dependents')
+        .select('id, name, responsible_id')
+        .eq('responsible_id', profile.id);
+
+      if (error) {
+        console.error('Error loading user dependents:', error);
+        return;
+      }
+
+      setUserDependents(data || []);
+    } catch (err) {
+      console.error('Error loading user dependents:', err);
+    }
+  };
 
   const loadReport = async () => {
     if (!classId) return;
@@ -86,10 +121,10 @@ export function ClassReportView({
 
       setReport(reportData);
 
-      // Load individual feedbacks
+      // Load individual feedbacks with dependent_id
       const { data: feedbackData, error: feedbackError } = await supabase
         .from('class_report_feedbacks')
-        .select('student_id, feedback')
+        .select('student_id, dependent_id, feedback')
         .eq('report_id', reportData.id);
 
       if (feedbackError) {
@@ -97,8 +132,12 @@ export function ClassReportView({
       } else {
         // Get student names for feedbacks
         const studentIds = feedbackData?.map(f => f.student_id) || [];
-        let studentNames: { [key: string]: string } = {};
+        const dependentIds = feedbackData?.filter(f => f.dependent_id).map(f => f.dependent_id) || [];
         
+        let studentNames: { [key: string]: string } = {};
+        let dependentNames: { [key: string]: string } = {};
+        
+        // Fetch student names
         if (studentIds.length > 0) {
           const { data: students } = await supabase
             .from('profiles')
@@ -110,20 +149,42 @@ export function ClassReportView({
           });
         }
 
-        const mappedFeedbacks = feedbackData?.map(f => ({
+        // Fetch dependent names
+        if (dependentIds.length > 0) {
+          const { data: dependents } = await supabase
+            .from('dependents')
+            .select('id, name')
+            .in('id', dependentIds as string[]);
+          
+          dependents?.forEach(dep => {
+            dependentNames[dep.id] = dep.name;
+          });
+        }
+
+        const mappedFeedbacks: StudentFeedback[] = feedbackData?.map(f => ({
           student_id: f.student_id,
+          dependent_id: f.dependent_id,
           feedback: f.feedback,
-          student_name: studentNames[f.student_id] || t('view.studentLabel')
+          student_name: studentNames[f.student_id] || t('view.studentLabel'),
+          dependent_name: f.dependent_id ? dependentNames[f.dependent_id] : undefined
         })) || [];
 
         // Filter feedbacks based on user permissions
         let filteredFeedbacks = mappedFeedbacks;
         
         if (!isProfessor && profile?.id) {
-          // Students/guardians can only see their own feedback
-          filteredFeedbacks = mappedFeedbacks.filter(f => 
-            f.student_id === profile.id
-          );
+          // Students/guardians can only see:
+          // 1. Their own feedback (student_id matches)
+          // 2. Feedback for their dependents (dependent belongs to them)
+          filteredFeedbacks = mappedFeedbacks.filter(f => {
+            // Direct feedback for the student
+            if (f.student_id === profile.id && !f.dependent_id) return true;
+            
+            // Feedback for one of their dependents
+            if (f.dependent_id && userDependents.some(d => d.id === f.dependent_id)) return true;
+            
+            return false;
+          });
         }
 
         setFeedbacks(filteredFeedbacks);
@@ -136,6 +197,13 @@ export function ClassReportView({
       setLoading(false);
     }
   };
+
+  // Reload feedbacks when userDependents changes
+  useEffect(() => {
+    if (report && userDependents.length > 0 && !isProfessor) {
+      loadReport();
+    }
+  }, [userDependents]);
 
   const formatLinks = (text: string) => {
     if (!text) return text;
@@ -208,7 +276,7 @@ export function ClassReportView({
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                {new Date(report.created_at).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'pt-BR')}
+                {formatDateBrazil(report.created_at, undefined, profile?.timezone)}
               </Badge>
               {showEditButton && isProfessor && onEditReport && (
                 <Button
@@ -266,12 +334,15 @@ export function ClassReportView({
           {report.updated_at !== report.created_at && (
             <div className="text-xs text-muted-foreground">
               {t('view.updatedAt', { 
-                date: new Date(report.updated_at).toLocaleString(i18n.language === 'en' ? 'en-US' : 'pt-BR') 
+                date: formatDateTimeBrazil(report.updated_at, profile?.timezone) 
               })}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Photo Gallery */}
+      {report && <ClassReportPhotoGallery reportId={report.id} />}
 
       {/* Individual Feedbacks */}
       {feedbacks.length > 0 && (
@@ -284,10 +355,30 @@ export function ClassReportView({
           </CardHeader>
           <CardContent className="space-y-4">
             {feedbacks.map((feedback, index) => (
-              <div key={feedback.student_id} className="space-y-2">
+              <div key={`${feedback.student_id}-${feedback.dependent_id || 'self'}`} className="space-y-2">
                 {isProfessor && (
                   <div className="font-medium text-sm flex items-center gap-2">
-                    <Badge variant="secondary">{feedback.student_name}</Badge>
+                    {feedback.dependent_name ? (
+                      <>
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Baby className="h-3 w-3" />
+                          {feedback.dependent_name}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          (resp: {feedback.student_name})
+                        </span>
+                      </>
+                    ) : (
+                      <Badge variant="secondary">{feedback.student_name}</Badge>
+                    )}
+                  </div>
+                )}
+                {!isProfessor && feedback.dependent_name && (
+                  <div className="font-medium text-sm flex items-center gap-2">
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Baby className="h-3 w-3" />
+                      Feedback de {feedback.dependent_name}
+                    </Badge>
                   </div>
                 )}
                 <p className="text-sm bg-muted/50 p-3 rounded-lg whitespace-pre-wrap">

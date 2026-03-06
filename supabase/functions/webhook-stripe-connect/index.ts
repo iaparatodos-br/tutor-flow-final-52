@@ -187,7 +187,7 @@ serve(async (req) => {
             .from("pending_business_profiles")
             .select("*")
             .eq("stripe_connect_id", account.id)
-            .single();
+            .maybeSingle();
 
           if (!pendingError && pendingProfile) {
             // Criar na tabela definitiva
@@ -298,73 +298,173 @@ serve(async (req) => {
       }
 
       case 'invoice.paid': {
-        // NOVO: A fatura foi paga com sucesso
+        // A fatura foi paga com sucesso
         const paidInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice paid", { invoiceId: paidInvoice.id });
 
-        // Check if invoice was manually marked as paid (skip webhook processing)
-        const { data: existingInvoice } = await supabaseClient
-          .from('invoices')
-          .select('payment_origin')
-          .eq('stripe_invoice_id', paidInvoice.id)
-          .single();
+        // Buscar fatura existente - primeiro por stripe_invoice_id, fallback por payment_intent
+        let existingInvoice: any = null;
+        let invoiceLookupField = 'stripe_invoice_id';
+        let invoiceLookupValue = paidInvoice.id;
 
-        if (existingInvoice?.payment_origin === 'manual') {
+        const { data: byInvoiceId } = await supabaseClient
+          .from('invoices')
+          .select('id, payment_origin, payment_method, status, class_id')
+          .eq('stripe_invoice_id', paidInvoice.id)
+          .maybeSingle();
+
+        if (byInvoiceId) {
+          existingInvoice = byInvoiceId;
+        } else if (paidInvoice.payment_intent) {
+          // Fallback: buscar por payment_intent_id
+          const piId = typeof paidInvoice.payment_intent === 'string' 
+            ? paidInvoice.payment_intent 
+            : paidInvoice.payment_intent.id;
+          const { data: byPiId } = await supabaseClient
+            .from('invoices')
+            .select('id, payment_origin, payment_method, status, class_id')
+            .eq('stripe_payment_intent_id', piId)
+            .maybeSingle();
+          if (byPiId) {
+            existingInvoice = byPiId;
+            invoiceLookupField = 'stripe_payment_intent_id';
+            invoiceLookupValue = piId;
+          }
+        }
+
+        if (!existingInvoice) {
+          logStep("No matching invoice found for invoice.paid", { invoiceId: paidInvoice.id });
+          break;
+        }
+
+        if (existingInvoice.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: paidInvoice.id });
           break;
         }
 
+        if (['paga', 'cancelada'].includes(existingInvoice.status)) {
+          logStep("Invoice in terminal status, skipping invoice.paid", { status: existingInvoice.status });
+          break;
+        }
+
+        // Inferir payment_method: preservar existente ou detectar do Stripe
+        const inferredPaymentMethod = existingInvoice.payment_method 
+          || (paidInvoice.payment_settings?.payment_method_types?.[0]) 
+          || 'boleto';
+
         const { error: paidError } = await supabaseClient
           .from('invoices')
           .update({ 
-            status: 'paid',
+            status: 'paga',
             payment_origin: 'automatic',
+            payment_method: inferredPaymentMethod,
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', paidInvoice.id);
+          .eq('id', existingInvoice.id)
+          .in('status', ['pendente', 'vencida', 'falha_pagamento']); // Guard clause
 
         if (paidError) {
           logStep("Error updating invoice status to paid", paidError);
-          return new Response(JSON.stringify({ error: 'Failed to update invoice to paid' }), { 
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
+        } else {
+          logStep("Invoice marked as paid", { invoiceId: existingInvoice.id, paymentMethod: inferredPaymentMethod });
+          
+          // Auto-transition: If the invoice has a class_id and the class is awaiting payment, confirm it
+          if (existingInvoice.class_id) {
+            const { data: classData } = await supabaseClient
+              .from('classes')
+              .select('id, status')
+              .eq('id', existingInvoice.class_id)
+              .eq('status', 'aguardando_pagamento')
+              .maybeSingle();
+            
+            if (classData) {
+              const { error: classUpdateError } = await supabaseClient
+                .from('classes')
+                .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                .eq('id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              if (!classUpdateError) {
+                // Also update participants
+                await supabaseClient
+                  .from('class_participants')
+                  .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                  .eq('class_id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+                
+                logStep("Class auto-confirmed after payment", { classId: classData.id });
+              } else {
+                logStep("Error auto-confirming class", classUpdateError);
+              }
+            }
+          }
         }
-        logStep("Invoice marked as paid", { invoiceId: paidInvoice.id });
         break;
       }
 
       case 'invoice.payment_succeeded': {
-        // NOVO: Pagamento da fatura foi bem-sucedido
+        // Pagamento da fatura foi bem-sucedido
         const succeededInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice payment succeeded", { invoiceId: succeededInvoice.id });
 
-        // Check if invoice was manually marked as paid (skip webhook processing)
-        const { data: existingSucceeded } = await supabaseClient
-          .from('invoices')
-          .select('payment_origin')
-          .eq('stripe_invoice_id', succeededInvoice.id)
-          .single();
+        // Buscar fatura - primeiro por stripe_invoice_id, fallback por payment_intent
+        let existingSucceeded: any = null;
 
-        if (existingSucceeded?.payment_origin === 'manual') {
+        const { data: succByInvoiceId } = await supabaseClient
+          .from('invoices')
+          .select('id, payment_origin, payment_method, status')
+          .eq('stripe_invoice_id', succeededInvoice.id)
+          .maybeSingle();
+
+        if (succByInvoiceId) {
+          existingSucceeded = succByInvoiceId;
+        } else if (succeededInvoice.payment_intent) {
+          const piId = typeof succeededInvoice.payment_intent === 'string' 
+            ? succeededInvoice.payment_intent 
+            : succeededInvoice.payment_intent.id;
+          const { data: succByPi } = await supabaseClient
+            .from('invoices')
+            .select('id, payment_origin, payment_method, status')
+            .eq('stripe_payment_intent_id', piId)
+            .maybeSingle();
+          if (succByPi) existingSucceeded = succByPi;
+        }
+
+        if (!existingSucceeded) {
+          logStep("No matching invoice found for invoice.payment_succeeded", { invoiceId: succeededInvoice.id });
+          break;
+        }
+
+        if (existingSucceeded.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { invoiceId: succeededInvoice.id });
           break;
         }
 
+        if (['paga', 'cancelada'].includes(existingSucceeded.status)) {
+          logStep("Invoice in terminal status, skipping payment_succeeded", { status: existingSucceeded.status });
+          break;
+        }
+
+        // Preserve existing payment_method or infer from Stripe
+        const preservedPaymentMethod = existingSucceeded.payment_method 
+          || (succeededInvoice.payment_settings?.payment_method_types?.[0])
+          || 'boleto';
+
         const { error: succeededError } = await supabaseClient
           .from('invoices')
           .update({ 
-            status: 'paid',
+            status: 'paga',
             payment_origin: 'automatic',
-            payment_method: 'stripe_invoice',
+            payment_method: preservedPaymentMethod,
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', succeededInvoice.id);
+          .eq('id', existingSucceeded.id)
+          .in('status', ['pendente', 'vencida', 'falha_pagamento']); // Guard clause
 
         if (succeededError) {
           logStep("Error updating invoice payment succeeded", succeededError);
         } else {
-          logStep("Invoice payment succeeded processed", { invoiceId: succeededInvoice.id });
+          logStep("Invoice payment succeeded processed", { invoiceId: existingSucceeded.id, paymentMethod: preservedPaymentMethod });
         }
         break;
       }
@@ -377,13 +477,31 @@ serve(async (req) => {
           reason: failedInvoice.last_payment_error?.message 
         });
 
+        // Guard: check if invoice was manually confirmed before marking as failed
+        const { data: existingFailed } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', failedInvoice.id)
+          .maybeSingle();
+
+        if (existingFailed?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping payment_failed", { invoiceId: failedInvoice.id });
+          break;
+        }
+
+        if (existingFailed && ['paga', 'cancelada'].includes(existingFailed.status)) {
+          logStep("Invoice in terminal status, skipping payment_failed", { invoiceId: failedInvoice.id, status: existingFailed.status });
+          break;
+        }
+
         const { error: failedError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'falha_pagamento',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', failedInvoice.id);
+          .eq('stripe_invoice_id', failedInvoice.id)
+          .in('status', ['pendente', 'falha_pagamento']); // Guard clause
 
         if (failedError) {
           logStep("Error updating invoice payment failed", failedError);
@@ -398,20 +516,34 @@ serve(async (req) => {
         const uncollectibleInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice marked uncollectible", { invoiceId: uncollectibleInvoice.id });
 
+        // Guard: check if invoice was manually confirmed or already terminal
+        const { data: existingUncollectible } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', uncollectibleInvoice.id)
+          .maybeSingle();
+
+        if (existingUncollectible?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping marked_uncollectible", { invoiceId: uncollectibleInvoice.id });
+          break;
+        }
+
+        if (existingUncollectible && ['paga', 'cancelada'].includes(existingUncollectible.status)) {
+          logStep("Invoice in terminal status, skipping marked_uncollectible", { invoiceId: uncollectibleInvoice.id, status: existingUncollectible.status });
+          break;
+        }
+
         const { error: overdueError } = await supabaseClient
           .from('invoices')
           .update({ 
-            status: 'overdue',
+            status: 'vencida',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', uncollectibleInvoice.id);
+          .eq('stripe_invoice_id', uncollectibleInvoice.id)
+          .in('status', ['pendente', 'falha_pagamento']); // Guard clause
 
         if (overdueError) {
           logStep("Error updating invoice status to overdue", overdueError);
-          return new Response(JSON.stringify({ error: 'Failed to update invoice to overdue' }), { 
-            status: 500,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
         }
         logStep("Invoice marked as overdue", { invoiceId: uncollectibleInvoice.id });
         break;
@@ -422,13 +554,31 @@ serve(async (req) => {
         const voidedInvoice = eventObject as Stripe.Invoice;
         logStep("Invoice voided", { invoiceId: voidedInvoice.id });
 
+        // Guard: don't void invoices that are already paid or manually confirmed
+        const { data: existingVoided } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_invoice_id', voidedInvoice.id)
+          .maybeSingle();
+
+        if (existingVoided?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping void", { invoiceId: voidedInvoice.id });
+          break;
+        }
+
+        if (existingVoided?.status === 'paga') {
+          logStep("Invoice already paid, skipping void", { invoiceId: voidedInvoice.id });
+          break;
+        }
+
         const { error: voidError } = await supabaseClient
           .from('invoices')
           .update({ 
             status: 'cancelada',
             updated_at: new Date().toISOString()
           })
-          .eq('stripe_invoice_id', voidedInvoice.id);
+          .eq('stripe_invoice_id', voidedInvoice.id)
+          .neq('status', 'paga'); // Guard clause
 
         if (voidError) {
           logStep("Error updating invoice status to voided", voidError);
@@ -454,21 +604,27 @@ serve(async (req) => {
           .from('invoices')
           .select('payment_origin')
           .eq('stripe_payment_intent_id', paymentIntent.id)
-          .single();
+          .maybeSingle();
 
         if (existingPI?.payment_origin === 'manual') {
           logStep("Invoice already marked as manual payment, skipping webhook", { paymentIntentId: paymentIntent.id });
           break;
         }
 
-        // Atualizar fatura usando stripe_payment_intent_id
+        // #548 FIX: Do NOT wipe payment metadata (boleto_url, pix_qr_code, etc.)
+        // These fields are needed for receipt generation and audit trails.
+        // Only update status and payment info, preserving all payment details.
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
-            status: "paid",
+            status: "paga",
             payment_origin: "automatic",
             payment_method: paymentIntent.payment_method_types[0],
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            // Keep all payment metadata for receipts:
+            // pix_qr_code, pix_copy_paste, pix_expires_at,
+            // boleto_url, linha_digitavel, boleto_expires_at, barcode,
+            // stripe_hosted_invoice_url — ALL PRESERVED
           })
           .eq("stripe_payment_intent_id", paymentIntent.id)
           .select();
@@ -476,11 +632,38 @@ serve(async (req) => {
         if (error) {
           logStep("Error updating invoice from payment intent", error);
         } else if (updatedInvoices && updatedInvoices.length > 0) {
-          logStep("Invoice updated from payment intent", { 
+          logStep("Invoice updated from payment intent (v2.5: cleared temporary fields)", { 
             invoiceId: updatedInvoices[0].id,
             paymentIntentId: paymentIntent.id,
             paymentMethod: paymentIntent.payment_method_types[0]
           });
+          
+          // Auto-transition: If the invoice has a class_id and the class is awaiting payment, confirm it
+          const paidInvoice = updatedInvoices[0];
+          if (paidInvoice.class_id) {
+            const { data: classData } = await supabaseClient
+              .from('classes')
+              .select('id, status')
+              .eq('id', paidInvoice.class_id)
+              .eq('status', 'aguardando_pagamento')
+              .maybeSingle();
+            
+            if (classData) {
+              await supabaseClient
+                .from('classes')
+                .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                .eq('id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              await supabaseClient
+                .from('class_participants')
+                .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                .eq('class_id', classData.id)
+                .eq('status', 'aguardando_pagamento');
+              
+              logStep("Class auto-confirmed after payment intent", { classId: classData.id });
+            }
+          }
         } else {
           logStep("No invoice found for payment intent", { 
             paymentIntentId: paymentIntent.id,
@@ -500,6 +683,23 @@ serve(async (req) => {
           metadata: paymentIntent.metadata
         });
 
+        // Guard: check if invoice was manually confirmed
+        const { data: existingPIFailed } = await supabaseClient
+          .from('invoices')
+          .select('status, payment_origin')
+          .eq('stripe_payment_intent_id', paymentIntent.id)
+          .maybeSingle();
+
+        if (existingPIFailed?.payment_origin === 'manual') {
+          logStep("Invoice manually confirmed, skipping PI failed", { paymentIntentId: paymentIntent.id });
+          break;
+        }
+
+        if (existingPIFailed && ['paga', 'cancelada'].includes(existingPIFailed.status)) {
+          logStep("Invoice in terminal status, skipping PI failed", { paymentIntentId: paymentIntent.id, status: existingPIFailed.status });
+          break;
+        }
+
         const { data: updatedInvoices, error } = await supabaseClient
           .from("invoices")
           .update({
@@ -507,6 +707,7 @@ serve(async (req) => {
             updated_at: new Date().toISOString()
           })
           .eq("stripe_payment_intent_id", paymentIntent.id)
+          .in("status", ["pendente", "falha_pagamento"]) // Guard clause
           .select();
 
         if (error) {
@@ -541,8 +742,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR in webhook-stripe-connect", { message: errorMessage });
     
-    return new Response(JSON.stringify({ error: errorMessage }), {
-      status: 500,
+    // Return 200 to prevent Stripe retry storms on permanent errors
+    return new Response(JSON.stringify({ error: errorMessage, received: true }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }

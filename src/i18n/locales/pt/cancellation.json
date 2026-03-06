@@ -32,6 +32,27 @@
       "title": "Aula em Grupo",
       "description": "Ao cancelar, você será removido desta aula em grupo.",
       "chargeApplied": "A cobrança será aplicada normalmente."
+    },
+    "dependent": {
+      "title": "Aula de Dependente",
+      "description": "Você está cancelando a aula de {{dependentName}}.",
+      "chargeToResponsible": "A cobrança será direcionada ao responsável ({{responsibleName}})."
+    },
+    "experimental": {
+      "title": "Aula Experimental",
+      "noCharge": "Aulas experimentais não geram cobrança por cancelamento."
+    },
+    "prepaid": {
+      "title": "Aula Pré-paga",
+      "noCharge": "Esta aula já foi cobrada antecipadamente. Eventuais ajustes devem ser combinados diretamente com o professor."
+    },
+    "unpaid": {
+      "title": "Aula Gratuita",
+      "noCharge": "Esta aula não é cobrada, portanto não há impacto financeiro no cancelamento."
+    },
+    "pending": {
+      "title": "Aula Pendente",
+      "noCharge": "Esta aula ainda não foi confirmada pelo professor. Cancelamentos de aulas pendentes não geram cobrança."
     }
   },
   "fields": {

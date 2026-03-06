@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { format, parse } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { TimePicker } from '@/components/ui/time-picker';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -9,16 +12,32 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Plus, X, Users, Star, Repeat, DollarSign } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Plus, X, Users, Star, Repeat, DollarSign, Baby, User, Info, CalendarIcon, AlertTriangle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { FeatureGate } from '@/components/FeatureGate';
 import { useSubscription } from '@/contexts/SubscriptionContext';
+import { useProfile } from '@/contexts/ProfileContext';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { RRule, Frequency } from 'rrule';
+import { fromUserZonedTime, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 interface Student {
   id: string;
   name: string;
+}
+
+interface Dependent {
+  id: string;
+  name: string;
+  responsible_id: string;
+  responsible_name: string;
 }
 
 interface ClassService {
@@ -28,8 +47,17 @@ interface ClassService {
   duration_minutes: number;
 }
 
+// Participant selection: can be student or dependent
+interface ParticipantSelection {
+  student_id: string;
+  dependent_id?: string;
+  name: string;
+  type: 'student' | 'dependent';
+}
+
 interface ClassFormData {
   selectedStudents: string[];
+  selectedParticipants: ParticipantSelection[];
   service_id: string;
   class_date: string;
   time: string;
@@ -37,6 +65,7 @@ interface ClassFormData {
   notes: string;
   is_experimental: boolean;
   is_group_class: boolean;
+  is_paid_class: boolean;
   recurrence?: {
     frequency: 'weekly' | 'biweekly' | 'monthly';
     end_date?: string;
@@ -49,22 +78,30 @@ interface ClassFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   students: Student[];
+  dependents?: Dependent[];
   services: ClassService[];
   existingClasses: Array<{
     id: string;
     class_date: string;
     duration_minutes: number;
-    status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+    status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
+    is_template?: boolean;
+    recurrence_pattern?: any;
+    recurrence_end_date?: string;
   }>;
   onSubmit: (data: ClassFormData) => Promise<void>;
   loading?: boolean;
 }
 
-export function ClassForm({ open, onOpenChange, students, services, existingClasses, onSubmit, loading }: ClassFormProps) {
+export function ClassForm({ open, onOpenChange, students, dependents = [], services, existingClasses, onSubmit, loading }: ClassFormProps) {
   const { hasFeature, currentPlan } = useSubscription();
+  const { profile } = useProfile();
   const { t } = useTranslation('classes');
+  const userTimezone = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+  const [chargeTiming, setChargeTiming] = useState<'prepaid' | 'postpaid' | null>(null);
   const [formData, setFormData] = useState<ClassFormData>({
     selectedStudents: [],
+    selectedParticipants: [],
     service_id: '',
     class_date: '',
     time: '',
@@ -72,6 +109,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
     notes: '',
     is_experimental: false,
     is_group_class: false,
+    is_paid_class: true,
     recurrence: {
       frequency: 'weekly',
       is_infinite: false
@@ -80,18 +118,151 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
   const [showRecurrence, setShowRecurrence] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'date' | 'count' | 'infinite'>('date');
+  const [timeConflictWarning, setTimeConflictWarning] = useState(false);
   const [validationErrors, setValidationErrors] = useState({
     students: false,
     service: false,
     date: false,
     time: false,
-    pastDateTime: false,
-    timeConflict: false,
   });
+
+  // Load charge_timing from business_profiles
+  useEffect(() => {
+    if (profile?.id && open) {
+      supabase
+        .from('business_profiles')
+        .select('charge_timing')
+        .eq('user_id', profile.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          setChargeTiming((data?.charge_timing as 'prepaid' | 'postpaid') || null);
+        });
+    }
+  }, [profile?.id, open]);
+
+  // Real-time conflict detection via useEffect
+  useEffect(() => {
+    if (!formData.class_date || !formData.time) {
+      setTimeConflictWarning(false);
+      return;
+    }
+
+    const classDateTime = fromUserZonedTime(new Date(`${formData.class_date}T${formData.time}`), userTimezone);
+
+    // Get duration from selected service or use form value for unpaid classes
+    let duration = !formData.is_paid_class && !formData.service_id
+      ? formData.duration_minutes 
+      : 60;
+    
+    if (formData.service_id) {
+      const selectedService = services.find(s => s.id === formData.service_id);
+      if (selectedService) {
+        duration = selectedService.duration_minutes;
+      }
+    }
+
+    // Build expanded list including virtual instances from recurrence templates
+    const expandedClasses = [...existingClasses];
+    
+    existingClasses.forEach(ec => {
+      if (ec.is_template && ec.recurrence_pattern && ec.status !== 'cancelada') {
+        const pattern = ec.recurrence_pattern;
+        const templateDate = new Date(ec.class_date);
+        const twoMonthsLater = new Date(templateDate);
+        twoMonthsLater.setMonth(twoMonthsLater.getMonth() + 2);
+        
+        const endLimit = ec.recurrence_end_date 
+          ? new Date(Math.min(new Date(ec.recurrence_end_date).getTime(), twoMonthsLater.getTime()))
+          : twoMonthsLater;
+
+        const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY 
+          : pattern.frequency === 'biweekly' ? Frequency.WEEKLY 
+          : pattern.frequency === 'monthly' ? Frequency.MONTHLY 
+          : Frequency.WEEKLY;
+        const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+
+        try {
+          const rule = new RRule({ freq, interval, dtstart: templateDate, until: endLimit });
+          const occurrences = rule.all();
+          occurrences.forEach(date => {
+            if (date.getTime() === templateDate.getTime()) return;
+            expandedClasses.push({
+              id: `${ec.id}_virtual_${date.getTime()}`,
+              class_date: date.toISOString(),
+              duration_minutes: ec.duration_minutes,
+              status: 'confirmada',
+            });
+          });
+        } catch (e) {
+          console.warn('Error generating virtual instances for conflict check:', e);
+        }
+      }
+    });
+
+    // Generate dates for the new class if it's recurrent
+    const newClassDates: Date[] = [classDateTime];
+    if (showRecurrence && formData.recurrence?.frequency) {
+      const freq = formData.recurrence.frequency === 'weekly' ? Frequency.WEEKLY
+        : formData.recurrence.frequency === 'biweekly' ? Frequency.WEEKLY
+        : Frequency.MONTHLY;
+      const interval = formData.recurrence.frequency === 'biweekly' ? 2 : 1;
+      const twoMonthsFromNow = new Date(classDateTime);
+      twoMonthsFromNow.setMonth(twoMonthsFromNow.getMonth() + 2);
+
+      let untilDate = twoMonthsFromNow;
+      if (formData.recurrence.end_date) {
+        untilDate = new Date(Math.min(new Date(formData.recurrence.end_date).getTime(), twoMonthsFromNow.getTime()));
+      }
+
+      try {
+        const rule = new RRule({ freq, interval, dtstart: classDateTime, until: untilDate, count: formData.recurrence.occurrences });
+        const futureOccurrences = rule.all().filter(d => d.getTime() !== classDateTime.getTime());
+        newClassDates.push(...futureOccurrences);
+      } catch (e) {
+        console.warn('Error generating new recurrence dates for conflict check:', e);
+      }
+    }
+
+    // Check each new class date against expanded existing classes
+    let hasConflict = false;
+    for (const newDate of newClassDates) {
+      const newEnd = new Date(newDate.getTime() + (duration * 60 * 1000));
+      
+      const conflict = expandedClasses.some(existingClass => {
+        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') return false;
+        if ((existingClass as any).is_group_class && (existingClass as any).participants) {
+          const activeParticipants = (existingClass as any).participants.filter(
+            (p: any) => p.status === 'pendente' || p.status === 'confirmada'
+          );
+          if (activeParticipants.length === 0) return false;
+        }
+        if (existingClass.is_template) return false;
+        
+        const existingStart = new Date(existingClass.class_date);
+        const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
+        
+        return (newDate < existingEnd && newEnd > existingStart);
+      });
+      
+      if (conflict) {
+        hasConflict = true;
+        break;
+      }
+    }
+
+    setTimeConflictWarning(hasConflict);
+  }, [
+    formData.class_date, formData.time, formData.service_id, formData.is_paid_class,
+    formData.duration_minutes, showRecurrence, formData.recurrence, existingClasses, services
+  ]);
+
+  // Recurrence blocking: prepaid + paid class = no recurrence
+  const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class;
 
   const resetForm = () => {
     setFormData({
       selectedStudents: [],
+      selectedParticipants: [],
       service_id: '',
       class_date: '',
       time: '',
@@ -99,6 +270,7 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
       notes: '',
       is_experimental: false,
       is_group_class: false,
+      is_paid_class: true,
       recurrence: {
         frequency: 'weekly',
         is_infinite: false
@@ -106,92 +278,98 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
     });
     setShowRecurrence(false);
     setRecurrenceType('date');
-    setValidationErrors({ students: false, service: false, date: false, time: false, pastDateTime: false, timeConflict: false });
+    setValidationErrors({ students: false, service: false, date: false, time: false });
+    setTimeConflictWarning(false);
   };
 
+  // Handle student selection
   const handleStudentSelection = (studentId: string, checked: boolean) => {
     setFormData(prev => {
-      const selectedStudents = checked
-        ? [...prev.selectedStudents, studentId]
-        : prev.selectedStudents.filter(id => id !== studentId);
+      const student = students.find(s => s.id === studentId);
+      if (!student) return prev;
+
+      let newParticipants: ParticipantSelection[];
+      let newSelectedStudents: string[];
+
+      if (checked) {
+        newParticipants = [...prev.selectedParticipants, {
+          student_id: studentId,
+          name: student.name,
+          type: 'student' as const
+        }];
+        newSelectedStudents = [...prev.selectedStudents, studentId];
+      } else {
+        newParticipants = prev.selectedParticipants.filter(
+          p => !(p.student_id === studentId && p.type === 'student')
+        );
+        newSelectedStudents = prev.selectedStudents.filter(id => id !== studentId);
+      }
 
       return {
         ...prev,
-        selectedStudents,
-        is_group_class: selectedStudents.length > 1
+        selectedStudents: newSelectedStudents,
+        selectedParticipants: newParticipants,
+        is_group_class: newParticipants.length > 1
       };
     });
     setValidationErrors(prev => ({ ...prev, students: false }));
   };
 
+  // Handle dependent selection
+  const handleDependentSelection = (dependent: Dependent, checked: boolean) => {
+    setFormData(prev => {
+      let newParticipants: ParticipantSelection[];
+
+      if (checked) {
+        newParticipants = [...prev.selectedParticipants, {
+          student_id: dependent.responsible_id,
+          dependent_id: dependent.id,
+          name: dependent.name,
+          type: 'dependent' as const
+        }];
+      } else {
+        newParticipants = prev.selectedParticipants.filter(
+          p => !(p.dependent_id === dependent.id)
+        );
+      }
+
+      return {
+        ...prev,
+        selectedParticipants: newParticipants,
+        is_group_class: newParticipants.length > 1
+      };
+    });
+    setValidationErrors(prev => ({ ...prev, students: false }));
+  };
+
+  // Check if a student is selected
+  const isStudentSelected = (studentId: string) => {
+    return formData.selectedParticipants.some(
+      p => p.student_id === studentId && p.type === 'student'
+    );
+  };
+
+  // Check if a dependent is selected
+  const isDependentSelected = (dependentId: string) => {
+    return formData.selectedParticipants.some(p => p.dependent_id === dependentId);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Check if it's a group class (more than 1 student) and user is on free plan
-    if (formData.selectedStudents.length > 1 && currentPlan?.slug === 'free') {
+    // Check if it's a group class (more than 1 participant) and user is on free plan
+    if (formData.selectedParticipants.length > 1 && currentPlan?.slug === 'free') {
       toast.error(t('groupClassNote'));
       return;
     }
 
     const errors = {
-      students: formData.selectedStudents.length === 0,
-      service: !formData.is_experimental && !formData.service_id,
+      students: formData.selectedParticipants.length === 0,
+      service: formData.is_paid_class && !formData.service_id,
       date: !formData.class_date,
       time: !formData.time,
-      pastDateTime: false,
-      timeConflict: false,
+      duration: !formData.is_paid_class && !formData.service_id && (formData.duration_minutes < 15 || formData.duration_minutes > 480),
     };
-
-    // Check if date/time is in the past
-    if (formData.class_date && formData.time) {
-      const classDateTime = new Date(`${formData.class_date}T${formData.time}`);
-      const now = new Date();
-      if (classDateTime <= now) {
-        errors.pastDateTime = true;
-      }
-
-      // Get duration from selected service or use form value for experimental classes
-      let duration = formData.is_experimental 
-        ? formData.duration_minutes 
-        : 60; // Default fallback
-      
-      if (!formData.is_experimental && formData.service_id) {
-        const selectedService = services.find(s => s.id === formData.service_id);
-        if (selectedService) {
-          duration = selectedService.duration_minutes;
-        }
-      }
-
-      // Check for time conflicts with existing classes
-      const classEnd = new Date(classDateTime.getTime() + (duration * 60 * 1000));
-      
-      const hasConflict = existingClasses.some(existingClass => {
-        // Skip cancelled or completed classes
-        if (existingClass.status === 'cancelada' || existingClass.status === 'concluida') {
-          return false;
-        }
-        
-        // For group classes, check if there are active participants
-        if ((existingClass as any).is_group_class && (existingClass as any).participants) {
-          const activeParticipants = (existingClass as any).participants.filter(
-            (p: any) => p.status === 'pendente' || p.status === 'confirmada'
-          );
-          if (activeParticipants.length === 0) {
-            return false; // No active participants = no conflict
-          }
-        }
-        
-        const existingStart = new Date(existingClass.class_date);
-        const existingEnd = new Date(existingStart.getTime() + (existingClass.duration_minutes * 60 * 1000));
-        
-        // Check if times overlap
-        return (classDateTime < existingEnd && classEnd > existingStart);
-      });
-      
-      if (hasConflict) {
-        errors.timeConflict = true;
-      }
-    }
 
     setValidationErrors(errors);
 
@@ -199,12 +377,12 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
       return;
     }
 
-    // Get duration from selected service or use form value for experimental classes
-    let finalDuration = formData.is_experimental 
+    // Get duration from selected service or use form value for unpaid classes
+    let finalDuration = !formData.is_paid_class && !formData.service_id
       ? formData.duration_minutes 
       : 60; // Default fallback
     
-    if (!formData.is_experimental && formData.service_id) {
+    if (formData.service_id) {
       const selectedService = services.find(s => s.id === formData.service_id);
       if (selectedService) {
         finalDuration = selectedService.duration_minutes;
@@ -231,9 +409,11 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
     }
   };
 
-  const selectedStudentNames = formData.selectedStudents
-    .map(id => students.find(s => s.id === id)?.name)
-    .filter(Boolean);
+  // Get selected participant names for display
+  const selectedParticipantNames = formData.selectedParticipants.map(p => ({
+    name: p.name,
+    type: p.type
+  }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -257,43 +437,87 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                 {t('selectStudentsDescription')}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {students.length === 0 ? (
+            <CardContent className="space-y-4">
+              {students.length === 0 && dependents.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {t('noStudentsRegistered')}
                 </p>
               ) : (
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {students.map((student) => (
-                    <div key={student.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={student.id}
-                        checked={formData.selectedStudents.includes(student.id)}
-                        onCheckedChange={(checked) =>
-                          handleStudentSelection(student.id, checked as boolean)
-                        }
-                      />
-                      <Label
-                        htmlFor={student.id}
-                        className="text-sm font-normal cursor-pointer flex-1"
-                      >
-                        {student.name}
+                <div className="space-y-4 max-h-60 overflow-y-auto">
+                  {/* Regular Students Section */}
+                  {students.length > 0 && (
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('participantGroups.students')}
                       </Label>
+                      {students.map((student) => (
+                        <div key={student.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`student-${student.id}`}
+                            checked={isStudentSelected(student.id)}
+                            onCheckedChange={(checked) =>
+                              handleStudentSelection(student.id, checked as boolean)
+                            }
+                          />
+                          <Label
+                            htmlFor={`student-${student.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1"
+                          >
+                            {student.name}
+                          </Label>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {/* Dependents Section */}
+                  {dependents.length > 0 && (
+                    <div className="space-y-2">
+                      {students.length > 0 && <Separator className="my-3" />}
+                      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {t('participantGroups.dependents')}
+                      </Label>
+                      {dependents.map((dependent) => (
+                        <div key={dependent.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`dependent-${dependent.id}`}
+                            checked={isDependentSelected(dependent.id)}
+                            onCheckedChange={(checked) =>
+                              handleDependentSelection(dependent, checked as boolean)
+                            }
+                          />
+                          <Label
+                            htmlFor={`dependent-${dependent.id}`}
+                            className="text-sm font-normal cursor-pointer flex-1 flex items-center gap-1.5"
+                          >
+                            <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                            <span>{dependent.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              ({t('participantGroups.childOf')} {dependent.responsible_name})
+                            </span>
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {formData.selectedStudents.length > 0 && (
+              {formData.selectedParticipants.length > 0 && (
                 <div className="mt-3 pt-3 border-t">
                   <div className="flex flex-wrap gap-1">
-                    {selectedStudentNames.map((name, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {name}
-                      </Badge>
-                    ))}
+                      {selectedParticipantNames.map((participant, index) => (
+                        <Badge 
+                          key={index} 
+                          variant={participant.type === 'dependent' ? 'dependent' : 'secondary'} 
+                          className="text-xs"
+                        >
+                          {participant.type === 'dependent' && <Baby className="h-3 w-3 mr-1" />}
+                          {participant.name}
+                        </Badge>
+                      ))}
                   </div>
-                   {formData.selectedStudents.length > 1 && currentPlan?.slug === 'free' && (
+                   {formData.selectedParticipants.length > 1 && currentPlan?.slug === 'free' && (
                      <Badge variant="destructive" className="mt-2">
                        <Users className="h-3 w-3 mr-1" />
                        {t('groupClassPremium')}
@@ -316,76 +540,77 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
             </CardContent>
           </Card>
 
-          {/* Class Type Options */}
-          <Card>
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg">{t('classType')}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="experimental"
-                  checked={formData.is_experimental}
-                  onCheckedChange={(checked) => {
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      is_experimental: checked as boolean,
-                      service_id: checked ? '' : prev.service_id, // Clear service if experimental
-                      recurrence: checked ? undefined : prev.recurrence, // Clear recurrence if experimental
-                      duration_minutes: checked ? 60 : prev.duration_minutes // Reset to default when experimental
-                    }));
-                    // Reset recurrence UI state when marking as experimental
-                    if (checked) {
-                      setShowRecurrence(false);
-                      setRecurrenceType('date');
-                    }
-                  }}
-                />
-                <Label htmlFor="experimental" className="flex items-center gap-2 cursor-pointer">
-                  <Star className="h-4 w-4 text-warning" />
-                  {t('experimental')}
-                </Label>
-              </div>
-              {formData.is_experimental && (
-                <>
-                  <p className="text-sm text-muted-foreground ml-6">
-                    {t('experimentalNote')}
-                  </p>
-                  <Separator className="my-4" />
-                  <div className="space-y-2">
-                    <Label htmlFor="experimental-duration">
-                      {t('fields.duration')} *
-                    </Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="experimental-duration"
-                        type="number"
-                        min="15"
-                        max="480"
-                        step="15"
-                        value={formData.duration_minutes}
-                        onChange={(e) => {
-                          const value = Math.max(15, Math.min(480, parseInt(e.target.value) || 60));
-                          setFormData(prev => ({ 
-                            ...prev, 
-                            duration_minutes: value
-                          }));
-                        }}
-                        className="w-32"
-                      />
-                      <span className="text-sm text-muted-foreground">minutos</span>
-                    </div>
+          {/* Paid Class Toggle */}
+          <div className="flex items-center justify-between rounded-lg border bg-card p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="is-paid-class" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                {t('isPaidClass')}
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                {t('isPaidClassDescription')}
+              </p>
+            </div>
+            <Switch
+              id="is-paid-class"
+              checked={formData.is_paid_class}
+              onCheckedChange={(checked) => {
+                setFormData(prev => ({ 
+                  ...prev, 
+                  is_paid_class: checked,
+                  service_id: checked ? prev.service_id : '',
+                  is_experimental: false,
+                }));
+                if (checked && chargeTiming === 'prepaid' && showRecurrence) {
+                  setShowRecurrence(false);
+                }
+              }}
+            />
+          </div>
+
+          {/* Duration selector for unpaid classes without service */}
+          {!formData.is_paid_class && !formData.service_id && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <Label htmlFor="unpaid-duration">
+                    {t('fields.duration')} *
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="unpaid-duration"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={3}
+                      value={formData.duration_minutes}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        if (raw === "") {
+                          setFormData(prev => ({ ...prev, duration_minutes: 0 }));
+                          return;
+                        }
+                        setFormData(prev => ({ ...prev, duration_minutes: parseInt(raw) }));
+                      }}
+                      className={`w-32 ${formData.duration_minutes < 15 || formData.duration_minutes > 480 ? 'border-destructive' : ''}`}
+                    />
+                    <span className="text-sm text-muted-foreground">minutos</span>
+                  </div>
+                  {formData.duration_minutes < 15 || formData.duration_minutes > 480 ? (
+                    <p className="text-xs text-destructive">
+                      Duração deve ser entre 15 e 480 minutos
+                    </p>
+                  ) : (
                     <p className="text-xs text-muted-foreground">
                       Duração entre 15 e 480 minutos
                     </p>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-          {/* Service Selection */}
-          {!formData.is_experimental && (
+          {/* Service Selection - only for paid classes */}
+          {formData.is_paid_class && (
             <Card>
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -482,51 +707,80 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="date">{t('fields.date')} *</Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.class_date}
-                onChange={(e) => {
-                  setFormData(prev => ({ ...prev, class_date: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, date: false, pastDateTime: false, timeConflict: false }));
-                }}
-                className={validationErrors.date || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
-                required
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="date"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !formData.class_date && "text-muted-foreground",
+                      validationErrors.date && "border-destructive",
+                      timeConflictWarning && !validationErrors.date && "border-amber-500"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                    {formData.class_date
+                      ? format(parse(formData.class_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                      : "Selecione a data"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={formData.class_date ? parse(formData.class_date, 'yyyy-MM-dd', new Date()) : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        setFormData(prev => ({ ...prev, class_date: format(date, 'yyyy-MM-dd') }));
+                        setValidationErrors(prev => ({ ...prev, date: false }));
+                      }
+                    }}
+                    locale={ptBR}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>
               <Label htmlFor="time">{t('fields.time')} * <span className="text-xs text-muted-foreground">{t('brasilia_timezone')}</span></Label>
-              <Input
+              <TimePicker
                 id="time"
-                type="time"
                 value={formData.time}
-                onChange={(e) => {
-                  setFormData(prev => ({ ...prev, time: e.target.value }));
-                  setValidationErrors(prev => ({ ...prev, time: false, pastDateTime: false, timeConflict: false }));
+                onChange={(val) => {
+                  setFormData(prev => ({ ...prev, time: val }));
+                  setValidationErrors(prev => ({ ...prev, time: false }));
                 }}
-                className={validationErrors.time || validationErrors.pastDateTime || validationErrors.timeConflict ? "border-destructive" : ""}
+                className={validationErrors.time ? "border-destructive" : timeConflictWarning ? "border-amber-500" : ""}
                 required
               />
             </div>
           </div>
 
-          {validationErrors.pastDateTime && (
-            <p className="text-sm text-destructive">
-              {t('pastDateTimeError')}
-            </p>
+          {/* Past date warning (informative, not blocking) */}
+          {formData.class_date && formData.time && new Date(`${formData.class_date}T${formData.time}`) < new Date() && (
+            <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <Info className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700 dark:text-amber-400">
+                {t('pastDateTimeWarning')}
+              </AlertDescription>
+            </Alert>
           )}
           
-          {validationErrors.timeConflict && (
-            <p className="text-sm text-destructive">
-              {t('timeConflictError')}
-            </p>
+          {timeConflictWarning && (
+            <Alert variant="default" className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700 dark:text-amber-400">
+                {t('timeConflictWarning')}
+              </AlertDescription>
+            </Alert>
           )}
 
 
           {/* Recurrence */}
           {!formData.is_experimental && (
-            <Card>
+            <Card className={isRecurrenceBlocked ? "opacity-60" : ""}>
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -535,25 +789,41 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
                       {t('recurrence')}
                     </CardTitle>
                     <CardDescription>
-                      {t('recurrenceDescription')}
+                      {isRecurrenceBlocked
+                        ? t('recurrenceBlockedPrepaid')
+                        : t('recurrenceDescription')}
                     </CardDescription>
                   </div>
-                  <Checkbox
-                    checked={showRecurrence}
-                    onCheckedChange={(checked) => {
-                      setShowRecurrence(checked as boolean);
-                      // Initialize recurrence with default frequency when enabling
-                      if (checked && !formData.recurrence?.frequency) {
-                        setFormData(prev => ({
-                          ...prev,
-                          recurrence: {
-                            frequency: 'weekly',
-                            is_infinite: false
-                          }
-                        }));
-                      }
-                    }}
-                  />
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div>
+                          <Checkbox
+                            checked={showRecurrence && !isRecurrenceBlocked}
+                            disabled={isRecurrenceBlocked}
+                            onCheckedChange={(checked) => {
+                              if (isRecurrenceBlocked) return;
+                              setShowRecurrence(checked as boolean);
+                              if (checked && !formData.recurrence?.frequency) {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  recurrence: {
+                                    frequency: 'weekly',
+                                    is_infinite: false
+                                  }
+                                }));
+                              }
+                            }}
+                          />
+                        </div>
+                      </TooltipTrigger>
+                      {isRecurrenceBlocked && (
+                        <TooltipContent>
+                          <p>{t('recurrenceBlockedPrepaid')}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </CardHeader>
               {showRecurrence && (
@@ -622,18 +892,38 @@ export function ClassForm({ open, onOpenChange, students, services, existingClas
 
                   {recurrenceType === 'date' && (
                     <div>
-                      <Label htmlFor="end_date">{t('fields.endDate')}</Label>
-                      <Input
-                        id="end_date"
-                        type="date"
-                        value={formData.recurrence?.end_date || ''}
-                        onChange={(e) =>
-                          setFormData(prev => ({
-                            ...prev,
-                            recurrence: { ...prev.recurrence, end_date: e.target.value }
-                          }))
-                        }
-                      />
+                      <Label>{t('fields.endDate')}</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal h-10",
+                              !formData.recurrence?.end_date && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 opacity-60" />
+                            {formData.recurrence?.end_date
+                              ? format(parse(formData.recurrence.end_date, 'yyyy-MM-dd', new Date()), "dd 'de' MMMM, yyyy", { locale: ptBR })
+                              : "Selecione a data"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={formData.recurrence?.end_date ? parse(formData.recurrence.end_date, 'yyyy-MM-dd', new Date()) : undefined}
+                            onSelect={(date) => {
+                              if (date) setFormData(prev => ({
+                                ...prev,
+                                recurrence: { ...prev.recurrence, end_date: format(date, 'yyyy-MM-dd') }
+                              }));
+                            }}
+                            locale={ptBR}
+                            initialFocus
+                            className="p-3 pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   )}
 

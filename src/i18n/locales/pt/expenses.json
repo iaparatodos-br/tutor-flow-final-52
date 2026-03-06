@@ -77,5 +77,28 @@
     "register": "Cadastrar",
     "update": "Atualizar",
     "saving": "Salvando..."
+  },
+  "categoryModal": {
+    "newTitle": "Nova Categoria de Despesa",
+    "editTitle": "Editar Categoria",
+    "name": "Nome",
+    "namePlaceholder": "Nome da categoria",
+    "nameRequired": "Nome é obrigatório",
+    "color": "Cor",
+    "preview": "Prévia",
+    "previewPlaceholder": "Nome da categoria",
+    "created": "Categoria criada com sucesso",
+    "updated": "Categoria atualizada com sucesso",
+    "saveError": "Erro ao salvar categoria"
+  },
+  "categoryManager": {
+    "title": "Gerenciar Categorias",
+    "newCategory": "Nova Categoria",
+    "default": "padrão",
+    "deleted": "Categoria excluída com sucesso",
+    "deleteError": "Erro ao excluir categoria",
+    "confirmDeleteTitle": "Excluir categoria?",
+    "confirmDeleteDescription": "A categoria \"{{name}}\" será excluída permanentemente. Despesas já cadastradas com essa categoria não serão afetadas.",
+    "deleteAction": "Excluir"
   }
 }

@@ -11,10 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle } from 'lucide-react';
+import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle, Baby } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
 import { useTranslation } from 'react-i18next';
+import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
 // Configure moment to Portuguese
 moment.locale('pt-br');
@@ -22,7 +23,9 @@ const localizer = momentLocalizer(moment);
 
 export interface ClassParticipant {
   student_id: string;
-  status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  dependent_id?: string | null;
+  dependent_name?: string | null;
+  status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   student: {
     name: string;
     email: string;
@@ -38,7 +41,7 @@ export interface CalendarClass {
   title: string;
   start: Date;
   end: Date;
-  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida';
+  status: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
   student_id?: string;
   student: {
     name: string;
@@ -52,6 +55,13 @@ export interface CalendarClass {
   class_template_id?: string;
   recurrence_end_date?: string | null;
   has_report?: boolean;
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
+  is_paid_class?: boolean;
+  teacher_id?: string;
+  service_id?: string;
+  class_date?: string;
+  duration_minutes?: number;
 }
 
 export interface AvailabilityBlock {
@@ -77,7 +87,7 @@ interface CalendarViewProps {
   classes: CalendarClass[];
   availabilityBlocks?: AvailabilityBlock[];
   isProfessor: boolean;
-  onConfirmClass?: (classId: string) => void;
+  onConfirmClass?: (classId: string, isPaidClass: boolean) => void;
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onEditReport?: (classData: CalendarClass) => void;
@@ -87,6 +97,7 @@ interface CalendarViewProps {
 export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const { t } = useTranslation('classes');
+  const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
   const [view, setView] = useState<View>('month');
   const [date, setDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarClass | AvailabilityBlock | null>(null);
@@ -132,10 +143,11 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
     // Handle class events
     const classEvent = event as CalendarClass;
     const statusColors = {
-      pendente: 'hsl(var(--warning))',
-      confirmada: 'hsl(var(--primary))',
-      cancelada: 'hsl(var(--destructive))',
-      concluida: 'hsl(var(--success))'
+      pendente: 'hsl(38 92% 50%)',
+      confirmada: 'hsl(217 91% 60%)',
+      cancelada: 'hsl(215 16% 47%)',
+      concluida: 'hsl(160 84% 39%)',
+      aguardando_pagamento: 'hsl(263 70% 50%)'
     };
 
     let backgroundColor = statusColors[classEvent.status];
@@ -172,20 +184,21 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
   };
 
   const formatEventTime = (start: Date, end: Date) => {
-    return `${moment(start).format('HH:mm')} - ${moment(end).format('HH:mm')}`;
+    return `${formatInTimezone(start, 'HH:mm', userTimezone)} - ${formatInTimezone(end, 'HH:mm', userTimezone)}`;
   };
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pendente: { label: t('status.pending'), variant: "secondary" as const },
-      confirmada: { label: t('status.confirmed'), variant: "default" as const },
-      cancelada: { label: t('status.cancelled'), variant: "destructive" as const },
-      concluida: { label: t('status.completed'), variant: "outline" as const }
+      pendente: { label: t('status.pending'), variant: "secondary" as const, className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-transparent" },
+      confirmada: { label: t('status.confirmed'), variant: "secondary" as const, className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-transparent" },
+      cancelada: { label: t('status.cancelled'), variant: "secondary" as const, className: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-transparent" },
+      concluida: { label: t('status.completed'), variant: "secondary" as const, className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-transparent" },
+      aguardando_pagamento: { label: t('status.awaitingPayment'), variant: "secondary" as const, className: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400 border-transparent" }
     };
     
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pendente;
     return (
-      <Badge variant={config.variant}>
+      <Badge variant={config.variant} className={config.className}>
         {config.label}
       </Badge>
     );
@@ -247,7 +260,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                 monthHeaderFormat: 'MMMM YYYY',
                 dayHeaderFormat: 'dddd, DD/MM',
                 dayRangeHeaderFormat: ({ start, end }) =>
-                  `${moment(start).format('DD/MM')} - ${moment(end).format('DD/MM')}`
+                  `${formatInTimezone(start, 'dd/MM', userTimezone)} - ${formatInTimezone(end, 'dd/MM', userTimezone)}`
               }}
             />
           </div>
@@ -288,7 +301,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                      <span>{formatInTimezone(selectedEvent.start, 'EEEE, dd/MM/yyyy', userTimezone)}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -332,7 +345,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                      <span>{moment(selectedEvent.start).format('dddd, DD/MM/YYYY')}</span>
+                      <span>{formatInTimezone(selectedEvent.start, 'EEEE, dd/MM/yyyy', userTimezone)}</span>
                     </div>
                     
                     <div className="flex items-center gap-2">
@@ -359,8 +372,19 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                             )}
                           >
                             <div>
-                              <div className="font-medium">{participant.student.name}</div>
-                              <div className="text-muted-foreground text-xs">{participant.student.email}</div>
+                              <div className="font-medium flex items-center gap-1.5">
+                                {participant.dependent_id && participant.dependent_name && (
+                                  <Baby className="h-3.5 w-3.5 text-purple-600 flex-shrink-0" />
+                                )}
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? participant.dependent_name 
+                                  : participant.student.name}
+                              </div>
+                              <div className="text-muted-foreground text-xs">
+                                {participant.dependent_id && participant.dependent_name 
+                                  ? `(Responsável: ${participant.student.name})`
+                                  : participant.student.email}
+                              </div>
                             </div>
                             
                             {/* Status Badge */}
@@ -431,7 +455,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                   })()}
 
                   {/* Action Buttons */}
-                  {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' ? (
+                  {(selectedEvent as CalendarClass).status === 'pendente' || (selectedEvent as CalendarClass).status === 'confirmada' || (selectedEvent as CalendarClass).status === 'aguardando_pagamento' ? (
                     <div className="flex justify-end gap-2 pt-2">
                       {/* Cancel Button - Available for both students and professors */}
                       {onCancelClass && (
@@ -470,7 +494,7 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                       {isProfessor && (selectedEvent as CalendarClass).status === 'pendente' && onConfirmClass && (
                         <Button
                           onClick={() => {
-                            onConfirmClass((selectedEvent as CalendarClass).id);
+                            onConfirmClass((selectedEvent as CalendarClass).id, true);
                             setSelectedEvent(null);
                           }}
                           className="bg-gradient-success shadow-success hover:bg-success"

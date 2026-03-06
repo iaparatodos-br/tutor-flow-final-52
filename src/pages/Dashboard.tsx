@@ -53,8 +53,7 @@ export default function Dashboard() {
         .rpc('count_teacher_students_and_dependents', { p_teacher_id: profile.id });
       const studentsCount = countData?.[0]?.total_students || 0;
 
-      // Buscar aulas futuras — usar "agora" no fuso do utilizador
-      const now = nowInTimezone(userTimezone);
+      // Buscar aulas futuras
       const { count: classesCount } = await supabase
         .from('classes')
         .select('*', { count: 'exact', head: true })
@@ -72,15 +71,19 @@ export default function Dashboard() {
           .eq('teacher_id', profile.id)
           .eq('status', 'pendente');
 
-        // Início do mês no fuso do utilizador
-        const monthStart = startOfMonthTz(new Date(), userTimezone);
-        
+        // Início e fim do mês no fuso do utilizador, convertidos a UTC real
+        const monthStartZoned = startOfMonthTz(new Date(), userTimezone);
+        const monthEndZoned = endOfMonthTz(new Date(), userTimezone);
+        const monthStartUtc = fromUserZonedTime(monthStartZoned, userTimezone);
+        const monthEndUtc = fromUserZonedTime(monthEndZoned, userTimezone);
+
         const { data: paidInvoices } = await supabase
           .from('invoices')
           .select('amount')
           .eq('teacher_id', profile.id)
           .eq('status', 'paga')
-          .gte('updated_at', monthStart.toISOString());
+          .gte('updated_at', monthStartUtc.toISOString())
+          .lte('updated_at', monthEndUtc.toISOString());
 
         invoicesCount = pendingInvoicesCount || 0;
         monthlyRevenue = paidInvoices?.reduce((sum, invoice) => sum + Number(invoice.amount), 0) || 0;

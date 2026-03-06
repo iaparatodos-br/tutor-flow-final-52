@@ -232,12 +232,20 @@ const DevValidation = () => {
         throw new Error('Perfil não encontrado');
       }
       
-      const now = new Date();
+      const userTz = profile.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const nowParts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: userTz,
+        year: 'numeric',
+        month: '2-digit',
+      }).formatToParts(new Date());
+      const tzYear = parseInt(nowParts.find(p => p.type === 'year')!.value);
+      const tzMonth = parseInt(nowParts.find(p => p.type === 'month')!.value);
       const { data, error } = await supabase.rpc('count_completed_classes_in_month', {
         p_teacher_id: profile.id,
         p_student_id: profile.id, // Usar próprio ID para teste
-        p_year: now.getFullYear(),
-        p_month: now.getMonth() + 1
+        p_year: tzYear,
+        p_month: tzMonth,
+        p_timezone: userTz
       });
       
       if (error) throw error;

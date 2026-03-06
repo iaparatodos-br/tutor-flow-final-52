@@ -145,7 +145,7 @@ export function StudentScheduleRequest({ teacherId }: StudentScheduleRequestProp
       setAvailabilityBlocks(data?.availabilityBlocks || []);
       setExistingClasses(data?.existingClasses || []);
       setServices(data?.services || []);
-      setTeacherTimezone(data?.timezone || DEFAULT_TIMEZONE);
+      setTeacherTimezone(data?.teacherTimezone || data?.timezone || DEFAULT_TIMEZONE);
       
       if (data?.services && data.services.length > 0) {
         const defaultService = data.services[0];

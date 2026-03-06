@@ -293,7 +293,8 @@ serve(async (req) => {
         // ===== CHECK MONTHLY SUBSCRIPTION =====
         const { data: activeSubscriptionData, error: subError } = await supabaseAdmin
           .rpc('get_student_active_subscription', {
-            p_relationship_id: studentInfo.relationship_id
+            p_relationship_id: studentInfo.relationship_id,
+            p_timezone: studentInfo.teacher_timezone
           }) as { data: ActiveSubscription[] | null, error: any };
 
         if (subError) {

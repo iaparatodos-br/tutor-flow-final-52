@@ -260,13 +260,27 @@ serve(async (req) => {
         .maybeSingle();
       
       const teacherTimezone = teacherProfile?.timezone || 'America/Sao_Paulo';
-      const endOfTodayLocal = getNowInTimezone(teacherTimezone);
-      const endDate = new Date(template.recurrence_end_date);
       
-      console.log(`🔍 Expiration check: endDate=${endDate.toISOString()}, endOfTodayLocal=${endOfTodayLocal.toISOString()}, tz=${teacherTimezone}`);
+      // Compare teacher's local "today" date against the stored end date
+      // recurrence_end_date is stored as timestamptz (midnight UTC for the date)
+      const teacherTodayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: teacherTimezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date()); // teacher's local date: "YYYY-MM-DD"
       
-      if (endDate < new Date()) {
-        console.error('❌ Template has expired:', template.recurrence_end_date);
+      const endDateStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(template.recurrence_end_date)); // end date as stored: "YYYY-MM-DD"
+      
+      console.log(`🔍 Expiration check: endDateStr=${endDateStr}, teacherTodayStr=${teacherTodayStr}, tz=${teacherTimezone}`);
+      
+      if (teacherTodayStr > endDateStr) {
+        console.error('❌ Template has expired:', template.recurrence_end_date, `(teacher today: ${teacherTodayStr})`);
         return new Response(
           JSON.stringify({ error: 'Template has expired' }),
           { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

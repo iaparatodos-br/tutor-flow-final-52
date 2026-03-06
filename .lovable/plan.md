@@ -1,50 +1,29 @@
 
 
-# Roteiro 14 — Validacao de API e Regras de Negocio: Analise
+# Cleanup: Remover sistema de class_exceptions (codigo morto)
 
-## Resumo
+## Contexto
 
-Analisei os 3 cenarios. **Nenhum erro bloqueante encontrado.**
+O sistema de `class_exceptions` foi planejado para permitir editar/cancelar ocorrencias individuais de aulas recorrentes, mas essa funcionalidade nunca foi integrada na UI e nao faz parte do fluxo atual. Todos os componentes e Edge Functions relacionados sao codigo morto.
 
----
+## O que sera removido
 
-## Passo 1 — Duracao negativa ou texto `[#70]`
-**Status: OK**
+### Frontend (3 arquivos)
+- `src/components/ClassExceptionForm.tsx` — formulario de excecao individual (nunca importado)
+- `src/components/FutureClassExceptionForm.tsx` — formulario de excecao futura (nunca importado)
+- `src/components/RecurringClassActionModal.tsx` — modal de escolha "esta" vs "esta e futuras" (nunca importado)
 
-- No `ClassForm.tsx` linha 371, a validacao frontend rejeita duracoes fora de 15-480 minutos: `formData.duration_minutes < 15 || formData.duration_minutes > 480`
-- O campo `duration_minutes` usa `type="number"` com `min="15"` e `max="480"` no HTML
-- No banco, existe CHECK constraint nas tabelas `classes` e `class_services` que limita entre 15 e 480 (conforme memoria do projeto)
-- Valores negativos (-30) ou texto ("abc") sao rejeitados pelo frontend (NaN falha na validacao) e pelo banco (CHECK constraint)
+### Edge Functions (2 arquivos)
+- `supabase/functions/manage-class-exception/index.ts` — cria excecoes individuais (nunca invocado)
+- `supabase/functions/manage-future-class-exceptions/index.ts` — cria excecoes em lote (nunca invocado)
 
----
+### Ajustes em Edge Functions existentes (2 arquivos)
+- `supabase/functions/end-recurrence/index.ts` — remover a linha que deleta `class_exceptions` (linha 153)
+- `supabase/functions/archive-old-data/index.ts` — remover a linha que deleta `class_exceptions` (linha 203)
 
-## Passo 2 — Pre-Pago + Recorrencia Infinita `[#71]`
-**Status: OK**
+### Banco de dados
+- Migrar para **dropar** a tabela `class_exceptions` (inclui RLS policies e foreign keys)
 
-- `ClassForm.tsx` linha 260: `const isRecurrenceBlocked = chargeTiming === 'prepaid' && formData.is_paid_class`
-- Quando `isRecurrenceBlocked = true`:
-  - O checkbox de recorrencia fica `disabled` (linha 803)
-  - O card fica com `opacity-60` (linha 783)
-  - A descricao exibe mensagem de bloqueio `recurrenceBlockedPrepaid` (linha 793)
-  - O `onCheckedChange` retorna imediatamente sem alterar estado (linha 805)
-- Na submissao (linha 395-401), `showRecurrence` permanece `false`, entao `recurrence` e `undefined`
-- A combinacao Pre-Pago + Recorrencia esta corretamente bloqueada na UI
-
----
-
-## Passo 3 — smart-delete-student com faturas pagas `[#72]`
-**Status: OK**
-
-- `smart-delete-student/index.ts` linhas 720-752:
-  1. Consulta faturas com status `paga` ou `concluida` (linha 724-725)
-  2. Se existem faturas pagas (`paidInvoicesCount > 0`): faz **soft-delete** — atualiza o profile com `role: 'deleted'`, muda email para `deleted_{id}@removed.local`, preserva o `name` original (linhas 737-744)
-  3. **NAO** deleta o usuario do auth (linha 752: "Do NOT delete auth user")
-  4. Os registros de `invoices` e `invoice_classes` com status `paga`/`concluida` sao preservados ao longo de todo o fluxo (linhas 662-673: filtra com `.not('invoices.status', 'in', '("paga","concluida")')`)
-- Resultado: aluno desaparece da UI (role = 'deleted'), mas dados fiscais (faturas pagas, itens de fatura, participacoes associadas) permanecem intactos no banco
-
----
-
-## Conclusao
-
-Todos os 3 cenarios passam sem erros. Nenhuma alteracao de codigo necessaria.
+## O que NAO sera removido
+- A tabela `class_exceptions` no banco so sera dropada apos confirmar que nao ha dados nela. A migracao verificara isso.
 

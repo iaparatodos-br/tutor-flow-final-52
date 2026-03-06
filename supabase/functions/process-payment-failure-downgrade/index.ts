@@ -51,7 +51,9 @@ serve(async (req) => {
       .from('user_subscriptions')
       .select('id, user_id, plan_id, status, stripe_subscription_id, cancel_at_period_end, extra_students, extra_cost_cents')
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'expired', 'past_due', 'cancelled'])
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (subError || !currentSubscription) {

@@ -22,7 +22,7 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { fromUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
+import { fromUserZonedTime, toUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface ClassWithParticipants {
   id: string;
   class_date: string;
@@ -272,7 +272,10 @@ export default function Agenda() {
   }, []);
 
   // Helper function to generate virtual recurring instances for visible range
+  // DST-safe: converts template UTC → local time for RRule, then back to UTC per occurrence
   const generateVirtualInstances = (templateClass: ClassWithParticipants, startDate: Date, endDate: Date): ClassWithParticipants[] => {
+    const tz = (profile as any)?.timezone || DEFAULT_TIMEZONE;
+
     // ✅ OTIMIZAÇÃO FASE 3.1: Reduzir buffer de +3 meses para +7 dias
     const maxEndDate = new Date(endDate);
     maxEndDate.setDate(maxEndDate.getDate() + 7); // Buffer de +7 dias garante navegação suave
@@ -295,29 +298,58 @@ export default function Agenda() {
     const effectiveEndDate = recurrenceEndDate;
     const freq = pattern.frequency === 'weekly' ? Frequency.WEEKLY : pattern.frequency === 'biweekly' ? Frequency.WEEKLY : pattern.frequency === 'monthly' ? Frequency.MONTHLY : Frequency.WEEKLY;
     const interval = pattern.frequency === 'biweekly' ? 2 : 1;
+
+    // Convert template UTC time to local time components for DST-safe RRule generation
+    const zonedStart = toUserZonedTime(new Date(templateClass.class_date), tz);
+    const localDtstart = new Date(Date.UTC(
+      zonedStart.getFullYear(), zonedStart.getMonth(), zonedStart.getDate(),
+      zonedStart.getHours(), zonedStart.getMinutes(), 0
+    ));
+
+    // Convert range boundaries to same "fake UTC = local time" space
+    const zonedRangeStart = toUserZonedTime(startDate, tz);
+    const fakeUtcRangeStart = new Date(Date.UTC(
+      zonedRangeStart.getFullYear(), zonedRangeStart.getMonth(), zonedRangeStart.getDate(),
+      0, 0, 0
+    ));
+    const zonedEffectiveEnd = toUserZonedTime(effectiveEndDate, tz);
+    const fakeUtcEffectiveEnd = new Date(Date.UTC(
+      zonedEffectiveEnd.getFullYear(), zonedEffectiveEnd.getMonth(), zonedEffectiveEnd.getDate(),
+      23, 59, 59
+    ));
+
     const rule = new RRule({
       freq,
       interval,
-      dtstart: new Date(templateClass.class_date),
-      until: effectiveEndDate
+      dtstart: localDtstart,
+      until: fakeUtcEffectiveEnd
     });
 
-    // Generate occurrences only within the visible range
-    const occurrences = rule.between(startDate, effectiveEndDate, true);
+    // Generate occurrences in "local time as UTC" space, then convert each back to real UTC
+    const occurrences = rule.between(fakeUtcRangeStart, fakeUtcEffectiveEnd, true);
 
-    // Incluir a data do template nas instâncias virtuais
-    const instances = occurrences.map(date => ({
-      ...templateClass,
-      id: `${templateClass.id}_virtual_${date.getTime()}`,
-      class_date: date.toISOString(),
-      isVirtual: true,
-      is_template: false,
-      class_template_id: templateClass.id,
-      status: 'confirmada' as const,
-      participants: templateClass.participants || [], // Garantir array vazio se undefined
-      recurrence_end_date: templateClass.recurrence_end_date,
-      has_report: false // Virtual instances never have reports
-    }));
+    const instances = occurrences.map(date => {
+      // date's UTC components represent local time — convert to a Date with those as local fields
+      const localDate = new Date(
+        date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(),
+        date.getUTCHours(), date.getUTCMinutes(), 0
+      );
+      // Convert local time → real UTC
+      const utcDate = fromUserZonedTime(localDate, tz);
+
+      return {
+        ...templateClass,
+        id: `${templateClass.id}_virtual_${utcDate.getTime()}`,
+        class_date: utcDate.toISOString(),
+        isVirtual: true,
+        is_template: false,
+        class_template_id: templateClass.id,
+        status: 'confirmada' as const,
+        participants: templateClass.participants || [],
+        recurrence_end_date: templateClass.recurrence_end_date,
+        has_report: false
+      };
+    });
     
     return instances;
   };

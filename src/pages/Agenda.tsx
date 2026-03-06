@@ -22,7 +22,7 @@ import { useTeacherContext } from "@/contexts/TeacherContext";
 import { useTranslation } from "react-i18next";
 import { Info, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { fromUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
+import { fromUserZonedTime, toUserZonedTime, formatInTimezone, DEFAULT_TIMEZONE } from "@/utils/timezone";
 interface ClassWithParticipants {
   id: string;
   class_date: string;

@@ -37,7 +37,7 @@ import {
   useCreateMonthlySubscription,
   useUpdateMonthlySubscription,
   useToggleMonthlySubscription,
-  useAssignStudentToSubscription,
+  useBulkAssignStudents,
   useRemoveStudentFromSubscription
 } from "@/hooks/useMonthlySubscriptions";
 
@@ -64,7 +64,7 @@ export function MonthlySubscriptionsManager() {
   const createMutation = useCreateMonthlySubscription();
   const updateMutation = useUpdateMonthlySubscription();
   const toggleMutation = useToggleMonthlySubscription();
-  const assignMutation = useAssignStudentToSubscription();
+  const bulkAssignMutation = useBulkAssignStudents();
   const removeMutation = useRemoveStudentFromSubscription();
 
   const handleOpenCreate = () => {
@@ -136,11 +136,12 @@ export function MonthlySubscriptionsManager() {
     }
   };
 
-  const handleAssignStudent = async (relationshipId: string, startsAt?: string) => {
+  const handleAssignStudent = async (relationshipIds: string[], startsAt?: string) => {
     if (!assigningToSubscription) return;
-    await assignMutation.mutateAsync({
+    await bulkAssignMutation.mutateAsync({
       subscriptionId: assigningToSubscription.id,
-      relationshipId,
+      toAdd: relationshipIds,
+      toRemove: [],
       startsAt
     });
     setAssigningToSubscription(null);
@@ -329,7 +330,7 @@ export function MonthlySubscriptionsManager() {
         availableStudents={availableStudents || []}
         isLoading={isLoadingAvailable}
         onAssign={handleAssignStudent}
-        isAssigning={assignMutation.isPending}
+        isAssigning={bulkAssignMutation.isPending}
       />
 
       {/* Remove Student Confirmation */}

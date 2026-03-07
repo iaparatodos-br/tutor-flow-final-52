@@ -94,7 +94,7 @@ export function MaterialCategoryManager({ isOpen, onClose, onCategoriesChanged }
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('categoryManager.title')}</DialogTitle>
           </DialogHeader>

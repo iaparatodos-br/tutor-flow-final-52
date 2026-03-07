@@ -254,7 +254,7 @@ export function MonthlySubscriptionsManager() {
 
       {/* View Students Dialog */}
       <Dialog open={!!viewingSubscription} onOpenChange={(open) => !open && setViewingSubscription(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingSubscription?.name}

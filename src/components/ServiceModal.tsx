@@ -160,7 +160,7 @@ export function ServiceModal({ open, onClose, service, onSuccess, profileId }: S
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {service ? t('edit') : t('new')}

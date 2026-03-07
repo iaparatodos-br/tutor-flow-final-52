@@ -17,8 +17,10 @@ interface EndRecurrenceRequest {
  * E.g., "2026-03-15" in "America/Sao_Paulo" (UTC-3) → 2026-03-15T03:00:00.000Z
  */
 function localDateToUtcMidnight(dateStr: string, timezone: string): string {
+  // Normalize: accept both "YYYY-MM-DD" and full ISO timestamps
+  const normalizedDateStr = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
   // Parse date parts
-  const [year, month, day] = dateStr.split('-').map(Number);
+  const [year, month, day] = normalizedDateStr.split('-').map(Number);
   
   // Create a formatter that outputs the UTC offset for this timezone at this date
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -106,9 +108,11 @@ serve(async (req) => {
     console.log(`[end-recurrence] Teacher timezone: ${teacherTimezone}`);
 
     // 3. Atualizar template com data de término
+    // Normalize endDate to YYYY-MM-DD for storage
+    const normalizedEndDate = endDate.includes('T') ? endDate.split('T')[0] : endDate;
     const { error: updateError } = await supabase
       .from('classes')
-      .update({ recurrence_end_date: endDate })
+      .update({ recurrence_end_date: normalizedEndDate })
       .eq('id', templateId);
 
     if (updateError) {

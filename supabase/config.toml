@@ -22,7 +22,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.end-recurrence]
-verify_jwt = true
+verify_jwt = false
 
 [functions.materialize-virtual-class]
 verify_jwt = true

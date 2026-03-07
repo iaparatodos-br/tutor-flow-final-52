@@ -58,7 +58,11 @@ export function MonthlySubscriptionsManager() {
   // Queries
   const { data: subscriptions, isLoading } = useMonthlySubscriptions(showInactive);
   const { data: assignedStudents, isLoading: isLoadingStudents } = useSubscriptionStudents(viewingSubscription?.id || null);
-  const { data: availableStudents, isLoading: isLoadingAvailable } = useAvailableStudentsForSubscription(assigningToSubscription?.id || null);
+  const { data: rawAvailableStudents, isLoading: isLoadingAvailable } = useAvailableStudentsForSubscription(assigningToSubscription?.id || null);
+
+  // Filter out students already assigned to this subscription (UI-level defense)
+  const assignedRelIds = new Set((assignedStudents || []).map((s: AssignedStudent) => s.relationship_id));
+  const availableStudents = (rawAvailableStudents || []).filter(s => !s.has_active_subscription && !assignedRelIds.has(s.relationship_id));
 
   // Mutations
   const createMutation = useCreateMonthlySubscription();

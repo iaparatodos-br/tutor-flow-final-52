@@ -70,9 +70,13 @@ export function StudentSubscriptionSelect({
 
   const handleAssign = async () => {
     if (selectedIds.length === 0) return;
-    await onAssign(selectedIds, startsAt);
-    setSelectedIds([]);
-    setStartsAt(todayDateString(userTimezone));
+    try {
+      await onAssign(selectedIds, startsAt);
+      setSelectedIds([]);
+      setStartsAt(todayDateString(userTimezone));
+    } catch {
+      // Error handled by mutation's onError (toast)
+    }
   };
 
   const handleClose = () => {

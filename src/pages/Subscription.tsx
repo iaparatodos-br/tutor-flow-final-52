@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useState, useEffect } from 'react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SubscriptionCancellationModal } from '@/components/SubscriptionCancellationModal';
+import { PendingBoletoGuard } from '@/components/PendingBoletoGuard';
 import { useTranslation } from 'react-i18next';
 interface Invoice {
   id: string;
@@ -484,5 +485,6 @@ export default function Subscription() {
 
       {/* Cancellation Modal */}
       <SubscriptionCancellationModal isOpen={showCancellationModal} onClose={() => setShowCancellationModal(false)} onConfirm={handleConfirmCancel} />
+      <PendingBoletoGuard />
     </Layout>;
 }

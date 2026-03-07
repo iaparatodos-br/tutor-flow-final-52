@@ -178,6 +178,32 @@ serve(async (req) => {
               oldStatus: invoice.status, 
               newStatus 
             });
+
+            // Auto-confirm class if payment succeeded and invoice has a linked class
+            if (newStatus === 'paga' && invoice.class_id) {
+              const { data: classData } = await supabaseClient
+                .from('classes')
+                .select('id, status')
+                .eq('id', invoice.class_id)
+                .eq('status', 'aguardando_pagamento')
+                .maybeSingle();
+
+              if (classData) {
+                await supabaseClient
+                  .from('classes')
+                  .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                  .eq('id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+
+                await supabaseClient
+                  .from('class_participants')
+                  .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                  .eq('class_id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+
+                logStep('Class auto-confirmed after automatic payment', { classId: classData.id });
+              }
+            }
           }
         }
 

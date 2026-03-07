@@ -433,6 +433,7 @@ export function useBulkAssignStudents() {
         toast.success(t('messages.studentsRemovedSuccess', { count: result.removed }));
       } else {
         toast.info(t('messages.noNewStudentsToAssign'));
+      }
     },
     onError: (error) => {
       console.error('Error bulk updating students:', error);

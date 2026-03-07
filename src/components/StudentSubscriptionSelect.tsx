@@ -125,7 +125,7 @@ export function StudentSubscriptionSelect({
                 </div>
                 <Separator />
                 {/* Student items */}
-                <ScrollArea className="max-h-56">
+                <div className="max-h-56 overflow-y-auto">
                   {availableStudents.map((student) => (
                     <div
                       key={student.relationship_id}
@@ -144,7 +144,7 @@ export function StudentSubscriptionSelect({
                       </div>
                     </div>
                   ))}
-                </ScrollArea>
+                </div>
               </div>
             )}
           </div>

@@ -4,7 +4,7 @@ import Stripe from "https://esm.sh/stripe@14.21.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // Helper logging function for enhanced debugging
@@ -83,7 +83,7 @@ const checkNeedsStudentSelection = async (
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -100,20 +100,7 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
-    logStep("Authorization header found");
-
-    const token = authHeader.replace("Bearer ", "");
-    logStep("Authenticating user with token");
-    
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    
-    if (userError || !userData.user) {
-      logStep("Authentication failed", { 
-        error: userError?.message, 
-        hasUser: !!userData?.user 
-      });
-      
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ 
         error: "Authentication failed", 
         code: "INVALID_SESSION" 
@@ -122,9 +109,34 @@ serve(async (req) => {
         status: 401,
       });
     }
+    logStep("Authorization header found");
+
+    const token = authHeader.replace("Bearer ", "");
+    logStep("Authenticating user with token");
+
+    // Use ANON_KEY client for JWT validation via getClaims
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      logStep("Authentication failed", { error: claimsError?.message });
+      return new Response(JSON.stringify({ 
+        error: "Authentication failed", 
+        code: "INVALID_SESSION" 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
+    const userId = claimsData.claims.sub as string;
+    const userEmail = claimsData.claims.email as string;
     
-    const user = userData.user;
-    if (!user?.email) {
+    if (!userEmail) {
       logStep("User email not available");
       return new Response(JSON.stringify({ 
         error: "User email not available" 
@@ -134,6 +146,7 @@ serve(async (req) => {
       });
     }
     
+    const user = { id: userId, email: userEmail };
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     // Get ALL subscriptions from database (active or expired) to properly detect renewal

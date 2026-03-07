@@ -2311,35 +2311,20 @@ export type Database = {
           teacher_name: string
         }[]
       }
-      get_subscription_assigned_students:
-        | {
-            Args: { p_subscription_id: string }
-            Returns: {
-              classes_used: number
-              ends_at: string
-              is_active: boolean
-              relationship_id: string
-              starts_at: string
-              student_email: string
-              student_id: string
-              student_name: string
-              student_subscription_id: string
-            }[]
-          }
-        | {
-            Args: { p_subscription_id: string; p_timezone?: string }
-            Returns: {
-              classes_used: number
-              ends_at: string
-              is_active: boolean
-              relationship_id: string
-              starts_at: string
-              student_email: string
-              student_id: string
-              student_name: string
-              student_subscription_id: string
-            }[]
-          }
+      get_subscription_assigned_students: {
+        Args: { p_subscription_id: string; p_timezone?: string }
+        Returns: {
+          classes_used: number
+          ends_at: string
+          is_active: boolean
+          relationship_id: string
+          starts_at: string
+          student_email: string
+          student_id: string
+          student_name: string
+          student_subscription_id: string
+        }[]
+      }
       get_subscription_students_count: {
         Args: { p_subscription_id: string }
         Returns: number

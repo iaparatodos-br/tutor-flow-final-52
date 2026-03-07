@@ -1,36 +1,55 @@
 
 
-# Fix: Alunos não aparecem na listagem de mensalidades — função duplicada no banco
+# Auditoria das Sugestões do Gemini (Rodada 2)
 
-## Causa Raiz
+## Análise Ponto a Ponto
 
-Existem **duas versões** da função `get_subscription_assigned_students` no banco:
-1. `(p_subscription_id uuid)` — sem timezone
-2. `(p_subscription_id uuid, p_timezone text DEFAULT 'America/Sao_Paulo')` — com timezone
+### Sugestões VÁLIDAS (a adicionar)
 
-Quando o Supabase JS client chama `.rpc('get_subscription_assigned_students', { p_subscription_id })` com **1 parâmetro**, o Postgres não consegue decidir qual função usar porque a segunda tem um `DEFAULT` para `p_timezone`. Isso gera o erro `42725: function is not unique`, que faz a query falhar silenciosamente e retornar vazio.
+**1. Fall Back DST (4.8 - Hora Sobreposta)** — VÁLIDO.
+O plano cobre Spring Forward (4.7) mas ignora Fall Back. Quando o relógio atrasa no 1º domingo de novembro (NY), 01:30 ocorre duas vezes. `fromZonedTime` do `date-fns-tz` resolve assumindo a primeira ocorrência (EDT). Vale documentar o comportamento esperado.
 
-Por isso, ao abrir o modal "Ver Alunos", aparece "Nenhum aluno vinculado" mesmo tendo 2 alunos atribuídos.
+**2. Fusos fracionados (5.1.4 - Asia/Kolkata)** — VÁLIDO.
+O plano só testa fusos inteiros. UTC+5:30 é um edge case real — 06:00 UTC = 11:30 local. A RPC `get_relationships_to_bill_now` com `AT TIME ZONE` suporta isso nativamente, mas vale ter o teste documentado.
 
-## Correção
+**3. Visão do Aluno (3.1.11)** — VÁLIDO.
+O `StudentDashboard.tsx` já importa `formatInTimezone` e `startOfMonthTz`, mas o plano de testes foca quase exclusivamente no professor. Adicionar teste de perspectiva do aluno.
 
-### Migração SQL
+**4. Mudança Definitiva de Fuso (2.7)** — VÁLIDO.
+Cenário "professor se muda de país". O sistema armazena UTC, então alterar o perfil só deve mudar a exibição. Teste simples e de alto valor documental.
 
-Dropar a versão antiga (sem timezone) e manter apenas a versão com timezone (mais completa):
+**5. Gravação de campos `date` via input (4.9)** — VÁLIDO.
+O teste 8.4.3 cobre parcialmente, mas não testa o round-trip completo com browser em fuso extremo (Tokyo UTC+9 ou Honolulu UTC-10). Reforçar com teste explícito.
 
-```sql
-DROP FUNCTION IF EXISTS public.get_subscription_assigned_students(uuid);
-```
+### Sugestões PARCIALMENTE VÁLIDAS
 
-Isso remove a ambiguidade. A versão `(uuid, text DEFAULT 'America/Sao_Paulo')` continua funcionando normalmente quando chamada com apenas `p_subscription_id`.
+**6. Lembretes — timing do disparo (6.11)** — PARCIALMENTE VÁLIDO.
+O `send-class-reminders` (L41-42) já usa `.gte("class_date", now.toISOString()).lte("class_date", tomorrow.toISOString())` — comparação puramente UTC. Funciona corretamente independente de timezone. Mas vale documentar que o disparo é UTC-based para evitar confusão.
 
-### Nenhuma mudança no frontend
+**7. Date Range Filtering (7.7)** — BAIXO VALOR.
+Não há date range pickers com filtros start/end nos relatórios — o Dashboard usa `startOfMonthTz` com mês fixo. Não existe a vulnerabilidade descrita. Anotar como cenário futuro.
 
-O hook `useSubscriptionStudents` já chama `.rpc('get_subscription_assigned_students', { p_subscription_id })` corretamente — após remover a duplicata, o Postgres vai resolver para a única função restante usando o default do `p_timezone`.
+### Sugestões INVÁLIDAS (não aplicáveis)
 
-## Impacto
+**8. Exportação CSV** — NÃO EXISTE. O sistema só tem import (StudentImportDialog). Sem feature de export, não há teste a fazer.
 
-- **1 migração SQL**: drop da função duplicada
-- **0 arquivos de código alterados**
-- Após o deploy da migration, o modal de alunos vinculados voltará a funcionar imediatamente
+**9. iCal / .ics** — NÃO EXISTE. Nenhuma funcionalidade de exportação de calendário. Cenário futuro.
+
+**10. DST Assimétrico (EUA vs Europa)** — JÁ COBERTO IMPLICITAMENTE. O sistema armazena tudo em UTC. O frontend converte usando o timezone do viewer. Quando EUA muda DST mas Europa não, o offset muda automaticamente via `date-fns-tz`. Não é um bug, é o comportamento correto por design. Mas vale como teste documental rápido.
+
+**11. Stripe Webhooks (5.5)** — JÁ COBERTO pelo teste 7.6.1/7.6.2. Webhooks atualizam status de faturas que já foram criadas com datas corretas. A agregação no Dashboard (testada em 7.6) é onde o fuso importa, não no webhook em si.
+
+**12. RLS com CURRENT_DATE** — VERIFICADO. As ocorrências de `CURRENT_DATE` estão apenas em **migrations de seed data** (scripts únicos de teste), não em policies RLS ativas. Sem risco.
+
+## Plano de Alteração do Documento
+
+Adicionar ao `docs/timezone-test-plan.md`:
+
+1. **Seção 2.7**: Mudança definitiva de fuso (professor altera perfil, aulas existentes mudam exibição sem mutar UTC)
+2. **Seção 3.1.11**: Perspectiva do aluno (StudentDashboard) com fuso diferente do professor
+3. **Seção 4.8**: Fall Back DST (hora sobreposta, comportamento do `fromZonedTime`)
+4. **Seção 4.9**: Round-trip de campos `date` com browser em fuso extremo
+5. **Seção 5.1.4**: Fuso fracionado (Asia/Kolkata UTC+5:30)
+6. **Seção 6.11**: Nota documental sobre timing UTC-based dos lembretes
+7. **Atualizar checklist** (Seção 9) com os novos cenários
 

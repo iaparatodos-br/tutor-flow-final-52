@@ -327,7 +327,7 @@ export function MonthlySubscriptionsManager() {
       <StudentSubscriptionSelect
         open={!!assigningToSubscription}
         onClose={() => setAssigningToSubscription(null)}
-        availableStudents={availableStudents || []}
+        availableStudents={(availableStudents || []).filter(s => !s.has_active_subscription)}
         isLoading={isLoadingAvailable}
         onAssign={handleAssignStudent}
         isAssigning={bulkAssignMutation.isPending}

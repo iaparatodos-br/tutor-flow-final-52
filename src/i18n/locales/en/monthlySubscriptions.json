@@ -58,7 +58,10 @@
     "toggleError": "Error changing subscription status",
     "assignError": "Error assigning student",
     "bulkAssignError": "Error assigning students",
-    "removeError": "Error removing student"
+    "removeError": "Error removing student",
+    "bulkUpdateSuccess": "Students updated successfully",
+    "bulkUpdateError": "Error updating students in bulk",
+    "studentsRemovedSuccess": "{{count}} student(s) removed successfully"
   },
   "info": {
     "familyBilling": "The subscription covers the guardian and all their dependents automatically.",

@@ -1,95 +1,55 @@
 
 
-# Plano: Cadastrar 15 alunos fictícios para testar cobrança de overage
+# Auditoria das Sugestões do Gemini (Rodada 2)
 
-## Contexto
+## Análise Ponto a Ponto
 
-- Professor: `tonifec836@medevsa.com` (ID: `17fe9974-df69-4d1f-9abc-93c588600deb`)
-- Plano: **basic** (limite de 15 alunos)
-- Alunos atuais: **0**
-- Objetivo: preencher o limite com 15 alunos fictícios para que o 16º dispare a cobrança de R$5,00
+### Sugestões VÁLIDAS (a adicionar)
 
-## Abordagem
+**1. Fall Back DST (4.8 - Hora Sobreposta)** — VÁLIDO.
+O plano cobre Spring Forward (4.7) mas ignora Fall Back. Quando o relógio atrasa no 1º domingo de novembro (NY), 01:30 ocorre duas vezes. `fromZonedTime` do `date-fns-tz` resolve assumindo a primeira ocorrência (EDT). Vale documentar o comportamento esperado.
 
-Adicionar uma nova action `seed_bulk_students` na edge function `dev-seed-test-data` que já existe para testes. A action vai:
+**2. Fusos fracionados (5.1.4 - Asia/Kolkata)** — VÁLIDO.
+O plano só testa fusos inteiros. UTC+5:30 é um edge case real — 06:00 UTC = 11:30 local. A RPC `get_relationships_to_bill_now` com `AT TIME ZONE` suporta isso nativamente, mas vale ter o teste documentado.
 
-1. Criar 15 usuários fictícios via `supabaseAdmin.auth.admin.createUser()` com `email_confirm: true`
-2. Criar os profiles (via trigger existente) e os `teacher_student_relationships`
-3. Pular toda a lógica de billing/overage (pois é seed de teste)
+**3. Visão do Aluno (3.1.11)** — VÁLIDO.
+O `StudentDashboard.tsx` já importa `formatInTimezone` e `startOfMonthTz`, mas o plano de testes foca quase exclusivamente no professor. Adicionar teste de perspectiva do aluno.
 
-### Nomes e emails dos 15 alunos fictícios
+**4. Mudança Definitiva de Fuso (2.7)** — VÁLIDO.
+Cenário "professor se muda de país". O sistema armazena UTC, então alterar o perfil só deve mudar a exibição. Teste simples e de alto valor documental.
 
-```text
-01. Ana Silva       - ana.silva.test01@ficticio.com
-02. Bruno Costa     - bruno.costa.test02@ficticio.com
-03. Carla Oliveira  - carla.oliveira.test03@ficticio.com
-04. Diego Santos    - diego.santos.test04@ficticio.com
-05. Elena Ferreira  - elena.ferreira.test05@ficticio.com
-06. Felipe Almeida  - felipe.almeida.test06@ficticio.com
-07. Gabriela Lima   - gabriela.lima.test07@ficticio.com
-08. Hugo Pereira    - hugo.pereira.test08@ficticio.com
-09. Isabela Rocha   - isabela.rocha.test09@ficticio.com
-10. João Martins    - joao.martins.test10@ficticio.com
-11. Karen Souza     - karen.souza.test11@ficticio.com
-12. Lucas Ribeiro   - lucas.ribeiro.test12@ficticio.com
-13. Marina Gomes    - marina.gomes.test13@ficticio.com
-14. Nicolas Araújo  - nicolas.araujo.test14@ficticio.com
-15. Olivia Barbosa  - olivia.barbosa.test15@ficticio.com
-```
+**5. Gravação de campos `date` via input (4.9)** — VÁLIDO.
+O teste 8.4.3 cobre parcialmente, mas não testa o round-trip completo com browser em fuso extremo (Tokyo UTC+9 ou Honolulu UTC-10). Reforçar com teste explícito.
 
-## Alteração
+### Sugestões PARCIALMENTE VÁLIDAS
 
-### 1. Edge Function: `dev-seed-test-data/index.ts`
+**6. Lembretes — timing do disparo (6.11)** — PARCIALMENTE VÁLIDO.
+O `send-class-reminders` (L41-42) já usa `.gte("class_date", now.toISOString()).lte("class_date", tomorrow.toISOString())` — comparação puramente UTC. Funciona corretamente independente de timezone. Mas vale documentar que o disparo é UTC-based para evitar confusão.
 
-Adicionar novo case `seed_bulk_students` no switch:
+**7. Date Range Filtering (7.7)** — BAIXO VALOR.
+Não há date range pickers com filtros start/end nos relatórios — o Dashboard usa `startOfMonthTz` com mês fixo. Não existe a vulnerabilidade descrita. Anotar como cenário futuro.
 
-```typescript
-case 'seed_bulk_students': {
-  const students = [
-    { name: 'Ana Silva', email: 'ana.silva.test01@ficticio.com' },
-    // ... 14 mais
-  ];
-  
-  let created = 0;
-  for (const s of students) {
-    // Criar auth user (skip se já existe)
-    const { data: userData } = await supabase.auth.admin.createUser({
-      email: s.email,
-      password: crypto.randomUUID(),
-      email_confirm: true,
-      user_metadata: { name: s.name, role: 'aluno' }
-    });
-    if (!userData?.user) continue;
-    
-    // Aguardar profile trigger
-    await new Promise(r => setTimeout(r, 200));
-    
-    // Criar relationship
-    await supabase.from('teacher_student_relationships').insert({
-      teacher_id: user.id,
-      student_id: userData.user.id,
-      student_name: s.name,
-      billing_day: 15
-    });
-    created++;
-  }
-  
-  result = { success: true, message: `${created} alunos criados` };
-  break;
-}
-```
+### Sugestões INVÁLIDAS (não aplicáveis)
 
-### 2. Execução
+**8. Exportação CSV** — NÃO EXISTE. O sistema só tem import (StudentImportDialog). Sem feature de export, não há teste a fazer.
 
-Após deploy, você chama a function logado no app (ou eu chamo via curl com sua sessão ativa) com:
-```json
-{ "action": "seed_bulk_students" }
-```
+**9. iCal / .ics** — NÃO EXISTE. Nenhuma funcionalidade de exportação de calendário. Cenário futuro.
 
-## Impacto
+**10. DST Assimétrico (EUA vs Europa)** — JÁ COBERTO IMPLICITAMENTE. O sistema armazena tudo em UTC. O frontend converte usando o timezone do viewer. Quando EUA muda DST mas Europa não, o offset muda automaticamente via `date-fns-tz`. Não é um bug, é o comportamento correto por design. Mas vale como teste documental rápido.
 
-- **1 edge function editada**: `dev-seed-test-data`
-- **0 arquivos frontend**
-- **0 migrações SQL**
-- Função protegida por auth + check de `role === 'professor'` + check `ENVIRONMENT !== 'production'`
+**11. Stripe Webhooks (5.5)** — JÁ COBERTO pelo teste 7.6.1/7.6.2. Webhooks atualizam status de faturas que já foram criadas com datas corretas. A agregação no Dashboard (testada em 7.6) é onde o fuso importa, não no webhook em si.
+
+**12. RLS com CURRENT_DATE** — VERIFICADO. As ocorrências de `CURRENT_DATE` estão apenas em **migrations de seed data** (scripts únicos de teste), não em policies RLS ativas. Sem risco.
+
+## Plano de Alteração do Documento
+
+Adicionar ao `docs/timezone-test-plan.md`:
+
+1. **Seção 2.7**: Mudança definitiva de fuso (professor altera perfil, aulas existentes mudam exibição sem mutar UTC)
+2. **Seção 3.1.11**: Perspectiva do aluno (StudentDashboard) com fuso diferente do professor
+3. **Seção 4.8**: Fall Back DST (hora sobreposta, comportamento do `fromZonedTime`)
+4. **Seção 4.9**: Round-trip de campos `date` com browser em fuso extremo
+5. **Seção 5.1.4**: Fuso fracionado (Asia/Kolkata UTC+5:30)
+6. **Seção 6.11**: Nota documental sobre timing UTC-based dos lembretes
+7. **Atualizar checklist** (Seção 9) com os novos cenários
 

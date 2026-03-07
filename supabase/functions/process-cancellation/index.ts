@@ -31,21 +31,29 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    // AUTH: Validate JWT
+    // AUTH: Validate JWT using getClaims with anon client
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "No authorization header provided" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError || !userData.user) {
+
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { auth: { persistSession: false } }
+    );
+
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) {
+      console.error("JWT validation failed:", claimsError);
       return new Response(JSON.stringify({ error: "Authentication failed" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
-    const authUserId = userData.user.id;
+    const authUserId = claimsData.claims.sub as string;
     console.log('✅ User authenticated:', authUserId);
 
     const { 

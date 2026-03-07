@@ -91,16 +91,20 @@ serve(async (req) => {
           }
         }
 
+        // PIX = direct charge (PI lives on connected account) → pass stripeAccount
+        // Boleto/Card = destination charge (PI lives on platform) → DON'T pass stripeAccount
+        const useStripeAccount = stripeAccount && invoice.payment_method === 'pix';
+
         logStep("Retrieving payment intent", { 
           paymentIntentId: invoice.stripe_payment_intent_id, 
-          stripeAccount: stripeAccount || 'platform' 
+          stripeAccount: useStripeAccount ? stripeAccount : 'platform',
+          paymentMethod: invoice.payment_method
         });
 
-        // Buscar status do payment intent no Stripe (com stripeAccount para Connect)
         const paymentIntent = await stripe.paymentIntents.retrieve(
           invoice.stripe_payment_intent_id,
           undefined,
-          stripeAccount ? { stripeAccount } : undefined
+          useStripeAccount ? { stripeAccount } : undefined
         );
 
         verifiedCount++;

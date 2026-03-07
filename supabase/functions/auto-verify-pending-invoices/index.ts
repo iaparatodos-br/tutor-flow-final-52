@@ -39,7 +39,8 @@ serve(async (req) => {
       .in("status", ["pendente", "falha_pagamento"])
       .not("stripe_payment_intent_id", "is", null)
       .or("payment_origin.is.null,payment_origin.neq.manual") // Skip manual payments
-      .limit(50); // Limitar para evitar timeout
+      .order("created_at", { ascending: false }) // Priorizar faturas mais recentes
+      .limit(100);
 
     if (fetchError) {
       logStep("Error fetching pending invoices", fetchError);
@@ -108,6 +109,12 @@ serve(async (req) => {
         );
 
         verifiedCount++;
+
+        logStep("Payment intent status from Stripe", {
+          invoiceId: invoice.id,
+          stripeStatus: paymentIntent.status,
+          paymentMethod: invoice.payment_method
+        });
 
         let newStatus = invoice.status;
         

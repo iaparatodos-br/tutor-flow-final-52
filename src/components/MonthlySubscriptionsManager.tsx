@@ -263,7 +263,7 @@ export function MonthlySubscriptionsManager() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4">
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
             {isLoadingStudents ? (
               <div className="space-y-2">
                 <Skeleton className="h-12 w-full" />

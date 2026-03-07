@@ -367,7 +367,7 @@ export function AvailabilityManager({ onAvailabilityChange }: AvailabilityManage
                 {t('blocks.new')}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[425px] max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{t('blocks.add')}</DialogTitle>
               </DialogHeader>

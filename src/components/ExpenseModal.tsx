@@ -221,7 +221,7 @@ export function ExpenseModal({ isOpen, onClose, onExpenseAdded, expense }: Expen
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{expense ? t('editExpense') : t('newExpense')}</DialogTitle>
           <DialogDescription>

@@ -125,7 +125,7 @@ export function ClassReportModal({
         // Load individual feedbacks
         const { data: feedbackData, error: feedbackError } = await supabase
           .from('class_report_feedbacks')
-          .select('student_id, feedback')
+          .select('student_id, dependent_id, feedback')
           .eq('report_id', report.id);
 
         if (feedbackError) {
@@ -140,7 +140,10 @@ export function ClassReportModal({
         if (feedbackData && feedbackData.length > 0) {
           // Criar array mesclado: todos os participantes com feedbacks (existentes ou vazios)
           const mergedFeedbacks = participants.map(p => {
-            const existingFeedback = feedbackData.find(f => f.student_id === p.student_id);
+            const existingFeedback = feedbackData.find(f => 
+              f.student_id === p.student_id && 
+              (f.dependent_id || null) === ((p as any).dependent_id || null)
+            );
             return {
               student_id: p.student_id,
               dependent_id: (p as any).dependent_id || null,

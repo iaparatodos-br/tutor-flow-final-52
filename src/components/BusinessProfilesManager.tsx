@@ -51,6 +51,7 @@ export function BusinessProfilesManager() {
       if (error) throw error;
       return data.business_profiles as BusinessProfile[];
     },
+    enabled: !!profile?.id,
   });
 
   const { data: pendingProfiles, isLoading: isLoadingPending } = useQuery({

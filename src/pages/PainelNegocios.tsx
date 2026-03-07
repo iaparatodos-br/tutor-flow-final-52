@@ -67,7 +67,7 @@ export default function PainelNegocios() {
       if (error) throw error;
       return data.business_profiles as BusinessProfile[];
     },
-    enabled: isProfessor,
+    enabled: isProfessor && !!profile?.id,
   });
 
   // Query para listar perfis de negócio pendentes

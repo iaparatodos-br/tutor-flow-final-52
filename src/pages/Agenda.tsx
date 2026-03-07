@@ -1504,6 +1504,42 @@ export default function Agenda() {
         }
       }
 
+      // VALIDAÇÃO: Para aulas pagas, verificar se todos os alunos têm business_profile_id configurado
+      const participantsToValidate = formData.selectedParticipants?.length > 0 
+        ? formData.selectedParticipants 
+        : formData.selectedStudents?.map((studentId: string) => ({
+            student_id: studentId,
+            type: 'student' as const
+          })) || [];
+
+      if (formData.is_paid_class && !formData.is_experimental && participantsToValidate.length > 0) {
+        const studentIds = participantsToValidate.map((p: any) => p.student_id);
+        const { data: relationships } = await supabase
+          .from('teacher_student_relationships')
+          .select('student_id, business_profile_id')
+          .eq('teacher_id', profile.id)
+          .in('student_id', studentIds);
+
+        const studentsWithoutBP = relationships?.filter(r => !r.business_profile_id) || [];
+        if (studentsWithoutBP.length > 0) {
+          // Buscar nomes dos alunos sem business profile
+          const missingIds = studentsWithoutBP.map(r => r.student_id);
+          const { data: missingProfiles } = await supabase
+            .from('profiles')
+            .select('id, name')
+            .in('id', missingIds);
+          
+          const names = missingProfiles?.map(p => p.name).join(', ') || '';
+          toast({
+            title: "Conta de recebimento não configurada",
+            description: `Os seguintes alunos não possuem uma conta de recebimento (negócio) configurada: ${names}. Configure no cadastro do aluno antes de agendar aulas pagas.`,
+            variant: "destructive"
+          });
+          setSubmitting(false);
+          return;
+        }
+      }
+
       // Create base class data
       const baseClassData = {
         teacher_id: profile.id,
@@ -1628,9 +1664,25 @@ export default function Agenda() {
               );
               if (errors.length > 0) {
                 console.error('[PREPAID] Erros ao gerar faturas pré-pagas:', errors);
+                
+                // Extrair mensagens de erro específicas do edge function
+                const errorMessages = errors
+                  .map(r => {
+                    if (r.status === 'fulfilled' && r.value.data?.error) return r.value.data.error;
+                    if (r.status === 'rejected') return (r as PromiseRejectedResult).reason?.message;
+                    return null;
+                  })
+                  .filter(Boolean);
+                
+                const hasBusinessProfileError = errorMessages.some((m: string) => 
+                  m?.includes('negócio de recebimento') || m?.includes('business profile')
+                );
+
                 toast({
-                  title: "Aviso",
-                  description: `${errors.length} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
+                  title: "Erro ao gerar fatura pré-paga",
+                  description: hasBusinessProfileError
+                    ? "O aluno não possui uma conta de recebimento (negócio) configurada. Acesse o cadastro do aluno para definir o negócio de recebimento."
+                    : `${errors.length} fatura(s) pré-paga(s) não puderam ser geradas. Verifique as configurações de cobrança dos alunos.`,
                   variant: "destructive"
                 });
               }

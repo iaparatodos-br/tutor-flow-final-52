@@ -40,20 +40,23 @@ serve(async (req) => {
     }
     const token = authHeader.replace("Bearer ", "");
 
-    const anonClient = createClient(
+    const userClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { auth: { persistSession: false } }
+      {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: authHeader } }
+      }
     );
 
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      console.error("JWT validation failed:", claimsError);
+    const { data: { user: authUser }, error: authError } = await userClient.auth.getUser();
+    if (authError || !authUser) {
+      console.error("JWT validation failed:", authError);
       return new Response(JSON.stringify({ error: "Authentication failed" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
-    const authUserId = claimsData.claims.sub as string;
+    const authUserId = authUser.id;
     console.log('✅ User authenticated:', authUserId);
 
     const { 

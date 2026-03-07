@@ -61,7 +61,8 @@
     "removeError": "Erro ao remover aluno",
     "bulkUpdateSuccess": "Alunos atualizados com sucesso",
     "bulkUpdateError": "Erro ao atualizar alunos em lote",
-    "studentsRemovedSuccess": "{{count}} aluno(s) removido(s) com sucesso"
+    "studentsRemovedSuccess": "{{count}} aluno(s) removido(s) com sucesso",
+    "noNewStudentsToAssign": "Todos os alunos selecionados já estão vinculados"
   },
   "info": {
     "familyBilling": "A mensalidade cobre o responsável e todos os seus dependentes automaticamente.",

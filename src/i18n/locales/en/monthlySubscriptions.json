@@ -61,7 +61,8 @@
     "removeError": "Error removing student",
     "bulkUpdateSuccess": "Students updated successfully",
     "bulkUpdateError": "Error updating students in bulk",
-    "studentsRemovedSuccess": "{{count}} student(s) removed successfully"
+    "studentsRemovedSuccess": "{{count}} student(s) removed successfully",
+    "noNewStudentsToAssign": "All selected students are already assigned"
   },
   "info": {
     "familyBilling": "The subscription covers the guardian and all their dependents automatically.",

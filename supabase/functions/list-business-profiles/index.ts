@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const logStep = (step: string, details?: any) => {
@@ -13,7 +13,7 @@ const logStep = (step: string, details?: any) => {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -21,9 +21,14 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "No authorization header provided", code: "INVALID_SESSION" }), {
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Authentication failed",
+        code: "INVALID_SESSION",
+        business_profiles: []
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
+        status: 200,
       });
     }
 
@@ -39,12 +44,14 @@ serve(async (req) => {
     const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
       logStep("Authentication failed", { error: claimsError?.message });
-      return new Response(JSON.stringify({ 
-        error: "Authentication failed", 
-        code: "INVALID_SESSION" 
+      return new Response(JSON.stringify({
+        success: false,
+        error: "Authentication failed",
+        code: "INVALID_SESSION",
+        business_profiles: []
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
+        status: 200,
       });
     }
 

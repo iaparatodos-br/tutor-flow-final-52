@@ -111,8 +111,7 @@ serve(async (req) => {
     }
     logStep("Authorization header found");
 
-    const token = authHeader.replace("Bearer ", "");
-    logStep("Authenticating user with token");
+    logStep("Authorization header found");
 
     // Use user-scoped client for JWT validation
     const userClient = createClient(

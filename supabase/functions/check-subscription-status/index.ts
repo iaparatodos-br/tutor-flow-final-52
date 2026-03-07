@@ -114,16 +114,19 @@ serve(async (req) => {
     const token = authHeader.replace("Bearer ", "");
     logStep("Authenticating user with token");
 
-    // Use ANON_KEY client for JWT validation via getClaims
-    const anonClient = createClient(
+    // Use user-scoped client for JWT validation
+    const userClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { auth: { persistSession: false } }
+      {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: authHeader } }
+      }
     );
 
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      logStep("Authentication failed", { error: claimsError?.message });
+    const { data: { user: authUser }, error: authError } = await userClient.auth.getUser();
+    if (authError || !authUser) {
+      logStep("Authentication failed", { error: authError?.message });
       return new Response(JSON.stringify({ 
         error: "Authentication failed", 
         code: "INVALID_SESSION" 
@@ -133,20 +136,7 @@ serve(async (req) => {
       });
     }
 
-    const userId = claimsData.claims.sub as string;
-    const userEmail = claimsData.claims.email as string;
-    
-    if (!userEmail) {
-      logStep("User email not available");
-      return new Response(JSON.stringify({ 
-        error: "User email not available" 
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 401,
-      });
-    }
-    
-    const user = { id: userId, email: userEmail };
+    const user = { id: authUser.id, email: authUser.email! };
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     // Get ALL subscriptions from database (active or expired) to properly detect renewal

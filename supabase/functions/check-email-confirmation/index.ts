@@ -23,25 +23,26 @@ serve(async (req) => {
       );
     }
 
-    const token = authHeader.replace('Bearer ', '');
-
-    // Use ANON_KEY client for JWT validation via getClaims
-    const anonClient = createClient(
+    // Use user-scoped client for JWT validation
+    const userClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { auth: { persistSession: false } }
+      {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: authHeader } }
+      }
     );
 
-    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
-      console.error('[CHECK-EMAIL-CONFIRMATION] JWT validation failed:', claimsError);
+    const { data: { user: authUser }, error: authError } = await userClient.auth.getUser();
+    if (authError || !authUser) {
+      console.error('[CHECK-EMAIL-CONFIRMATION] JWT validation failed:', authError);
       return new Response(
         JSON.stringify({ success: false, error: 'Unauthorized', code: 'INVALID_SESSION', confirmationStatus: {} }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const userId = claimsData.claims.sub as string;
+    const userId = authUser.id;
     console.log('[CHECK-EMAIL-CONFIRMATION] Authenticated teacher:', userId);
 
     const { student_ids } = await req.json();

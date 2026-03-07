@@ -263,6 +263,81 @@ Deno.serve(async (req) => {
         break
       }
 
+      case 'seed_bulk_students': {
+        const students = [
+          { name: 'Ana Silva', email: 'ana.silva.test01@ficticio.com' },
+          { name: 'Bruno Costa', email: 'bruno.costa.test02@ficticio.com' },
+          { name: 'Carla Oliveira', email: 'carla.oliveira.test03@ficticio.com' },
+          { name: 'Diego Santos', email: 'diego.santos.test04@ficticio.com' },
+          { name: 'Elena Ferreira', email: 'elena.ferreira.test05@ficticio.com' },
+          { name: 'Felipe Almeida', email: 'felipe.almeida.test06@ficticio.com' },
+          { name: 'Gabriela Lima', email: 'gabriela.lima.test07@ficticio.com' },
+          { name: 'Hugo Pereira', email: 'hugo.pereira.test08@ficticio.com' },
+          { name: 'Isabela Rocha', email: 'isabela.rocha.test09@ficticio.com' },
+          { name: 'João Martins', email: 'joao.martins.test10@ficticio.com' },
+          { name: 'Karen Souza', email: 'karen.souza.test11@ficticio.com' },
+          { name: 'Lucas Ribeiro', email: 'lucas.ribeiro.test12@ficticio.com' },
+          { name: 'Marina Gomes', email: 'marina.gomes.test13@ficticio.com' },
+          { name: 'Nicolas Araújo', email: 'nicolas.araujo.test14@ficticio.com' },
+          { name: 'Olivia Barbosa', email: 'olivia.barbosa.test15@ficticio.com' },
+        ]
+
+        let created = 0
+        const errors: string[] = []
+
+        for (const s of students) {
+          try {
+            // Create auth user (skip if already exists)
+            const { data: userData, error: createError } = await supabase.auth.admin.createUser({
+              email: s.email,
+              password: crypto.randomUUID(),
+              email_confirm: true,
+              user_metadata: { name: s.name, role: 'aluno' }
+            })
+
+            if (createError) {
+              console.log(`[dev-seed-test-data] Skipping ${s.email}: ${createError.message}`)
+              errors.push(`${s.email}: ${createError.message}`)
+              continue
+            }
+
+            if (!userData?.user) continue
+
+            // Wait for profile trigger
+            await new Promise(r => setTimeout(r, 300))
+
+            // Create teacher-student relationship
+            const { error: relError } = await supabase
+              .from('teacher_student_relationships')
+              .insert({
+                teacher_id: user.id,
+                student_id: userData.user.id,
+                student_name: s.name,
+                billing_day: 15
+              })
+
+            if (relError) {
+              console.error(`[dev-seed-test-data] Relationship error for ${s.email}:`, relError)
+              errors.push(`${s.email} relationship: ${relError.message}`)
+              continue
+            }
+
+            created++
+            console.log(`[dev-seed-test-data] Created student ${created}: ${s.name} (${s.email})`)
+          } catch (err) {
+            console.error(`[dev-seed-test-data] Error creating ${s.email}:`, err)
+            errors.push(`${s.email}: ${String(err)}`)
+          }
+        }
+
+        result = {
+          success: true,
+          message: `${created} alunos fictícios criados com sucesso!${errors.length > 0 ? ` (${errors.length} erros)` : ''}`,
+          data: { students_created: created, errors } as any
+        }
+        break
+      }
+
       case 'cleanup': {
         // Limpar dados de teste
         const { error: cleanupError } = await supabase

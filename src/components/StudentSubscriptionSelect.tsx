@@ -124,6 +124,7 @@ export function StudentSubscriptionSelect({
                     checked={allSelected}
                     {...(someSelected ? { "data-state": "indeterminate" } : {})}
                     onCheckedChange={toggleAll}
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <span className="text-sm font-medium">{t('assign.selectAll')}</span>
                 </div>
@@ -139,6 +140,7 @@ export function StudentSubscriptionSelect({
                       <Checkbox
                         checked={selectedIds.includes(student.relationship_id)}
                         onCheckedChange={() => toggleStudent(student.relationship_id)}
+                        onClick={(e) => e.stopPropagation()}
                       />
                       <div className="flex flex-col min-w-0">
                         <span className="text-sm font-medium truncate">{student.student_name}</span>

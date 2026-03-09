@@ -143,12 +143,15 @@ export function MonthlySubscriptionModal({
                   <FormLabel>{t('fields.price')}</FormLabel>
                   <FormControl>
                     <Input
-                    type="number"
+                    inputMode="numeric"
                     min="0"
                     step="0.01"
                     placeholder={t('fields.pricePlaceholder')}
                     {...field}
-                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^0-9.,]/g, '');
+                      field.onChange(parseFloat(value.replace(',', '.')) || 0);
+                    }} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

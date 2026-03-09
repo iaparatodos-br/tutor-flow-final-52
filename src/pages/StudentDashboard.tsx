@@ -788,7 +788,11 @@ export default function StudentDashboard() {
         {materials.length > 0 ? (
           <div className="space-y-3">
             {materials.map((material) => (
-              <div key={material.id} className="flex items-center gap-3 p-3 border rounded-lg">
+              <div 
+                key={material.id} 
+                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => navigate("/meus-materiais")}
+              >
                 <FileText className="h-5 w-5 text-primary" />
                 <div className="flex-1">
                   <p className="font-medium">{material.title}</p>

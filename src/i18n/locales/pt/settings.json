@@ -68,6 +68,7 @@
       "description": "Faça upload de um documento detalhando sua política de cancelamento",
       "current": "Documento atual",
       "view": "Ver documento",
+      "download": "Baixar PDF",
       "remove": "Remover documento",
       "upload": "Fazer upload de documento (PDF, máx 5MB)",
       "validations": {

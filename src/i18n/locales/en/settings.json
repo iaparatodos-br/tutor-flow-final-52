@@ -68,6 +68,7 @@
       "description": "Upload a document detailing your cancellation policy",
       "current": "Current document",
       "view": "View document",
+      "download": "Download PDF",
       "remove": "Remove document",
       "upload": "Upload document (PDF, max 5MB)",
       "validations": {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
 import { useTeacherContext } from "@/contexts/TeacherContext";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

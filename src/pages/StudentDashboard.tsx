@@ -75,6 +75,7 @@ interface ActiveSubscription {
 export default function StudentDashboard() {
   const { profile, isAluno } = useProfile();
   const { selectedTeacherId, loading: teacherLoading } = useTeacherContext();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation();
   const [teacherData, setTeacherData] = useState<TeacherPolicyData | null>(null);

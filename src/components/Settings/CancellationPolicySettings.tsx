@@ -430,23 +430,21 @@ export function CancellationPolicySettings() {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="icon"
                   onClick={() => {
                     const { data } = supabase.storage.from('policies').getPublicUrl(policyDocumentUrl);
                     window.open(data.publicUrl, '_blank');
                   }}
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  {t('cancellationPolicy.document.download')}
+                  <Download className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="destructive"
-                  size="sm"
+                  size="icon"
                   onClick={removePolicyDocument}
                   disabled={uploadingDocument}
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  {t('cancellationPolicy.document.remove')}
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             </div>

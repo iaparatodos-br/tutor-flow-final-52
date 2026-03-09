@@ -427,15 +427,28 @@ export function CancellationPolicySettings() {
                   <p className="text-sm text-muted-foreground">{t('cancellationPolicy.document.view')}</p>
                 </div>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={removePolicyDocument}
-                disabled={uploadingDocument}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {t('cancellationPolicy.document.remove')}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const { data } = supabase.storage.from('policies').getPublicUrl(policyDocumentUrl);
+                    window.open(data.publicUrl, '_blank');
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  {t('cancellationPolicy.document.download')}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={removePolicyDocument}
+                  disabled={uploadingDocument}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('cancellationPolicy.document.remove')}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">

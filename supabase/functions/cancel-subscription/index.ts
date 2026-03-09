@@ -63,7 +63,7 @@ serve(async (req) => {
       .from('user_subscriptions')
       .select('stripe_subscription_id, status')
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'pending_boleto'])
       .maybeSingle();
 
     if (dbError || !subscription?.stripe_subscription_id) {

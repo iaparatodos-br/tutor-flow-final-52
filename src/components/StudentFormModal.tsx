@@ -120,7 +120,7 @@ export function StudentFormModal({
       billing_day: false,
       business_profile_id: false
     });
-  }, [student, teacherDefaultBillingDay]);
+  }, [student]);
 
   // Reset form when modal opens for new student registration
   useEffect(() => {

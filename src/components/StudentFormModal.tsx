@@ -53,10 +53,7 @@ interface StudentFormModalProps {
   description: string;
 }
 
-const getInitialFormData = (student?: StudentFormModalProps['student'], teacherDefaultBillingDay?: number): StudentFormData => {
-  console.log('getInitialFormData - student data:', student);
-  console.log('getInitialFormData - teacher default billing day:', teacherDefaultBillingDay);
-  
+const getInitialFormData = (student?: StudentFormModalProps['student']): StudentFormData => {
   return {
     name: student?.name || "",
     email: student?.email || "",

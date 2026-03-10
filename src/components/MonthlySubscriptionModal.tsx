@@ -12,6 +12,7 @@ import {
 "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -142,16 +143,13 @@ export function MonthlySubscriptionModal({
               <FormItem>
                   <FormLabel>{t('fields.price')}</FormLabel>
                   <FormControl>
-                    <Input
-                    inputMode="numeric"
-                    min="0"
-                    step="0.01"
-                    placeholder={t('fields.pricePlaceholder')}
-                    {...field}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/[^0-9.,]/g, '');
-                      field.onChange(parseFloat(value.replace(',', '.')) || 0);
-                    }} />
+                    <CurrencyInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      step={1}
+                      min={0}
+                      placeholder={t('fields.pricePlaceholder')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

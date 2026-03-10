@@ -114,7 +114,7 @@ export function ClassServicesManager() {
           </Button>
         </div>
       </div>
-      <div className="w-full bg-slate-50/50 border border-slate-200/50 p-4 my-6 rounded-xl flex items-start gap-3">
+      <div className="w-full bg-muted/50 border border-border/50 p-4 my-6 rounded-xl flex items-start gap-3">
         <Info className="h-4 w-4 text-primary/60 mt-0.5" />
         <p className="text-sm text-muted-foreground leading-relaxed">
           Serviços são os tipos de aulas ou atendimentos que você oferece. Defina o nome <span className="text-primary/70 italic">(ex: Aula Particular de Inglês)</span>, a duração e o valor para automatizar sua agenda e facilitar seu cotidiano.

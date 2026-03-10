@@ -101,28 +101,6 @@ export function StudentFormModal({
     enabled: profile?.role === 'professor',
   });
 
-  // Load teacher's default billing day
-  useEffect(() => {
-    const loadTeacherDefaults = async () => {
-      if (profile?.id && profile.role === 'professor') {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('default_billing_day')
-            .eq('id', profile.id)
-            .single();
-
-          if (!error && data && (data as any)?.default_billing_day) {
-            setTeacherDefaultBillingDay((data as any).default_billing_day);
-          }
-        } catch (error) {
-          console.error('Error loading teacher defaults:', error);
-        }
-      }
-    };
-
-    loadTeacherDefaults();
-  }, [profile]);
 
   // Update form data when student prop or teacher defaults change
   useEffect(() => {

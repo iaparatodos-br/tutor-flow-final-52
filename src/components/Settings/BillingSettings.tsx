@@ -90,8 +90,7 @@ export function BillingSettings() {
       const { error } = await supabase.
       from('profiles').
       update({
-        payment_due_days: data.payment_due_days,
-        default_billing_day: data.default_billing_day
+        payment_due_days: data.payment_due_days
       }).
       eq('id', profile.id);
 

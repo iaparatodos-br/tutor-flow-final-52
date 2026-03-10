@@ -54,8 +54,7 @@ export function BillingSettings() {
       if (profileError) throw profileError;
 
       form.reset({
-        payment_due_days: (profileData as any)?.payment_due_days || 15,
-        default_billing_day: (profileData as any)?.default_billing_day || null
+        payment_due_days: (profileData as any)?.payment_due_days || 15
       });
 
       const { data: bpData, error: bpError } = await supabase.

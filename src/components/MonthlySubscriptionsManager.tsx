@@ -331,7 +331,7 @@ export function MonthlySubscriptionsManager() {
       <StudentSubscriptionSelect
         open={!!assigningToSubscription}
         onClose={() => setAssigningToSubscription(null)}
-        availableStudents={(availableStudents || []).filter(s => !s.has_active_subscription)}
+        availableStudents={[...(availableStudents || [])].filter(s => !s.has_active_subscription).sort((a, b) => (a.student_name || '').localeCompare(b.student_name || '', 'pt-BR', { sensitivity: 'base' }))}
         isLoading={isLoadingAvailable}
         onAssign={handleAssignStudent}
         isAssigning={bulkAssignMutation.isPending}

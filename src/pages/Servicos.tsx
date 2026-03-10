@@ -4,7 +4,7 @@ import { MonthlySubscriptionsManager } from "@/components/MonthlySubscriptionsMa
 import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslation } from "react-i18next";
-import { Sparkles } from "lucide-react";
+
 
 export default function Servicos() {
   const { t } = useTranslation(['monthlySubscriptions', 'services']);

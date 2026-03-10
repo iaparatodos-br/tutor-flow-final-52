@@ -4,7 +4,7 @@ import { MonthlySubscriptionsManager } from "@/components/MonthlySubscriptionsMa
 import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslation } from "react-i18next";
-import { Sparkles } from "lucide-react";
+
 
 export default function Servicos() {
   const { t } = useTranslation(['monthlySubscriptions', 'services']);
@@ -19,8 +19,7 @@ export default function Servicos() {
             <TabsTrigger value="settings">{t('monthlySubscriptions:tabs.settings')}</TabsTrigger>
           </TabsList>
           <TabsContent value="services">
-            <div className="bg-gradient-to-br from-primary/5 to-transparent rounded-xl border border-primary/10 p-4 sm:p-5 mb-6 flex gap-3 items-start">
-              <Sparkles className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+            <div className="bg-orange-50/50 border-l-4 border-orange-500 p-4 my-4 rounded-r-lg">
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {t('services:infoBanner')}
               </p>

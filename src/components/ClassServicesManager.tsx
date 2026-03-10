@@ -114,8 +114,12 @@ export function ClassServicesManager() {
           </Button>
         </div>
       </div>
-      <div className="w-full border-l-2 border-primary/20 pl-4 py-2 my-6 text-sm text-muted-foreground leading-relaxed max-w-3xl">
-        Serviços são os tipos de aulas ou atendimentos que você oferece. Aqui você define o nome <span className="italic opacity-70">(ex: Aula Particular de Inglês)</span>, a duração padrão e o valor. Ao criar seus serviços, você agiliza a criação da agenda para facilitar o seu cotidiano.
+      <div className="w-full bg-slate-50/50 border border-slate-200/60 p-5 my-8 rounded-xl relative overflow-hidden">
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40" />
+        <p className="text-sm text-slate-600 leading-relaxed pl-2">
+          <strong className="text-slate-900 font-semibold block mb-1">Dica de Organização</strong>
+          Serviços são os tipos de aulas ou atendimentos que você oferece. Defina o nome <span className="text-primary/70 italic">(ex: Aula Particular de Inglês)</span>, a duração e o valor para automatizar sua agenda e facilitar seu cotidiano.
+        </p>
       </div>
 
       {filteredServices.length === 0 && !showInactive && services.length > 0 ? (

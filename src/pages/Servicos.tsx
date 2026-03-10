@@ -19,6 +19,11 @@ export default function Servicos() {
             <TabsTrigger value="settings">{t('monthlySubscriptions:tabs.settings')}</TabsTrigger>
           </TabsList>
           <TabsContent value="services">
+            <div className="bg-orange-50/50 border-l-4 border-orange-500 p-4 my-4 rounded-r-lg">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {t('services:infoBanner')}
+              </p>
+            </div>
             <ClassServicesManager />
           </TabsContent>
           <TabsContent value="subscriptions">

@@ -98,11 +98,6 @@ export function ClassServicesManager() {
             {t('subtitle')}
           </p>
         </div>
-        <div className="bg-orange-50/50 border-l-4 border-orange-500 p-4 my-4 rounded-r-lg">
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {t('infoBanner')}
-          </p>
-        </div>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input

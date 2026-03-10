@@ -104,10 +104,7 @@ export function StudentFormModal({
 
   // Update form data when student prop or teacher defaults change
   useEffect(() => {
-    console.log('StudentFormModal useEffect - student changed:', student);
-    console.log('StudentFormModal useEffect - teacher default billing day:', teacherDefaultBillingDay);
-    const newFormData = getInitialFormData(student, teacherDefaultBillingDay);
-    console.log('StudentFormModal useEffect - new form data:', newFormData);
+    const newFormData = getInitialFormData(student);
     setFormData(newFormData);
     // Reset registration type for new students, set to individual for editing
     setRegistrationType(student ? 'individual' : null);

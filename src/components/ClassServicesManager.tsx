@@ -98,11 +98,6 @@ export function ClassServicesManager() {
             {t('subtitle')}
           </p>
         </div>
-        <div className="border-l-2 border-primary/30 pl-4 py-1 my-6 max-w-3xl">
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Serviços são os tipos de aulas ou atendimentos que você oferece. Aqui você define o nome <span className="italic text-primary/70">(ex: Aula Particular de Inglês)</span>, a duração padrão e o valor. Ao criar seus serviços, você agiliza a criação da agenda para facilitar o seu cotidiano.
-          </p>
-        </div>
         <div className="flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input

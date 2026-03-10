@@ -5,18 +5,17 @@ import { BillingSettings } from "@/components/Settings/BillingSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTranslation } from "react-i18next";
 
-
 export default function Servicos() {
-  const { t } = useTranslation(['monthlySubscriptions', 'services']);
+  const { t } = useTranslation('monthlySubscriptions');
 
   return (
     <Layout>
       <div className="container mx-auto py-4 sm:py-6 px-2 sm:px-4">
         <Tabs defaultValue="services">
           <TabsList className="mb-4">
-            <TabsTrigger value="services">{t('monthlySubscriptions:tabs.services')}</TabsTrigger>
-            <TabsTrigger value="subscriptions">{t('monthlySubscriptions:tabs.subscriptions')}</TabsTrigger>
-            <TabsTrigger value="settings">{t('monthlySubscriptions:tabs.settings')}</TabsTrigger>
+            <TabsTrigger value="services">{t('tabs.services')}</TabsTrigger>
+            <TabsTrigger value="subscriptions">{t('tabs.subscriptions')}</TabsTrigger>
+            <TabsTrigger value="settings">{t('tabs.settings')}</TabsTrigger>
           </TabsList>
           <TabsContent value="services">
             <ClassServicesManager />

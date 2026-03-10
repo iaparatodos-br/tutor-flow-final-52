@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Clock, DollarSign } from "lucide-react";
+import { Plus, Edit, Clock, DollarSign, Info } from "lucide-react";
 import { ServiceModal } from "./ServiceModal";
 import { useTranslation } from "react-i18next";
 

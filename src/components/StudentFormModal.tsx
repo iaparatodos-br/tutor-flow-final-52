@@ -77,8 +77,7 @@ export function StudentFormModal({
   const { profile } = useProfile();
   const { t } = useTranslation('students');
   const hasFinancialModule = hasFeature('financial_module');
-  const [teacherDefaultBillingDay, setTeacherDefaultBillingDay] = useState<number | undefined>();
-  const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student, teacherDefaultBillingDay));
+  const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student));
   const [registrationType, setRegistrationType] = useState<StudentRegistrationType>(null);
   const [inlineDependents, setInlineDependents] = useState<InlineDependent[]>([]);
   const isEditing = !!student;

@@ -53,15 +53,12 @@ interface StudentFormModalProps {
   description: string;
 }
 
-const getInitialFormData = (student?: StudentFormModalProps['student'], teacherDefaultBillingDay?: number): StudentFormData => {
-  console.log('getInitialFormData - student data:', student);
-  console.log('getInitialFormData - teacher default billing day:', teacherDefaultBillingDay);
-  
+const getInitialFormData = (student?: StudentFormModalProps['student']): StudentFormData => {
   return {
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
-    billing_day: student?.billing_day || teacherDefaultBillingDay || 15,
+    billing_day: student?.billing_day || 1,
     business_profile_id: student?.business_profile_id || null
   };
 };
@@ -80,8 +77,7 @@ export function StudentFormModal({
   const { profile } = useProfile();
   const { t } = useTranslation('students');
   const hasFinancialModule = hasFeature('financial_module');
-  const [teacherDefaultBillingDay, setTeacherDefaultBillingDay] = useState<number | undefined>();
-  const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student, teacherDefaultBillingDay));
+  const [formData, setFormData] = useState<StudentFormData>(() => getInitialFormData(student));
   const [registrationType, setRegistrationType] = useState<StudentRegistrationType>(null);
   const [inlineDependents, setInlineDependents] = useState<InlineDependent[]>([]);
   const isEditing = !!student;
@@ -105,35 +101,10 @@ export function StudentFormModal({
     enabled: profile?.role === 'professor',
   });
 
-  // Load teacher's default billing day
-  useEffect(() => {
-    const loadTeacherDefaults = async () => {
-      if (profile?.id && profile.role === 'professor') {
-        try {
-          const { data, error } = await supabase
-            .from('profiles')
-            .select('default_billing_day')
-            .eq('id', profile.id)
-            .single();
-
-          if (!error && data && (data as any)?.default_billing_day) {
-            setTeacherDefaultBillingDay((data as any).default_billing_day);
-          }
-        } catch (error) {
-          console.error('Error loading teacher defaults:', error);
-        }
-      }
-    };
-
-    loadTeacherDefaults();
-  }, [profile]);
 
   // Update form data when student prop or teacher defaults change
   useEffect(() => {
-    console.log('StudentFormModal useEffect - student changed:', student);
-    console.log('StudentFormModal useEffect - teacher default billing day:', teacherDefaultBillingDay);
-    const newFormData = getInitialFormData(student, teacherDefaultBillingDay);
-    console.log('StudentFormModal useEffect - new form data:', newFormData);
+    const newFormData = getInitialFormData(student);
     setFormData(newFormData);
     // Reset registration type for new students, set to individual for editing
     setRegistrationType(student ? 'individual' : null);
@@ -146,13 +117,12 @@ export function StudentFormModal({
       billing_day: false,
       business_profile_id: false
     });
-  }, [student, teacherDefaultBillingDay]);
+  }, [student]);
 
   // Reset form when modal opens for new student registration
   useEffect(() => {
     if (isOpen && !student) {
-      console.log('StudentFormModal - Resetting form for new student');
-      setFormData(getInitialFormData(undefined, teacherDefaultBillingDay));
+      setFormData(getInitialFormData(undefined));
       setRegistrationType(null);
       setInlineDependents([]);
       setValidationErrors({
@@ -163,7 +133,7 @@ export function StudentFormModal({
         business_profile_id: false
       });
     }
-  }, [isOpen, student, teacherDefaultBillingDay]);
+  }, [isOpen, student]);
 
   const handleNameChange = (value: string) => {
     setFormData(prev => ({ ...prev, name: value }));

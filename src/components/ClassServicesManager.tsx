@@ -114,6 +114,9 @@ export function ClassServicesManager() {
           </Button>
         </div>
       </div>
+      <div className="w-full border-l-2 border-primary/20 pl-4 py-2 my-6 text-sm text-muted-foreground leading-relaxed max-w-3xl">
+        Serviços são os tipos de aulas ou atendimentos que você oferece. Aqui você define o nome <span className="italic opacity-70">(ex: Aula Particular de Inglês)</span>, a duração padrão e o valor. Ao criar seus serviços, você agiliza a criação da agenda para facilitar o seu cotidiano.
+      </div>
 
       {filteredServices.length === 0 && !showInactive && services.length > 0 ? (
         <Card>

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { DollarSign, Calendar, Loader2, Info, CreditCard, Clock, FileText } from "lucide-react";
+import { DollarSign, Loader2, Info, CreditCard, Clock, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -25,8 +25,7 @@ export function BillingSettings() {
   const [businessProfileId, setBusinessProfileId] = useState<string | null>(null);
 
   const billingSchema = z.object({
-    payment_due_days: z.number().min(1, t('validation.minDays')).max(28, t('validation.dayRange')),
-    default_billing_day: z.number().min(1, t('validation.dayRange')).max(28, t('validation.dayRange')).optional().nullable()
+    payment_due_days: z.number().min(1, t('validation.minDays')).max(28, t('validation.maxDays'))
   });
 
   type BillingFormData = z.infer<typeof billingSchema>;
@@ -34,8 +33,7 @@ export function BillingSettings() {
   const form = useForm<BillingFormData>({
     resolver: zodResolver(billingSchema),
     defaultValues: {
-      payment_due_days: 15,
-      default_billing_day: null
+      payment_due_days: 15
     }
   });
 
@@ -56,8 +54,7 @@ export function BillingSettings() {
       if (profileError) throw profileError;
 
       form.reset({
-        payment_due_days: (profileData as any)?.payment_due_days || 15,
-        default_billing_day: (profileData as any)?.default_billing_day || null
+        payment_due_days: (profileData as any)?.payment_due_days || 15
       });
 
       const { data: bpData, error: bpError } = await supabase.
@@ -93,8 +90,7 @@ export function BillingSettings() {
       const { error } = await supabase.
       from('profiles').
       update({
-        payment_due_days: data.payment_due_days,
-        default_billing_day: data.default_billing_day
+        payment_due_days: data.payment_due_days
       }).
       eq('id', profile.id);
 
@@ -292,47 +288,6 @@ export function BillingSettings() {
               } />
 
 
-            <FormField
-              control={form.control}
-              name="default_billing_day"
-              render={({ field }) =>
-              <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    {t('fields.defaultBillingDay.label')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                    type="number"
-                    min="1"
-                    max="28"
-                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    placeholder={t('fields.defaultBillingDay.placeholder')}
-                    {...field}
-                    value={field.value || ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") {
-                        field.onChange(null);
-                        return;
-                      }
-                      const num = parseInt(raw);
-                      if (!isNaN(num)) {
-                        field.onChange(num);
-                      }
-                    }}
-                    onBlur={() => {
-                      field.onBlur();
-                      if (field.value != null) {
-                        field.onChange(Math.min(28, Math.max(1, field.value)));
-                      }
-                    }} />
-
-                  </FormControl>
-                  <FormDescription>{t('fields.defaultBillingDay.description')}</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              } />
 
           </CardContent>
         </Card>

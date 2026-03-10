@@ -125,8 +125,7 @@ export function StudentFormModal({
   // Reset form when modal opens for new student registration
   useEffect(() => {
     if (isOpen && !student) {
-      console.log('StudentFormModal - Resetting form for new student');
-      setFormData(getInitialFormData(undefined, teacherDefaultBillingDay));
+      setFormData(getInitialFormData(undefined));
       setRegistrationType(null);
       setInlineDependents([]);
       setValidationErrors({

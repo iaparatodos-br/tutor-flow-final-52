@@ -25,8 +25,7 @@ export function BillingSettings() {
   const [businessProfileId, setBusinessProfileId] = useState<string | null>(null);
 
   const billingSchema = z.object({
-    payment_due_days: z.number().min(1, t('validation.minDays')).max(28, t('validation.dayRange')),
-    default_billing_day: z.number().min(1, t('validation.dayRange')).max(28, t('validation.dayRange')).optional().nullable()
+    payment_due_days: z.number().min(1, t('validation.minDays')).max(28, t('validation.maxDays'))
   });
 
   type BillingFormData = z.infer<typeof billingSchema>;
@@ -34,8 +33,7 @@ export function BillingSettings() {
   const form = useForm<BillingFormData>({
     resolver: zodResolver(billingSchema),
     defaultValues: {
-      payment_due_days: 15,
-      default_billing_day: null
+      payment_due_days: 15
     }
   });
 

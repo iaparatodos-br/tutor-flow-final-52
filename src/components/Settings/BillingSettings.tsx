@@ -288,47 +288,6 @@ export function BillingSettings() {
               } />
 
 
-            <FormField
-              control={form.control}
-              name="default_billing_day"
-              render={({ field }) =>
-              <FormItem>
-                  <FormLabel className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    {t('fields.defaultBillingDay.label')}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                    type="number"
-                    min="1"
-                    max="28"
-                    className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    placeholder={t('fields.defaultBillingDay.placeholder')}
-                    {...field}
-                    value={field.value || ""}
-                    onChange={(e) => {
-                      const raw = e.target.value;
-                      if (raw === "") {
-                        field.onChange(null);
-                        return;
-                      }
-                      const num = parseInt(raw);
-                      if (!isNaN(num)) {
-                        field.onChange(num);
-                      }
-                    }}
-                    onBlur={() => {
-                      field.onBlur();
-                      if (field.value != null) {
-                        field.onChange(Math.min(28, Math.max(1, field.value)));
-                      }
-                    }} />
-
-                  </FormControl>
-                  <FormDescription>{t('fields.defaultBillingDay.description')}</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              } />
 
           </CardContent>
         </Card>

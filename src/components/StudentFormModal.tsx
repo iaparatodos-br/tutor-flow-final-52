@@ -136,7 +136,7 @@ export function StudentFormModal({
         business_profile_id: false
       });
     }
-  }, [isOpen, student, teacherDefaultBillingDay]);
+  }, [isOpen, student]);
 
   const handleNameChange = (value: string) => {
     setFormData(prev => ({ ...prev, name: value }));

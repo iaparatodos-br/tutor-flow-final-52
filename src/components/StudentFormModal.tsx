@@ -58,7 +58,7 @@ const getInitialFormData = (student?: StudentFormModalProps['student']): Student
     name: student?.name || "",
     email: student?.email || "",
     phone: student?.guardian_phone || "",
-    billing_day: student?.billing_day || teacherDefaultBillingDay || 15,
+    billing_day: student?.billing_day || 1,
     business_profile_id: student?.business_profile_id || null
   };
 };

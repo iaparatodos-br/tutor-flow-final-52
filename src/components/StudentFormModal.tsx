@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DayInput } from "@/components/ui/day-input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -440,15 +441,14 @@ export function StudentFormModal({
                         <Label htmlFor="billing-day">
                           {t('fields.monthlyBillingDay')} *
                         </Label>
-                        <Input
+                        <DayInput
                           id="billing-day"
-                          type="number"
-                          min="1"
-                          max="28"
+                          min={1}
+                          max={28}
                           placeholder={t('placeholders.billingDay')}
                           value={formData.billing_day}
-                          onChange={(e) => {
-                            setFormData(prev => ({ ...prev, billing_day: parseInt(e.target.value) || 15 }));
+                          onChange={(val) => {
+                            setFormData(prev => ({ ...prev, billing_day: val }));
                             setValidationErrors(prev => ({ ...prev, billing_day: false }));
                           }}
                           className={validationErrors.billing_day ? "border-destructive" : ""}

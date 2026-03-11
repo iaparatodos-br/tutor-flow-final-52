@@ -128,7 +128,6 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
               console.error('Error updating invoice:', invoiceError);
             }
           }
-          }
         }
       } else {
         // Class-level amnesty (individual classes - legacy behavior)

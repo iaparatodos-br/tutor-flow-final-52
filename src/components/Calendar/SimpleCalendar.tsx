@@ -621,14 +621,54 @@ export function SimpleCalendar({
               {/* Amnesty Section - for cancelled classes with pending charge */}
               {(() => {
                 const classEvent = selectedEvent as CalendarClass;
-                // Check if class-level charge is applied OR if any participant has charge_applied
+                
+                if (!isProfessor) return null;
+                
+                // Group class: show per-participant amnesty buttons
+                if (classEvent.is_group_class) {
+                  const chargedParticipants = classEvent.participants?.filter(
+                    (p: any) => p.charge_applied === true && 
+                      (p.status === 'cancelada' || p.status === 'removida') &&
+                      !p.amnesty_granted
+                  ) || [];
+                  
+                  if (chargedParticipants.length === 0) return null;
+                  
+                  return (
+                    <div className="pt-4 border-t">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider mb-3">
+                        {t('actions.chargeManagement', 'Gestão de Cobrança')}
+                      </p>
+                      <div className="space-y-2">
+                        {chargedParticipants.map((p: any) => (
+                          <div key={p.id} className="flex flex-col gap-1">
+                            <span className="text-sm text-muted-foreground">
+                              {p.student?.name || p.dependent?.name || 'Aluno'}
+                            </span>
+                            <AmnestyButton
+                              classId={classEvent.id}
+                              studentName={p.student?.name || p.dependent?.name || 'Aluno'}
+                              participantId={p.id}
+                              studentId={p.student_id}
+                              onAmnestyGranted={() => {
+                                setSelectedEvent(null);
+                                onAmnestyGranted?.();
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                }
+                
+                // Individual class: class-level amnesty (legacy behavior)
                 const hasClassCharge = classEvent.charge_applied === true;
                 const hasParticipantCharge = classEvent.participants?.some(
                   (p: any) => p.charge_applied === true && (p.status === 'cancelada' || p.status === 'removida')
                 );
                 const hasAnyCharge = hasClassCharge || hasParticipantCharge;
-                const canGrantAmnesty = isProfessor && 
-                  classEvent.status === 'cancelada' && 
+                const canGrantAmnesty = classEvent.status === 'cancelada' && 
                   hasAnyCharge && 
                   classEvent.amnesty_granted !== true;
                 

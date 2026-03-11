@@ -16,9 +16,13 @@ interface AmnestyButtonProps {
   studentName: string;
   onAmnestyGranted: () => void;
   disabled?: boolean;
+  /** When provided, amnesty is granted at participant level (group classes) */
+  participantId?: string;
+  /** Student ID for the participant - used to cancel the correct invoice */
+  studentId?: string;
 }
 
-export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled }: AmnestyButtonProps) {
+export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId }: AmnestyButtonProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('amnesty');
@@ -28,17 +32,24 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
   const [isBilled, setIsBilled] = useState(false);
   const [checkingBilling, setCheckingBilling] = useState(true);
 
-  // Check if this class has already been billed (exists in invoice_classes with a non-cancelled invoice)
+  // Check if this class/participant has already been billed
   useEffect(() => {
     const checkBillingStatus = async () => {
       setCheckingBilling(true);
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('invoice_classes')
           .select('id, invoice_id, invoices!inner(id, status)')
           .eq('class_id', classId)
           .neq('invoices.status', 'cancelada')
           .limit(1);
+
+        // If participant-level, filter by participant_id
+        if (participantId) {
+          query = query.eq('participant_id', participantId);
+        }
+
+        const { data, error } = await query;
 
         if (!error && data && data.length > 0) {
           setIsBilled(true);
@@ -51,7 +62,7 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
     };
 
     checkBillingStatus();
-  }, [classId]);
+  }, [classId, participantId]);
 
   const isDisabled = disabled || isBilled || checkingBilling;
 
@@ -60,29 +71,78 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
 
     setLoading(true);
     try {
-      const { error: classError } = await supabase
-        .from('classes')
-        .update({
-          amnesty_granted: true,
-          amnesty_granted_by: profile.id,
-          amnesty_granted_at: new Date().toISOString(),
-          charge_applied: false
-        })
-        .eq('id', classId);
+      if (participantId) {
+        // Participant-level amnesty (group classes)
+        const { error: participantError } = await supabase
+          .from('class_participants')
+          .update({
+            charge_applied: false,
+            amnesty_granted: true,
+            amnesty_granted_by: profile.id,
+            amnesty_granted_at: new Date().toISOString(),
+          })
+          .eq('id', participantId);
 
-      if (classError) throw classError;
+        if (participantError) throw participantError;
 
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .update({
-          status: 'cancelada',
-          description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
-        })
-        .eq('class_id', classId)
-        .eq('invoice_type', 'cancellation');
+        // Cancel the specific cancellation invoice for this student + class
+        if (studentId) {
+          const { error: invoiceError } = await supabase
+            .from('invoices')
+            .update({
+              status: 'cancelada',
+              description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
+            })
+            .eq('class_id', classId)
+            .eq('student_id', studentId)
+            .eq('invoice_type', 'cancellation');
 
-      if (invoiceError) {
-        console.error('Error updating invoice:', invoiceError);
+          if (invoiceError) {
+            console.error('Error updating invoice:', invoiceError);
+          }
+        }
+      } else {
+        // Class-level amnesty (individual classes - legacy behavior)
+        const { error: classError } = await supabase
+          .from('classes')
+          .update({
+            amnesty_granted: true,
+            amnesty_granted_by: profile.id,
+            amnesty_granted_at: new Date().toISOString(),
+            charge_applied: false
+          })
+          .eq('id', classId);
+
+        if (classError) throw classError;
+
+        // Also update the single participant if exists
+        const { error: partError } = await supabase
+          .from('class_participants')
+          .update({
+            charge_applied: false,
+            amnesty_granted: true,
+            amnesty_granted_by: profile.id,
+            amnesty_granted_at: new Date().toISOString(),
+          })
+          .eq('class_id', classId)
+          .eq('charge_applied', true);
+
+        if (partError) {
+          console.error('Error updating participant:', partError);
+        }
+
+        const { error: invoiceError } = await supabase
+          .from('invoices')
+          .update({
+            status: 'cancelada',
+            description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
+          })
+          .eq('class_id', classId)
+          .eq('invoice_type', 'cancellation');
+
+        if (invoiceError) {
+          console.error('Error updating invoice:', invoiceError);
+        }
       }
 
       toast({

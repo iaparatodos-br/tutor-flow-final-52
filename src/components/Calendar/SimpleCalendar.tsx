@@ -643,13 +643,14 @@ export function SimpleCalendar({
                         {chargedParticipants.map((p: any) => (
                           <div key={p.id} className="flex flex-col gap-1">
                             <span className="text-sm text-muted-foreground">
-                              {p.student?.name || p.dependent?.name || 'Aluno'}
+                              {p.dependent_name || p.profiles?.name || 'Aluno'}
                             </span>
                             <AmnestyButton
                               classId={classEvent.id}
-                              studentName={p.student?.name || p.dependent?.name || 'Aluno'}
+                              studentName={p.dependent_name || p.profiles?.name || 'Aluno'}
                               participantId={p.id}
                               studentId={p.student_id}
+                              dependentId={p.dependent_id}
                               onAmnestyGranted={() => {
                                 setSelectedEvent(null);
                                 onAmnestyGranted?.();

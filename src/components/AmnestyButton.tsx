@@ -20,9 +20,11 @@ interface AmnestyButtonProps {
   participantId?: string;
   /** Student ID for the participant - used to cancel the correct invoice */
   studentId?: string;
+  /** Dependent ID - used to cancel the correct invoice for a dependent */
+  dependentId?: string;
 }
 
-export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId }: AmnestyButtonProps) {
+export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId, dependentId }: AmnestyButtonProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('amnesty');
@@ -87,18 +89,44 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
 
         // Cancel the specific cancellation invoice for this student + class
         if (studentId) {
-          const { error: invoiceError } = await supabase
-            .from('invoices')
-            .update({
-              status: 'cancelada',
-              description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
-            })
-            .eq('class_id', classId)
-            .eq('student_id', studentId)
-            .eq('invoice_type', 'cancellation');
+          // When dependent is involved, find invoice via invoice_classes (which has dependent_id)
+          if (dependentId) {
+            const { data: invoiceItems } = await supabase
+              .from('invoice_classes')
+              .select('invoice_id, invoices!inner(id, status, invoice_type)')
+              .eq('class_id', classId)
+              .eq('dependent_id', dependentId)
+              .eq('invoices.invoice_type', 'cancellation')
+              .neq('invoices.status', 'cancelada');
 
-          if (invoiceError) {
-            console.error('Error updating invoice:', invoiceError);
+            if (invoiceItems && invoiceItems.length > 0) {
+              const invoiceIds = [...new Set(invoiceItems.map((item: any) => item.invoice_id))];
+              const { error: invoiceError } = await supabase
+                .from('invoices')
+                .update({
+                  status: 'cancelada',
+                  description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
+                })
+                .in('id', invoiceIds);
+
+              if (invoiceError) {
+                console.error('Error updating invoice:', invoiceError);
+              }
+            }
+          } else {
+            const { error: invoiceError } = await supabase
+              .from('invoices')
+              .update({
+                status: 'cancelada',
+                description: `[ANISTIADA] ${justification ? `${t('fields.justification.label')}: ${justification}` : t('messages.success.description', { studentName })}`
+              })
+              .eq('class_id', classId)
+              .eq('student_id', studentId)
+              .eq('invoice_type', 'cancellation');
+
+            if (invoiceError) {
+              console.error('Error updating invoice:', invoiceError);
+            }
           }
         }
       } else {

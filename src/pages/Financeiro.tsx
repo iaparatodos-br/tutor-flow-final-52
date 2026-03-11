@@ -310,7 +310,7 @@ export default function Financeiro() {
           _participantId: firstIc?.participant_id || undefined,
           _dependentId: firstIc?.dependent_id || undefined,
         };
-      })) as InvoiceWithStudent[];
+      }) as InvoiceWithStudent[]);
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);
       toast({

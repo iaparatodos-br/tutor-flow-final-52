@@ -57,6 +57,7 @@ interface InvoiceWithStudent {
   description: string | null;
   invoice_type?: string;
   class_id?: string;
+  student_id?: string;
   original_amount?: number;
   boleto_url?: string;
   linha_digitavel?: string;
@@ -74,6 +75,7 @@ interface InvoiceWithStudent {
     status: string;
     charge_applied?: boolean;
     amnesty_granted?: boolean;
+    is_group_class?: boolean;
   };
 }
 

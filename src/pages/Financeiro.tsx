@@ -259,10 +259,18 @@ export default function Financeiro() {
           description,
           invoice_type,
           class_id,
+          student_id,
           original_amount,
           boleto_url,
           linha_digitavel,
           stripe_payment_intent_id,
+          classes!invoices_class_id_fkey (
+            id,
+            status,
+            charge_applied,
+            amnesty_granted,
+            is_group_class
+          ),
           profiles!invoices_student_id_fkey (
             name,
             email

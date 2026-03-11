@@ -266,12 +266,17 @@ export default function Financeiro() {
           boleto_url,
           linha_digitavel,
           stripe_payment_intent_id,
-          classes!invoices_class_id_fkey (
-            id,
-            status,
-            charge_applied,
-            amnesty_granted,
-            is_group_class
+          invoice_classes (
+            class_id,
+            participant_id,
+            dependent_id,
+            classes (
+              id,
+              status,
+              charge_applied,
+              amnesty_granted,
+              is_group_class
+            )
           ),
           profiles!invoices_student_id_fkey (
             name,
@@ -293,14 +298,19 @@ export default function Financeiro() {
         ascending: false
       });
       if (error) throw error;
-      setInvoices((data || []).map((item: any) => ({
-        ...item,
-        student: item.profiles || {
-          name: 'N/A',
-          email: 'N/A'
-        },
-        class: item.classes || undefined
-      })) as InvoiceWithStudent[]);
+      setInvoices((data || []).map((item: any) => {
+        const firstIc = (item.invoice_classes && item.invoice_classes.length > 0) ? item.invoice_classes[0] : null;
+        return {
+          ...item,
+          student: item.profiles || {
+            name: 'N/A',
+            email: 'N/A'
+          },
+          class: firstIc?.classes || undefined,
+          _participantId: firstIc?.participant_id || undefined,
+          _dependentId: firstIc?.dependent_id || undefined,
+        };
+      }) as InvoiceWithStudent[]);
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);
       toast({
@@ -601,7 +611,7 @@ export default function Financeiro() {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} studentId={invoice.student_id} onAmnestyGranted={loadInvoices} />}
+                                {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} studentId={invoice.student_id} participantId={(invoice as any)._participantId} dependentId={(invoice as any)._dependentId} onAmnestyGranted={loadInvoices} />}
                                 
                                 {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && <AlertDialog>
                                       <TooltipProvider>

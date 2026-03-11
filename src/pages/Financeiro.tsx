@@ -601,7 +601,7 @@ export default function Financeiro() {
                             </TableCell>
                             <TableCell>
                               <div className="flex gap-2">
-                                {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} onAmnestyGranted={loadInvoices} />}
+                                {invoice.invoice_type === 'cancellation' && invoice.class?.charge_applied && !invoice.class?.amnesty_granted && ['pendente', 'open'].includes(invoice.status) && <AmnestyButton classId={invoice.class_id!} studentName={invoice.student.name} studentId={invoice.student_id} onAmnestyGranted={loadInvoices} />}
                                 
                                 {['pendente', 'open', 'overdue', 'vencida'].includes(invoice.status) && <AlertDialog>
                                       <TooltipProvider>

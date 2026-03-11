@@ -24,7 +24,7 @@ interface AmnestyButtonProps {
   dependentId?: string;
 }
 
-export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId }: AmnestyButtonProps) {
+export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId, dependentId }: AmnestyButtonProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('amnesty');

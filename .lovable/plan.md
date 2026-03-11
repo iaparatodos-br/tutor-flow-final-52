@@ -1,55 +1,45 @@
 
 
-# Auditoria das Sugestões do Gemini (Rodada 2)
+## Issues Found with Amnesty for Dependents
 
-## Análise Ponto a Ponto
+There are **3 bugs** that will cause amnesty to malfunction for dependents in group classes:
 
-### Sugestões VÁLIDAS (a adicionar)
+### Bug 1: RPC function doesn't return `amnesty_granted` per participant
 
-**1. Fall Back DST (4.8 - Hora Sobreposta)** — VÁLIDO.
-O plano cobre Spring Forward (4.7) mas ignora Fall Back. Quando o relógio atrasa no 1º domingo de novembro (NY), 01:30 ocorre duas vezes. `fromZonedTime` do `date-fns-tz` resolve assumindo a primeira ocorrência (EDT). Vale documentar o comportamento esperado.
+The `get_classes_with_participants` RPC builds the participant JSON without `amnesty_granted`, `amnesty_granted_by`, or `amnesty_granted_at`. This means the filter `!p.amnesty_granted` in SimpleCalendar (line 632) will always be `undefined` (falsy), so the button will keep showing even after amnesty is granted — until a page refresh where the DB column is checked again. But more critically, the UI cannot know if amnesty was already granted.
 
-**2. Fusos fracionados (5.1.4 - Asia/Kolkata)** — VÁLIDO.
-O plano só testa fusos inteiros. UTC+5:30 é um edge case real — 06:00 UTC = 11:30 local. A RPC `get_relationships_to_bill_now` com `AT TIME ZONE` suporta isso nativamente, mas vale ter o teste documentado.
+**Fix**: Update the RPC to include these 3 fields in the participant JSON object.
 
-**3. Visão do Aluno (3.1.11)** — VÁLIDO.
-O `StudentDashboard.tsx` já importa `formatInTimezone` e `startOfMonthTz`, mas o plano de testes foca quase exclusivamente no professor. Adicionar teste de perspectiva do aluno.
+### Bug 2: Wrong field paths for dependent names in amnesty section
 
-**4. Mudança Definitiva de Fuso (2.7)** — VÁLIDO.
-Cenário "professor se muda de país". O sistema armazena UTC, então alterar o perfil só deve mudar a exibição. Teste simples e de alto valor documental.
+In SimpleCalendar line 646, the code uses:
+```
+p.student?.name || p.dependent?.name
+```
 
-**5. Gravação de campos `date` via input (4.9)** — VÁLIDO.
-O teste 8.4.3 cobre parcialmente, mas não testa o round-trip completo com browser em fuso extremo (Tokyo UTC+9 ou Honolulu UTC-10). Reforçar com teste explícito.
+But the RPC returns `p.profiles.name` (not `p.student.name`) and `p.dependent_name` (flat string, not `p.dependent.name`). So for dependents, the name will always show "Aluno" as fallback.
 
-### Sugestões PARCIALMENTE VÁLIDAS
+**Fix**: Change to `p.dependent_name || p.profiles?.name || 'Aluno'` (dependent name takes priority, consistent with rest of the codebase).
 
-**6. Lembretes — timing do disparo (6.11)** — PARCIALMENTE VÁLIDO.
-O `send-class-reminders` (L41-42) já usa `.gte("class_date", now.toISOString()).lte("class_date", tomorrow.toISOString())` — comparação puramente UTC. Funciona corretamente independente de timezone. Mas vale documentar que o disparo é UTC-based para evitar confusão.
+### Bug 3: Invoice cancellation doesn't filter by `dependent_id`
 
-**7. Date Range Filtering (7.7)** — BAIXO VALOR.
-Não há date range pickers com filtros start/end nos relatórios — o Dashboard usa `startOfMonthTz` com mês fixo. Não existe a vulnerabilidade descrita. Anotar como cenário futuro.
+When a dependent's class is cancelled with charge, the invoice may have a `dependent_id` field. The current AmnestyButton only filters by `student_id` + `class_id` + `invoice_type`, which could match invoices for the responsible student too, not just the dependent.
 
-### Sugestões INVÁLIDAS (não aplicáveis)
+**Fix**: Pass `dependentId` to AmnestyButton and use it as an additional filter when cancelling the invoice.
 
-**8. Exportação CSV** — NÃO EXISTE. O sistema só tem import (StudentImportDialog). Sem feature de export, não há teste a fazer.
+---
 
-**9. iCal / .ics** — NÃO EXISTE. Nenhuma funcionalidade de exportação de calendário. Cenário futuro.
+### Changes
 
-**10. DST Assimétrico (EUA vs Europa)** — JÁ COBERTO IMPLICITAMENTE. O sistema armazena tudo em UTC. O frontend converte usando o timezone do viewer. Quando EUA muda DST mas Europa não, o offset muda automaticamente via `date-fns-tz`. Não é um bug, é o comportamento correto por design. Mas vale como teste documental rápido.
+**1. Database migration** — Update `get_classes_with_participants` RPC to include `amnesty_granted`, `amnesty_granted_by`, `amnesty_granted_at` in participant JSON.
 
-**11. Stripe Webhooks (5.5)** — JÁ COBERTO pelo teste 7.6.1/7.6.2. Webhooks atualizam status de faturas que já foram criadas com datas corretas. A agregação no Dashboard (testada em 7.6) é onde o fuso importa, não no webhook em si.
+**2. `src/components/Calendar/SimpleCalendar.tsx`** (lines 644-657):
+- Fix name display: use `p.dependent_name || p.profiles?.name || 'Aluno'`
+- Pass `dependentId={p.dependent_id}` to AmnestyButton
 
-**12. RLS com CURRENT_DATE** — VERIFICADO. As ocorrências de `CURRENT_DATE` estão apenas em **migrations de seed data** (scripts únicos de teste), não em policies RLS ativas. Sem risco.
+**3. `src/components/AmnestyButton.tsx`**:
+- Add optional `dependentId` prop
+- When cancelling invoice with `dependentId`, add `.eq('dependent_id', dependentId)` filter (or `.is('dependent_id', null)` when no dependent)
 
-## Plano de Alteração do Documento
-
-Adicionar ao `docs/timezone-test-plan.md`:
-
-1. **Seção 2.7**: Mudança definitiva de fuso (professor altera perfil, aulas existentes mudam exibição sem mutar UTC)
-2. **Seção 3.1.11**: Perspectiva do aluno (StudentDashboard) com fuso diferente do professor
-3. **Seção 4.8**: Fall Back DST (hora sobreposta, comportamento do `fromZonedTime`)
-4. **Seção 4.9**: Round-trip de campos `date` com browser em fuso extremo
-5. **Seção 5.1.4**: Fuso fracionado (Asia/Kolkata UTC+5:30)
-6. **Seção 6.11**: Nota documental sobre timing UTC-based dos lembretes
-7. **Atualizar checklist** (Seção 9) com os novos cenários
+**4. `src/integrations/supabase/types.ts`** — No manual change needed; types auto-update on migration.
 

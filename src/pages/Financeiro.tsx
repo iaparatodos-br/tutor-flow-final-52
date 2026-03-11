@@ -296,7 +296,8 @@ export default function Financeiro() {
         student: item.profiles || {
           name: 'N/A',
           email: 'N/A'
-        }
+        },
+        class: item.classes || undefined
       })) as InvoiceWithStudent[]);
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);

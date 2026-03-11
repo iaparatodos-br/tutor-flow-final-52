@@ -266,41 +266,36 @@ export default function Financeiro() {
           boleto_url,
           linha_digitavel,
           stripe_payment_intent_id,
-          classes!invoices_class_id_fkey (
-            id,
-            status,
-            charge_applied,
-            amnesty_granted,
-            is_group_class
+          invoice_classes (
+            class_id,
+            participant_id,
+            dependent_id,
+            classes (
+              id,
+              status,
+              charge_applied,
+              amnesty_granted,
+              is_group_class
+            )
           ),
           profiles!invoices_student_id_fkey (
             name,
             email
           )
         `);
-      if (isProfessor) {
-        query = query.eq('teacher_id', profile.id);
-      } else {
-        query = query.eq('student_id', profile.id);
-        if (selectedTeacherId) {
-          query = query.eq('teacher_id', selectedTeacherId);
-        }
-      }
-      const {
-        data,
-        error
-      } = await query.order('created_at', {
-        ascending: false
-      });
-      if (error) throw error;
-      setInvoices((data || []).map((item: any) => ({
+...
+      const firstIc = (item.invoice_classes && item.invoice_classes.length > 0) ? item.invoice_classes[0] : null;
+      return {
         ...item,
         student: item.profiles || {
           name: 'N/A',
           email: 'N/A'
         },
-        class: item.classes || undefined
-      })) as InvoiceWithStudent[]);
+        class: firstIc?.classes || undefined,
+        _participantId: firstIc?.participant_id || undefined,
+        _dependentId: firstIc?.dependent_id || undefined,
+      };
+      })) as InvoiceWithStudent[];
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);
       toast({

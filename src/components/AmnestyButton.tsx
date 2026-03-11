@@ -20,6 +20,8 @@ interface AmnestyButtonProps {
   participantId?: string;
   /** Student ID for the participant - used to cancel the correct invoice */
   studentId?: string;
+  /** Dependent ID - used to cancel the correct invoice for a dependent */
+  dependentId?: string;
 }
 
 export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId }: AmnestyButtonProps) {

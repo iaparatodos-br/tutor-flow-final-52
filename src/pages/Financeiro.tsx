@@ -283,7 +283,6 @@ export default function Financeiro() {
             email
           )
         `);
-...
       if (isProfessor) {
         query = query.eq('teacher_id', profile.id);
       } else {
@@ -311,17 +310,6 @@ export default function Financeiro() {
           _participantId: firstIc?.participant_id || undefined,
           _dependentId: firstIc?.dependent_id || undefined,
         };
-      })) as InvoiceWithStudent[];
-      return {
-        ...item,
-        student: item.profiles || {
-          name: 'N/A',
-          email: 'N/A'
-        },
-        class: firstIc?.classes || undefined,
-        _participantId: firstIc?.participant_id || undefined,
-        _dependentId: firstIc?.dependent_id || undefined,
-      };
       })) as InvoiceWithStudent[];
     } catch (error) {
       console.error('Erro ao carregar faturas:', error);

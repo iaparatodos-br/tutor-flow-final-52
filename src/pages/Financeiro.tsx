@@ -284,7 +284,34 @@ export default function Financeiro() {
           )
         `);
 ...
-      const firstIc = (item.invoice_classes && item.invoice_classes.length > 0) ? item.invoice_classes[0] : null;
+      if (isProfessor) {
+        query = query.eq('teacher_id', profile.id);
+      } else {
+        query = query.eq('student_id', profile.id);
+        if (selectedTeacherId) {
+          query = query.eq('teacher_id', selectedTeacherId);
+        }
+      }
+      const {
+        data,
+        error
+      } = await query.order('created_at', {
+        ascending: false
+      });
+      if (error) throw error;
+      setInvoices((data || []).map((item: any) => {
+        const firstIc = (item.invoice_classes && item.invoice_classes.length > 0) ? item.invoice_classes[0] : null;
+        return {
+          ...item,
+          student: item.profiles || {
+            name: 'N/A',
+            email: 'N/A'
+          },
+          class: firstIc?.classes || undefined,
+          _participantId: firstIc?.participant_id || undefined,
+          _dependentId: firstIc?.dependent_id || undefined,
+        };
+      })) as InvoiceWithStudent[];
       return {
         ...item,
         student: item.profiles || {

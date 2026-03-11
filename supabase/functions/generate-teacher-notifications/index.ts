@@ -135,6 +135,7 @@ Deno.serve(async (req) => {
       .select('class_id')
       .eq('status', 'cancelada')
       .eq('charge_applied', true)
+      .eq('amnesty_granted', false)
       .gte('created_at', thirtyDaysAgoISO)
 
     if (amnestyPartError) {

@@ -32,9 +32,14 @@ export function FeatureGate({
   showUpgrade = true,
   studentCount 
 }: FeatureGateProps) {
-  const { hasFeature, hasTeacherFeature, currentPlan, getStudentOverageInfo } = useSubscription();
+  const { hasFeature, hasTeacherFeature, currentPlan, getStudentOverageInfo, loading } = useSubscription();
   const { profile } = useProfile();
   const navigate = useNavigate();
+
+  // While subscription is loading, show children (optimistic — don't block premium users)
+  if (loading) {
+    return <>{children}</>;
+  }
 
   // If no feature specified, always show content
   if (!feature && !requiredPlan && !studentCount) {

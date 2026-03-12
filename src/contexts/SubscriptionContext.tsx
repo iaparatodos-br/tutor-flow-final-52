@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { useTeacherContext } from './TeacherContext';
@@ -79,6 +79,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
   const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
   const subscriptionLoadingRef = useRef(false);
+  const lastProfileIdRef = useRef<string | null>(null);
 
   const teacherContext = useTeacherContext();
 
@@ -251,9 +252,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         setSubscription(null);
       } else {
+        // Preserve prior state: if API returns a plan, use it; otherwise keep existing plan
         if (data?.plan) {
           setCurrentPlan(data.plan as unknown as SubscriptionPlan);
-        } else {
+        } else if (!currentPlan) {
           const freePlan = plans.find(p => p.slug === 'free');
           setCurrentPlan(freePlan || null);
         }
@@ -317,9 +319,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshSubscription = async () => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshSubscription = useCallback(async () => {
     if (!user) return;
-    
+
+    // Prevent concurrent calls (shared guard with loadSubscription)
+    if (subscriptionLoadingRef.current) return;
+    subscriptionLoadingRef.current = true;
+
     setLoading(true);
     try {
       const timeoutPromise = new Promise((_, reject) =>
@@ -390,8 +397,13 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setSubscription(null);
       } else {
         setSubscription(null);
-        const freePlan = plans.find(p => p.slug === 'free');
-        setCurrentPlan(freePlan || null);
+        // Preserve prior state: if API returns a plan, use it; otherwise keep existing plan
+        if (data?.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else if (!currentPlan) {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
       }
@@ -404,9 +416,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
       setSubscription(null);
     } finally {
+      subscriptionLoadingRef.current = false;
       setLoading(false);
     }
-  };
+  }, [user, plans, currentPlan]);
 
   const hasFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
     if (!currentPlan) return false;
@@ -558,6 +571,9 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (plans.length > 0 && user && profile) {
+      // Only re-fetch if the profile identity actually changed (avoids re-fetches on TOKEN_REFRESHED)
+      if (lastProfileIdRef.current === profile.id) return;
+      lastProfileIdRef.current = profile.id;
       loadSubscription().finally(() => setLoading(false));
     }
   }, [user, plans, profile]);

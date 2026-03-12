@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useProfile } from "@/contexts/ProfileContext";
 import { formatInTimezone, formatDateTimeBrazil } from "@/utils/timezone";
+import { formatCPF, formatCEP } from "@/utils/validation";
 import { useSubscription } from "@/contexts/SubscriptionContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Layout } from "@/components/Layout";
@@ -41,7 +42,8 @@ import {
   Package,
   Infinity,
   Edit2,
-  Trash2
+  Trash2,
+  MapPin
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 
@@ -50,6 +52,12 @@ interface StudentProfile {
   name: string;
   email: string;
   created_at: string;
+  guardian_phone?: string | null;
+  guardian_cpf?: string | null;
+  guardian_address_street?: string | null;
+  guardian_address_city?: string | null;
+  guardian_address_state?: string | null;
+  guardian_address_postal_code?: string | null;
 }
 
 interface ClassRecord {
@@ -184,10 +192,10 @@ export default function PerfilAluno() {
     if (!profile?.id || !id) return;
 
     try {
-      // Load student profile - first verify teacher-student relationship
+      // Load student profile - first verify teacher-student relationship and get guardian data
       const { data: relationshipData, error: relationshipError } = await supabase
         .from('teacher_student_relationships')
-        .select('student_id')
+        .select('student_id, student_guardian_phone, student_guardian_cpf, student_guardian_address_street, student_guardian_address_city, student_guardian_address_state, student_guardian_address_postal_code')
         .eq('teacher_id', profile.id)
         .eq('student_id', id)
         .single();
@@ -196,16 +204,24 @@ export default function PerfilAluno() {
         throw new Error('Acesso negado: Este aluno não está vinculado ao seu perfil.');
       }
 
-      // Now load the student basic data
+      // Now load the student basic data (including profile-level cpf/address fields)
       const { data: studentData, error: studentError } = await supabase
         .from('profiles')
-        .select('id, name, email, created_at')
+        .select('id, name, email, created_at, cpf, address_street, address_city, address_state, address_postal_code')
         .eq('id', id)
         .single();
 
       if (studentError) throw studentError;
-      
-      setStudent(studentData);
+
+      setStudent({
+        ...studentData,
+        guardian_phone: relationshipData.student_guardian_phone,
+        guardian_cpf: studentData.cpf || relationshipData.student_guardian_cpf,
+        guardian_address_street: studentData.address_street || relationshipData.student_guardian_address_street,
+        guardian_address_city: studentData.address_city || relationshipData.student_guardian_address_city,
+        guardian_address_state: studentData.address_state || relationshipData.student_guardian_address_state,
+        guardian_address_postal_code: studentData.address_postal_code || relationshipData.student_guardian_address_postal_code,
+      });
 
       // Load student's class participations (both individual and group)
       const { data: participationsData, error: participationsError } = await supabase
@@ -625,6 +641,30 @@ export default function PerfilAluno() {
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">{student.email}</span>
                 </div>
+                {student.guardian_phone && (
+                  <div className="flex items-center gap-3">
+                    <Phone className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{student.guardian_phone}</span>
+                  </div>
+                )}
+                {student.guardian_cpf && (
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">CPF: {formatCPF(student.guardian_cpf)}</span>
+                  </div>
+                )}
+                {(student.guardian_address_street || student.guardian_address_city) && (
+                  <div className="flex items-start gap-3">
+                    <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <span className="text-sm">
+                      {[
+                        student.guardian_address_street,
+                        [student.guardian_address_city, student.guardian_address_state].filter(Boolean).join(' - '),
+                        student.guardian_address_postal_code ? formatCEP(student.guardian_address_postal_code) : null,
+                      ].filter(Boolean).join(', ')}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm">

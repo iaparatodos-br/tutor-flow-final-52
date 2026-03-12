@@ -1,31 +1,55 @@
 
 
-## Bug: TimePicker `onBlur` never fires when typing directly
+# Auditoria das Sugestões do Gemini (Rodada 2)
 
-### Root Cause
+## Análise Ponto a Ponto
 
-In `time-picker.tsx` line 103, the `onBlur` callback only fires when the Popover closes:
-```
-onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) onBlur?.(); }}
-```
+### Sugestões VÁLIDAS (a adicionar)
 
-When the user types directly into the input field:
-1. Input `onFocus` calls `setOpen(false)` — popover is already closed
-2. User types a valid time → `onChange` fires correctly, updating parent state
-3. User clicks away → input's `handleInputBlur` runs, but the Popover's `onOpenChange` is **never triggered** because the popover was already closed
-4. Therefore `onBlur?.()` (which triggers `handleSave` in WorkingHourRow) **never fires**
-5. The typed time is never persisted to the database
+**1. Fall Back DST (4.8 - Hora Sobreposta)** — VÁLIDO.
+O plano cobre Spring Forward (4.7) mas ignora Fall Back. Quando o relógio atrasa no 1º domingo de novembro (NY), 01:30 ocorre duas vezes. `fromZonedTime` do `date-fns-tz` resolve assumindo a primeira ocorrência (EDT). Vale documentar o comportamento esperado.
 
-When the user later interacts with the Switch or another element, `handleSave` may fire with default values (09:00/18:00) from the initial state if the component re-rendered.
+**2. Fusos fracionados (5.1.4 - Asia/Kolkata)** — VÁLIDO.
+O plano só testa fusos inteiros. UTC+5:30 é um edge case real — 06:00 UTC = 11:30 local. A RPC `get_relationships_to_bill_now` com `AT TIME ZONE` suporta isso nativamente, mas vale ter o teste documentado.
 
-### Fix
+**3. Visão do Aluno (3.1.11)** — VÁLIDO.
+O `StudentDashboard.tsx` já importa `formatInTimezone` e `startOfMonthTz`, mas o plano de testes foca quase exclusivamente no professor. Adicionar teste de perspectiva do aluno.
 
-**`src/components/ui/time-picker.tsx`**: Call `onBlur?.()` from the input's own `handleInputBlur` as well, so that saving is triggered regardless of whether the popover was used.
+**4. Mudança Definitiva de Fuso (2.7)** — VÁLIDO.
+Cenário "professor se muda de país". O sistema armazena UTC, então alterar o perfil só deve mudar a exibição. Teste simples e de alto valor documental.
 
-**`src/components/Availability/AvailabilityManager.tsx`**: As a secondary safeguard, also call `handleSave` inside the `onChange` callbacks of the TimePickers (not just `onBlur`), so the value is saved as soon as it's committed. This ensures typing a valid 4-digit time auto-saves immediately.
+**5. Gravação de campos `date` via input (4.9)** — VÁLIDO.
+O teste 8.4.3 cobre parcialmente, mas não testa o round-trip completo com browser em fuso extremo (Tokyo UTC+9 ou Honolulu UTC-10). Reforçar com teste explícito.
 
-### Changes
+### Sugestões PARCIALMENTE VÁLIDAS
 
-1. **`src/components/ui/time-picker.tsx`** — Add `onBlur?.()` call at the end of `handleInputBlur` (after validation/reset)
-2. **`src/components/Availability/AvailabilityManager.tsx`** (WorkingHourRow) — No change needed if the TimePicker fix is sufficient; the `onBlur` will now fire correctly after typing
+**6. Lembretes — timing do disparo (6.11)** — PARCIALMENTE VÁLIDO.
+O `send-class-reminders` (L41-42) já usa `.gte("class_date", now.toISOString()).lte("class_date", tomorrow.toISOString())` — comparação puramente UTC. Funciona corretamente independente de timezone. Mas vale documentar que o disparo é UTC-based para evitar confusão.
+
+**7. Date Range Filtering (7.7)** — BAIXO VALOR.
+Não há date range pickers com filtros start/end nos relatórios — o Dashboard usa `startOfMonthTz` com mês fixo. Não existe a vulnerabilidade descrita. Anotar como cenário futuro.
+
+### Sugestões INVÁLIDAS (não aplicáveis)
+
+**8. Exportação CSV** — NÃO EXISTE. O sistema só tem import (StudentImportDialog). Sem feature de export, não há teste a fazer.
+
+**9. iCal / .ics** — NÃO EXISTE. Nenhuma funcionalidade de exportação de calendário. Cenário futuro.
+
+**10. DST Assimétrico (EUA vs Europa)** — JÁ COBERTO IMPLICITAMENTE. O sistema armazena tudo em UTC. O frontend converte usando o timezone do viewer. Quando EUA muda DST mas Europa não, o offset muda automaticamente via `date-fns-tz`. Não é um bug, é o comportamento correto por design. Mas vale como teste documental rápido.
+
+**11. Stripe Webhooks (5.5)** — JÁ COBERTO pelo teste 7.6.1/7.6.2. Webhooks atualizam status de faturas que já foram criadas com datas corretas. A agregação no Dashboard (testada em 7.6) é onde o fuso importa, não no webhook em si.
+
+**12. RLS com CURRENT_DATE** — VERIFICADO. As ocorrências de `CURRENT_DATE` estão apenas em **migrations de seed data** (scripts únicos de teste), não em policies RLS ativas. Sem risco.
+
+## Plano de Alteração do Documento
+
+Adicionar ao `docs/timezone-test-plan.md`:
+
+1. **Seção 2.7**: Mudança definitiva de fuso (professor altera perfil, aulas existentes mudam exibição sem mutar UTC)
+2. **Seção 3.1.11**: Perspectiva do aluno (StudentDashboard) com fuso diferente do professor
+3. **Seção 4.8**: Fall Back DST (hora sobreposta, comportamento do `fromZonedTime`)
+4. **Seção 4.9**: Round-trip de campos `date` com browser em fuso extremo
+5. **Seção 5.1.4**: Fuso fracionado (Asia/Kolkata UTC+5:30)
+6. **Seção 6.11**: Nota documental sobre timing UTC-based dos lembretes
+7. **Atualizar checklist** (Seção 9) com os novos cenários
 

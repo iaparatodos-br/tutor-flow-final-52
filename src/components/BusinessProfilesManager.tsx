@@ -68,7 +68,16 @@ export function BusinessProfilesManager() {
       const { data, error } = await supabase.functions.invoke("create-business-profile", {
         body: { business_name, cnpj },
       });
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error.message;
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const errorBody = await error.context.json();
+            if (errorBody?.error) errorMessage = errorBody.error;
+          } catch {}
+        }
+        throw new Error(errorMessage);
+      }
       return data;
     },
     onSuccess: (data) => {
@@ -84,7 +93,9 @@ export function BusinessProfilesManager() {
     },
     onError: (error: any) => {
       console.error('Error creating business profile:', error);
-      if (error?.message?.includes("Configuração do Stripe Connect necessária")) {
+      const errorMessage = error?.message || 'Erro desconhecido';
+
+      if (errorMessage.includes("Configuração do Stripe Connect necessária")) {
         toast.error("Configuração pendente no Stripe", {
           description: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
           duration: 10000
@@ -96,7 +107,7 @@ export function BusinessProfilesManager() {
           }
         }, 2000);
       } else {
-        toast.error(`Erro ao criar perfil de negócio: ${error?.message || 'Erro desconhecido'}`);
+        toast.error(`Erro ao criar perfil de negócio: ${errorMessage}`);
       }
     },
   });

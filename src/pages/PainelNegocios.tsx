@@ -156,7 +156,16 @@ export default function PainelNegocios() {
       const { data, error } = await supabase.functions.invoke("create-business-profile", {
         body: { business_name, cnpj },
       });
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error.message;
+        if (error.context && typeof error.context.json === 'function') {
+          try {
+            const errorBody = await error.context.json();
+            if (errorBody?.error) errorMessage = errorBody.error;
+          } catch {}
+        }
+        throw new Error(errorMessage);
+      }
       return data;
     },
     onSuccess: (data) => {
@@ -166,7 +175,7 @@ export default function PainelNegocios() {
       setIsDialogOpen(false);
       setBusinessName("");
       setCnpj("");
-      
+
       // Redirecionar para o onboarding do Stripe
       if (data?.onboarding_url) {
         window.location.href = data.onboarding_url;
@@ -174,15 +183,13 @@ export default function PainelNegocios() {
     },
     onError: (error: any) => {
       console.error('Error creating business profile:', error);
-      
-      // Tratar erro específico do Stripe Connect
-      if (error?.message?.includes("Configuração do Stripe Connect necessária")) {
+      const errorMessage = error?.message || 'Erro desconhecido';
+
+      if (errorMessage.includes("Configuração do Stripe Connect necessária")) {
         toast.error("Configuração pendente no Stripe", {
           description: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
           duration: 10000
         });
-        
-        // Abrir link automaticamente após 2 segundos
         setTimeout(() => {
           const openStripe = confirm("Deseja abrir o Stripe Dashboard para completar a configuração?");
           if (openStripe) {
@@ -190,7 +197,7 @@ export default function PainelNegocios() {
           }
         }, 2000);
       } else {
-        toast.error(`Erro ao criar perfil de negócio: ${error?.message || 'Erro desconhecido'}`);
+        toast.error(`Erro ao criar perfil de negócio: ${errorMessage}`);
       }
     },
   });

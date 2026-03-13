@@ -26,6 +26,7 @@ export interface ClassParticipant {
   dependent_id?: string | null;
   dependent_name?: string | null;
   status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
+  cancellation_reason?: string;
   student: {
     name: string;
     email: string;
@@ -381,12 +382,17 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                                   : participant.student.name}
                               </div>
                               <div className="text-muted-foreground text-xs">
-                                {participant.dependent_id && participant.dependent_name 
+                                {participant.dependent_id && participant.dependent_name
                                   ? `(Responsável: ${participant.student.name})`
                                   : participant.student.email}
                               </div>
+                              {isCancelled && participant.cancellation_reason && (
+                                <div className="text-xs text-muted-foreground mt-1 italic">
+                                  {t('calendar.cancellationReason')}: {participant.cancellation_reason}
+                                </div>
+                              )}
                             </div>
-                            
+
                             {/* Status Badge */}
                             {isCancelled && (
                               <Badge variant="destructive" className="text-xs">

@@ -197,6 +197,25 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
 
   // If billed, show disabled button with tooltip
   if (isBilled) {
+    if (variant === "compact") {
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span tabIndex={0}>
+                <Button variant="ghost" size="sm" disabled className="h-7 w-7 p-0 text-muted-foreground">
+                  <Ban className="h-3.5 w-3.5" />
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('billedTooltip')}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
     return (
       <TooltipProvider>
         <Tooltip>

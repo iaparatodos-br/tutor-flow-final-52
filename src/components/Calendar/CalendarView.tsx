@@ -392,22 +392,39 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                               </div>
                             </div>
                             
-                            {/* Status Badge */}
-                            {isCancelled && (
-                              <Badge variant="destructive" className="text-xs">
-                                {t('status.cancelled')}
-                              </Badge>
-                            )}
-                            {participant.status === 'confirmada' && (
-                              <Badge variant="default" className="text-xs">
-                                {t('status.confirmed')}
-                              </Badge>
-                            )}
-                            {participant.status === 'concluida' && (
-                              <Badge variant="outline" className="text-xs">
-                                {t('status.completed')}
-                              </Badge>
-                            )}
+                            {/* Status Badge + Compact Amnesty */}
+                            <div className="flex items-center gap-1.5">
+                              {isCancelled && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {t('status.cancelled')}
+                                </Badge>
+                              )}
+                              {participant.status === 'confirmada' && (
+                                <Badge variant="default" className="text-xs">
+                                  {t('status.confirmed')}
+                                </Badge>
+                              )}
+                              {participant.status === 'concluida' && (
+                                <Badge variant="outline" className="text-xs">
+                                  {t('status.completed')}
+                                </Badge>
+                              )}
+                              {/* Compact Amnesty Button for cancelled participants with charge */}
+                              {isCancelled && isProfessor && participant.charge_applied && !participant.amnesty_granted && (
+                                <AmnestyButton
+                                  variant="compact"
+                                  classId={(selectedEvent as CalendarClass).id}
+                                  participantId={participant.id}
+                                  studentId={participant.student_id}
+                                  dependentId={participant.dependent_id || undefined}
+                                  studentName={participant.dependent_name || participant.student.name}
+                                  onAmnestyGranted={() => {
+                                    setSelectedEvent(null);
+                                    onAmnestyGranted?.();
+                                  }}
+                                />
+                              )}
+                            </div>
                           </div>
                         );
                       }) || (

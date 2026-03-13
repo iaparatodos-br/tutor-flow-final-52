@@ -22,9 +22,11 @@ interface AmnestyButtonProps {
   studentId?: string;
   /** Dependent ID - used to cancel the correct invoice for a dependent */
   dependentId?: string;
+  /** Render variant: "default" (full button) or "compact" (icon-only with tooltip) */
+  variant?: "default" | "compact";
 }
 
-export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId, dependentId }: AmnestyButtonProps) {
+export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled, participantId, studentId, dependentId, variant = "default" }: AmnestyButtonProps) {
   const { profile } = useProfile();
   const { toast } = useToast();
   const { t } = useTranslation('amnesty');

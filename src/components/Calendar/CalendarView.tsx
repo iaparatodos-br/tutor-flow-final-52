@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle, Baby } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
+import { AmnestyButton } from '@/components/AmnestyButton';
 import { useTranslation } from 'react-i18next';
 import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 
@@ -22,10 +23,13 @@ moment.locale('pt-br');
 const localizer = momentLocalizer(moment);
 
 export interface ClassParticipant {
+  id?: string;
   student_id: string;
   dependent_id?: string | null;
   dependent_name?: string | null;
   status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
   student: {
     name: string;
     email: string;
@@ -91,10 +95,11 @@ interface CalendarViewProps {
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onEditReport?: (classData: CalendarClass) => void;
+  onAmnestyGranted?: () => void;
   loading?: boolean;
 }
 
-export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, onAmnestyGranted, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const { t } = useTranslation('classes');
   const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
@@ -387,22 +392,39 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                               </div>
                             </div>
                             
-                            {/* Status Badge */}
-                            {isCancelled && (
-                              <Badge variant="destructive" className="text-xs">
-                                {t('status.cancelled')}
-                              </Badge>
-                            )}
-                            {participant.status === 'confirmada' && (
-                              <Badge variant="default" className="text-xs">
-                                {t('status.confirmed')}
-                              </Badge>
-                            )}
-                            {participant.status === 'concluida' && (
-                              <Badge variant="outline" className="text-xs">
-                                {t('status.completed')}
-                              </Badge>
-                            )}
+                            {/* Status Badge + Compact Amnesty */}
+                            <div className="flex items-center gap-1.5">
+                              {isCancelled && (
+                                <Badge variant="destructive" className="text-xs">
+                                  {t('status.cancelled')}
+                                </Badge>
+                              )}
+                              {participant.status === 'confirmada' && (
+                                <Badge variant="default" className="text-xs">
+                                  {t('status.confirmed')}
+                                </Badge>
+                              )}
+                              {participant.status === 'concluida' && (
+                                <Badge variant="outline" className="text-xs">
+                                  {t('status.completed')}
+                                </Badge>
+                              )}
+                              {/* Compact Amnesty Button for cancelled participants with charge */}
+                              {isCancelled && isProfessor && participant.charge_applied && !participant.amnesty_granted && (
+                                <AmnestyButton
+                                  variant="compact"
+                                  classId={(selectedEvent as CalendarClass).id}
+                                  participantId={participant.id}
+                                  studentId={participant.student_id}
+                                  dependentId={participant.dependent_id || undefined}
+                                  studentName={participant.dependent_name || participant.student.name}
+                                  onAmnestyGranted={() => {
+                                    setSelectedEvent(null);
+                                    onAmnestyGranted?.();
+                                  }}
+                                />
+                              )}
+                            </div>
                           </div>
                         );
                       }) || (

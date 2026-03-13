@@ -2,7 +2,7 @@
   "button": "Anistia",
   "billedTooltip": "Não é possível conceder anistia: esta aula já foi incluída em uma fatura processada.",
   "title": "Conceder Anistia",
-  "description": "Você está prestes a remover a cobrança de cancelamento para <strong>{{studentName}}</strong>.",
+  "description": "Deseja conceder anistia para <strong>{{studentName}}</strong> nesta aula? Esta ação cancelará a fatura de cancelamento e é irreversível.",
   "alert": {
     "title": "Esta ação:",
     "removes": "Remove a cobrança de cancelamento",

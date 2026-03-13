@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses@3.540.0";
+import { sendEmail } from "../_shared/ses-email.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -273,35 +273,16 @@ serve(async (req) => {
 
     const { subject, html } = getEmailTemplate(body.notification_type, emailData);
 
-    // Send email via AWS SES
-    const sesClient = new SESClient({
-      region: awsRegion,
-      credentials: {
-        accessKeyId: awsAccessKeyId,
-        secretAccessKey: awsSecretAccessKey,
-      },
+    // Send email via shared SES helper
+    const emailResult = await sendEmail({
+      to: profile.email,
+      subject,
+      html,
     });
 
-    const sendEmailCommand = new SendEmailCommand({
-      Source: `${fromName} <${fromEmail}>`,
-      Destination: {
-        ToAddresses: [profile.email],
-      },
-      Message: {
-        Subject: {
-          Data: subject,
-          Charset: "UTF-8",
-        },
-        Body: {
-          Html: {
-            Data: html,
-            Charset: "UTF-8",
-          },
-        },
-      },
-    });
-
-    await sesClient.send(sendEmailCommand);
+    if (!emailResult.success) {
+      throw new Error(`Failed to send email: ${emailResult.error}`);
+    }
     log("Email sent successfully", { type: body.notification_type, to: profile.email });
 
     return new Response(JSON.stringify({ success: true }), {

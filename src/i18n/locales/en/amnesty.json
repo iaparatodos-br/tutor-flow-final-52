@@ -2,7 +2,7 @@
   "button": "Amnesty",
   "billedTooltip": "Cannot grant amnesty: this class has already been included in a processed invoice.",
   "title": "Grant Amnesty",
-  "description": "You are about to remove the cancellation charge for <strong>{{studentName}}</strong>.",
+  "description": "Do you want to grant amnesty for <strong>{{studentName}}</strong> in this class? This action will cancel the cancellation invoice and is irreversible.",
   "alert": {
     "title": "This action:",
     "removes": "Removes the cancellation charge",

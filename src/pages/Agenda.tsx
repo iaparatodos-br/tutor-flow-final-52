@@ -888,13 +888,15 @@ export default function Agenda() {
         classesWithDetails = materializedClasses.map((cls: any) => {
           const participants = Array.isArray(cls.participants) 
             ? cls.participants.map((p: any) => ({
+                  id: p.id,
                   student_id: p.student_id,
                   dependent_id: p.dependent_id,
-                  dependent_name: p.dependent_name || null, // Agora vem diretamente da RPC
+                  dependent_name: p.dependent_name || null,
                   status: p.status,
                   cancelled_at: p.cancelled_at,
                   cancelled_by: p.cancelled_by,
                   charge_applied: p.charge_applied,
+                  amnesty_granted: p.amnesty_granted,
                   confirmed_at: p.confirmed_at,
                   completed_at: p.completed_at,
                   cancellation_reason: p.cancellation_reason,

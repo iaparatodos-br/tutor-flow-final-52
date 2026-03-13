@@ -22,10 +22,13 @@ moment.locale('pt-br');
 const localizer = momentLocalizer(moment);
 
 export interface ClassParticipant {
+  id?: string;
   student_id: string;
   dependent_id?: string | null;
   dependent_name?: string | null;
   status?: 'pendente' | 'confirmada' | 'cancelada' | 'concluida' | 'removida' | 'aguardando_pagamento';
+  charge_applied?: boolean;
+  amnesty_granted?: boolean;
   student: {
     name: string;
     email: string;

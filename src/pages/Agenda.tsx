@@ -822,7 +822,7 @@ export default function Agenda() {
             // Buscar TODOS os participantes desses templates (sem filtro de student_id)
             const { data: allTemplateParticipants } = await supabase
               .from('class_participants')
-              .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+              .select('id, class_id, student_id, dependent_id, status, cancelled_at, charge_applied, amnesty_granted, confirmed_at, completed_at, cancellation_reason')
               .in('class_id', templateIds);
 
             // Extrair student_ids únicos

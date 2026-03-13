@@ -749,7 +749,7 @@ export default function Agenda() {
           // Buscar participantes de aulas em grupo (sem perfis)
           const { data: allParticipants, error: participantsError } = await supabase
             .from('class_participants')
-            .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
+            .select('id, class_id, student_id, dependent_id, status, cancelled_at, charge_applied, amnesty_granted, confirmed_at, completed_at, cancellation_reason')
             .in('class_id', groupClassIds);
 
           if (participantsError) {

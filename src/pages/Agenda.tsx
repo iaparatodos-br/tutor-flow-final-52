@@ -918,6 +918,7 @@ export default function Agenda() {
               ? dependents.find(d => d.id === p.dependent_id)
               : null;
             return {
+              id: p.id,
               student_id: p.student_id,
               dependent_id: p.dependent_id,
               dependent_name: dependentInfo?.name || null,
@@ -925,6 +926,7 @@ export default function Agenda() {
               cancelled_at: p.cancelled_at,
               cancelled_by: p.cancelled_by,
               charge_applied: p.charge_applied,
+              amnesty_granted: p.amnesty_granted,
               confirmed_at: p.confirmed_at,
               completed_at: p.completed_at,
               cancellation_reason: p.cancellation_reason,

@@ -240,6 +240,80 @@ export function AmnestyButton({ classId, studentName, onAmnestyGranted, disabled
     );
   }
 
+  // Compact variant: icon-only trigger with tooltip
+  if (variant === "compact") {
+    return (
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DialogTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={isDisabled}
+                  className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                >
+                  <HandHeart className="h-3.5 w-3.5" />
+                </Button>
+              </DialogTrigger>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t('title')}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <HandHeart className="h-5 w-5 text-destructive" />
+              {t('title')}
+            </DialogTitle>
+            <DialogDescription dangerouslySetInnerHTML={{ __html: t('description', { studentName }) }} />
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>{t('alert.title')}</strong><br />
+                • {t('alert.removes')}<br />
+                • {t('alert.changes')}<br />
+                • {t('alert.cancels')}<br />
+                • {t('alert.irreversible')}
+              </AlertDescription>
+            </Alert>
+
+            <div className="space-y-2">
+              <Label htmlFor="justification-compact">{t('fields.justification.label')}</Label>
+              <Textarea
+                id="justification-compact"
+                value={justification}
+                onChange={(e) => setJustification(e.target.value)}
+                placeholder={t('fields.justification.placeholder')}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsOpen(false)} disabled={loading}>
+              {t('actions.cancel')}
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleGrantAmnesty} 
+              disabled={loading}
+            >
+              {loading ? t('actions.granting') : t('actions.grant')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // Default variant
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>

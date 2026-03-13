@@ -749,7 +749,7 @@ export default function Agenda() {
           // Buscar participantes de aulas em grupo (sem perfis)
           const { data: allParticipants, error: participantsError } = await supabase
             .from('class_participants')
-            .select('id, class_id, student_id, dependent_id, status, cancelled_at, charge_applied, amnesty_granted, confirmed_at, completed_at, cancellation_reason')
+            .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
             .in('class_id', groupClassIds);
 
           if (participantsError) {
@@ -786,12 +786,10 @@ export default function Agenda() {
                 participantsMap.set(p.class_id, []);
               }
               participantsMap.get(p.class_id)!.push({
-                id: p.id,
                 student_id: p.student_id,
                 status: p.status,
                 cancelled_at: p.cancelled_at,
                 charge_applied: p.charge_applied,
-                amnesty_granted: p.amnesty_granted,
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
@@ -822,7 +820,7 @@ export default function Agenda() {
             // Buscar TODOS os participantes desses templates (sem filtro de student_id)
             const { data: allTemplateParticipants } = await supabase
               .from('class_participants')
-              .select('id, class_id, student_id, dependent_id, status, cancelled_at, charge_applied, amnesty_granted, confirmed_at, completed_at, cancellation_reason')
+              .select('class_id, student_id, dependent_id, status, cancelled_at, charge_applied, confirmed_at, completed_at, cancellation_reason')
               .in('class_id', templateIds);
 
             // Extrair student_ids únicos
@@ -849,13 +847,11 @@ export default function Agenda() {
               if (!templateParticipantsMap.has(p.class_id)) {
                 templateParticipantsMap.set(p.class_id, []);
               }
-               templateParticipantsMap.get(p.class_id)!.push({
-                id: p.id,
+              templateParticipantsMap.get(p.class_id)!.push({
                 student_id: p.student_id,
                 status: p.status,
                 cancelled_at: p.cancelled_at,
                 charge_applied: p.charge_applied,
-                amnesty_granted: p.amnesty_granted,
                 confirmed_at: p.confirmed_at,
                 completed_at: p.completed_at,
                 cancellation_reason: p.cancellation_reason,
@@ -892,15 +888,13 @@ export default function Agenda() {
         classesWithDetails = materializedClasses.map((cls: any) => {
           const participants = Array.isArray(cls.participants) 
             ? cls.participants.map((p: any) => ({
-                  id: p.id,
                   student_id: p.student_id,
                   dependent_id: p.dependent_id,
-                  dependent_name: p.dependent_name || null,
+                  dependent_name: p.dependent_name || null, // Agora vem diretamente da RPC
                   status: p.status,
                   cancelled_at: p.cancelled_at,
                   cancelled_by: p.cancelled_by,
                   charge_applied: p.charge_applied,
-                  amnesty_granted: p.amnesty_granted,
                   confirmed_at: p.confirmed_at,
                   completed_at: p.completed_at,
                   cancellation_reason: p.cancellation_reason,
@@ -922,7 +916,6 @@ export default function Agenda() {
               ? dependents.find(d => d.id === p.dependent_id)
               : null;
             return {
-              id: p.id,
               student_id: p.student_id,
               dependent_id: p.dependent_id,
               dependent_name: dependentInfo?.name || null,
@@ -930,7 +923,6 @@ export default function Agenda() {
               cancelled_at: p.cancelled_at,
               cancelled_by: p.cancelled_by,
               charge_applied: p.charge_applied,
-              amnesty_granted: p.amnesty_granted,
               confirmed_at: p.confirmed_at,
               completed_at: p.completed_at,
               cancellation_reason: p.cancellation_reason,

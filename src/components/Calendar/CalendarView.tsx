@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { Calendar as CalendarIcon, Clock, User, CheckCircle, X, FileText, Plus, AlertTriangle, Baby } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ClassReportView } from '@/components/ClassReportView';
+import { AmnestyButton } from '@/components/AmnestyButton';
 import { useTranslation } from 'react-i18next';
 import { formatInTimezone, DEFAULT_TIMEZONE } from '@/utils/timezone';
 

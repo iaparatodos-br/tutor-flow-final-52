@@ -95,6 +95,7 @@ interface CalendarViewProps {
   onCancelClass?: (classId: string, className: string, classDate: string) => void;
   onCompleteClass?: (classData: CalendarClass) => void;
   onEditReport?: (classData: CalendarClass) => void;
+  onAmnestyGranted?: () => void;
   loading?: boolean;
 }
 

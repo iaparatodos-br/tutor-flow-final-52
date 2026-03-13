@@ -363,7 +363,6 @@ export function CalendarView({ classes, availabilityBlocks = [], isProfessor, on
                     <div className="space-y-2">
                       {(selectedEvent as CalendarClass).participants?.map((participant, index) => {
                         const isCancelled = participant.status === 'cancelada' || participant.status === 'removida';
-                        
                         return (
                           <div 
                             key={index} 

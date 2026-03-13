@@ -422,12 +422,17 @@ export function SimpleCalendar({
                           </span>
                         </div>
                         <div className="text-sm text-muted-foreground truncate">
-                          {participant.dependent_id && participant.dependent_name 
+                          {participant.dependent_id && participant.dependent_name
                             ? `(Resp: ${participant.profiles?.name || participant.student?.name})`
                             : (participant.profiles?.email || participant.student?.email || '')}
                         </div>
+                        {isCancelled && participant.cancellation_reason && (
+                          <div className="text-xs text-muted-foreground mt-1 italic no-underline" style={{ textDecoration: 'none' }}>
+                            {t('calendar.cancellationReason')}: {participant.cancellation_reason}
+                          </div>
+                        )}
                       </div>
-                      
+
                       {/* Status Badge */}
                       <div className="flex-shrink-0 ml-2">
                         {isCancelled && (

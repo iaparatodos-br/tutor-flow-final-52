@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.get_subscription_assigned_students(uuid);

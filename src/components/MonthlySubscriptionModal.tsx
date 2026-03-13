@@ -12,6 +12,7 @@ import {
 "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CurrencyInput } from "@/components/ui/currency-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -87,7 +88,7 @@ export function MonthlySubscriptionModal({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? t('edit') : t('new')}
@@ -142,13 +143,13 @@ export function MonthlySubscriptionModal({
               <FormItem>
                   <FormLabel>{t('fields.price')}</FormLabel>
                   <FormControl>
-                    <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder={t('fields.pricePlaceholder')}
-                    {...field}
-                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)} />
+                    <CurrencyInput
+                      value={field.value}
+                      onChange={field.onChange}
+                      step={1}
+                      min={0}
+                      placeholder={t('fields.pricePlaceholder')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

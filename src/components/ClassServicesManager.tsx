@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Clock, DollarSign } from "lucide-react";
+import { Plus, Edit, Clock, DollarSign, Info } from "lucide-react";
 import { ServiceModal } from "./ServiceModal";
 import { useTranslation } from "react-i18next";
 
@@ -113,6 +113,12 @@ export function ClassServicesManager() {
             {t('new')}
           </Button>
         </div>
+      </div>
+      <div className="w-full bg-muted/50 border border-border/50 p-4 my-6 rounded-xl flex items-start gap-3">
+        <Info className="h-4 w-4 text-primary/60 mt-0.5" />
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Serviços são os tipos de aulas ou atendimentos que você oferece. Defina o nome <span className="text-primary/70 italic">(ex: Aula Particular de Inglês)</span>, a duração e o valor para automatizar sua agenda e facilitar seu cotidiano.
+        </p>
       </div>
 
       {filteredServices.length === 0 && !showInactive && services.length > 0 ? (

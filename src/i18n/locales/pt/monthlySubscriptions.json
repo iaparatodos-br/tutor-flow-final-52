@@ -40,7 +40,7 @@
     "activate": "Ativar",
     "edit": "Editar",
     "viewStudents": "Ver Alunos",
-    "assignStudent": "Vincular Aluno",
+    "assignStudent": "Vincular Alunos",
     "removeStudent": "Remover Aluno"
   },
   "messages": {
@@ -51,12 +51,18 @@
     "activateSuccess": "Mensalidade ativada com sucesso!",
     "studentAssigned": "Aluno vinculado à mensalidade!",
     "studentRemoved": "Aluno removido da mensalidade!",
+    "studentsAssignedSuccess": "{{count}} aluno(s) vinculado(s) com sucesso!",
     "studentAlreadyHasSubscription": "Este aluno já possui uma mensalidade ativa com você",
     "loadError": "Erro ao carregar mensalidades",
     "updateError": "Erro ao atualizar mensalidade",
     "toggleError": "Erro ao alterar status da mensalidade",
     "assignError": "Erro ao vincular aluno",
-    "removeError": "Erro ao remover aluno"
+    "bulkAssignError": "Erro ao vincular alunos",
+    "removeError": "Erro ao remover aluno",
+    "bulkUpdateSuccess": "Alunos atualizados com sucesso",
+    "bulkUpdateError": "Erro ao atualizar alunos em lote",
+    "studentsRemovedSuccess": "{{count}} aluno(s) removido(s) com sucesso",
+    "noNewStudentsToAssign": "Todos os alunos selecionados já estão vinculados"
   },
   "info": {
     "familyBilling": "A mensalidade cobre o responsável e todos os seus dependentes automaticamente.",
@@ -79,8 +85,11 @@
     "since": "Desde"
   },
   "assign": {
-    "title": "Vincular Aluno à Mensalidade",
+    "title": "Vincular Alunos à Mensalidade",
     "selectStudent": "Selecione um aluno",
+    "selectStudents": "Selecione os alunos",
+    "selectAll": "Selecionar todos",
+    "selectedCount": "{{count}} aluno(s) selecionado(s)",
     "noAvailableStudents": "Todos os alunos já possuem mensalidade ativa",
     "startsAt": "Data de início",
     "startsAtHelp": "A partir desta data, as aulas serão contabilizadas na mensalidade"

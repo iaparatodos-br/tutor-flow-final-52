@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './AuthContext';
 import { useTeacherContext } from './TeacherContext';
@@ -78,6 +78,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [pendingBoletoDetected, setPendingBoletoDetected] = useState(false);
   const [pendingBoletoData, setPendingBoletoData] = useState<PendingBoletoData | null>(null);
   const [teacherPlanLoading, setTeacherPlanLoading] = useState(false);
+  const subscriptionLoadingRef = useRef(false);
+  const lastProfileIdRef = useRef<string | null>(null);
 
   const teacherContext = useTeacherContext();
 
@@ -136,28 +138,61 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const loadSubscription = async () => {
     if (!user) return;
 
+    // Prevent concurrent in-flight calls (race condition guard)
+    if (subscriptionLoadingRef.current) return;
+    subscriptionLoadingRef.current = true;
+
     if (profile?.role === 'aluno') {
       const freePlan = plans.find(p => p.slug === 'free');
       setCurrentPlan(freePlan || null);
       setSubscription(null);
+      subscriptionLoadingRef.current = false;
       return;
     }
 
-    try {
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout no carregamento inicial')), 5000)
+    let retries = 0;
+    const maxRetries = 2;
+
+    const attemptLoad = async (): Promise<any> => {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout no carregamento inicial')), 12000)
       );
 
       const invokePromise = supabase.functions.invoke('check-subscription-status', {
         headers: { 'Content-Type': 'application/json' }
       });
 
-      const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
-      
-      if (error) {
-        console.warn('Erro ao carregar subscription inicial:', error);
-        const freePlan = plans.find(p => p.slug === 'free');
-        setCurrentPlan(freePlan || null);
+      return Promise.race([invokePromise, timeoutPromise]);
+    };
+
+    try {
+      let data: any;
+      let lastError: any;
+
+      while (retries <= maxRetries) {
+        try {
+          const result = await attemptLoad() as any;
+          if (result.error) throw result.error;
+          data = result.data;
+          break;
+        } catch (err) {
+          lastError = err;
+          if (retries < maxRetries) {
+            retries++;
+            await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+          } else {
+            throw lastError;
+          }
+        }
+      }
+
+      if (!data) {
+        console.warn('Erro ao carregar subscription inicial após retentativas:', lastError);
+        // Preserve prior state on transient error — only set free plan on first load
+        if (!currentPlan) {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
         setSubscription(null);
         return;
       }
@@ -217,9 +252,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setCurrentPlan(data.plan as unknown as SubscriptionPlan);
         setSubscription(null);
       } else {
+        // Preserve prior state: if API returns a plan, use it; otherwise keep existing plan
         if (data?.plan) {
           setCurrentPlan(data.plan as unknown as SubscriptionPlan);
-        } else {
+        } else if (!currentPlan) {
           const freePlan = plans.find(p => p.slug === 'free');
           setCurrentPlan(freePlan || null);
         }
@@ -229,9 +265,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error loading subscription:', error);
-      const freePlan = plans.find(p => p.slug === 'free');
-      setCurrentPlan(freePlan || null);
+      // Preserve prior state on transient error — only set free plan on first load
+      if (!currentPlan) {
+        const freePlan = plans.find(p => p.slug === 'free');
+        setCurrentPlan(freePlan || null);
+      }
       setSubscription(null);
+    } finally {
+      subscriptionLoadingRef.current = false;
     }
   };
 
@@ -278,13 +319,18 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const refreshSubscription = async () => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const refreshSubscription = useCallback(async () => {
     if (!user) return;
-    
+
+    // Prevent concurrent calls (shared guard with loadSubscription)
+    if (subscriptionLoadingRef.current) return;
+    subscriptionLoadingRef.current = true;
+
     setLoading(true);
     try {
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout na verificação da subscription')), 8000)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout na verificação da subscription')), 12000)
       );
 
       const invokePromise = supabase.functions.invoke('check-subscription-status', {
@@ -292,11 +338,14 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       });
 
       const { data, error } = await Promise.race([invokePromise, timeoutPromise]) as any;
-      
+
       if (error) {
         console.error('Error checking subscription:', error);
-        const freePlan = plans.find(p => p.slug === 'free');
-        setCurrentPlan(freePlan || null);
+        // Preserve prior state on transient error — only set free plan if no plan was loaded
+        if (!currentPlan) {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
         setSubscription(null);
         return;
       }
@@ -348,20 +397,29 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         setSubscription(null);
       } else {
         setSubscription(null);
-        const freePlan = plans.find(p => p.slug === 'free');
-        setCurrentPlan(freePlan || null);
+        // Preserve prior state: if API returns a plan, use it; otherwise keep existing plan
+        if (data?.plan) {
+          setCurrentPlan(data.plan as unknown as SubscriptionPlan);
+        } else if (!currentPlan) {
+          const freePlan = plans.find(p => p.slug === 'free');
+          setCurrentPlan(freePlan || null);
+        }
         setNeedsStudentSelection(false);
         setStudentSelectionData(null);
       }
     } catch (error) {
       console.error('Error refreshing subscription:', error);
-      const freePlan = plans.find(p => p.slug === 'free');
-      setCurrentPlan(freePlan || null);
+      // Preserve prior state on transient error — only set free plan if no plan was loaded
+      if (!currentPlan) {
+        const freePlan = plans.find(p => p.slug === 'free');
+        setCurrentPlan(freePlan || null);
+      }
       setSubscription(null);
     } finally {
+      subscriptionLoadingRef.current = false;
       setLoading(false);
     }
-  };
+  }, [user, plans, currentPlan]);
 
   const hasFeature = (feature: keyof SubscriptionPlan['features']): boolean => {
     if (!currentPlan) return false;
@@ -512,7 +570,10 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (plans.length > 0) {
+    if (plans.length > 0 && user && profile) {
+      // Only re-fetch if the profile identity actually changed (avoids re-fetches on TOKEN_REFRESHED)
+      if (lastProfileIdRef.current === profile.id) return;
+      lastProfileIdRef.current = profile.id;
       loadSubscription().finally(() => setLoading(false));
     }
   }, [user, plans, profile]);

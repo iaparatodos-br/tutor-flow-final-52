@@ -9,7 +9,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle, Clock, Shield, Upload, FileText, Trash2 } from "lucide-react";
+import { AlertCircle, Clock, Shield, Upload, FileText, Trash2, Download } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -427,15 +427,26 @@ export function CancellationPolicySettings() {
                   <p className="text-sm text-muted-foreground">{t('cancellationPolicy.document.view')}</p>
                 </div>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={removePolicyDocument}
-                disabled={uploadingDocument}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                {t('cancellationPolicy.document.remove')}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    const { data } = supabase.storage.from('policies').getPublicUrl(policyDocumentUrl);
+                    window.open(data.publicUrl, '_blank');
+                  }}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={removePolicyDocument}
+                  disabled={uploadingDocument}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">

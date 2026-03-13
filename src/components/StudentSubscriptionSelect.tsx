@@ -10,15 +10,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Loader2, UserPlus, CalendarIcon } from "lucide-react";
 import { format, parse } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -38,7 +34,7 @@ interface StudentSubscriptionSelectProps {
   onClose: () => void;
   availableStudents: AvailableStudent[];
   isLoading: boolean;
-  onAssign: (relationshipId: string, startsAt?: string) => Promise<void>;
+  onAssign: (relationshipIds: string[], startsAt?: string) => Promise<void>;
   isAssigning: boolean;
 }
 
@@ -53,25 +49,48 @@ export function StudentSubscriptionSelect({
   const { t } = useTranslation('monthlySubscriptions');
   const { profile } = useAuth();
   const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
-  const [selectedRelationshipId, setSelectedRelationshipId] = useState<string>("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState<string>(todayDateString(userTimezone));
 
+  const toggleStudent = (relationshipId: string) => {
+    setSelectedIds(prev =>
+      prev.includes(relationshipId)
+        ? prev.filter(id => id !== relationshipId)
+        : [...prev, relationshipId]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === availableStudents.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(availableStudents.map(s => s.relationship_id));
+    }
+  };
+
   const handleAssign = async () => {
-    if (!selectedRelationshipId) return;
-    await onAssign(selectedRelationshipId, startsAt);
-    setSelectedRelationshipId("");
-    setStartsAt(todayDateString(userTimezone));
+    if (selectedIds.length === 0) return;
+    try {
+      await onAssign(selectedIds, startsAt);
+      setSelectedIds([]);
+      setStartsAt(todayDateString(userTimezone));
+    } catch {
+      // Error handled by mutation's onError (toast)
+    }
   };
 
   const handleClose = () => {
-    setSelectedRelationshipId("");
+    setSelectedIds([]);
     setStartsAt(todayDateString(userTimezone));
     onClose();
   };
 
+  const allSelected = availableStudents.length > 0 && selectedIds.length === availableStudents.length;
+  const someSelected = selectedIds.length > 0 && !allSelected;
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
@@ -83,9 +102,9 @@ export function StudentSubscriptionSelect({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Student Select */}
+          {/* Student List */}
           <div className="space-y-2">
-            <Label>{t('assign.selectStudent')}</Label>
+            <Label>{t('assign.selectStudents')}</Label>
             {isLoading ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -95,31 +114,53 @@ export function StudentSubscriptionSelect({
                 {t('assign.noAvailableStudents')}
               </p>
             ) : (
-              <Select
-                value={selectedRelationshipId}
-                onValueChange={setSelectedRelationshipId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('assign.selectStudent')} />
-                </SelectTrigger>
-                <SelectContent>
+              <div className="rounded-md border border-border">
+                {/* Select All */}
+                <div
+                  className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                  onClick={toggleAll}
+                >
+                  <Checkbox
+                    checked={allSelected}
+                    {...(someSelected ? { "data-state": "indeterminate" } : {})}
+                    onCheckedChange={toggleAll}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-sm font-medium">{t('assign.selectAll')}</span>
+                </div>
+                <Separator />
+                {/* Student items */}
+                <div className="max-h-56 overflow-y-auto">
                   {availableStudents.map((student) => (
-                    <SelectItem 
-                      key={student.relationship_id} 
-                      value={student.relationship_id}
+                    <div
+                      key={student.relationship_id}
+                      className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                      onClick={() => toggleStudent(student.relationship_id)}
                     >
-                      <div className="flex flex-col">
-                        <span>{student.student_name}</span>
-                        <span className="text-xs text-muted-foreground">
+                      <Checkbox
+                        checked={selectedIds.includes(student.relationship_id)}
+                        onCheckedChange={() => toggleStudent(student.relationship_id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium truncate">{student.student_name}</span>
+                        <span className="text-xs text-muted-foreground truncate">
                           {student.student_email}
                         </span>
                       </div>
-                    </SelectItem>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              </div>
             )}
           </div>
+
+          {/* Selected count */}
+          {selectedIds.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              {t('assign.selectedCount', { count: selectedIds.length })}
+            </p>
+          )}
 
           {/* Start Date */}
           {availableStudents.length > 0 && (
@@ -172,9 +213,9 @@ export function StudentSubscriptionSelect({
           >
             {t('actions.cancel')}
           </Button>
-          <Button 
+          <Button
             onClick={handleAssign}
-            disabled={!selectedRelationshipId || isAssigning}
+            disabled={selectedIds.length === 0 || isAssigning}
           >
             {isAssigning ? (
               <>

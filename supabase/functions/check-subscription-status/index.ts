@@ -4,7 +4,7 @@ import Stripe from "https://esm.sh/stripe@14.21.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // Helper logging function for enhanced debugging
@@ -83,7 +83,7 @@ const checkNeedsStudentSelection = async (
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -100,20 +100,7 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header provided");
-    logStep("Authorization header found");
-
-    const token = authHeader.replace("Bearer ", "");
-    logStep("Authenticating user with token");
-    
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    
-    if (userError || !userData.user) {
-      logStep("Authentication failed", { 
-        error: userError?.message, 
-        hasUser: !!userData?.user 
-      });
-      
+    if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ 
         error: "Authentication failed", 
         code: "INVALID_SESSION" 
@@ -122,18 +109,33 @@ serve(async (req) => {
         status: 401,
       });
     }
-    
-    const user = userData.user;
-    if (!user?.email) {
-      logStep("User email not available");
+    logStep("Authorization header found");
+
+    logStep("Authorization header found");
+
+    // Use user-scoped client for JWT validation
+    const userClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      {
+        auth: { persistSession: false },
+        global: { headers: { Authorization: authHeader } }
+      }
+    );
+
+    const { data: { user: authUser }, error: authError } = await userClient.auth.getUser();
+    if (authError || !authUser) {
+      logStep("Authentication failed", { error: authError?.message });
       return new Response(JSON.stringify({ 
-        error: "User email not available" 
+        error: "Authentication failed", 
+        code: "INVALID_SESSION" 
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
       });
     }
-    
+
+    const user = { id: authUser.id, email: authUser.email! };
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     // Get ALL subscriptions from database (active or expired) to properly detect renewal

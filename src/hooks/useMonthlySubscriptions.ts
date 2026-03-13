@@ -82,8 +82,7 @@ export function useAvailableStudentsForSubscription(subscriptionId: string | nul
         (relationships || []).map(async (rel) => {
           const { data: hasActive } = await supabase
             .rpc('check_student_has_active_subscription', { 
-              p_relationship_id: rel.relationship_id,
-              p_exclude_subscription_id: subscriptionId 
+              p_relationship_id: rel.relationship_id
             });
           
           return {
@@ -388,23 +387,38 @@ export function useBulkAssignStudents() {
         if (removeError) throw removeError;
       }
 
-      // 2. Adicionar novas atribuições
+      // 2. Adicionar novas atribuições (filtrar já ativos para idempotência)
+      let actuallyAdded = 0;
       if (toAdd.length > 0) {
-        const assignments = toAdd.map(relationshipId => ({
-          subscription_id: subscriptionId,
-          relationship_id: relationshipId,
-          starts_at: startsAt || todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
-          is_active: true,
-        }));
-
-        const { error: addError } = await supabase
+        // Verificar quais já estão ativos para evitar conflito 23505
+        const { data: existingActive } = await supabase
           .from('student_monthly_subscriptions')
-          .insert(assignments);
+          .select('relationship_id')
+          .eq('subscription_id', subscriptionId)
+          .eq('is_active', true)
+          .in('relationship_id', toAdd);
 
-        if (addError) throw addError;
+        const alreadyActiveIds = new Set((existingActive || []).map(r => r.relationship_id));
+        const newToAdd = toAdd.filter(id => !alreadyActiveIds.has(id));
+
+        if (newToAdd.length > 0) {
+          const assignments = newToAdd.map(relationshipId => ({
+            subscription_id: subscriptionId,
+            relationship_id: relationshipId,
+            starts_at: startsAt || todayDateString(profile?.timezone || DEFAULT_TIMEZONE),
+            is_active: true,
+          }));
+
+          const { error: addError } = await supabase
+            .from('student_monthly_subscriptions')
+            .insert(assignments);
+
+          if (addError) throw addError;
+        }
+        actuallyAdded = newToAdd.length;
       }
 
-      return { added: toAdd.length, removed: toRemove.length };
+      return { added: actuallyAdded, removed: toRemove.length };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['subscription-students'] });
@@ -417,6 +431,8 @@ export function useBulkAssignStudents() {
         toast.success(t('messages.studentsAssignedSuccess', { count: result.added }));
       } else if (result.removed > 0) {
         toast.success(t('messages.studentsRemovedSuccess', { count: result.removed }));
+      } else {
+        toast.info(t('messages.noNewStudentsToAssign'));
       }
     },
     onError: (error) => {

@@ -48,22 +48,32 @@ serve(async (req) => {
     
     logStep("Request data", { business_name, cnpj });
 
-    // #146: Check for existing business profile to prevent duplicate Stripe Connect accounts
-    const { data: existingProfile } = await supabaseClient
-      .from("business_profiles")
-      .select("id, stripe_connect_id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // Check for duplicate CNPJ across business_profiles and pending_business_profiles
+    if (cnpj) {
+      const cnpjClean = cnpj.replace(/\D/g, '');
 
-    if (existingProfile) {
-      logStep("User already has a business profile", { existingId: existingProfile.id });
-      return new Response(JSON.stringify({ 
-        error: "Você já possui um perfil de negócio ativo. Remova o existente antes de criar outro.",
-        existing_profile_id: existingProfile.id
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      });
+      const [{ data: existingBusiness }, { data: existingPending }] = await Promise.all([
+        supabaseClient
+          .from("business_profiles")
+          .select("id, business_name")
+          .eq("cnpj", cnpj)
+          .maybeSingle(),
+        supabaseClient
+          .from("pending_business_profiles")
+          .select("id, business_name")
+          .eq("cnpj", cnpj)
+          .maybeSingle(),
+      ]);
+
+      if (existingBusiness || existingPending) {
+        logStep("Duplicate CNPJ found", { cnpj: cnpjClean, inBusiness: !!existingBusiness, inPending: !!existingPending });
+        return new Response(JSON.stringify({
+          error: "Este CNPJ já está em uso por outro perfil de negócio.",
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 400,
+        });
+      }
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2023-10-16" });
@@ -112,16 +122,33 @@ serve(async (req) => {
     });
 
     // Create account link for onboarding
-    const accountLink = await stripe.accountLinks.create({
-      account: stripeAccount.id,
-      refresh_url: `${origin}/financeiro?refresh=true`,
-      return_url: `${origin}/financeiro?success=true`,
-      type: "account_onboarding",
-    });
+    let accountLink;
+    try {
+      accountLink = await stripe.accountLinks.create({
+        account: stripeAccount.id,
+        refresh_url: `${origin}/financeiro?refresh=true`,
+        return_url: `${origin}/financeiro?success=true`,
+        type: "account_onboarding",
+      });
+    } catch (linkError) {
+      const linkErrorMessage = linkError instanceof Error ? linkError.message : String(linkError);
+      logStep("ERROR creating account link", {
+        accountId: stripeAccount.id,
+        error: linkErrorMessage
+      });
+      return new Response(JSON.stringify({
+        error: "Erro ao gerar link de onboarding do Stripe. Tente novamente.",
+        technical_error: linkErrorMessage,
+        pending_profile_id: pendingProfile.id,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
 
-    logStep("Onboarding link created", { 
+    logStep("Onboarding link created", {
       accountId: stripeAccount.id,
-      url: accountLink.url 
+      url: accountLink.url
     });
 
     return new Response(JSON.stringify({
@@ -140,7 +167,7 @@ serve(async (req) => {
     
     // Handle specific Stripe Connect configuration error
     if (errorMessage.includes("review the responsibilities of managing losses")) {
-      return new Response(JSON.stringify({ 
+      return new Response(JSON.stringify({
         error: "Configuração do Stripe Connect necessária",
         details: "É necessário configurar o perfil da plataforma no Stripe Dashboard antes de criar contas conectadas.",
         action_required: "Acesse https://dashboard.stripe.com/settings/connect/platform-profile e complete a configuração.",
@@ -150,7 +177,17 @@ serve(async (req) => {
         status: 400,
       });
     }
-    
+
+    // Handle invalid CNPJ/tax_id errors from Stripe
+    if (errorMessage.includes("tax_id") || errorMessage.includes("Tax ID") || errorMessage.includes("company.tax_id")) {
+      return new Response(JSON.stringify({
+        error: "CNPJ inválido. Verifique se o número está correto e tente novamente.",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
+      });
+    }
+
     return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

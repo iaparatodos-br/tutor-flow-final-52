@@ -259,6 +259,9 @@ export type Database = {
       }
       class_participants: {
         Row: {
+          amnesty_granted: boolean | null
+          amnesty_granted_at: string | null
+          amnesty_granted_by: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
@@ -274,6 +277,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          amnesty_granted?: boolean | null
+          amnesty_granted_at?: string | null
+          amnesty_granted_by?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -289,6 +295,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          amnesty_granted?: boolean | null
+          amnesty_granted_at?: string | null
+          amnesty_granted_by?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
@@ -2311,35 +2320,20 @@ export type Database = {
           teacher_name: string
         }[]
       }
-      get_subscription_assigned_students:
-        | {
-            Args: { p_subscription_id: string }
-            Returns: {
-              classes_used: number
-              ends_at: string
-              is_active: boolean
-              relationship_id: string
-              starts_at: string
-              student_email: string
-              student_id: string
-              student_name: string
-              student_subscription_id: string
-            }[]
-          }
-        | {
-            Args: { p_subscription_id: string; p_timezone?: string }
-            Returns: {
-              classes_used: number
-              ends_at: string
-              is_active: boolean
-              relationship_id: string
-              starts_at: string
-              student_email: string
-              student_id: string
-              student_name: string
-              student_subscription_id: string
-            }[]
-          }
+      get_subscription_assigned_students: {
+        Args: { p_subscription_id: string; p_timezone?: string }
+        Returns: {
+          classes_used: number
+          ends_at: string
+          is_active: boolean
+          relationship_id: string
+          starts_at: string
+          student_email: string
+          student_id: string
+          student_name: string
+          student_subscription_id: string
+        }[]
+      }
       get_subscription_students_count: {
         Args: { p_subscription_id: string }
         Returns: number

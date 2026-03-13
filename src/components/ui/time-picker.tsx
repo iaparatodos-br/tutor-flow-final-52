@@ -78,11 +78,13 @@ export function TimePicker({
         const formatted = `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
         onChange(formatted);
         setInputValue(formatted);
+        onBlur?.();
         return;
       }
     }
     // Reset to last valid value
     setInputValue(value || "");
+    onBlur?.();
   };
 
   const handleHourChange = (newHour: number) => {

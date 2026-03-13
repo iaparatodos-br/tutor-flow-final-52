@@ -6,11 +6,6 @@
     "paymentDueDays": {
       "label": "Prazo de Vencimento Padrão (em dias)",
       "description": "Quantos dias após a criação da fatura ela deve vencer. Aplicado a todas as novas faturas."
-    },
-    "defaultBillingDay": {
-      "label": "Dia de Cobrança Padrão",
-      "description": "Dia do mês que será sugerido ao cadastrar novos alunos (1-28). Deixe vazio para não ter padrão.",
-      "placeholder": "15"
     }
   },
   "chargeTiming": {
@@ -40,8 +35,7 @@
   },
   "validation": {
     "minDays": "Deve ser pelo menos 1 dia",
-    "maxDays": "Máximo 90 dias",
-    "dayRange": "Deve ser entre 1 e 28"
+    "maxDays": "Máximo 28 dias"
   },
   "actions": {
     "save": "Salvar Configurações",

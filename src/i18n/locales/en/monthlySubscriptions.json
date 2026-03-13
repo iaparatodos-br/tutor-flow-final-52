@@ -40,7 +40,7 @@
     "activate": "Activate",
     "edit": "Edit",
     "viewStudents": "View Students",
-    "assignStudent": "Assign Student",
+    "assignStudent": "Assign Students",
     "removeStudent": "Remove Student"
   },
   "messages": {
@@ -51,12 +51,18 @@
     "activateSuccess": "Subscription activated successfully!",
     "studentAssigned": "Student assigned to subscription!",
     "studentRemoved": "Student removed from subscription!",
+    "studentsAssignedSuccess": "{{count}} student(s) assigned successfully!",
     "studentAlreadyHasSubscription": "This student already has an active subscription with you",
     "loadError": "Error loading subscriptions",
     "updateError": "Error updating subscription",
     "toggleError": "Error changing subscription status",
     "assignError": "Error assigning student",
-    "removeError": "Error removing student"
+    "bulkAssignError": "Error assigning students",
+    "removeError": "Error removing student",
+    "bulkUpdateSuccess": "Students updated successfully",
+    "bulkUpdateError": "Error updating students in bulk",
+    "studentsRemovedSuccess": "{{count}} student(s) removed successfully",
+    "noNewStudentsToAssign": "All selected students are already assigned"
   },
   "info": {
     "familyBilling": "The subscription covers the guardian and all their dependents automatically.",
@@ -79,8 +85,11 @@
     "since": "Since"
   },
   "assign": {
-    "title": "Assign Student to Subscription",
+    "title": "Assign Students to Subscription",
     "selectStudent": "Select a student",
+    "selectStudents": "Select students",
+    "selectAll": "Select all",
+    "selectedCount": "{{count}} student(s) selected",
     "noAvailableStudents": "All students already have an active subscription",
     "startsAt": "Start date",
     "startsAtHelp": "From this date, classes will be counted towards the subscription"

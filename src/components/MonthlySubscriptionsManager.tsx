@@ -37,7 +37,7 @@ import {
   useCreateMonthlySubscription,
   useUpdateMonthlySubscription,
   useToggleMonthlySubscription,
-  useAssignStudentToSubscription,
+  useBulkAssignStudents,
   useRemoveStudentFromSubscription
 } from "@/hooks/useMonthlySubscriptions";
 
@@ -58,13 +58,17 @@ export function MonthlySubscriptionsManager() {
   // Queries
   const { data: subscriptions, isLoading } = useMonthlySubscriptions(showInactive);
   const { data: assignedStudents, isLoading: isLoadingStudents } = useSubscriptionStudents(viewingSubscription?.id || null);
-  const { data: availableStudents, isLoading: isLoadingAvailable } = useAvailableStudentsForSubscription(assigningToSubscription?.id || null);
+  const { data: rawAvailableStudents, isLoading: isLoadingAvailable } = useAvailableStudentsForSubscription(assigningToSubscription?.id || null);
+
+  // Filter out students already assigned to this subscription (UI-level defense)
+  const assignedRelIds = new Set((assignedStudents || []).map((s: AssignedStudent) => s.relationship_id));
+  const availableStudents = (rawAvailableStudents || []).filter(s => !s.has_active_subscription && !assignedRelIds.has(s.relationship_id));
 
   // Mutations
   const createMutation = useCreateMonthlySubscription();
   const updateMutation = useUpdateMonthlySubscription();
   const toggleMutation = useToggleMonthlySubscription();
-  const assignMutation = useAssignStudentToSubscription();
+  const bulkAssignMutation = useBulkAssignStudents();
   const removeMutation = useRemoveStudentFromSubscription();
 
   const handleOpenCreate = () => {
@@ -136,11 +140,12 @@ export function MonthlySubscriptionsManager() {
     }
   };
 
-  const handleAssignStudent = async (relationshipId: string, startsAt?: string) => {
+  const handleAssignStudent = async (relationshipIds: string[], startsAt?: string) => {
     if (!assigningToSubscription) return;
-    await assignMutation.mutateAsync({
+    await bulkAssignMutation.mutateAsync({
       subscriptionId: assigningToSubscription.id,
-      relationshipId,
+      toAdd: relationshipIds,
+      toRemove: [],
       startsAt
     });
     setAssigningToSubscription(null);
@@ -249,7 +254,7 @@ export function MonthlySubscriptionsManager() {
 
       {/* View Students Dialog */}
       <Dialog open={!!viewingSubscription} onOpenChange={(open) => !open && setViewingSubscription(null)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {viewingSubscription?.name}
@@ -262,7 +267,7 @@ export function MonthlySubscriptionsManager() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4">
+          <div className="py-4 max-h-[60vh] overflow-y-auto">
             {isLoadingStudents ? (
               <div className="space-y-2">
                 <Skeleton className="h-12 w-full" />
@@ -326,10 +331,10 @@ export function MonthlySubscriptionsManager() {
       <StudentSubscriptionSelect
         open={!!assigningToSubscription}
         onClose={() => setAssigningToSubscription(null)}
-        availableStudents={availableStudents || []}
+        availableStudents={[...(availableStudents || [])].filter(s => !s.has_active_subscription).sort((a, b) => (a.student_name || '').localeCompare(b.student_name || '', 'pt-BR', { sensitivity: 'base' }))}
         isLoading={isLoadingAvailable}
         onAssign={handleAssignStudent}
-        isAssigning={assignMutation.isPending}
+        isAssigning={bulkAssignMutation.isPending}
       />
 
       {/* Remove Student Confirmation */}

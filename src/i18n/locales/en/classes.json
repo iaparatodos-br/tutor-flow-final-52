@@ -87,6 +87,7 @@
     "groupWithCount": "Group Class ({{count}} students)",
     "groupShort": "Group ({{count}})",
     "partialCancellation": "Partial Cancellation",
+    "cancellationReason": "Cancellation reason",
     "activeParticipants": "Active Participants",
     "cancelledParticipants": "Cancelled Participants",
     "noEventsThisDay": "No events today",

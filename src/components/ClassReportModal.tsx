@@ -125,7 +125,7 @@ export function ClassReportModal({
         // Load individual feedbacks
         const { data: feedbackData, error: feedbackError } = await supabase
           .from('class_report_feedbacks')
-          .select('student_id, feedback')
+          .select('student_id, dependent_id, feedback')
           .eq('report_id', report.id);
 
         if (feedbackError) {
@@ -140,7 +140,10 @@ export function ClassReportModal({
         if (feedbackData && feedbackData.length > 0) {
           // Criar array mesclado: todos os participantes com feedbacks (existentes ou vazios)
           const mergedFeedbacks = participants.map(p => {
-            const existingFeedback = feedbackData.find(f => f.student_id === p.student_id);
+            const existingFeedback = feedbackData.find(f => 
+              f.student_id === p.student_id && 
+              (f.dependent_id || null) === ((p as any).dependent_id || null)
+            );
             return {
               student_id: p.student_id,
               dependent_id: (p as any).dependent_id || null,
@@ -177,11 +180,11 @@ export function ClassReportModal({
     setFeedbacks(initialFeedbacks);
   };
 
-  const updateFeedback = (studentId: string, feedback: string) => {
-    console.log('🔍 updateFeedback called:', { studentId, feedback, currentFeedbacksCount: feedbacks.length });
+  const updateFeedback = (studentId: string, dependentId: string | null | undefined, feedback: string) => {
     setFeedbacks(prev => 
       prev.map(f => 
-        f.student_id === studentId ? { ...f, feedback } : f
+        (f.student_id === studentId && (f.dependent_id || null) === (dependentId || null))
+          ? { ...f, feedback } : f
       )
     );
   };
@@ -553,14 +556,18 @@ export function ClassReportModal({
                 </p>
                 
                 {participants.map((participant) => {
-                  const feedback = feedbacks.find(f => f.student_id === participant.student_id);
+                  const depId = (participant as any).dependent_id || null;
+                  const feedback = feedbacks.find(f => 
+                    f.student_id === participant.student_id && 
+                    (f.dependent_id || null) === depId
+                  );
                   const displayName = getParticipantName(participant);
                   const responsibleName = getResponsibleName(participant);
                   const isDependent = !!responsibleName;
-                  console.log('🎨 Rendering feedback for:', displayName, 'value:', feedback?.feedback || '(empty)', 'found:', !!feedback);
+                  const compositeKey = `${participant.student_id}-${depId || 'self'}`;
                   
                   return (
-                    <div key={participant.student_id} className="space-y-2">
+                    <div key={compositeKey} className="space-y-2">
                       <Label className="text-sm font-medium flex items-center gap-1.5">
                         {isDependent && <Baby className="h-4 w-4 text-purple-600" />}
                         {displayName}
@@ -571,10 +578,10 @@ export function ClassReportModal({
                         )}
                       </Label>
                       <Textarea
-                        key={`feedback-${participant.student_id}-${existingReport?.id || 'new'}`}
+                        key={`feedback-${compositeKey}-${existingReport?.id || 'new'}`}
                         placeholder={t('modal.fields.individualFeedback.placeholder', { name: displayName })}
                         value={feedback?.feedback || ''}
-                        onChange={(e) => updateFeedback(participant.student_id, e.target.value)}
+                        onChange={(e) => updateFeedback(participant.student_id, depId, e.target.value)}
                         className="min-h-[80px]"
                         style={{
                           scrollBehavior: 'auto',

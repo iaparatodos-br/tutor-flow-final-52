@@ -135,6 +135,7 @@ Deno.serve(async (req) => {
       .select('class_id')
       .eq('status', 'cancelada')
       .eq('charge_applied', true)
+      .eq('amnesty_granted', false)
       .gte('created_at', thirtyDaysAgoISO)
 
     if (amnestyPartError) {
@@ -149,10 +150,9 @@ Deno.serve(async (req) => {
       if (classIdsToCheck.length > 0) {
         const { data: groupClasses, error: groupError } = await supabase
           .from('classes')
-          .select('id, teacher_id, status, amnesty_granted, class_date')
+          .select('id, teacher_id, status, class_date')
           .in('id', classIdsToCheck)
           .neq('status', 'cancelada')
-          .eq('amnesty_granted', false)
           .gte('class_date', thirtyDaysAgoISO)
 
         if (groupError) {

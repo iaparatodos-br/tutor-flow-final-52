@@ -39,7 +39,8 @@ serve(async (req) => {
       .in("status", ["pendente", "falha_pagamento"])
       .not("stripe_payment_intent_id", "is", null)
       .or("payment_origin.is.null,payment_origin.neq.manual") // Skip manual payments
-      .limit(50); // Limitar para evitar timeout
+      .order("created_at", { ascending: false }) // Priorizar faturas mais recentes
+      .limit(100);
 
     if (fetchError) {
       logStep("Error fetching pending invoices", fetchError);
@@ -91,19 +92,29 @@ serve(async (req) => {
           }
         }
 
+        // PIX = direct charge (PI lives on connected account) → pass stripeAccount
+        // Boleto/Card = destination charge (PI lives on platform) → DON'T pass stripeAccount
+        const useStripeAccount = stripeAccount && invoice.payment_method === 'pix';
+
         logStep("Retrieving payment intent", { 
           paymentIntentId: invoice.stripe_payment_intent_id, 
-          stripeAccount: stripeAccount || 'platform' 
+          stripeAccount: useStripeAccount ? stripeAccount : 'platform',
+          paymentMethod: invoice.payment_method
         });
 
-        // Buscar status do payment intent no Stripe (com stripeAccount para Connect)
         const paymentIntent = await stripe.paymentIntents.retrieve(
           invoice.stripe_payment_intent_id,
           undefined,
-          stripeAccount ? { stripeAccount } : undefined
+          useStripeAccount ? { stripeAccount } : undefined
         );
 
         verifiedCount++;
+
+        logStep("Payment intent status from Stripe", {
+          invoiceId: invoice.id,
+          stripeStatus: paymentIntent.status,
+          paymentMethod: invoice.payment_method
+        });
 
         let newStatus = invoice.status;
         
@@ -167,6 +178,32 @@ serve(async (req) => {
               oldStatus: invoice.status, 
               newStatus 
             });
+
+            // Auto-confirm class if payment succeeded and invoice has a linked class
+            if (newStatus === 'paga' && invoice.class_id) {
+              const { data: classData } = await supabaseClient
+                .from('classes')
+                .select('id, status')
+                .eq('id', invoice.class_id)
+                .eq('status', 'aguardando_pagamento')
+                .maybeSingle();
+
+              if (classData) {
+                await supabaseClient
+                  .from('classes')
+                  .update({ status: 'confirmada', updated_at: new Date().toISOString() })
+                  .eq('id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+
+                await supabaseClient
+                  .from('class_participants')
+                  .update({ status: 'confirmada', confirmed_at: new Date().toISOString() })
+                  .eq('class_id', classData.id)
+                  .eq('status', 'aguardando_pagamento');
+
+                logStep('Class auto-confirmed after automatic payment', { classId: classData.id });
+              }
+            }
           }
         }
 

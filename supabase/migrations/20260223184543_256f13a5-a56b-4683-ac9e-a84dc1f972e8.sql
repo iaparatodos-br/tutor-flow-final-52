@@ -1,1 +1,0 @@
-ALTER TABLE public.business_profiles ADD COLUMN auto_generate_boleto boolean NOT NULL DEFAULT true;

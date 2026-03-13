@@ -1,1 +1,0 @@
-ALTER TABLE public.class_services DROP COLUMN IF EXISTS is_default;

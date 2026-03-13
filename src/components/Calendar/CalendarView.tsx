@@ -99,7 +99,7 @@ interface CalendarViewProps {
   loading?: boolean;
 }
 
-export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, loading }: CalendarViewProps) {
+export function CalendarView({ classes, availabilityBlocks = [], isProfessor, onConfirmClass, onCancelClass, onCompleteClass, onEditReport, onAmnestyGranted, loading }: CalendarViewProps) {
   const { profile } = useAuth();
   const { t } = useTranslation('classes');
   const userTimezone = profile?.timezone || DEFAULT_TIMEZONE;
